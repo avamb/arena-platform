@@ -1,0 +1,200 @@
+id: how-02
+fps: 30
+languages: [ru, en, es]
+title:
+  ru: "Как создать мероприятие вручную"
+  en: "How to add an event by hand"
+  es: "Cómo crear un evento a mano"
+
+# Pictures in captures/ are made by scripts/capture-how.ts (stage `event`, see README, "How-to films of the web
+# event center") and are not committed. Russian pictures lie in captures/, English and Spanish in captures/en/
+# and captures/es/. The poster in assets/ is drawn by scripts/make-how-posters.ts.
+# The organizer is invented: Aurora Events; the event is a jazz evening in Berlin.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [16x9]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-result
+    narration:
+      ru: "Мероприятие можно создать вручную в веб-ивент-центре. В конце у вас будет страница, на которой покупатели покупают билеты."
+      en: "You can add an event by hand in the web event center. At the end you have a page where buyers buy tickets."
+      es: "Puedes crear un evento a mano en el centro de eventos web. Al final tienes una página donde los compradores compran entradas."
+    pause_after: 0.4
+    shots:
+      - image: captures/b_01_page.png
+        frame: browser
+        address: { ru: "tickets.arenasoldout.com/aurora-events/vecher-dzhaza", en: "tickets.arenasoldout.com/aurora-events/jazz-night", es: "tickets.arenasoldout.com/aurora-events/noche-de-jazz" }
+        title: { ru: "Что получится: страница для покупателей", en: "The result: a page for buyers", es: "El resultado: una página para compradores" }
+        weight: 2
+        zoom: { from: 1.0, to: 1.12, x: 0.5, y: 0.6 }
+      - image: captures/w_01_events.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Мероприятия → «Создать мероприятие»", en: "Events → Add event", es: "Eventos → «Crear evento»" }
+        weight: 2
+        zoom: { from: 1.4, to: 1.6, x: 0.5, y: 0.6 }
+
+  - id: s2-name
+    narration:
+      ru: "Нажмите «Создать мероприятие». Афишу можно загрузить сразу или позже. Напишите название и короткое описание."
+      en: "Press Add event. You can upload a poster now or later. Type the name and a short description."
+      es: "Pulsa «Crear evento». Puedes subir el cartel ahora o más tarde. Escribe el nombre y una descripción breve."
+    pause_after: 0.4
+    shots:
+      - image: captures/w_02_new.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Афиша: сразу или позже", en: "Poster: now or later", es: "Cartel: ahora o más tarde" }
+        weight: 2
+        zoom: { from: 1.5, to: 1.6, x: 0.5, y: 0.6 }
+      - image: captures/w_03_name.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Название и описание", en: "Name and description", es: "Nombre y descripción" }
+        weight: 3
+        zoom: { from: 1.7, to: 1.8, x: 0.5, y: 0.4 }
+
+  - id: s3-venue
+    narration:
+      ru: "Выберите площадку из списка или добавьте новую: название, страна, город и адрес."
+      en: "Choose a venue from the list or add a new one: its name, country, city and address."
+      es: "Elige un recinto de la lista o añade uno nuevo: nombre, país, ciudad y dirección."
+    pause_after: 0.4
+    shots:
+      - image: captures/w_04_venue.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Площадка", en: "Venue", es: "Recinto" }
+        zoom: { from: 1.6, to: 1.75, x: 0.5, y: 0.5 }
+
+  - id: s4-date
+    narration:
+      ru: "Выберите день в календаре и напишите время начала."
+      en: "Choose the day in the calendar and type the start time."
+      es: "Elige el día en el calendario y escribe la hora de inicio."
+    pause_after: 0.4
+    shots:
+      - image: captures/w_05_calendar.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "День", en: "Day", es: "Día" }
+        weight: 2
+        zoom: { from: 1.5, to: 1.6, x: 0.5, y: 0.75 }
+      - image: captures/w_06_date.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Время начала", en: "Start time", es: "Hora de inicio" }
+        weight: 2
+        zoom: { from: 1.7, to: 1.8, x: 0.5, y: 0.35 }
+
+  - id: s5-tickets
+    narration:
+      ru: "Укажите название категории билетов и цену. Категорий может быть несколько."
+      en: "Type the name of the ticket category and the price. You can have more than one category."
+      es: "Escribe el nombre de la categoría de entradas y el precio. Puede haber varias categorías."
+    pause_after: 0.4
+    shots:
+      - image: captures/w_07_tickets.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Билеты и цена", en: "Tickets and price", es: "Entradas y precio" }
+        zoom: { from: 1.7, to: 1.85, x: 0.5, y: 0.45 }
+
+  - id: s6-create
+    narration:
+      ru: "Платформа проверяет ответы. Нажмите «Создать мероприятие». Оно создаётся черновиком: покупатели его ещё не видят."
+      en: "The platform examines your answers. Press Add event. The event is a draft: buyers do not see it yet."
+      es: "La plataforma comprueba tus respuestas. Pulsa «Crear evento». El evento es un borrador: los compradores aún no lo ven."
+    pause_after: 0.5
+    shots:
+      - image: captures/w_08_ready.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Всё верно → «Создать мероприятие»", en: "All correct → Add event", es: "Todo correcto → «Crear evento»" }
+        weight: 3
+        zoom: { from: 1.6, to: 1.7, x: 0.5, y: 0.5 }
+      - image: captures/c_01_card.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Карточка мероприятия: черновик", en: "Event card: draft", es: "Ficha del evento: borrador" }
+        weight: 2
+        zoom: { from: 1.6, to: 1.7, x: 0.5, y: 0.4 }
+
+  - id: s7-poster
+    narration:
+      ru: "На карточке мероприятия откройте раздел «Изменить» и загрузите афишу."
+      en: "On the event card, open the section Edit and upload the poster."
+      es: "En la ficha del evento, abre la sección «Editar» y sube el cartel."
+    pause_after: 0.4
+    shots:
+      - image: captures/c_02_poster_none.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "«Изменить» → «Загрузить афишу»", en: "Edit → Upload a poster", es: "«Editar» → «Subir cartel»" }
+        weight: 2
+        zoom: { from: 1.6, to: 1.7, x: 0.5, y: 0.3 }
+      - image: captures/c_04_poster_saved.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Афиша сохранена", en: "Poster saved", es: "Cartel guardado" }
+        weight: 2
+        zoom: { from: 1.25, to: 1.35, x: 0.5, y: 0.5 }
+
+  - id: s8-publish
+    narration:
+      ru: "В разделе «Ещё» нажмите «Опубликовать». Теперь мероприятие в продаже."
+      en: "In the section More, press Publish. Now the event is on sale."
+      es: "En la sección «Más», pulsa «Publicar». Ahora el evento está a la venta."
+    pause_after: 0.5
+    shots:
+      - image: captures/c_05_status.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Статус: черновик → «Опубликовать»", en: "Status: draft → Publish", es: "Estado: borrador → «Publicar»" }
+        weight: 2
+        zoom: { from: 1.7, to: 1.8, x: 0.5, y: 0.4 }
+      - image: captures/c_06_published.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Опубликовано", en: "Published", es: "Publicado" }
+        weight: 2
+        zoom: { from: 1.7, to: 1.8, x: 0.5, y: 0.4 }
+
+  - id: s9-buyer
+    narration:
+      ru: "Вот что видит покупатель: афиша, дата, площадка и билеты."
+      en: "This is what the buyer sees: the poster, the date, the venue and the tickets."
+      es: "Esto es lo que ve el comprador: el cartel, la fecha, el recinto y las entradas."
+    pause_after: 1.0
+    shots:
+      - image: captures/b_01_page.png
+        frame: browser
+        address: { ru: "tickets.arenasoldout.com/aurora-events/vecher-dzhaza", en: "tickets.arenasoldout.com/aurora-events/jazz-night", es: "tickets.arenasoldout.com/aurora-events/noche-de-jazz" }
+        title: { ru: "Страница покупателя", en: "The buyer's page", es: "La página del comprador" }
+        weight: 2
+        zoom: { from: 1.1, to: 1.2, x: 0.5, y: 0.6 }
+      - image: captures/b_02_page.png
+        frame: browser
+        address: { ru: "tickets.arenasoldout.com/aurora-events/vecher-dzhaza", en: "tickets.arenasoldout.com/aurora-events/jazz-night", es: "tickets.arenasoldout.com/aurora-events/noche-de-jazz" }
+        title: { ru: "Дата, площадка и билеты", en: "Date, venue and tickets", es: "Fecha, recinto y entradas" }
+        weight: 3
+        zoom: { from: 1.2, to: 1.3, x: 0.0, y: 0.6 }
+
+  - id: s10-cta
+    narration:
+      ru: "Создайте своё мероприятие в ивент-центре Arena Sold Out."
+      en: "Add your event in the Arena Sold Out event center."
+      es: "Crea tu evento en el centro de eventos de Arena Sold Out."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Создайте мероприятие", en: "Add your event", es: "Crea tu evento" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://arenasoldout.com"

@@ -1,0 +1,153 @@
+id: how-05-web
+fps: 30
+languages: [ru, en, es]
+title:
+  ru: "Ссылка продаж и QR-код мероприятия"
+  en: "Sales link and QR code of an event"
+  es: "Enlace de venta y código QR de un evento"
+
+# Pictures in captures/ are made by scripts/capture-how.ts (stage `links`, see README, "How-to films of the web
+# event center") and are not committed. Russian pictures lie in captures/, English and Spanish in captures/en/
+# and captures/es/.
+# The QR code in the pictures is drawn by the script for the short address on the public host (the address
+# written in the frame): the code of the stand would lead a viewer to the stand.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [16x9]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-result
+    narration:
+      ru: "У мероприятия есть короткая ссылка и QR-код. Разместите их на афише или в посте, и вы увидите, сколько людей пришло по каждому коду."
+      en: "An event has a short link and a QR code. Put them on a poster or in a post, and you see how many people came through each code."
+      es: "Un evento tiene un enlace corto y un código QR. Ponlos en un cartel o en una publicación y verás cuántas personas llegan con cada código."
+    pause_after: 0.4
+    shots:
+      - image: captures/k_05_qr.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Что получится: QR-код и короткая ссылка", en: "The result: a QR code and a short link", es: "El resultado: un código QR y un enlace corto" }
+        zoom: { from: 1.15, to: 1.3, x: 0.15, y: 0.2 }
+
+  - id: s2-card
+    narration:
+      ru: "Откройте мероприятие. В разделе «Ссылка для покупателей» нажмите «QR / ссылка»."
+      en: "Open the event. In the section Link for buyers, press QR / link."
+      es: "Abre el evento. En la sección «Enlace para compradores», pulsa «QR / enlace»."
+    pause_after: 0.4
+    shots:
+      - image: captures/k_01_card.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Карточка мероприятия → «QR / ссылка»", en: "Event card → QR / link", es: "Ficha del evento → «QR / enlace»" }
+        zoom: { from: 1.6, to: 1.75, x: 0.5, y: 0.4 }
+
+  - id: s3-target
+    narration:
+      ru: "Выберите, куда ведёт ссылка: на мероприятие, на один сеанс или на страницу всех ваших мероприятий."
+      en: "Choose where the link leads: to the event, to one date of the event or to the page with all your events."
+      es: "Elige adónde lleva el enlace: al evento, a una sola fecha o a la página con todos tus eventos."
+    pause_after: 0.4
+    shots:
+      - image: captures/k_02_new.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Куда ведёт ссылка", en: "Where the link leads", es: "Adónde lleva el enlace" }
+        zoom: { from: 1.6, to: 1.75, x: 0.5, y: 0.5 }
+
+  - id: s4-place
+    narration:
+      ru: "Отметьте, где вы разместите код, и дайте ссылке название. Нажмите «Создать ссылку»."
+      en: "Mark where you will put the code and give the link a name. Press Make the link."
+      es: "Marca dónde pondrás el código y da un nombre al enlace. Pulsa «Crear el enlace»."
+    pause_after: 0.4
+    shots:
+      - image: captures/k_03_form.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Где разместите код", en: "Where you put the code", es: "Dónde pones el código" }
+        zoom: { from: 1.5, to: 1.65, x: 0.5, y: 0.75 }
+
+  - id: s5-code
+    narration:
+      ru: "Готово. Скачайте QR-код: PNG для поста или мессенджера, SVG для типографии. Короткий адрес можно скопировать."
+      en: "The link is ready. Download the QR code: PNG for a post or a messenger, SVG for a print shop. You can copy the short address."
+      es: "El enlace está listo. Descarga el código QR: PNG para una publicación o un mensaje, SVG para la imprenta. Puedes copiar la dirección corta."
+    pause_after: 0.4
+    shots:
+      - image: captures/k_05_qr.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "QR-код: PNG и SVG", en: "QR code: PNG and SVG", es: "Código QR: PNG y SVG" }
+        weight: 3
+        zoom: { from: 1.3, to: 1.45, x: 0.15, y: 0.35 }
+      - image: captures/k_06_address.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Короткий адрес", en: "Short address", es: "Dirección corta" }
+        weight: 2
+        zoom: { from: 1.6, to: 1.75, x: 0.15, y: 0.45 }
+
+  - id: s6-buyer
+    narration:
+      ru: "Покупатель сканирует код и попадает на страницу мероприятия."
+      en: "The buyer scans the code and comes to the event page."
+      es: "El comprador escanea el código y llega a la página del evento."
+    pause_after: 0.4
+    shots:
+      - image: captures/k_07_buyer.png
+        frame: browser
+        address: { ru: "tickets.arenasoldout.com/aurora-events/vecher-dzhaza", en: "tickets.arenasoldout.com/aurora-events/jazz-night", es: "tickets.arenasoldout.com/aurora-events/noche-de-jazz" }
+        title: { ru: "Страница покупателя", en: "The buyer's page", es: "La página del comprador" }
+        zoom: { from: 1.05, to: 1.2, x: 0.5, y: 0.6 }
+
+  - id: s7-counts
+    narration:
+      ru: "Каждый скан считается. На карточке ссылки вы видите сканы и заказы, которые пришли через этот код."
+      en: "Each scan is counted. On the link card you see the scans and the orders that came through this code."
+      es: "Cada escaneo se cuenta. En la ficha del enlace ves los escaneos y los pedidos que llegaron con este código."
+    pause_after: 0.5
+    shots:
+      - image: captures/k_08_counts.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Сканы и заказы", en: "Scans and orders", es: "Escaneos y pedidos" }
+        weight: 2
+        zoom: { from: 1.6, to: 1.75, x: 0.1, y: 0.45 }
+      - image: captures/k_09_stats.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Статистика по дням", en: "Statistics by day", es: "Estadísticas por día" }
+        weight: 2
+        zoom: { from: 1.5, to: 1.65, x: 0.1, y: 0.5 }
+
+  - id: s8-list
+    narration:
+      ru: "Все ссылки лежат в разделе «Ссылки и QR». Для каждой афиши или поста сделайте свою ссылку."
+      en: "All links are in the section Links and QR. Make a separate link for each poster or post."
+      es: "Todos los enlaces están en la sección «Enlaces y QR». Crea un enlace distinto para cada cartel o publicación."
+    pause_after: 1.0
+    shots:
+      - image: captures/k_10_list.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Раздел «Ссылки и QR»", en: "Section Links and QR", es: "Sección «Enlaces y QR»" }
+        zoom: { from: 1.5, to: 1.65, x: 0.5, y: 0.6 }
+
+  - id: s9-cta
+    narration:
+      ru: "Сделайте ссылку и QR-код в ивент-центре Arena Sold Out."
+      en: "Make your link and QR code in the Arena Sold Out event center."
+      es: "Crea tu enlace y tu código QR en el centro de eventos de Arena Sold Out."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Ссылка и QR-код", en: "Link and QR code", es: "Enlace y código QR" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://arenasoldout.com"

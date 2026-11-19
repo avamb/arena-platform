@@ -87,3 +87,125 @@ films:
         line1: "EMPIEZA A VENDER"
         line2: "SOLICITUD EN LA WEB"
         sub: "De la solicitud a tu centro de eventos."
+
+  # The how-to films of the web event center: a desktop capture in a browser window for 16x9,
+  # the middle column of the same capture (or the poster) in a phone frame for the vertical formats.
+  how-02:
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.27, y: 0.12, w: 0.46, h: 0.46 }
+        src:
+          ru: scenarios/how-02/captures/w_03_name.png
+          en: scenarios/how-02/captures/en/w_03_name.png
+          es: scenarios/how-02/captures/es/w_03_name.png
+      default:
+        kind: phone
+        status: "#0b1230"
+        src:
+          ru: scenarios/how-02/assets/poster_4x5.png
+          en: scenarios/how-02/assets/en/poster_4x5.png
+          es: scenarios/how-02/assets/es/poster_4x5.png
+    texts:
+      ru:
+        line1: "МЕРОПРИЯТИЕ ВРУЧНУЮ"
+        line2: "ОТ НАЗВАНИЯ ДО ПРОДАЖИ"
+        sub: "Название, дата, площадка, билеты и афиша в веб-ивент-центре."
+      en:
+        line1: "ADD AN EVENT BY HAND"
+        line2: "FROM THE NAME TO THE SALE"
+        sub: "Name, date, venue, tickets and poster in the web event center."
+      es:
+        line1: "CREA UN EVENTO A MANO"
+        line2: "DEL NOMBRE A LA VENTA"
+        sub: "Nombre, fecha, recinto, entradas y cartel en el centro de eventos web."
+
+  how-03:
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.27, y: 0.12, w: 0.46, h: 0.46 }
+        src:
+          ru: scenarios/how-03/captures/p_03_not_connected.png
+          en: scenarios/how-03/captures/en/p_03_not_connected.png
+          es: scenarios/how-03/captures/es/p_03_not_connected.png
+      default:
+        kind: phone
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.88 }
+        src:
+          ru: scenarios/how-03/captures/p_03_not_connected.png
+          en: scenarios/how-03/captures/en/p_03_not_connected.png
+          es: scenarios/how-03/captures/es/p_03_not_connected.png
+    texts:
+      ru:
+        line1: "ПРИЁМ ОПЛАТЫ"
+        line2: "ПОДКЛЮЧЁН ИЛИ НЕТ?"
+        sub: "Где это посмотреть в ивент-центре."
+      en:
+        line1: "PAYMENTS FROM BUYERS"
+        line2: "CONNECTED OR NOT?"
+        sub: "Where to see it in the event center."
+      es:
+        line1: "COBRO A COMPRADORES"
+        line2: "¿CONECTADO O NO?"
+        sub: "Dónde verlo en el centro de eventos."
+
+  how-04:
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.5 }
+        src:
+          ru: scenarios/how-04/captures/o_03_legal.png
+          en: scenarios/how-04/captures/en/o_03_legal.png
+          es: scenarios/how-04/captures/es/o_03_legal.png
+      default:
+        kind: phone
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.88 }
+        src:
+          ru: scenarios/how-04/captures/o_03_legal.png
+          en: scenarios/how-04/captures/en/o_03_legal.png
+          es: scenarios/how-04/captures/es/o_03_legal.png
+    texts:
+      ru:
+        line1: "ДАННЫЕ ОРГАНИЗАЦИИ"
+        line2: "ЧТО ВИДИТ ПОКУПАТЕЛЬ"
+        sub: "Юридические данные и контакты: заполните один раз."
+      en:
+        line1: "ORGANIZATION DATA"
+        line2: "WHAT THE BUYER SEES"
+        sub: "Legal data and contacts: fill them in once."
+      es:
+        line1: "DATOS DE LA ORGANIZACIÓN"
+        line2: "LO QUE VE EL COMPRADOR"
+        sub: "Datos legales y contactos: rellénalos una sola vez."
+
+  how-05-web:
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.1, y: 0.14, w: 0.5, h: 0.62 }
+        src:
+          ru: scenarios/how-05-web/captures/k_05_qr.png
+          en: scenarios/how-05-web/captures/en/k_05_qr.png
+          es: scenarios/how-05-web/captures/es/k_05_qr.png
+      default:
+        kind: phone
+        crop: { x: 0.13, y: 0.16, w: 0.32, h: 0.7 }
+        src:
+          ru: scenarios/how-05-web/captures/k_05_qr.png
+          en: scenarios/how-05-web/captures/en/k_05_qr.png
+          es: scenarios/how-05-web/captures/es/k_05_qr.png
+    texts:
+      ru:
+        line1: "ССЫЛКА И QR"
+        line2: "ДЛЯ КАЖДОЙ АФИШИ"
+        sub: "Каждый скан считается, заказы привязаны к коду."
+      en:
+        line1: "LINK AND QR"
+        line2: "FOR EACH POSTER"
+        sub: "Each scan is counted, orders are tied to the code."
+      es:
+        line1: "ENLACE Y QR"
+        line2: "PARA CADA CARTEL"
+        sub: "Cada escaneo se cuenta y los pedidos quedan ligados al código."

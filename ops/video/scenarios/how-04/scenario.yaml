@@ -1,0 +1,148 @@
+id: how-04
+fps: 30
+languages: [ru, en, es]
+title:
+  ru: "Данные организации: что видит покупатель"
+  en: "Organization data: what the buyer sees"
+  es: "Datos de la organización: lo que ve el comprador"
+
+# Pictures in captures/ are made by scripts/capture-how.ts (stage `org`, see README, "How-to films of the web
+# event center") and are not committed. Russian pictures lie in captures/, English and Spanish in captures/en/
+# and captures/es/.
+# The web event center has no logo of the organization: the film shows the legal data, the contact e-mail,
+# the public e-mail of the sales page and the seller block on the buyers' page.
+# The organizer is invented: Aurora Events S.L., Calle Ejemplo 12, Madrid, carmen@example.com.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [16x9]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-why
+    narration:
+      ru: "Покупатели видят данные вашей организации на странице продаж, в письмах с билетами и в PDF-билетах. Заполните их один раз."
+      en: "Buyers see the data of your organization on the sales page, in the e-mails with tickets and in the PDF tickets. You fill them in once."
+      es: "Los compradores ven los datos de tu organización en la página de venta, en los correos con entradas y en las entradas en PDF. Los rellenas una sola vez."
+    pause_after: 0.4
+    shots:
+      - image: captures/s_01_seller.png
+        frame: browser
+        address: { ru: "tickets.arenasoldout.com/aurora-events/vecher-dzhaza", en: "tickets.arenasoldout.com/aurora-events/jazz-night", es: "tickets.arenasoldout.com/aurora-events/noche-de-jazz" }
+        title: { ru: "Что получится: блок продавца на странице", en: "The result: the seller block on the page", es: "El resultado: el bloque del vendedor en la página" }
+        weight: 3
+        zoom: { from: 1.3, to: 1.45, x: 0.0, y: 0.75 }
+      - image: captures/o_01_menu.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Меню → «Данные организации»", en: "Menu → Organization data", es: "Menú → «Datos de la organización»" }
+        weight: 2
+        zoom: { from: 1.5, to: 1.7, x: 0.5, y: 0.45 }
+
+  - id: s2-legal
+    narration:
+      ru: "Напишите юридическое название, форму, регистрационный и налоговый номер. Пишите так, как в регистрационных документах."
+      en: "Type the legal name, the legal form, the registration number and the tax number. Write them as they are in your registration documents."
+      es: "Escribe la razón social, la forma jurídica, el número de registro y el número fiscal. Escríbelos como en tus documentos de registro."
+    pause_after: 0.4
+    shots:
+      - image: captures/o_03_legal.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Юридические данные", en: "Legal data", es: "Datos legales" }
+        zoom: { from: 1.6, to: 1.75, x: 0.5, y: 0.55 }
+
+  - id: s3-address
+    narration:
+      ru: "Добавьте юридический адрес: улицу, город, почтовый индекс и страну."
+      en: "Add the legal address: the street, the city, the postal code and the country."
+      es: "Añade el domicilio legal: la calle, la ciudad, el código postal y el país."
+    pause_after: 0.4
+    shots:
+      - image: captures/o_04_address.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Юридический адрес", en: "Legal address", es: "Domicilio legal" }
+        zoom: { from: 1.6, to: 1.75, x: 0.5, y: 0.55 }
+
+  - id: s4-contact
+    narration:
+      ru: "Укажите e-mail для вопросов покупателей. Он печатается в каждом письме покупателю. Телефон покупателям не показывается. Нажмите «Сохранить»."
+      en: "Type the e-mail for questions from buyers. It is printed in each e-mail to a buyer. The phone number is not shown to buyers. Press Save."
+      es: "Indica el correo para las preguntas de los compradores. Aparece en cada correo al comprador. El teléfono no se muestra a los compradores. Pulsa «Guardar»."
+    pause_after: 0.4
+    shots:
+      - image: captures/o_05_contact.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Контакт организации", en: "Contact of the organization", es: "Contacto de la organización" }
+        weight: 3
+        zoom: { from: 1.6, to: 1.75, x: 0.5, y: 0.45 }
+      - image: captures/o_06_saved.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Сохранено", en: "Saved", es: "Guardado" }
+        weight: 2
+        zoom: { from: 1.7, to: 1.8, x: 0.5, y: 0.5 }
+
+  - id: s5-page
+    narration:
+      ru: "Ниже — ваши страницы продаж. Для каждой укажите публичный e-mail: на него приходят сообщения покупателей из формы на странице."
+      en: "Below are your sales pages. For each page, type its e-mail: messages from the form on the page come to this address."
+      es: "Debajo están tus páginas de venta. Indica el correo público de cada una: ahí llegan los mensajes del formulario de la página."
+    pause_after: 0.4
+    shots:
+      - image: captures/o_07_page_contact.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Страницы продаж → публичный e-mail", en: "Sales pages → e-mail on the page", es: "Páginas de venta → correo público" }
+        weight: 3
+        zoom: { from: 1.6, to: 1.75, x: 0.5, y: 0.6 }
+      - image: captures/o_08_page_saved.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Данные продавца показаны на странице", en: "Seller data are shown on the page", es: "Los datos del vendedor se muestran en la página" }
+        weight: 2
+        zoom: { from: 1.6, to: 1.75, x: 0.5, y: 0.5 }
+
+  - id: s6-status
+    narration:
+      ru: "Когда всё заполнено, статус меняется: данные продавца показаны на ваших страницах продаж."
+      en: "When all data are filled in, the status changes: the seller data are shown on your sales pages."
+      es: "Cuando todo está rellenado, el estado cambia: los datos del vendedor se muestran en tus páginas de venta."
+    pause_after: 0.4
+    shots:
+      - image: captures/o_09_status.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Данные продавца заполнены полностью", en: "Seller data are complete", es: "Datos del vendedor completos" }
+        zoom: { from: 1.5, to: 1.65, x: 0.5, y: 0.35 }
+
+  - id: s7-buyer
+    narration:
+      ru: "Покупатель видит продавца внизу страницы мероприятия: название, номера, адрес и телефон страницы."
+      en: "The buyer sees the seller at the bottom of the event page: the name, the numbers, the address and the phone number of the page."
+      es: "El comprador ve al vendedor al final de la página del evento: el nombre, los números, la dirección y el teléfono de la página."
+    pause_after: 1.0
+    shots:
+      - image: captures/s_01_seller.png
+        frame: browser
+        address: { ru: "tickets.arenasoldout.com/aurora-events/vecher-dzhaza", en: "tickets.arenasoldout.com/aurora-events/jazz-night", es: "tickets.arenasoldout.com/aurora-events/noche-de-jazz" }
+        title: { ru: "Страница покупателя: продавец", en: "The buyer's page: the seller", es: "La página del comprador: el vendedor" }
+        zoom: { from: 1.5, to: 1.65, x: 0.0, y: 0.8 }
+
+  - id: s8-cta
+    narration:
+      ru: "Заполните данные организации в ивент-центре Arena Sold Out."
+      en: "Fill in your organization data in the Arena Sold Out event center."
+      es: "Rellena los datos de tu organización en el centro de eventos de Arena Sold Out."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Данные организации", en: "Organization data", es: "Datos de la organización" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://arenasoldout.com"

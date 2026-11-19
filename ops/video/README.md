@@ -438,6 +438,38 @@ you buy.
 - Background music and a logo sting.
 - Upload to YouTube or Cloudflare Stream.
 
+## How-to films of the web event center (how-02 ... how-05-web)
+
+Four films show the organizer's web event center in a browser window. They have one format, 16x9.
+
+| Film | Subject | Stage of the capture script |
+|---|---|---|
+| `how-02` | add an event by hand, upload the poster, publish, the buyers' page | `event` |
+| `how-03` | the section "Payments from buyers" and its two notes | `pay` |
+| `how-04` | organization data, contact e-mail, the seller block on the buyers' page | `org` |
+| `how-05-web` | a tracked sales link, its QR code and its scan count | `links` |
+
+1. Draw the poster of the invented event: `npx tsx scripts/make-how-posters.ts`.
+2. Take the pictures for each language, in this order: `npx tsx scripts/capture-how.ts <ru|en|es> event`,
+   then `org`, `links`, `pay`. The script signs in as the test organizer of film onb-02
+   (`VIDEO_ONB_EMAIL_<LANG>`, `VIDEO_ONB_ORG_<LANG>`, `VIDEO_ONB_PASSWORD`, `VIDEO_BASE_URL` in `.env`).
+3. Build: `npm run build:video -- how-02 ru` and so on.
+
+Rules of these pictures:
+
+- The script opens only staging hosts. It replaces the stand data in the page before each picture
+  (mailbox, organization name, `-staging` in hosts) and puts the real text back after it.
+- Stage `event` creates a real event on the stand. `reset` deletes that event (off sale, "Delete", the typed word).
+  `card` repeats the pictures of the event card. `HOW_STOP=ready` stops before the event is created.
+  `HOW_ONLY=<regexp>` takes only the pictures with such names.
+- Stage `links` creates a real link. `HOW_LINK_EXISTS=1` opens the link of an earlier run and does not create a second one.
+  The QR code in the pictures is drawn for the short address on the public host, not for the address of the stand.
+  The buyer's visit uses an ordinary browser name: the stand counts a headless browser as a bot, not as a scan.
+- Stage `pay`: the web event center has no screen where an organizer selects a provider or types its keys.
+  `HOW_PAY_CONNECTED=1` replaces the stand's answer "payment configs" with one accepted config, and the screen
+  draws its own note "connected" (picture `p_05_connected`). Without the variable this picture is not taken.
+- The web event center has no logo of the organization, so `how-04` does not show one.
+
 ## Covers
 
 Covers are still images for the videos, in the Arena Sold Out Instagram style.
@@ -445,7 +477,7 @@ Run `npm run covers` to make them.
 
 - `covers/cover.html` is the one template. `covers/covers.yaml` holds the texts and the subject images.
 - The script writes `out/covers/<film>/<film>_<lang>_<format>.png`.
-- Films: sell-01, onb-01, onb-02. Languages: ru, en, es. Formats: 16x9, 9x16, 4x5.
+- Films: sell-01, onb-01, onb-02, how-02, how-03, how-04, how-05-web. Languages: ru, en, es. Formats: 16x9, 9x16, 4x5.
 - Long lines get a smaller font by themselves, so they never leave the frame.
 - Subject images live in ignored folders. If a file is missing, the cover is made without it.
 - Fonts are system fonts (Impact, Inter, Segoe UI). Nothing is loaded from the network.

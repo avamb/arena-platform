@@ -1,0 +1,102 @@
+id: how-03
+fps: 30
+languages: [ru, en, es]
+title:
+  ru: "Приём оплаты: где посмотреть, подключён ли он"
+  en: "Payments from buyers: where to see if they are connected"
+  es: "Cobro de pagos: dónde ver si está conectado"
+
+# Pictures in captures/ are made by scripts/capture-how.ts (stage `pay`, see README, "How-to films of the web
+# event center") and are not committed. Russian pictures lie in captures/, English and Spanish in captures/en/
+# and captures/es/.
+# The web event center has no screen where an organizer chooses a provider or types its keys: the film shows
+# only the section "Payments from buyers" and its two notes. The picture p_05_connected is the same screen of the
+# test organization with the answer "payment configs" replaced by one accepted config (HOW_PAY_CONNECTED=1):
+# no test organizer of the stand that this script can sign in as has a provider connected.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [16x9]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-why
+    narration:
+      ru: "Чтобы продавать билеты, организации нужен приём оплаты. Покупатель платит через вашу платёжную систему, и деньги приходят на ваш счёт."
+      en: "To sell tickets, your organization must accept payments. The buyer pays through your payment provider, and the money goes to your account."
+      es: "Para vender entradas, tu organización necesita cobrar pagos. El comprador paga a través de tu proveedor de pagos y el dinero llega a tu cuenta."
+    pause_after: 0.4
+    shots:
+      - image: captures/p_01_events.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Первые шаги → «Подключить приём оплаты»", en: "First steps → Connect payments", es: "Primeros pasos → «Conecta el cobro de pagos»" }
+        zoom: { from: 1.5, to: 1.7, x: 0.5, y: 0.25 }
+
+  - id: s2-where
+    narration:
+      ru: "Откройте «Меню» и в настройках выберите «Приём оплаты»."
+      en: "Open Menu and choose Payments from buyers in the settings."
+      es: "Abre «Menú» y, en los ajustes, elige «Cobro a compradores»."
+    pause_after: 0.4
+    shots:
+      - image: captures/p_02_menu.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Меню → Настройки → «Приём оплаты»", en: "Menu → Settings → Payments from buyers", es: "Menú → Ajustes → «Cobro a compradores»" }
+        zoom: { from: 1.5, to: 1.7, x: 0.5, y: 0.5 }
+
+  - id: s3-not-connected
+    narration:
+      ru: "Пока платежи не подключены, вы видите эту заметку. Мероприятия можно создавать уже сейчас. Продавать билеты получится после подключения платёжной системы."
+      en: "While payments are not connected, you see this note. You can add events now. You can sell tickets after the payment provider is connected."
+      es: "Mientras los pagos no están conectados, ves esta nota. Ya puedes crear eventos. Podrás vender entradas cuando el proveedor de pagos esté conectado."
+    pause_after: 0.5
+    shots:
+      - image: captures/p_03_not_connected.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Платежи ещё не подключены", en: "Payments are not connected yet", es: "Los pagos aún no están conectados" }
+        zoom: { from: 1.6, to: 1.75, x: 0.5, y: 0.3 }
+
+  - id: s4-connected
+    narration:
+      ru: "Когда платёжная система подключена, заметка меняется: приём оплаты подключён, покупатели могут платить за билеты."
+      en: "When the payment provider is connected, the note changes: payments are connected, and buyers can pay for tickets."
+      es: "Cuando el proveedor de pagos está conectado, la nota cambia: el cobro está conectado y los compradores pueden pagar las entradas."
+    pause_after: 0.5
+    shots:
+      - image: captures/p_05_connected.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Приём оплаты подключён", en: "Payments are connected", es: "El cobro de pagos está conectado" }
+        zoom: { from: 1.6, to: 1.75, x: 0.5, y: 0.3 }
+
+  - id: s5-receipt
+    narration:
+      ru: "На этом же экране вы решаете, отправит ли платёжный провайдер покупателю свою квитанцию. Она приходит вместе с письмом с билетами."
+      en: "On the same screen you decide if the payment provider sends its own receipt to the buyer. The receipt comes together with the e-mail with the tickets."
+      es: "En la misma pantalla decides si el proveedor de pagos envía su propio recibo al comprador. El recibo llega junto con el correo de las entradas."
+    pause_after: 0.8
+    shots:
+      - image: captures/p_06_receipt.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Квитанция платёжного провайдера", en: "Receipt of the payment provider", es: "Recibo del proveedor de pagos" }
+        zoom: { from: 1.6, to: 1.75, x: 0.5, y: 0.5 }
+
+  - id: s6-cta
+    narration:
+      ru: "Проверьте приём оплаты в ивент-центре Arena Sold Out."
+      en: "See the state of your payments in the Arena Sold Out event center."
+      es: "Comprueba el cobro de pagos en el centro de eventos de Arena Sold Out."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Приём оплаты", en: "Payments from buyers", es: "Cobro a compradores" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://arenasoldout.com"
