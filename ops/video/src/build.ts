@@ -48,18 +48,22 @@ async function buildShot(
   o: { sceneId: string; index: number; lang: string; scenarioDir: string; publicDir: string; startFrame: number; frames: number },
 ): Promise<ManifestShot> {
   const { lang } = o;
+  // A field set for this language in per_language replaces the shot's own field as a whole.
+  const look = { ...spec, ...(spec.perLanguage?.[lang] ?? {}) };
   const shot: ManifestShot = {
     startFrame: o.startFrame,
     frames: o.frames,
     frame: spec.frame,
     title: spec.title?.[lang],
-    zoom: spec.zoom,
-    highlight: spec.highlight,
-    cursor: spec.cursor,
-    scroll: spec.scroll,
+    zoom: look.zoom,
+    highlight: look.highlight,
+    cursor: look.cursor,
+    scroll: look.scroll,
   };
   if (spec.image) {
-    const imgPath = path.join(o.scenarioDir, spec.image);
+    // A picture of one language lies in a folder named by the language next to the common picture.
+    const own = path.join(o.scenarioDir, path.dirname(spec.image), lang, path.basename(spec.image));
+    const imgPath = fs.existsSync(own) ? own : path.join(o.scenarioDir, spec.image);
     if (!fs.existsSync(imgPath)) throw new Error(`scene ${o.sceneId}: picture ${imgPath} not found, run capture first`);
     const size = pngSize(imgPath);
     shot.image = copyInto(o.publicDir, `img/${o.sceneId}_${o.index}.png`, imgPath);

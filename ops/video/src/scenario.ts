@@ -35,6 +35,8 @@ export interface ShotSpec {
   highlight?: HighlightSpec;
   cursor?: CursorPoint[];
   scroll?: ScrollSpec;
+  /** per language: a field given here replaces the same field of the shot when that language is built */
+  perLanguage?: Record<string, Pick<ShotSpec, "zoom" | "highlight" | "cursor" | "scroll">>;
   steps?: Record<string, string[]>;
   caption?: Record<string, string>;
   heading?: Record<string, string>;
@@ -187,6 +189,28 @@ function parseShot(sh: unknown, w: string, languages: string[], dir: string): Sh
     const sc = sh.scroll;
     if (!isObj(sc)) fail(`${w}.scroll must be a mapping`);
     shot.scroll = { from: frac(sc.from ?? 0, `${w}.scroll.from`), to: frac(sc.to ?? 0, `${w}.scroll.to`) };
+  }
+  if (sh.per_language !== undefined) {
+    const pl = sh.per_language;
+    if (!isObj(pl)) fail(`${w}.per_language must be a mapping of languages`);
+    const perLang: Record<string, Pick<ShotSpec, "zoom" | "highlight" | "cursor" | "scroll">> = {};
+    for (const [lang, v] of Object.entries(pl)) {
+      const lw = `${w}.per_language.${lang}`;
+      if (!languages.includes(lang)) fail(`${lw}: the language is not in languages`);
+      if (!isObj(v)) fail(`${lw} must be a mapping`);
+      const look = parseShotLook(v, lw);
+      const over: Pick<ShotSpec, "zoom" | "highlight" | "cursor" | "scroll"> = {};
+      if (look.zoom !== undefined) over.zoom = look.zoom;
+      if (look.highlight !== undefined) over.highlight = look.highlight;
+      if (look.cursor !== undefined) over.cursor = look.cursor;
+      if (v.scroll !== undefined) {
+        const sc = v.scroll;
+        if (!isObj(sc)) fail(`${lw}.scroll must be a mapping`);
+        over.scroll = { from: frac(sc.from ?? 0, `${lw}.scroll.from`), to: frac(sc.to ?? 0, `${lw}.scroll.to`) };
+      }
+      perLang[lang] = over;
+    }
+    shot.perLanguage = perLang;
   }
   if (hasImage) {
     if (typeof sh.image !== "string") fail(`${w}.image must be a path`);

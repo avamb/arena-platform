@@ -132,6 +132,10 @@ A scene can show more than one picture while the narrator says one text. Use
 `shots` instead of `source`. The time of the scene is divided between the shots
 in proportion to `weight` (default 1). Each shot has its own `title`, `zoom`,
 `highlight` and `cursor`; the cursor time is a fraction of the shot.
+A shot can set `per_language: { en: { zoom: ... } }`: for that language the
+given `zoom`, `highlight`, `cursor` or `scroll` replace the shot's own field
+as a whole. A picture of one language lives in a `<lang>/` folder next to the
+common one: `captures/en/x.png` replaces `captures/x.png` when building `en`.
 
 ```yaml
 formats: [16x9, 9x16, 4x5]    # optional, default all three; a short video can ask for [9x16] only
@@ -218,6 +222,14 @@ organization name with the example name, and the data of the test buyer with
 the invented buyer of the script. `reconstructions/` holds pages drawn by hand
 for frames that could not be filmed; a shot made from them is marked in the
 scenario.
+
+The English and Spanish films have their own pictures in `captures/en/` and
+`captures/es/` (made on 2026-11-19): the bot was set to that language and made
+the events "Jazz Night" and "Noche de jazz" from the posters in `assets/en/`
+and `assets/es/`; the buyer page was opened with `?lang=en` and `?lang=es`, and
+the web event center with a browser of that language. The sale message is
+English in each film, as in production. The scanner and the payouts list are
+English in each film.
 
 To build without the paid voice: set `VIDEO_VOICE=silent`.
 
