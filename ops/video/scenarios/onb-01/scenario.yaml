@@ -89,9 +89,9 @@ scenes:
         title: { ru: "Ответы текстом", en: "Answers as text", es: "Respuestas escritas" }
         weight: 2
         scroll: { from: 0.6, to: 0.9 }
-      - image: captures/a_06_country.png
+      - image: captures/a_09b_epy.png
         frame: phone
-        title: { ru: "Страна — кнопкой", en: "Country — with a button", es: "El país, con un botón" }
+        title: { ru: "Ответы кнопками", en: "Answers with buttons", es: "Respuestas con botones" }
         weight: 2
         scroll: { from: 0.7, to: 1.0 }
       - image: captures/a_08b_events_ticked.png
@@ -118,6 +118,8 @@ scenes:
         weight: 3
         scroll: { from: 0.75, to: 0.95 }
         highlight: { x: 0.02, y: 0.49, w: 0.75, h: 0.093 }
+        per_language:
+          es: { highlight: { x: 0.02, y: 0.48, w: 0.75, h: 0.103 } }
       - image: captures/a_14_sent.png
         frame: phone
         title: { ru: "Заявка отправлена", en: "The application is sent", es: "Solicitud enviada" }
@@ -142,6 +144,9 @@ scenes:
         weight: 4
         scroll: { from: 0, to: 0.12 }
         highlight: { x: 0.02, y: 0.233, w: 0.47, h: 0.031 }
+        per_language:
+          ru: { highlight: { x: 0.02, y: 0.233, w: 0.6, h: 0.031 } }
+          es: { highlight: { x: 0.02, y: 0.233, w: 0.57, h: 0.031 } }
 
   - id: s6-cta
     narration:
