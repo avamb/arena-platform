@@ -1,6 +1,9 @@
 /**
  * UXH-23: a cancelled date.
  *
+ * Owner decision 2026-11-19: the chip of a cancelled date is NOT shown at all
+ * (it used to carry a "Cancelled" label). The notice instead of the map stays.
+ *
  * The backend refuses every hold on a cancelled session and reports its
  * categories with `available: 0`, but the session stays in the feed (a buyer
  * who holds tickets must still see the date). The widget therefore has to
@@ -43,39 +46,23 @@ function listHtml(sessions: FeedSession[], locale = 'en', selected: FeedSession 
 const live = session('s-live', 'scheduled', '2026-12-01T18:00:00Z');
 const cancelled = session('s-cancelled', 'cancelled', '2026-11-01T18:00:00Z');
 
-describe('SessionList: the chip of a cancelled date', () => {
-  it('carries a visible "Cancelled" label and is disabled', () => {
-    const html = listHtml([cancelled]);
-    expect(html).toContain('data-testid="session-cancelled-label"');
-    expect(html).toContain(CHECKOUT_I18N.en.session_cancelled);
-    expect(html).toContain('chip--cancelled');
-    expect(html).toMatch(/<button[^>]*disabled/);
-  });
-
-  it('puts the label on the cancelled chip only', () => {
+describe('SessionList: a cancelled date is hidden', () => {
+  it('renders no chip, no label and no disabled button for it', () => {
     const html = listHtml([cancelled, live], 'en', live);
-    expect(html.match(/data-testid="session-cancelled-label"/g)).toHaveLength(1);
-    // The live chip is the second button and has no label.
-    const liveChip = html.slice(html.lastIndexOf('<button'));
-    expect(liveChip).not.toContain('session-cancelled-label');
-    expect(liveChip).not.toMatch(/^<button[^>]*disabled/);
+    expect(html).not.toContain('session-cancelled-label');
+    expect(html).not.toContain('chip--cancelled');
+    expect(html).not.toContain(CHECKOUT_I18N.en.session_cancelled);
+    expect(html.match(/<button/g)).toHaveLength(1);
+    expect(html).not.toMatch(/<button[^>]*disabled/);
   });
 
-  it('prints no label when nothing is cancelled', () => {
-    expect(listHtml([live], 'en', live)).not.toContain('session-cancelled-label');
+  it('keeps the live dates', () => {
+    const later = session('s-later', 'scheduled', '2026-12-05T18:00:00Z');
+    expect(listHtml([cancelled, live, later], 'en', live).match(/<button/g)).toHaveLength(2);
   });
 
-  it.each([
-    ['en', 'Cancelled'],
-    ['ru', 'Отменено'],
-    ['cs', 'Zrušeno'],
-    ['he', 'בוטל'],
-  ])('is translated: %s', (locale, word) => {
-    expect(listHtml([cancelled], locale)).toContain(`>${word}<`);
-  });
-
-  it('falls back to English for a locale the widget has no table for', () => {
-    expect(listHtml([cancelled], 'xx')).toContain('>Cancelled<');
+  it('renders no chips at all when every date is cancelled', () => {
+    expect(listHtml([cancelled], 'en')).not.toContain('<button');
   });
 });
 
