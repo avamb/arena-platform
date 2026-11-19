@@ -45,7 +45,7 @@ func BotRoleFor(membershipRole string) string {
 	return RoleManager
 }
 
-// NormalizeLocale keeps the locales the bot speaks (en, ru); anything else
+// NormalizeLocale keeps the locales the bot speaks (en, ru, es, uk); anything else
 // falls back to en. Region subtags are dropped (ru-RU -> ru).
 func NormalizeLocale(raw string) string {
 	tag := strings.ToLower(strings.TrimSpace(raw))

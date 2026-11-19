@@ -5111,7 +5111,7 @@ type BotInvitationAcceptRequest struct {
 	// Email The e-mail the person typed; must match the invitation (case-insensitive).
 	Email openapi_types.Email `json:"email"`
 
-	// Locale The bot language for this account (`en` default, `ru`, `es`).
+	// Locale The bot language for this account (`en` default, `ru`, `es`, `uk`).
 	Locale *string `json:"locale,omitempty"`
 
 	// TelegramUserId The Telegram account being bound.
@@ -5172,7 +5172,7 @@ type BotInvitationCreateRequest struct {
 	Email openapi_types.Email `json:"email"`
 
 	// Locale Language of the invitation e-mail and of the bot's first messages
-	// (`en` default, `ru`, `es`). Unknown values fall back to `en`.
+	// (`en` default, `ru`, `es`, `uk`). Unknown values fall back to `en`.
 	// With `channel` `web` and no locale, the language of an existing
 	// account's own preference is used.
 	Locale *string `json:"locale,omitempty"`
@@ -5242,7 +5242,7 @@ type BotInvitationPdfNoticesResponse struct {
 
 // BotInvitationResendRequest Optional body of the resend route.
 type BotInvitationResendRequest struct {
-	// Locale Language of the new letter (`en`, `ru`, `es`); absent means the invitee's own language.
+	// Locale Language of the new letter (`en`, `ru`, `es`, `uk`); absent means the invitee's own language.
 	Locale *string `json:"locale,omitempty"`
 }
 
@@ -5492,7 +5492,7 @@ type BotTelegramConnectRequest struct {
 	// Code The code, with or without the `con_` prefix.
 	Code string `json:"code"`
 
-	// Locale The language of the Telegram client, stored with the link (accept only; en, ru or es, else en).
+	// Locale The language of the Telegram client, stored with the link (accept only; en, ru, es or uk, else en).
 	Locale *string `json:"locale,omitempty"`
 
 	// TelegramUserId The Telegram account that opened the link.
@@ -12651,7 +12651,7 @@ type OnboardingBotStartRequest struct {
 	// LastName Family name.
 	LastName string `json:"last_name"`
 
-	// Locale Language of the e-mails and of the form (`en`, `ru`, `es`).
+	// Locale Language of the e-mails and of the form (`en`, `ru`, `es`, `uk`).
 	Locale *string `json:"locale,omitempty"`
 
 	// Phone Phone number from Telegram's own contact button; normalized to E.164.
@@ -12738,7 +12738,7 @@ type OnboardingFormSchema struct {
 	// AcceptedCountries ISO-3166 alpha-2 codes accepted for new applications; an empty list means every country.
 	AcceptedCountries []string `json:"accepted_countries"`
 
-	// Locale Language of the labels (`en`, `ru` or `es`; anything else falls back to `en`).
+	// Locale Language of the labels (`en`, `ru`, `es` or `uk`; anything else falls back to `en`).
 	Locale string `json:"locale"`
 
 	// PrivacyVersion Version of the privacy policy the applicant accepts.
@@ -12936,7 +12936,7 @@ type OnboardingStartRequest struct {
 	// LastName Family name.
 	LastName string `json:"last_name"`
 
-	// Locale Language of the e-mails and of the form (`en`, `ru`, `es`).
+	// Locale Language of the e-mails and of the form (`en`, `ru`, `es`, `uk`).
 	Locale *string `json:"locale,omitempty"`
 
 	// Phone Phone number; normalized to E.164 (for example +34600111222).
@@ -25347,7 +25347,7 @@ type GetBotOnboardingApplicationParams struct {
 
 // GetBotOnboardingFormSchemaParams defines parameters for GetBotOnboardingFormSchema.
 type GetBotOnboardingFormSchemaParams struct {
-	// Locale Language of the labels (en, ru, es); anything else falls back to en.
+	// Locale Language of the labels (en, ru, es, uk); anything else falls back to en.
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
@@ -25530,7 +25530,7 @@ type SubmitOnboardingApplicationParams struct {
 
 // GetOnboardingFormSchemaParams defines parameters for GetOnboardingFormSchema.
 type GetOnboardingFormSchemaParams struct {
-	// Locale Language of the labels (en, ru, es); anything else falls back to en.
+	// Locale Language of the labels (en, ru, es, uk); anything else falls back to en.
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
