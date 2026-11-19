@@ -231,6 +231,36 @@ the web event center with a browser of that language. The sale message is
 English in each film, as in production. The scanner and the payouts list are
 English in each film.
 
+### Film onb-02
+
+`scenarios/onb-02` shows a new organizer who applies on the website and signs
+in to the web event center (ru, en, es; about 55 seconds). The pictures were
+made on 2026-11-19 with two committed scripts:
+
+- `scripts/capture-onb-02.ts <ru|en|es> <form|approve|login|signin>` does the
+  steps in a phone-size browser of the language of the film. Its header lists
+  the environment variables. The steps change data on the stand: each language
+  makes one application, one organization and one owner account.
+- `scripts/render-letter.ts` draws a letter as a phone mail screen. The body is
+  the text of the letter that the stand sent (read from the test mailbox); the
+  bar with the sender and the subject is drawn by the script.
+
+The stand has no copy of the website. The form was filmed on a local run of
+the site repository (`npx astro dev`) with two changes in its working copy
+that are not committed: the API address is the stand, and the captcha key is
+the test key of the captcha provider that always passes (the stand does not
+check the captcha). The stand does not list a local address in its CORS
+settings, thus the script sends the API calls itself (`context.route`) and no
+setting of the stand changes. The one-time tokens of the letters are read from
+the mail jobs of the stand (`VIDEO_STAND_PSQL`).
+
+Before each screenshot the script replaces the test mailbox with
+`carmen@example.com`, the stand name of the organization with `Aurora Events`
+and the local and stand hosts with the public hosts, and it hides the captcha
+box and the fixed bars. The picture `f_04_confirmed.png` of this build was a
+cut of the form block put on an empty phone-size background; the script now
+takes the top of the page instead.
+
 To build without the paid voice: set `VIDEO_VOICE=silent`.
 
 ## Environment variables
