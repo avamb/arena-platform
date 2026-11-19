@@ -9,6 +9,7 @@
     "build:video": "tsx src/build.ts",
     "capture": "tsx src/capture.ts",
     "assets:demo": "tsx scripts/make-demo-assets.ts",
+    "covers": "tsx scripts/make-covers.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

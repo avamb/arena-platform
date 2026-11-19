@@ -1,0 +1,239 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Arena cover</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    position: relative;
+    font-family: Inter, "Segoe UI", Arial, sans-serif;
+    background:
+      radial-gradient(ellipse 55% 50% at 80% 48%, #d6e5ff 0%, rgba(214,229,255,0) 72%),
+      linear-gradient(160deg, #ffffff 0%, #f2f7ff 55%, #e4eeff 100%);
+  }
+  svg.bg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #logo { position: absolute; color: #001489; }
+  #logo img { display: block; width: 100%; height: auto; }
+  #logo .rule { height: 2px; background: #001489; margin-top: 7%; }
+  #logo .word { display: flex; justify-content: space-between; margin-top: 8%; font-weight: 500; line-height: 1; }
+  #title { position: absolute; font-family: Impact, "Arial Narrow Bold", "Arial Black", sans-serif;
+    text-transform: uppercase; line-height: 0.98; font-weight: 400; overflow: hidden; }
+  #title .l1 { display: block; color: #0a0f2c; }
+  #title .l2 { display: block; color: #1437f5; }
+  #sub { position: absolute; color: #0a0f2c; line-height: 1.25; text-wrap: balance; }
+  #item { position: absolute; display: flex; justify-content: center; }
+  .tilt { transform: rotate(var(--rot, 5deg)); filter: drop-shadow(0 26px 34px rgba(11, 26, 143, 0.32)); }
+  .phone { background: #0b1230; position: relative; }
+  .phone .screen { overflow: hidden; position: relative; background: #fff; }
+  .phone .status { width: 100%; }
+  .phone .view { position: relative; overflow: hidden; width: 100%; }
+  .phone .view img { position: absolute; display: block; max-width: none; }
+  .phone .notch { position: absolute; left: 50%; background: #0b1230; border-radius: 99px; transform: translateX(-50%); z-index: 2; }
+  .browser { background: #fff; border-radius: 16px; overflow: hidden; border: 1px solid #c9d6f5; }
+  .browser .bar { height: 34px; background: #e6edfb; display: flex; align-items: center; gap: 8px; padding-left: 14px; }
+  .browser .bar i { width: 11px; height: 11px; border-radius: 50%; background: #9db3ea; display: block; }
+  .browser .view { position: relative; overflow: hidden; width: 100%; }
+  .browser .view img { position: absolute; display: block; max-width: none; }
+</style>
+</head>
+<body>
+<svg class="bg" id="bg" xmlns="http://www.w3.org/2000/svg"></svg>
+<div id="logo"><img src="assets/arena-mark.svg" alt="arena"><div class="rule"></div><div class="word" id="word"></div></div>
+<div id="title"><span class="l1" id="l1"></span><span class="l2" id="l2"></span></div>
+<div id="sub"></div>
+<div id="item"></div>
+<script>
+(function () {
+  var C = window.COVER;
+  if (!C) { try { C = JSON.parse(decodeURIComponent(location.search.slice(1).replace(/^cover=/, ''))); } catch (e) {} }
+  if (!C) throw new Error('window.COVER missing');
+  var W = C.w, H = C.h, F = C.format;
+  document.body.style.width = W + 'px';
+  document.body.style.height = H + 'px';
+  document.documentElement.lang = C.lang;
+  var wide = F === '16x9';
+  var browserItem = !!(C.item && C.item.kind === 'browser');
+
+  var L;
+  if (wide) {
+    L = { logo: [56, 44, 200], title: [56, 150, browserItem ? 520 : 640, 300], subW: browserItem ? 520 : 600, titlePx: 112, subPx: 27, subLines: 3 };
+  } else if (F === '9x16') {
+    L = { logo: [70, 90, 300], title: [70, 270, 940, 470], subW: 940, titlePx: 190, subPx: 46, subLines: 2 };
+  } else {
+    L = { logo: [64, 56, 260], title: [64, 190, 952, 330], subW: 952, titlePx: 150, subPx: 40, subLines: 2 };
+  }
+
+  // ---------- background: layered, blurred blue volumes ----------
+  var s = Math.min(W, H);
+  var n = 0;
+  function blob(d, lightAt) {
+    var id = 'b' + (n++);
+    return '' +
+      '<clipPath id="c' + id + '"><path d="' + d + '"/></clipPath>' +
+      '<path d="' + d + '" fill="url(#gMain)"/>' +
+      '<g clip-path="url(#c' + id + ')">' +
+        '<ellipse cx="' + lightAt[0] + '" cy="' + lightAt[1] + '" rx="' + lightAt[2] + '" ry="' + lightAt[3] + '" fill="url(#gGlow)" filter="url(#blur14)" opacity="0.85"/>' +
+        '<path d="' + d + '" fill="none" stroke="#cfe2ff" stroke-width="' + Math.round(s * 0.012) + '" filter="url(#blur6)" opacity="0.9"/>' +
+        '<path d="' + d + '" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.55"/>' +
+      '</g>';
+  }
+  var blBL = 'M0 ' + (H - 0.2 * s) + ' C ' + 0.2 * s + ' ' + (H - 0.28 * s) + ' ' + 0.42 * s + ' ' + (H - 0.06 * s) + ' ' + 0.64 * s + ' ' + H + ' L0 ' + H + ' Z';
+  var blTR = 'M' + (W - 0.4 * s) + ' 0 C ' + (W - 0.27 * s) + ' ' + 0.1 * s + ' ' + (W - 0.1 * s) + ' ' + 0.17 * s + ' ' + W + ' ' + 0.12 * s + ' L' + W + ' 0 Z';
+  var blBR = 'M' + W + ' ' + (H - 0.4 * s) + ' C ' + (W - 0.12 * s) + ' ' + (H - 0.33 * s) + ' ' + (W - 0.3 * s) + ' ' + (H - 0.12 * s) + ' ' + (W - 0.38 * s) + ' ' + H + ' L' + W + ' ' + H + ' Z';
+  var svg = document.getElementById('bg');
+  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  svg.innerHTML =
+    '<defs>' +
+    '<linearGradient id="gMain" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#0a1680"/><stop offset="0.5" stop-color="#1f4bff"/><stop offset="1" stop-color="#6fa0ff"/></linearGradient>' +
+    '<radialGradient id="gGlow"><stop offset="0" stop-color="#a8c8ff" stop-opacity="0.95"/><stop offset="1" stop-color="#3a6bff" stop-opacity="0"/></radialGradient>' +
+    '<radialGradient id="gHalo"><stop offset="0" stop-color="#cfe0ff" stop-opacity="0.9"/><stop offset="1" stop-color="#cfe0ff" stop-opacity="0"/></radialGradient>' +
+    '<filter id="blur14" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="' + Math.round(s * 0.02) + '"/></filter>' +
+    '<filter id="blur6" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="' + Math.max(3, Math.round(s * 0.006)) + '"/></filter>' +
+    '</defs>' +
+    '<circle cx="' + (W * 0.72) + '" cy="' + (H * 0.55) + '" r="' + (s * 0.55) + '" fill="url(#gHalo)"/>' +
+    blob(blBL, [0.25 * s, H - 0.08 * s, 0.3 * s, 0.1 * s]) +
+    blob(blTR, [W - 0.12 * s, 0.03 * s, 0.2 * s, 0.07 * s]) +
+    blob(blBR, [W - 0.08 * s, H - 0.1 * s, 0.14 * s, 0.2 * s]) +
+    // thin arcs
+    '<path d="M' + (W * 0.3) + ' ' + H + ' C ' + (W * 0.55) + ' ' + (H * 0.86) + ' ' + (W * 0.85) + ' ' + (H * 0.9) + ' ' + W + ' ' + (H * 0.7) + '" fill="none" stroke="#1437f5" stroke-width="1.6" opacity="0.65"/>' +
+    '<path d="M' + (W * 0.55) + ' 0 C ' + (W * 0.62) + ' ' + (H * 0.1) + ' ' + (W * 0.8) + ' ' + (H * 0.15) + ' ' + W + ' ' + (H * 0.13) + '" fill="none" stroke="#1437f5" stroke-width="1.6" opacity="0.65"/>' +
+    '<circle cx="' + (W * 0.565) + '" cy="' + (H * 0.02) + '" r="' + Math.max(5, s * 0.007) + '" fill="#1437f5"/>';
+
+  // ---------- logo: arena mark from the brand svg + typed "SOLD OUT.COM" ----------
+  var logo = document.getElementById('logo');
+  logo.style.left = L.logo[0] + 'px'; logo.style.top = L.logo[1] + 'px'; logo.style.width = L.logo[2] + 'px';
+  var word = document.getElementById('word');
+  var wsz = Math.round(L.logo[2] * 0.085);
+  word.style.fontSize = wsz + 'px';
+  word.style.whiteSpace = 'pre';
+  word.textContent = 'SOLD OUT.COM';
+  (function () {
+    var r = document.createRange(); r.selectNodeContents(word);
+    var natural = r.getBoundingClientRect().width;
+    var ls = (L.logo[2] - natural) / ('SOLD OUT.COM'.length - 1);
+    word.style.letterSpacing = ls + 'px';
+    word.style.marginRight = (-ls) + 'px';
+    word.style.display = 'block';
+  })();
+
+  // ---------- text ----------
+  var t = document.getElementById('title');
+  t.style.left = L.title[0] + 'px'; t.style.top = L.title[1] + 'px';
+  t.style.width = L.title[2] + 'px'; t.style.height = L.title[3] + 'px';
+  document.getElementById('l1').textContent = C.lines[0];
+  document.getElementById('l2').textContent = C.lines[1];
+  var sub = document.getElementById('sub');
+  sub.style.left = L.title[0] + 'px'; sub.style.width = L.subW + 'px';
+  sub.textContent = C.sub;
+
+  function fitTitle() {
+    var spans = [document.getElementById('l1'), document.getElementById('l2')];
+    for (var p = L.titlePx; p >= 24; p -= 2) {
+      t.style.fontSize = p + 'px';
+      var ok = t.scrollHeight <= t.clientHeight + 1 && t.scrollWidth <= t.clientWidth + 1;
+      if (ok) {
+        var r = document.createRange();
+        spans.forEach(function (sp) { r.selectNodeContents(sp); if (r.getBoundingClientRect().width > t.clientWidth + 1) ok = false; });
+      }
+      if (ok) return p;
+    }
+    return 24;
+  }
+  function fitSub() {
+    for (var p = L.subPx; p >= 14; p -= 1) {
+      sub.style.fontSize = p + 'px';
+      if (sub.scrollWidth <= sub.clientWidth + 1 && sub.getBoundingClientRect().height <= p * 1.25 * L.subLines + 2) return;
+    }
+  }
+  function layoutText() {
+    fitTitle();
+    // shrink the title box to its content so the subline follows without a gap
+    var r2 = document.getElementById('l2').getBoundingClientRect();
+    t.style.height = Math.ceil(r2.bottom - L.title[1]) + 'px';
+    sub.style.top = Math.round(r2.bottom + (wide ? 30 : 36)) + 'px';
+    fitSub();
+    return sub.getBoundingClientRect().bottom;
+  }
+
+  // ---------- subject ----------
+  var item = document.getElementById('item');
+  function place(x, y, w, h, align) {
+    item.style.left = x + 'px'; item.style.top = y + 'px'; item.style.width = w + 'px'; item.style.height = h + 'px';
+    item.style.alignItems = align;
+  }
+  // put the cropped image into a view of width vw; crop = {x,y,w,h} fractions of the image
+  function fill(view, im, img, crop, vw) {
+    var dispW = vw / crop.w;
+    var dispH = dispW * img.naturalHeight / img.naturalWidth;
+    view.style.height = (dispH * crop.h) + 'px';
+    im.style.width = dispW + 'px'; im.style.height = dispH + 'px';
+    im.style.left = (-crop.x * dispW) + 'px'; im.style.top = (-crop.y * dispH) + 'px';
+  }
+
+  function build(textBottom, done) {
+    var it = C.item;
+    if (!it) { done(); return; }
+    var img = new Image();
+    img.onload = function () {
+      var crop = it.crop || { x: 0, y: 0, w: 1, h: 1 };
+      var a = (crop.w * img.naturalWidth) / (crop.h * img.naturalHeight);
+      var wrap = document.createElement('div');
+      wrap.className = 'tilt';
+      var BW, BH;
+      if (it.kind === 'phone') {
+        wrap.style.setProperty('--rot', (wide ? 5 : 4) + 'deg');
+        var sb = 0.075; // status bar height relative to screen width
+        if (wide) { BW = 520; BH = 650; place(720, 35, BW, BH, 'center'); }
+        else {
+          var top = Math.round(textBottom + 44);
+          BW = F === '9x16' ? 820 : 760;
+          BH = H - top + (a < 0.7 ? 170 : 30);
+          place((W - BW) / 2, top, BW, BH, 'flex-start');
+        }
+        var padK = 0.027;
+        var scrW = Math.min(BW / (1 + 2 * padK), BH / ((1 / a + sb) + 2 * padK));
+        var pad = padK * scrW;
+        var ph = document.createElement('div'); ph.className = 'phone';
+        ph.style.padding = pad + 'px';
+        ph.style.borderRadius = (scrW * 0.13) + 'px';
+        var scr = document.createElement('div'); scr.className = 'screen';
+        scr.style.width = scrW + 'px';
+        scr.style.borderRadius = (scrW * 0.1) + 'px';
+        var st = document.createElement('div'); st.className = 'status';
+        st.style.height = (scrW * sb) + 'px'; st.style.background = it.status || '#ffffff';
+        var view = document.createElement('div'); view.className = 'view';
+        var im = document.createElement('img'); im.src = it.src;
+        view.appendChild(im); scr.appendChild(st); scr.appendChild(view);
+        fill(view, im, img, crop, scrW);
+        var notch = document.createElement('div'); notch.className = 'notch';
+        notch.style.top = (pad + scrW * sb * 0.22) + 'px';
+        notch.style.width = (scrW * 0.27) + 'px'; notch.style.height = (scrW * sb * 0.5) + 'px';
+        ph.appendChild(scr); ph.appendChild(notch); wrap.appendChild(ph);
+      } else {
+        wrap.style.setProperty('--rot', '-3deg');
+        BW = 780; BH = 720;
+        place(590, 0, BW, BH, 'center');
+        item.style.justifyContent = 'flex-start';
+        var br = document.createElement('div'); br.className = 'browser';
+        br.style.width = BW + 'px';
+        var bar = document.createElement('div'); bar.className = 'bar'; bar.innerHTML = '<i></i><i></i><i></i>';
+        var v2 = document.createElement('div'); v2.className = 'view';
+        var im2 = document.createElement('img'); im2.src = it.src;
+        v2.appendChild(im2); br.appendChild(bar); br.appendChild(v2); wrap.appendChild(br);
+        fill(v2, im2, img, crop, BW - 2);
+      }
+      item.appendChild(wrap);
+      done();
+    };
+    img.onerror = function () { done(); };
+    img.src = it.src;
+  }
+
+  var bottom = layoutText();
+  build(bottom, function () { document.body.setAttribute('data-ready', '1'); });
+})();
+</script>
+</body>
+</html>
