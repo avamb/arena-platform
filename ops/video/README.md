@@ -168,7 +168,16 @@ scenes:
   between the title and the subtitles. Zoom, highlight and cursor stay in the
   coordinates of the picture and are cut by the phone screen.
 - `frame: browser` draws a simple browser window (bar with three dots) around
-  a desktop picture and fits it whole in every format.
+  a desktop picture. Without `zoom` the page is shown whole.
+- Close-ups: with `zoom`, x and y are the point of the picture that the frame
+  looks at. In 16:9 the phone has the full height of the frame and the title and
+  subtitles are in a column at its right; the browser window fills the frame.
+  In 9:16 and 4:5 the phone screen has almost the full width and its lower part
+  can be under the subtitles, thus keep the important element in the upper half
+  of the phone screen: for a button at the bottom of a screenshot, add empty
+  space under the picture and use `scroll` (see `sell-01`, pictures `*_close.png`).
+  A chat column is narrower than the screen, thus a zoom larger than 1.2 cuts
+  its text at the sides.
 - A QR code is made at build time from the `qr` text. No network.
 - `manifest.json` records for each scene the number of characters sent to the
   voice provider and if the sound came from the cache; the build prints the

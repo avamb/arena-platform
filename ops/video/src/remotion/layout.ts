@@ -46,6 +46,25 @@ export function phoneScreen(body: Box): Box {
   return { x: b, y: b, w: body.w - 2 * b, h: body.h - 2 * b };
 }
 
+/** 16:9 phone: the body takes the whole height (3 % margins) and stands left of the centre; the title and subtitles use the right column. */
+export function phone169(width: number, height: number): { body: Box; colX: number; colW: number } {
+  const h = height * 0.94;
+  const w = h * PHONE_BODY_RATIO;
+  const x = width * 0.28 - w / 2;
+  const body = { x, y: height * 0.03, w, h };
+  const colX = x + w + width * 0.05;
+  return { body, colX, colW: width - colX - width * 0.04 };
+}
+
+/** 9:16 and 4:5 phone: the body is almost as wide as the frame; its lower part may leave the frame or lie under the subtitles. */
+export function phoneVertical(format: FrameFormat, width: number, height: number, hasTitle: boolean): { body: Box; visTop: number; visBottom: number } {
+  const w = width * 0.9;
+  const h = w / PHONE_BODY_RATIO;
+  const y = hasTitle ? height * 0.025 + 150 : height * 0.03;
+  const body = { x: (width - w) / 2, y, w, h };
+  return { body, visTop: y, visBottom: height - subtitleReserve(format, height) };
+}
+
 export const BROWSER_BAR = 0.04; // bar height as a fraction of the content width
 
 /** Largest browser window with the proportions of the picture that fits the area. */

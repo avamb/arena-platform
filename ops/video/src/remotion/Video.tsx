@@ -3,9 +3,9 @@ import { AbsoluteFill, Audio, Img, Sequence, interpolate, staticFile, useCurrent
 import type { Cue, FrameFormat, ManifestScene, ManifestShot, VideoProps } from "../types.ts";
 import { BrowserFrame } from "./BrowserFrame.tsx";
 import { Graphic } from "./Graphics.tsx";
-import { FONT, browserBox, freeArea, phoneBox, type Box } from "./layout.ts";
+import { BROWSER_BAR, FONT, browserBox, phone169, phoneVertical, subtitleReserve, titleReserve, type Box } from "./layout.ts";
 import { PhoneFrame } from "./PhoneFrame.tsx";
-import { Picture, easeInOut } from "./Picture.tsx";
+import { Picture, easeInOut, zoomScale } from "./Picture.tsx";
 
 const FADE_FRAMES = 10;
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -90,8 +90,9 @@ const ShotView: React.FC<{
     const ih = shot.imageHeight;
     const hasTitle = Boolean(shot.title);
     if (shot.frame === "phone") {
-      const area = freeArea(format, width, height, hasTitle);
-      const bodyBox = phoneBox(area, 99999);
+      const p169 = phone169(width, height);
+      const pv = phoneVertical(format, width, height, hasTitle);
+      const bodyBox = vertical ? pv.body : p169.body;
       body = (
         <>
           <PhoneFrame body={bodyBox}>
@@ -100,7 +101,11 @@ const ShotView: React.FC<{
               const ph = (pw * ih) / iw;
               const hidden = ph - s.h;
               const top = hidden > 0 ? scrollAt(hidden) : (s.h - ph) / 2;
-              return <Picture image={shot.image!} clip={shot.clip} left={0} top={top} w={pw} h={ph} {...common} />;
+              // vertical: the zoom point goes to the middle of the part of the screen that is above the subtitles
+              const view = vertical
+                ? { w: s.w, h: s.h, cx: s.w / 2, cy: (bodyBox.y + s.y + pv.visBottom) / 2 - bodyBox.y - s.y }
+                : undefined;
+              return <Picture image={shot.image!} clip={shot.clip} left={0} top={top} w={pw} h={ph} view={view} {...common} />;
             }}
           </PhoneFrame>
           {shot.title ? (
@@ -110,42 +115,77 @@ const ShotView: React.FC<{
                 local={local}
                 fontSize={56}
                 maxWidth={width * 0.88}
-                style={{ top: height * 0.04, left: 0, right: 0, justifyContent: "center" }}
+                style={{ top: height * 0.025, left: 0, right: 0, justifyContent: "center" }}
               />
             ) : (
               <Title
                 text={shot.title}
                 local={local}
                 fontSize={60}
-                maxWidth={width - (bodyBox.x + bodyBox.w + 90) - 110}
-                style={{ left: bodyBox.x + bodyBox.w + 90, top: bodyBox.y + bodyBox.h / 2 - 80, justifyContent: "flex-start" }}
+                maxWidth={p169.colW}
+                style={{ left: p169.colX, top: height * 0.12, justifyContent: "flex-start" }}
               />
             )
           ) : null}
         </>
       );
     } else if (shot.frame === "browser") {
-      const area0 = freeArea(format, width, height, hasTitle);
-      // in 16:9 the title stands above the window
-      const area: Box = !vertical
-        ? hasTitle
-          ? { ...area0, y: area0.y + 100, h: area0.h - 100 }
-          : area0
-        : { ...area0, x: width * 0.04, w: width * 0.92 }; // side margins, the window must not touch the edges
-      const { box, barH } = browserBox(area, iw, ih);
+      let box: Box;
+      let barH: number;
+      if (!vertical) {
+        // almost the whole frame; the title lies on the top right corner, the subtitles on the lower part
+        const r = browserBox({ x: width * 0.03, y: height * 0.03, w: width * 0.94, h: height * 0.94 }, iw, ih);
+        box = r.box;
+        barH = r.barH;
+      } else {
+        const cw = width * 0.94;
+        const ph0 = (cw * ih) / iw;
+        barH = cw * BROWSER_BAR;
+        const top0 = titleReserve(format, height, hasTitle);
+        const areaH = height - top0 - subtitleReserve(format, height);
+        let ch: number;
+        let y: number;
+        if (shot.zoom) {
+          // the window grows with the zoom (up to about 60 % of the frame) and keeps its top edge
+          const chMax = Math.min(height * 0.6, areaH) - barH;
+          const s = Math.max(1, zoomScale(shot.zoom, progress));
+          ch = Math.min(Math.max(ph0, ph0 * s), Math.max(chMax, Math.min(ph0, chMax)));
+          y = top0 + (areaH - chMax - barH) / 2;
+        } else {
+          ch = Math.min(ph0, areaH - barH);
+          y = top0 + (areaH - ch - barH) / 2;
+        }
+        box = { x: width * 0.03, y, w: cw, h: ch + barH };
+      }
       body = (
         <>
           <BrowserFrame box={box} barH={barH}>
-            {(c: Box) => <Picture image={shot.image!} clip={shot.clip} left={0} top={0} w={c.w} h={c.h} {...common} />}
+            {(c: Box) => {
+              const ph = vertical ? (c.w * ih) / iw : c.h;
+              const view = vertical ? { w: c.w, h: c.h, cx: c.w / 2, cy: c.h / 2 } : undefined;
+              return (
+                <Picture image={shot.image!} clip={shot.clip} left={0} top={0} w={c.w} h={ph} view={view} {...common} />
+              );
+            }}
           </BrowserFrame>
           {shot.title ? (
-            <Title
-              text={shot.title}
-              local={local}
-              fontSize={vertical ? 56 : 54}
-              maxWidth={width * 0.88}
-              style={{ top: height * 0.04, left: 0, right: 0, justifyContent: "center" }}
-            />
+            vertical ? (
+              <Title
+                text={shot.title}
+                local={local}
+                fontSize={56}
+                maxWidth={width * 0.88}
+                style={{ top: height * 0.025, left: 0, right: 0, justifyContent: "center" }}
+              />
+            ) : (
+              <Title
+                text={shot.title}
+                local={local}
+                fontSize={54}
+                maxWidth={width * 0.45}
+                style={{ top: height * 0.045, right: width * 0.045, justifyContent: "flex-end" }}
+              />
+            )
           ) : null}
         </>
       );
@@ -227,13 +267,14 @@ const SceneView: React.FC<{
   );
 };
 
-const Subtitles: React.FC<{ cues: Cue[]; format: FrameFormat; width: number; height: number; sec: number }> = ({
-  cues,
-  format,
-  width,
-  height,
-  sec,
-}) => {
+const Subtitles: React.FC<{
+  cues: Cue[];
+  format: FrameFormat;
+  width: number;
+  height: number;
+  sec: number;
+  column?: { x: number; w: number };
+}> = ({ cues, format, width, height, sec, column }) => {
   const cue = cues.find((c) => sec >= c.start && sec < c.end);
   if (!cue) return null;
   const phone = format !== "16x9";
@@ -241,11 +282,11 @@ const Subtitles: React.FC<{ cues: Cue[]; format: FrameFormat; width: number; hei
     <div
       style={{
         position: "absolute",
-        left: 0,
-        right: 0,
+        left: column ? column.x : 0,
+        ...(column ? { width: column.w } : { right: 0 }),
         bottom: phone ? height * 0.07 : height * 0.06,
         display: "flex",
-        justifyContent: "center",
+        justifyContent: column ? "flex-start" : "center",
       }}
     >
       <div
@@ -258,8 +299,8 @@ const Subtitles: React.FC<{ cues: Cue[]; format: FrameFormat; width: number; hei
           background: "rgba(0,0,0,0.72)",
           padding: "10px 26px",
           borderRadius: 12,
-          maxWidth: width * 0.92,
-          textAlign: "center",
+          maxWidth: column ? column.w : width * 0.92,
+          textAlign: column ? "left" : "center",
           whiteSpace: "pre-line",
         }}
       >
@@ -273,6 +314,16 @@ export const Video: React.FC<VideoProps> = ({ manifest, format, width, height })
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const allCues = React.useMemo(() => manifest.scenes.flatMap((s) => s.cues), [manifest]);
+  // In 16:9 the subtitles of a phone shot stand in the right column, beside the phone.
+  const current = manifest.scenes
+    .flatMap((sc) => sc.shots.map((sh) => ({ sh, start: sc.startFrame + sh.startFrame })))
+    .filter((x) => x.start <= frame)
+    .pop();
+  const p169 = phone169(width, height);
+  const column =
+    format === "16x9" && current && current.sh.frame === "phone" && !current.sh.graphic
+      ? { x: p169.colX, w: p169.colW }
+      : undefined;
   return (
     <AbsoluteFill style={{ backgroundColor: "#0b1020" }}>
       {manifest.scenes.map((scene, i) => {
@@ -296,7 +347,7 @@ export const Video: React.FC<VideoProps> = ({ manifest, format, width, height })
           <Audio src={staticFile(scene.audio)} />
         </Sequence>
       ))}
-      <Subtitles cues={allCues} format={format} width={width} height={height} sec={frame / fps} />
+      <Subtitles cues={allCues} format={format} width={width} height={height} sec={frame / fps} column={column} />
     </AbsoluteFill>
   );
 };
