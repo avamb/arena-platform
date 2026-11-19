@@ -101,7 +101,7 @@ scenes:
         frame: browser
         title: { ru: "Оплата через Stripe — деньги сразу на ваш счёт" }
         weight: 3
-        zoom: { from: 1.0, to: 2.0, x: 0.25, y: 0.17 }
+        zoom: { from: 1.0, to: 1.7, x: 0.15, y: 0.2 }
       # Reconstruction (reconstructions/sale_message.html), not a screenshot.
       - image: captures/s_01_sale_reconstruction.png
         frame: phone
