@@ -1,0 +1,89 @@
+# Cover texts and subject images. Paths are relative to ops/video unless absolute.
+# A missing image is skipped (the cover is rendered without a subject).
+# line1 = dark first line, line2 = blue second line, sub = plain line below.
+formats:
+  16x9: { width: 1280, height: 720 }
+  9x16: { width: 1080, height: 1920 }
+  4x5: { width: 1080, height: 1350 }
+
+films:
+  sell-01:
+    # Poster inside a phone frame.
+    item:
+      default:
+        kind: phone
+        status: "#0b1230"
+        src:
+          ru: scenarios/sell-01/assets/poster_vecher_dzhaza_4x5.png
+          en: scenarios/sell-01/assets/en/poster_vecher_dzhaza_4x5.png
+          es: scenarios/sell-01/assets/es/poster_vecher_dzhaza_4x5.png
+    texts:
+      ru:
+        line1: "АФИША ГОТОВА?"
+        line2: "ПРОДАВАЙТЕ БИЛЕТЫ"
+        sub: "Продажа запускается за несколько минут. Деньги сразу на ваш счёт."
+      en:
+        line1: "GOT A POSTER?"
+        line2: "START SELLING TICKETS"
+        sub: "Go on sale in a few minutes. Money goes straight to your account."
+      es:
+        line1: "¿TIENES UN CARTEL?"
+        line2: "VENDE ENTRADAS"
+        sub: "Empieza a vender en unos minutos. El dinero va directo a tu cuenta."
+
+  onb-01:
+    # Bot welcome screen with the apply button; the capture has an empty lower part, so crop it.
+    item:
+      default:
+        kind: phone
+        crop: { x: 0, y: 0, w: 1, h: 0.66 }
+        src:
+          ru: scenarios/onb-01/captures/ru/a_00_welcome.png
+          en: scenarios/onb-01/captures/en/a_00_welcome.png
+          es: scenarios/onb-01/captures/es/a_00_welcome.png
+    texts:
+      ru:
+        line1: "ЗАЯВКА ОРГАНИЗАТОРА"
+        line2: "ПРЯМО В TELEGRAM"
+        sub: "Несколько минут в боте — и вы в Arena Sold Out."
+      en:
+        line1: "APPLY AS AN ORGANIZER"
+        line2: "RIGHT IN TELEGRAM"
+        sub: "A few minutes in the bot, and you are in Arena Sold Out."
+      es:
+        line1: "SOLICITUD DE ORGANIZADOR"
+        line2: "DIRECTAMENTE EN TELEGRAM"
+        sub: "Unos minutos en el bot y ya estás en Arena Sold Out."
+
+  onb-02:
+    # The site's "Start selling" application page: desktop window for 16x9, phone for the vertical formats.
+    # Captures live in another worktree (read only).
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.04, y: 0.14, w: 0.62, h: 0.62 }
+        src:
+          ru: C:/Projects/arena_new/.claude/worktrees/serene-fermat-bab452/ops/video/scenarios/onb-02/captures/d_f_01_start.png
+          en: C:/Projects/arena_new/.claude/worktrees/serene-fermat-bab452/ops/video/scenarios/onb-02/captures/en/d_f_01_start.png
+          es: C:/Projects/arena_new/.claude/worktrees/serene-fermat-bab452/ops/video/scenarios/onb-02/captures/es/d_f_01_start.png
+      default:
+        kind: phone
+        status: "#ffffff"
+        crop: { x: 0, y: 0, w: 1, h: 0.5 }
+        src:
+          ru: C:/Projects/arena_new/.claude/worktrees/serene-fermat-bab452/ops/video/scenarios/onb-02/captures/f_01_start.png
+          en: C:/Projects/arena_new/.claude/worktrees/serene-fermat-bab452/ops/video/scenarios/onb-02/captures/en/f_01_start.png
+          es: C:/Projects/arena_new/.claude/worktrees/serene-fermat-bab452/ops/video/scenarios/onb-02/captures/es/f_01_start.png
+    texts:
+      ru:
+        line1: "НАЧНИТЕ ПРОДАВАТЬ"
+        line2: "ЗАЯВКА НА САЙТЕ"
+        sub: "От заявки до вашего ивент-центра."
+      en:
+        line1: "START SELLING"
+        line2: "APPLY ON THE WEBSITE"
+        sub: "From the application to your event center."
+      es:
+        line1: "EMPIEZA A VENDER"
+        line2: "SOLICITUD EN LA WEB"
+        sub: "De la solicitud a tu centro de eventos."

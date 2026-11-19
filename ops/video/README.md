@@ -437,3 +437,15 @@ you buy.
 - The OpenAI TTS provider as a spare.
 - Background music and a logo sting.
 - Upload to YouTube or Cloudflare Stream.
+
+## Covers
+
+Covers are still images for the videos, in the Arena Sold Out Instagram style.
+Run `npm run covers` to make them.
+
+- `covers/cover.html` is the one template. `covers/covers.yaml` holds the texts and the subject images.
+- The script writes `out/covers/<film>/<film>_<lang>_<format>.png`.
+- Films: sell-01, onb-01, onb-02. Languages: ru, en, es. Formats: 16x9, 9x16, 4x5.
+- Long lines get a smaller font by themselves, so they never leave the frame.
+- Subject images live in ignored folders. If a file is missing, the cover is made without it.
+- Fonts are system fonts (Impact, Inter, Segoe UI). Nothing is loaded from the network.
