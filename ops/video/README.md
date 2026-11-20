@@ -495,7 +495,8 @@ you buy.
 
 ## How-to films of the web event center (web-*)
 
-Ten films show the organizer's web event center in a browser window. They have one format, 16x9.
+Fourteen films show the organizer's web event center in a browser window. They have one format, 16x9.
+Two more films of the same script are for the BUYER (`buyer-*`): a phone frame, formats 9x16 and 4x5.
 
 | Film | Subject | Stage of the capture script |
 |---|---|---|
@@ -509,6 +510,12 @@ Ten films show the organizer's web event center in a browser window. They have o
 | `web-invite-manager` | an invitation of a manager to the team | `team` |
 | `web-change-price` | a new price of a category and the buyer page | `price` |
 | `web-move-or-cancel-session` | moving a date to a new day, cancelling it | `move`, `cancel` |
+| `web-brands` | a brand (the name under which tickets are sold) and its public page | `brand` |
+| `web-sales-statistics` | totals of an event, page statistics, the sales funnel, the summary for a period | `stats` |
+| `web-buyer-messages-and-notifications` | the unpaid-order reminder, the news subscription, sales notifications by the Telegram bot | `messages` |
+| `web-entrance-and-guest-list` | where the ticket scanner is (a mobile app), the guest list as Excel, the tickets of a date | `entrance` |
+| `buyer-where-is-my-ticket` | the page after the order, the ticket letter, the PDF, the form "Write to the organizer" | `ticket` |
+| `buyer-how-to-read-the-date` | the date of the event on the page, in the letter and on the ticket, the line "Doors open" | pictures of `ticket` |
 
 1. Draw the poster of the invented event: `npx tsx scripts/make-web-posters.ts`.
 2. Take the pictures for each language, in this order: `npx tsx scripts/capture-web.ts <ru|en|es> event`,
@@ -537,6 +544,19 @@ Rules of these pictures:
   event of stage `event`, whose holders are the test addresses of these films. `WEB_STOP=move` and
   `WEB_STOP=cancel` stop before the change is saved.
 - A half-hidden address on a screen (`a***@a***.com`) is replaced too: it keeps the first letters of the real mailbox.
+- A film is named by what the function does, not by the name of its screen: the screen `/promoters` is "Brands",
+  `/growth` is "Messages to buyers", and the web event center has no ticket scanner (the screen "Entrance" sends
+  the organizer to the scanner app), so no film shows a scan.
+- Stage `brand` creates the brand "Aurora Jazz Club"; stage `messages` switches on the reminder and the subscription.
+- Stage `ticket` needs an event with the line "Doors open": create it with `WEB_DOORS=19:30` at stage `event`.
+  It makes a free order in a phone window (390 x 844) and saves the PDF ticket to `.cache/ticket-<lang>.pdf` when
+  the page shows its link. The masks of the pictures work inside the ticket widget too (shadow DOM).
+- The ticket letter of the buyer films is drawn again from the TEXT of the real letter: copy its lines to
+  `scenarios/buyer-where-is-my-ticket/captures/letters/<lang>.json` with the invented addresses, then
+  `npx tsx scripts/make-ticket-letter.ts <fields.json> <letter.json>` and `npx tsx scripts/render-letter.ts`.
+  The PDF ticket becomes a picture with PyMuPDF; the organization name and the contact address in it are replaced.
+  `buyer-how-to-read-the-date` uses copies of these pictures in its own `captures/`.
+- `look` prints the text of a screen of the event center and takes no picture; use it to read a screen before a film is planned.
 - The web event center has no logo of the organization, so `web-organization-details` does not show one.
 - Stage `org` writes the mailbox of the test organizer as the contact e-mail and as the e-mail of the sales page.
   The stand sends buyers' letters and messages of the page form to it; the pictures show `carmen@example.com`.

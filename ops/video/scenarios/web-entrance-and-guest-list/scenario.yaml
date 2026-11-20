@@ -64,7 +64,7 @@ scenes:
         address: "events.arenasoldout.com"
         title: { ru: "Скачать список гостей (Excel)", en: "Download the guest list (Excel)", es: "Descargar la lista de invitados (Excel)" }
         weight: 4
-        zoom: { from: 1.4, to: 1.65, x: 0.5, y: 0.5 }
+        zoom: { from: 1.1, to: 1.25, x: 0.5, y: 0.45 }
 
   - id: s4-tickets
     narration:
@@ -78,24 +78,36 @@ scenes:
         address: "events.arenasoldout.com"
         title: { ru: "Билеты сеанса", en: "The tickets of the session", es: "Las entradas de la sesión" }
         weight: 2
-        zoom: { from: 1.4, to: 1.6, x: 0.5, y: 0.6 }
+        zoom: { from: 1.1, to: 1.2, x: 0.5, y: 0.75 }
       - image: captures/e_05_not_entered.png
         frame: browser
         address: "events.arenasoldout.com"
         title: { ru: "Фильтр «Не прошли»", en: "The filter Not entered", es: "El filtro «No han entrado»" }
         weight: 3
-        zoom: { from: 1.5, to: 1.7, x: 0.5, y: 0.6 }
+        zoom: { from: 1.15, to: 1.25, x: 0.5, y: 0.7 }
 
   - id: s5-auto
     narration:
       ru: "Список может приходить сам: за сутки до начала, за три часа и к открытию входа. Поставьте галочку — и он придёт вам в чат с ботом ивент-центра. Без бота список придёт на почту."
       en: "The list can come automatically: 24 hours before the start, 3 hours before the start and when the doors open. Set the tick, and it comes to your chat with the event center bot. Without the bot, the list comes to your e-mail."
       es: "La lista puede llegar sola: 24 horas antes del inicio, 3 horas antes y al abrir las puertas. Marca la casilla y llegará a tu chat con el bot del centro de eventos. Sin el bot, la lista llega a tu correo."
-    pause_after: 0.6
+    pause_after: 0.4
     shots:
       - image: captures/e_06_auto.png
         frame: browser
         address: "events.arenasoldout.com"
         title: { ru: "Список гостей перед каждым сеансом", en: "The guest list before each session", es: "La lista de invitados antes de cada sesión" }
         weight: 4
-        zoom: { from: 1.5, to: 1.75, x: 0.5, y: 0.95 }
+        zoom: { from: 1.15, to: 1.3, x: 0.5, y: 1.0 }
+
+  - id: s6-cta
+    narration:
+      ru: "Подготовьте вход заранее в ивент-центре Arena Sold Out."
+      en: "Prepare the entrance in advance in the Arena Sold Out event center."
+      es: "Prepara la entrada con antelación en el centro de eventos de Arena Sold Out."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Вход и список гостей", en: "Entrance and guest list", es: "Entrada y lista de invitados" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://arenasoldout.com"
