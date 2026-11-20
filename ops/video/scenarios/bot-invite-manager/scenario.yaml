@@ -1,0 +1,96 @@
+id: bot-invite-manager
+fps: 30
+# To add a language: add it here, add its text to every narration, title and heading,
+# and put its pictures in captures/<language>/. Nothing else changes.
+languages: [ru, en, es]
+title:
+  ru: "Пригласить менеджера в команду"
+  en: "Invite a manager to your team"
+  es: "Invitar a un gestor a tu equipo"
+
+# Instruction film about the event-center bot: how the owner of an organization invites a colleague as a manager.
+# Pictures are made on the staging stand with the test Telegram account in the organization
+# "Luna Events" (see README, "Bot instruction films") and are not committed.
+# Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in apply-in-telegram-bot.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [9x16, 4x5]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-result
+    narration:
+      ru: "Работаете не один? Пригласите коллегу в свою организацию прямо из бота Arena Sold Out."
+      en: "Do you work with a team? Invite a colleague to your organization from the Arena Sold Out bot."
+      es: "¿Trabajas en equipo? Invita a un compañero a tu organización desde el bot de Arena Sold Out."
+    pause_after: 0.4
+    shots:
+      - image: captures/t_04_sent.png
+        frame: phone
+        title: { ru: "Команда — в боте", en: "Your team — in the bot", es: "Tu equipo, en el bot" }
+        scroll: { from: 0.3, to: 0.6 }
+
+  - id: s2-open
+    narration:
+      ru: "В меню откройте «Настройки» и нажмите «Участник команды»."
+      en: "In the menu, open «Settings» and press «Team member»."
+      es: "En el menú, abre «Ajustes» y pulsa «Miembro del equipo»."
+    pause_after: 0.6
+    shots:
+      - image: captures/t_00_menu.png
+        frame: phone
+        title: { ru: "Меню → «Настройки»", en: "Menu → «Settings»", es: "Menú → «Ajustes»" }
+        weight: 2
+        scroll: { from: 0.6, to: 0.9 }
+      - image: captures/t_01_settings.png
+        frame: phone
+        title: { ru: "«Участник команды»", en: "«Team member»", es: "«Miembro del equipo»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+
+  - id: s3-email
+    narration:
+      ru: "Напишите e-mail коллеги и выберите, что он может. Менеджер работает только с мероприятиями. Владелец может всё, в том числе приглашать и убирать людей."
+      en: "Type the e-mail of your colleague and select the role. A manager works with events only. An owner can do all actions, and can invite and remove people."
+      es: "Escribe el e-mail de tu compañero y elige su papel. Un gestor trabaja solo con los eventos. Un propietario puede hacerlo todo, también invitar y quitar a personas."
+    pause_after: 0.6
+    shots:
+      - image: captures/t_02_email.png
+        frame: phone
+        title: { ru: "E-mail коллеги", en: "E-mail of the colleague", es: "E-mail del compañero" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/t_03_role.png
+        frame: phone
+        title: { ru: "Менеджер или владелец", en: "Manager or owner", es: "Gestor o propietario" }
+        weight: 3
+        scroll: { from: 0.6, to: 1.0 }
+
+  - id: s4-sent
+    narration:
+      ru: "Коллеге придёт письмо со ссылкой на бота. Ссылка действует семь дней. В списке команды видно, открыто ли приглашение. Здесь же его можно отправить ещё раз или отозвать."
+      en: "Your colleague gets an e-mail with a link to the bot. The link works for seven days. The team list shows if the invitation was opened. Here you can also send it again or cancel it."
+      es: "Tu compañero recibe un e-mail con un enlace al bot. El enlace funciona durante siete días. La lista del equipo muestra si la invitación se ha abierto. Aquí también puedes reenviarla o anularla."
+    pause_after: 1.2
+    shots:
+      - image: captures/t_04_sent.png
+        frame: phone
+        title: { ru: "Приглашение отправлено", en: "The invitation is sent", es: "Invitación enviada" }
+        scroll: { from: 0.2, to: 0.9 }
+
+  - id: cta
+    narration:
+      ru: "Оставьте заявку на arenasoldout.com или в нашем Telegram-боте. Мы ждём вас."
+      en: "Apply at arenasoldout.com or in our Telegram bot. We look forward to working with you."
+      es: "Deja tu solicitud en arenasoldout.com o en nuestro bot de Telegram. Te esperamos."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Оставьте заявку", en: "Apply now", es: "Deja tu solicitud" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"

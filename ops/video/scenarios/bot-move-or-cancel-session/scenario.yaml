@@ -1,0 +1,131 @@
+id: bot-move-or-cancel-session
+fps: 30
+# To add a language: add it here, add its text to every narration, title and heading,
+# and put its pictures in captures/<language>/. Nothing else changes.
+languages: [ru, en, es]
+title:
+  ru: "Перенести или отменить сеанс"
+  en: "Move or cancel a session"
+  es: "Cambiar de fecha o cancelar una sesión"
+
+# Instruction film about the event-center bot: how to move a session to a different date and how to cancel it; the buyers get an e-mail.
+# The buyer of the film is the invented buyer of a free test order.
+# Pictures are made on the staging stand with the test Telegram account in the organization
+# "Luna Events" (see README, "Bot instruction films") and are not committed.
+# Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in apply-in-telegram-bot.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [9x16, 4x5]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-result
+    narration:
+      ru: "Дата изменилась или мероприятие не состоится? В боте Arena Sold Out вы переносите или отменяете сеанс, а покупатели получают письмо."
+      en: "Did the date change, or is the event off? In the Arena Sold Out bot you move or cancel the session, and the buyers get an e-mail."
+      es: "¿Ha cambiado la fecha o el evento no se celebra? En el bot de Arena Sold Out cambias o cancelas la sesión, y los compradores reciben un e-mail."
+    pause_after: 0.4
+    shots:
+      - image: captures/s_08_review.png
+        frame: phone
+        title: { ru: "Перенос и отмена — в боте", en: "Move and cancel — in the bot", es: "Cambio y cancelación, en el bot" }
+        scroll: { from: 0.3, to: 0.7 }
+
+  - id: s2-open
+    narration:
+      ru: "Откройте карточку мероприятия и нажмите «Изменить», потом «Сеансы: перенос и отмена». Выберите сеанс."
+      en: "Open the event card and press «Edit», then «Sessions: move and cancel». Select the session."
+      es: "Abre la ficha del evento y pulsa «Editar», luego «Sesiones: mover y cancelar». Elige la sesión."
+    pause_after: 0.6
+    shots:
+      - image: captures/s_01_card.png
+        frame: phone
+        title: { ru: "Карточка → «Изменить»", en: "Event card → «Edit»", es: "Ficha → «Editar»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/s_02_edit.png
+        frame: phone
+        title: { ru: "«Сеансы: перенос и отмена»", en: "«Sessions: move and cancel»", es: "«Sesiones: mover y cancelar»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/s_04_session.png
+        frame: phone
+        title: { ru: "Сеанс", en: "Session", es: "Sesión" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+
+  - id: s3-move
+    narration:
+      ru: "Чтобы перенести, нажмите «Перенести на другую дату», выберите новый день и время. Это тот же сеанс: проданные билеты остаются в нём."
+      en: "To move it, press «Move to a different date» and select the new day and time. It is the same session: the tickets that you sold stay in it."
+      es: "Para cambiarla, pulsa «Cambiar de fecha» y elige el nuevo día y la hora. Es la misma sesión: las entradas vendidas siguen en ella."
+    pause_after: 0.6
+    shots:
+      - image: captures/s_05_date.png
+        frame: phone
+        title: { ru: "Новая дата", en: "The new date", es: "La nueva fecha" }
+        weight: 2
+        scroll: { from: 0.5, to: 0.8 }
+      - image: captures/s_07_time.png
+        frame: phone
+        title: { ru: "Время начала", en: "Start time", es: "Hora de inicio" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+
+  - id: s4-letter
+    narration:
+      ru: "Бот покажет, сколько покупателей получат письмо с новой датой и новым билетом. Сообщение для них можно изменить. Подтвердите перенос."
+      en: "The bot shows how many buyers get an e-mail with the new date and a new ticket. You can change the message for them. Then confirm."
+      es: "El bot muestra cuántos compradores reciben un e-mail con la nueva fecha y una entrada nueva. Puedes cambiar el mensaje. Después confirma."
+    pause_after: 0.8
+    shots:
+      - image: captures/s_08_review.png
+        frame: phone
+        title: { ru: "Письмо покупателям", en: "E-mail to the buyers", es: "E-mail a los compradores" }
+        weight: 3
+        scroll: { from: 0.4, to: 1.0 }
+      - image: captures/s_09_moved.png
+        frame: phone
+        title: { ru: "Сеанс перенесён", en: "The session is moved", es: "Sesión cambiada" }
+        weight: 2
+        scroll: { from: 0.5, to: 0.9 }
+
+  - id: s5-cancel
+    narration:
+      ru: "Чтобы отменить сеанс, нажмите «Отменить сеанс». Это действие нельзя вернуть, поэтому бот просит набрать слова подтверждения. Деньги платформа сама не возвращает: о возврате вы договариваетесь с покупателями."
+      en: "To cancel a session, press «Cancel the session». You cannot undo this step, thus the bot asks you to type the words of confirmation. The platform does not refund money automatically: you and the buyers agree on refunds."
+      es: "Para cancelar una sesión, pulsa «Cancelar la sesión». Esta acción no se puede deshacer, por eso el bot te pide escribir las palabras de confirmación. La plataforma no devuelve el dinero automáticamente: los reembolsos los acuerdas tú con los compradores."
+    pause_after: 1.2
+    shots:
+      - image: captures/s_10_cancel.png
+        frame: phone
+        title: { ru: "«Отменить сеанс»", en: "«Cancel the session»", es: "«Cancelar la sesión»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/s_11_word.png
+        frame: phone
+        title: { ru: "Слова подтверждения", en: "Words of confirmation", es: "Palabras de confirmación" }
+        weight: 3
+        scroll: { from: 0.5, to: 0.9 }
+      - image: captures/s_12_cancelled.png
+        frame: phone
+        title: { ru: "Сеанс отменён", en: "The session is canceled", es: "Sesión cancelada" }
+        weight: 2
+        scroll: { from: 0.5, to: 0.9 }
+
+  - id: cta
+    narration:
+      ru: "Оставьте заявку на arenasoldout.com или в нашем Telegram-боте. Мы ждём вас."
+      en: "Apply at arenasoldout.com or in our Telegram bot. We look forward to working with you."
+      es: "Deja tu solicitud en arenasoldout.com o en nuestro bot de Telegram. Te esperamos."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Оставьте заявку", en: "Apply now", es: "Deja tu solicitud" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"

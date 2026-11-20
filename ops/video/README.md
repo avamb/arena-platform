@@ -292,6 +292,32 @@ Before a screenshot the scripts replace the test bot name, the staging hosts
 the public names. They also replace the QR pictures in the chat with a code
 of the public site, because the real codes open the staging stand.
 
+### Bot instruction films
+
+Six more instruction films about the event-center bot, in the vertical formats
+only: `bot-orders-resend-tickets`, `bot-promo-codes`, `bot-invite-manager`,
+`bot-change-price`, `bot-invitations`, `bot-move-or-cancel-session`. The
+pictures were made on the staging stand on 2026-11-20 in the same test
+organization "Luna Events", one pass for each language and film.
+
+- The organization has two events for each language. The first has a free
+  order of the invented buyer (Carmen Ortega, an `example.com` address), made
+  on the buyer's page with a 100 % promo code. The films about orders and
+  about the move and the cancellation of a session use it. The second event
+  is for the price and the invitations.
+- The test organization has no paid orders, because payments are not
+  connected. The bot answers that a free order has nothing to refund, thus
+  no film shows a refund.
+- A promo code name stays taken after the code is deleted, thus each language
+  has its own code (LUNA10, NIGHT10, NOCHE10).
+- The invited manager and the guests have `example.com` addresses. The
+  manager was removed from the team after each pass.
+- A session cancellation cannot be undone: after the pass the first event of
+  each language has a cancelled session. A new pass needs a new event and a
+  new order.
+- The mask that replaces a phone number also replaces a 13-digit ticket
+  barcode; the order pictures were made with that mask off.
+
 ## Environment variables
 
 Keys, addresses and logins are never in the repository. The scripts read them
@@ -415,8 +441,9 @@ Covers are still images for the videos, in the Arena Sold Out Instagram style.
 Run `npm run covers` to make them.
 
 - `covers/cover.html` is the one template. `covers/covers.yaml` holds the texts and the subject images.
-- The script writes `out/covers/<film>/<film>_<lang>_<format>.png`.
-- Films: sell-tickets-from-poster, apply-in-telegram-bot, onb-02, bot-create-event-from-poster, bot-sales-link-and-qr. Languages: ru, en, es. Formats: 16x9, 9x16, 4x5.
+- The script writes each cover next to its film: `out/<film>/<lang>/<film>_<lang>_<format>_cover.png` (folders are created).
+- Formats of a film: the `formats` list in `scenarios/<film>/scenario.yaml` (16x9, 9x16, 4x5 when the key is missing), plus 16x9 always for YouTube. A film with no scenario in this repo (onb-02) gets all three.
+- Films: sell-tickets-from-poster, apply-in-telegram-bot, onb-02 and the bot instruction films (names start with `bot-`). Languages: ru, en, es.
 - Long lines get a smaller font by themselves, so they never leave the frame.
 - Subject images live in ignored folders. If a file is missing, the cover is made without it.
 - Fonts are system fonts (Impact, Inter, Segoe UI). Nothing is loaded from the network.
