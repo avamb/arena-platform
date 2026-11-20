@@ -1,0 +1,123 @@
+id: bot-brand-page
+fps: 30
+# To add a language: add it here, add its text to every narration, title and heading,
+# and put its pictures in captures/<language>/. Nothing else changes.
+languages: [ru, en, es]
+title:
+  ru: "Бренд и его страница со всеми мероприятиями"
+  en: "A brand and its page with all events"
+  es: "Una marca y su página con todos los eventos"
+
+# Instruction film about the event-center bot: how to add a brand (the name under which tickets are sold), put an event under it, and what the public page of the brand shows.
+# Pictures are made on the staging stand with the test Telegram account in the organization
+# "Luna Events" (see README, "Bot instruction films") and are not committed.
+# Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in apply-in-telegram-bot.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [9x16, 4x5]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-result
+    narration:
+      ru: "Продаёте под именем клуба, театра или проекта? Создайте бренд в боте Arena Sold Out. У него будет своя страница со всеми мероприятиями."
+      en: "Do you sell under the name of a club, a theatre or a project? Add a brand in the Arena Sold Out bot. It gets its own page with all its events."
+      es: "¿Vendes con el nombre de un club, un teatro o un proyecto? Crea una marca en el bot de Arena Sold Out. Tendrá su propia página con todos sus eventos."
+    pause_after: 0.4
+    shots:
+      - image: captures/pbr_01_full.png
+        frame: phone
+        title: { ru: "Своя страница бренда", en: "The own page of the brand", es: "La página propia de la marca" }
+        scroll: { from: 0.0, to: 0.2 }
+
+  - id: s2-new
+    narration:
+      ru: "В меню откройте «Настройки», потом «Бренды» и нажмите «Бренд». Напишите название: оно печатается на билетах как организатор."
+      en: "In the menu, open «Settings», then «Brands», and press «Brand». Type the name: the tickets show it as the organizer."
+      es: "En el menú, abre «Ajustes», luego «Marcas» y pulsa «Marca». Escribe el nombre: en las entradas aparece como organizador."
+    pause_after: 0.6
+    shots:
+      - image: captures/br_00_menu.png
+        frame: phone
+        title: { ru: "Меню → «Настройки»", en: "Menu → «Settings»", es: "Menú → «Ajustes»" }
+        weight: 2
+        scroll: { from: 0.6, to: 0.9 }
+      - image: captures/br_01_settings.png
+        frame: phone
+        title: { ru: "«Бренды»", en: "«Brands»", es: "«Marcas»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/br_03_name.png
+        frame: phone
+        title: { ru: "Название бренда", en: "Name of the brand", es: "Nombre de la marca" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+
+  - id: s3-card
+    narration:
+      ru: "В карточке бренда можно указать адрес, телефон, e-mail и сайт. Здесь же адрес его публичной страницы."
+      en: "In the brand card you can give the address, the phone number, the e-mail and the site. The card also shows the address of the public page."
+      es: "En la ficha de la marca puedes indicar la dirección, el teléfono, el e-mail y la web. Ahí está también la dirección de su página pública."
+    pause_after: 0.6
+    shots:
+      - image: captures/br_04_card.png
+        frame: phone
+        title: { ru: "Карточка бренда", en: "Brand card", es: "Ficha de la marca" }
+        scroll: { from: 0.5, to: 1.0 }
+
+  - id: s4-event
+    narration:
+      ru: "Чтобы мероприятие шло от имени бренда, откройте его, нажмите «Изменить», потом «Название, описание и афиша» и «Бренд». Выберите бренд и опубликуйте изменения."
+      en: "To put an event under the brand, open the event, press «Edit», then «Name, description, poster» and «Brand». Select the brand and publish the changes."
+      es: "Para que un evento salga con la marca, ábrelo, pulsa «Editar», luego «Nombre, descripción y cartel» y «Marca». Elige la marca y publica los cambios."
+    pause_after: 0.8
+    shots:
+      - image: captures/br_05_editcard.png
+        frame: phone
+        title: { ru: "Правка мероприятия → «Бренд»", en: "Event changes → «Brand»", es: "Cambios del evento → «Marca»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/br_07_changed.png
+        frame: phone
+        title: { ru: "Бренд выбран", en: "The brand is selected", es: "Marca elegida" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/br_08_what.png
+        frame: phone
+        title: { ru: "Опубликуйте изменения", en: "Publish the changes", es: "Publica los cambios" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/br_09_done.png
+        frame: phone
+        title: { ru: "Мероприятие — от имени бренда", en: "The event is under the brand", es: "El evento sale con la marca" }
+        weight: 2
+        scroll: { from: 0.1, to: 0.5 }
+
+  - id: s5-buyer
+    narration:
+      ru: "Покупатель открывает страницу бренда и видит все его мероприятия."
+      en: "The buyer opens the brand page and sees all its events."
+      es: "El comprador abre la página de la marca y ve todos sus eventos."
+    pause_after: 1.5
+    shots:
+      - image: captures/pbr_01_full.png
+        frame: phone
+        title: { ru: "Что видит покупатель", en: "What the buyer sees", es: "Lo que ve el comprador" }
+        scroll: { from: 0.0, to: 0.5 }
+
+  - id: cta
+    narration:
+      ru: "Оставьте заявку на arenasoldout.com или в нашем Telegram-боте. Мы ждём вас."
+      en: "Apply at arenasoldout.com or in our Telegram bot. We look forward to working with you."
+      es: "Deja tu solicitud en arenasoldout.com o en nuestro bot de Telegram. Te esperamos."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Оставьте заявку", en: "Apply now", es: "Deja tu solicitud" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"

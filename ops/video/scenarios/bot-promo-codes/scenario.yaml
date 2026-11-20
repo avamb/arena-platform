@@ -132,7 +132,7 @@ scenes:
       - image: captures/pc_01_cart.png
         frame: phone
         title: { ru: "Что видит покупатель", en: "What the buyer sees", es: "Lo que ve el comprador" }
-        scroll: { from: 0.2, to: 0.6 }
+        scroll: { from: 0.6, to: 1.0 }
 
   - id: cta
     narration:

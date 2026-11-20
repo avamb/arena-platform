@@ -1,0 +1,107 @@
+id: bot-smart-price
+fps: 30
+# To add a language: add it here, add its text to every narration, title and heading,
+# and put its pictures in captures/<language>/. Nothing else changes.
+languages: [ru, en, es]
+title:
+  ru: "Умная цена: цена растёт сама"
+  en: "Smart price: the price goes up automatically"
+  es: "Precio inteligente: el precio sube solo"
+
+# Instruction film about the event-center bot: how to turn on a rule that raises the ticket price automatically.
+# Pictures are made on the staging stand with the test Telegram account in the organization
+# "Luna Events" (see README, "Bot instruction films") and are not committed.
+# Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in apply-in-telegram-bot.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [9x16, 4x5]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-result
+    narration:
+      ru: "Хотите, чтобы первые покупатели платили меньше, а цена росла сама? Включите «Умную цену» в боте Arena Sold Out."
+      en: "Do you want the first buyers to pay less, and the price to go up automatically? Turn on «Smart price» in the Arena Sold Out bot."
+      es: "¿Quieres que los primeros compradores paguen menos y que el precio suba solo? Activa el «Precio inteligente» en el bot de Arena Sold Out."
+    pause_after: 0.4
+    shots:
+      - image: captures/sp_04_preview.png
+        frame: phone
+        title: { ru: "Цена растёт сама", en: "The price goes up automatically", es: "El precio sube solo" }
+        scroll: { from: 0.4, to: 0.7 }
+
+  - id: s2-open
+    narration:
+      ru: "Откройте мероприятие, нажмите «Изменить», потом «Категории и цены». Выберите категорию и нажмите «Умная цена»."
+      en: "Open the event, press «Edit», then «Categories and prices». Select the category and press «Smart price»."
+      es: "Abre el evento, pulsa «Editar» y luego «Categorías y precios». Elige la categoría y pulsa «Precio inteligente»."
+    pause_after: 0.6
+    shots:
+      - image: captures/sp_00b_edit.png
+        frame: phone
+        title: { ru: "«Изменить» → «Категории и цены»", en: "«Edit» → «Categories and prices»", es: "«Editar» → «Categorías y precios»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/sp_01_cats.png
+        frame: phone
+        title: { ru: "Категория", en: "Category", es: "Categoría" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/sp_02_cat.png
+        frame: phone
+        title: { ru: "«Умная цена»", en: "«Smart price»", es: "«Precio inteligente»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+
+  - id: s3-rule
+    narration:
+      ru: "Выберите правило: цена растёт после каждых проданных билетов, каждые несколько дней или в последние дни перед мероприятием."
+      en: "Select the rule: the price goes up after each group of sold tickets, at intervals of some days, or in the last days before the event."
+      es: "Elige la regla: el precio sube después de cada grupo de entradas vendidas, cada cierto número de días o en los últimos días antes del evento."
+    pause_after: 0.6
+    shots:
+      - image: captures/sp_03_intro.png
+        frame: phone
+        title: { ru: "Три правила", en: "Three rules", es: "Tres reglas" }
+        scroll: { from: 0.5, to: 1.0 }
+
+  - id: s4-preview
+    narration:
+      ru: "Бот покажет все ступени цены до сохранения. Числа можно изменить."
+      en: "The bot shows all price steps before it saves them. You can change the numbers."
+      es: "El bot muestra todos los escalones de precio antes de guardarlos. Puedes cambiar los números."
+    pause_after: 0.8
+    shots:
+      - image: captures/sp_04_preview.png
+        frame: phone
+        title: { ru: "Ступени цены", en: "Price steps", es: "Escalones de precio" }
+        scroll: { from: 0.5, to: 1.0 }
+
+  - id: s5-on
+    narration:
+      ru: "Нажмите «Включить». Покупатель всегда видит цену, которую платит сейчас, а проданные билеты сохраняют свою цену."
+      en: "Press «Turn on». The buyer always sees the price that applies now, and the tickets that you sold keep their price."
+      es: "Pulsa «Activar». El comprador siempre ve el precio que paga ahora, y las entradas vendidas conservan su precio."
+    pause_after: 1.2
+    shots:
+      - image: captures/sp_05_on.png
+        frame: phone
+        title: { ru: "Умная цена включена", en: "Smart price is on", es: "Precio inteligente activado" }
+        scroll: { from: 0.3, to: 0.8 }
+
+  - id: cta
+    narration:
+      ru: "Оставьте заявку на arenasoldout.com или в нашем Telegram-боте. Мы ждём вас."
+      en: "Apply at arenasoldout.com or in our Telegram bot. We look forward to working with you."
+      es: "Deja tu solicitud en arenasoldout.com o en nuestro bot de Telegram. Te esperamos."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Оставьте заявку", en: "Apply now", es: "Deja tu solicitud" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"

@@ -1,0 +1,148 @@
+id: bot-event-page-materials
+fps: 30
+# To add a language: add it here, add its text to every narration, title and heading,
+# and put its pictures in captures/<language>/. Nothing else changes.
+languages: [ru, en, es]
+title:
+  ru: "Фото, видео и карта на странице мероприятия"
+  en: "Photos, video and a map on the event page"
+  es: "Fotos, vídeo y mapa en la página del evento"
+
+# Instruction film about the event-center bot: how to add photos, a video link, a map point and links to other sellers to the page of an event.
+# The photos of the film are pictures drawn for it.
+# Pictures are made on the staging stand with the test Telegram account in the organization
+# "Luna Events" (see README, "Bot instruction films") and are not committed.
+# Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in apply-in-telegram-bot.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [9x16, 4x5]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-result
+    narration:
+      ru: "Страница мероприятия продаёт лучше, когда на ней есть фото, видео и карта. Всё это вы добавляете в боте Arena Sold Out."
+      en: "An event page sells better with photos, a video and a map. You add all of them in the Arena Sold Out bot."
+      es: "La página de un evento vende mejor con fotos, vídeo y mapa. Todo eso lo añades en el bot de Arena Sold Out."
+    pause_after: 0.4
+    shots:
+      - image: captures/pm_01_full.png
+        frame: phone
+        title: { ru: "Страница, которая продаёт", en: "A page that sells", es: "Una página que vende" }
+        scroll: { from: 0.0, to: 0.35 }
+
+  - id: s2-open
+    narration:
+      ru: "Откройте карточку мероприятия, нажмите «Изменить», потом «Материалы страницы». Выберите раздел."
+      en: "Open the event card, press «Edit», then «Page materials». Select a part."
+      es: "Abre la ficha del evento, pulsa «Editar» y luego «Materiales de la página». Elige una sección."
+    pause_after: 0.6
+    shots:
+      - image: captures/m_00_card.png
+        frame: phone
+        title: { ru: "Карточка → «Изменить»", en: "Event card → «Edit»", es: "Ficha → «Editar»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/m_01_edit.png
+        frame: phone
+        title: { ru: "«Материалы страницы»", en: "«Page materials»", es: "«Materiales de la página»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/m_02_materials.png
+        frame: phone
+        title: { ru: "Разделы материалов", en: "Parts of the materials", es: "Secciones de materiales" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+
+  - id: s3-photos
+    narration:
+      ru: "В разделе «Фото» нажмите «Добавить» и пришлите картинки, до шести. К каждой можно написать подпись."
+      en: "In «Photos», press «Add» and send the images, six at most. You can write a caption for each one."
+      es: "En «Fotos», pulsa «Añadir» y envía las imágenes, seis como máximo. Puedes escribir un pie para cada una."
+    pause_after: 0.6
+    shots:
+      - image: captures/m_04_ask.png
+        frame: phone
+        title: { ru: "«Фото» → «Добавить»", en: "«Photos» → «Add»", es: "«Fotos» → «Añadir»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/m_05_added.png
+        frame: phone
+        title: { ru: "Фото добавлены", en: "The photos are added", es: "Fotos añadidas" }
+        weight: 3
+        scroll: { from: 0.5, to: 0.9 }
+      - image: captures/m_06_list.png
+        frame: phone
+        title: { ru: "Порядок на странице", en: "The order on the page", es: "El orden en la página" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+
+  - id: s4-video-map
+    narration:
+      ru: "Видео добавляется ссылкой на YouTube, Vimeo или Rutube и играет прямо на странице. Для карты пришлите координаты или геопозицию из Telegram."
+      en: "You add a video as a link to YouTube, Vimeo or Rutube, and it plays on the page. For the map, send the coordinates or a location from Telegram."
+      es: "El vídeo se añade con un enlace de YouTube, Vimeo o Rutube y se reproduce en la página. Para el mapa, envía las coordenadas o una ubicación desde Telegram."
+    pause_after: 0.6
+    shots:
+      - image: captures/m_07_video.png
+        frame: phone
+        title: { ru: "Видео — по ссылке", en: "Video — by a link", es: "Vídeo, con un enlace" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/m_09_point.png
+        frame: phone
+        title: { ru: "Точка на карте", en: "A point on the map", es: "Un punto en el mapa" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/m_10_saved.png
+        frame: phone
+        title: { ru: "Точка сохранена", en: "The point is saved", es: "Punto guardado" }
+        weight: 2
+        scroll: { from: 0.4, to: 0.8 }
+
+  - id: s5-sellers
+    narration:
+      ru: "В разделе «Где ещё купить» добавьте ссылки на других продавцов билетов."
+      en: "In «Other sellers», add links to other places that sell your tickets."
+      es: "En «Dónde más comprar», añade enlaces a otros vendedores de tus entradas."
+    pause_after: 0.6
+    shots:
+      - image: captures/m_12_link.png
+        frame: phone
+        title: { ru: "«Где ещё купить»", en: "«Other sellers»", es: "«Dónde más comprar»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/m_13_added.png
+        frame: phone
+        title: { ru: "Ссылка добавлена", en: "The link is added", es: "Enlace añadido" }
+        weight: 2
+        scroll: { from: 0.5, to: 0.9 }
+
+  - id: s6-buyer
+    narration:
+      ru: "Покупатель видит фото, точку на карте и ссылки прямо на странице мероприятия."
+      en: "The buyer sees the photos, the map point and the links on the event page."
+      es: "El comprador ve las fotos, el punto del mapa y los enlaces en la página del evento."
+    pause_after: 1.5
+    shots:
+      - image: captures/pm_01_full.png
+        frame: phone
+        title: { ru: "Что видит покупатель", en: "What the buyer sees", es: "Lo que ve el comprador" }
+        scroll: { from: 0.0, to: 0.95 }
+
+  - id: cta
+    narration:
+      ru: "Оставьте заявку на arenasoldout.com или в нашем Telegram-боте. Мы ждём вас."
+      en: "Apply at arenasoldout.com or in our Telegram bot. We look forward to working with you."
+      es: "Deja tu solicitud en arenasoldout.com o en nuestro bot de Telegram. Te esperamos."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Оставьте заявку", en: "Apply now", es: "Deja tu solicitud" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"

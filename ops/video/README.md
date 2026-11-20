@@ -318,6 +318,23 @@ organization "Luna Events", one pass for each language and film.
 - The mask that replaces a phone number also replaces a 13-digit ticket
   barcode; the order pictures were made with that mask off.
 
+Five films about sales and promotion were made the same day in the same
+organization: `bot-event-page-materials`, `bot-refer-a-friend`,
+`bot-sales-statistics`, `bot-smart-price`, `bot-brand-page`.
+
+- Each language has one event for these films. The passes change it for good
+  (smart price steps, the Refer a friend program, a brand), thus a new pass
+  needs a new event.
+- The photos of the materials film are two pictures drawn for it. No video
+  link was added, because the film has no own video.
+- Refer a friend gives a personal code only for a paid order. The test
+  organization has none, thus the film shows the organizer's side only.
+- Sales notifications are not filmed: they come from another bot in a group
+  chat, and the capture account opens only the chat of the test bot.
+- An active brand keeps its name: each language has its own brand name.
+- The language switch must be checked after it is made (the menu must show
+  the labels of the language). A pass in the wrong language spends the event.
+
 ## Environment variables
 
 Keys, addresses and logins are never in the repository. The scripts read them

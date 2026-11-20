@@ -1,0 +1,130 @@
+id: bot-refer-a-friend
+fps: 30
+# To add a language: add it here, add its text to every narration, title and heading,
+# and put its pictures in captures/<language>/. Nothing else changes.
+languages: [ru, en, es]
+title:
+  ru: "Программа «Приведи друга»"
+  en: "The «Refer a friend» program"
+  es: "El programa «Trae a un amigo»"
+
+# Instruction film about the event-center bot: how an organizer turns on the program Refer a friend for an event and what the rules are.
+# The test organization has no paid orders, thus the film does not show the personal code of a buyer.
+# Pictures are made on the staging stand with the test Telegram account in the organization
+# "Luna Events" (see README, "Bot instruction films") and are not committed.
+# Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in apply-in-telegram-bot.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [9x16, 4x5]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-result
+    narration:
+      ru: "Пусть покупатели сами приводят друзей. В боте Arena Sold Out включается программа «Приведи друга»: другу — скидка, покупателю — часть денег обратно."
+      en: "Let your buyers bring their friends. In the Arena Sold Out bot you turn on the program «Refer a friend»: the friend gets a discount, and the buyer gets a part of the money back."
+      es: "Deja que tus compradores traigan a sus amigos. En el bot de Arena Sold Out activas el programa «Trae a un amigo»: el amigo recibe un descuento y el comprador recupera una parte del dinero."
+    pause_after: 0.4
+    shots:
+      - image: captures/r_08_on.png
+        frame: phone
+        title: { ru: "Покупатели приводят друзей", en: "Buyers bring friends", es: "Los compradores traen amigos" }
+        scroll: { from: 0.4, to: 0.7 }
+
+  - id: s2-open
+    narration:
+      ru: "Откройте карточку мероприятия, нажмите «Продвижение», потом «Приведи друга» и «Включить»."
+      en: "Open the event card, press «Promotion», then «Refer a friend» and «Turn on»."
+      es: "Abre la ficha del evento, pulsa «Promoción», luego «Trae a un amigo» y «Activar»."
+    pause_after: 0.6
+    shots:
+      - image: captures/r_00_card.png
+        frame: phone
+        title: { ru: "Карточка → «Продвижение»", en: "Event card → «Promotion»", es: "Ficha → «Promoción»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/r_01_promo.png
+        frame: phone
+        title: { ru: "«Приведи друга»", en: "«Refer a friend»", es: "«Trae a un amigo»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/r_02_intro.png
+        frame: phone
+        title: { ru: "«Включить»", en: "«Turn on»", es: "«Activar»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+
+  - id: s3-questions
+    narration:
+      ru: "Бот задаст четыре вопроса: скидка для друга, какой процент вернуть покупателю, предел возврата и сколько друзей может прийти по одному коду."
+      en: "The bot asks four questions: the discount for the friend, the percent that goes back to the buyer, the limit of the cashback, and how many friends can use one code."
+      es: "El bot hace cuatro preguntas: el descuento para el amigo, el porcentaje que vuelve al comprador, el límite de la devolución y cuántos amigos pueden usar un código."
+    pause_after: 0.6
+    shots:
+      - image: captures/r_03_q1.png
+        frame: phone
+        title: { ru: "Скидка для друга", en: "Discount for the friend", es: "Descuento para el amigo" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/r_04_q2.png
+        frame: phone
+        title: { ru: "Сколько вернуть покупателю", en: "How much goes back to the buyer", es: "Cuánto vuelve al comprador" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/r_05_q3.png
+        frame: phone
+        title: { ru: "Предел возврата", en: "Limit of the cashback", es: "Límite de la devolución" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/r_06_q4.png
+        frame: phone
+        title: { ru: "Друзей на один код", en: "Friends for one code", es: "Amigos por código" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+
+  - id: s4-rules
+    narration:
+      ru: "Перед включением бот покажет правила. Кэшбэк выплачивается после мероприятия, с вашего баланса Stripe, на карту покупателя."
+      en: "Before you turn it on, the bot shows the rules. The cashback is paid after the event, from your Stripe balance, to the card of the buyer."
+      es: "Antes de activarlo, el bot muestra las reglas. La devolución se paga después del evento, desde tu saldo de Stripe, a la tarjeta del comprador."
+    pause_after: 0.8
+    shots:
+      - image: captures/r_07_review.png
+        frame: phone
+        title: { ru: "Проверьте условия", en: "Examine the conditions", es: "Revisa las condiciones" }
+        weight: 2
+        scroll: { from: 0.1, to: 0.5 }
+      - image: captures/r_07b_rules.png
+        frame: phone
+        title: { ru: "Правила кэшбэка", en: "Cashback rules", es: "Reglas de la devolución" }
+        weight: 3
+        scroll: { from: 0.1, to: 0.6 }
+
+  - id: s5-on
+    narration:
+      ru: "После включения каждый покупатель получает личный код. В боте видно, сколько кодов выдано и сколько друзей пришло. Программу можно поставить на паузу."
+      en: "After that, each buyer gets a personal code. The bot shows how many codes were issued and how many friends came. You can pause the program."
+      es: "Después, cada comprador recibe un código personal. El bot muestra cuántos códigos se han emitido y cuántos amigos han venido. Puedes poner el programa en pausa."
+    pause_after: 1.2
+    shots:
+      - image: captures/r_08_on.png
+        frame: phone
+        title: { ru: "Программа включена", en: "The program is on", es: "Programa activado" }
+        scroll: { from: 0.4, to: 0.9 }
+
+  - id: cta
+    narration:
+      ru: "Оставьте заявку на arenasoldout.com или в нашем Telegram-боте. Мы ждём вас."
+      en: "Apply at arenasoldout.com or in our Telegram bot. We look forward to working with you."
+      es: "Deja tu solicitud en arenasoldout.com o en nuestro bot de Telegram. Te esperamos."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Оставьте заявку", en: "Apply now", es: "Deja tu solicitud" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"

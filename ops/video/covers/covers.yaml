@@ -303,3 +303,123 @@ films:
         line1: "¿TIENES UN CARTEL?"
         line2: "VENDE ENTRADAS"
         sub: "Empieza a vender en unos minutos. El dinero va directo a tu cuenta."
+
+  bot-event-page-materials:
+    # The materials screen of an event. The capture has an empty lower part, so crop it.
+    item:
+      default:
+        kind: phone
+        crop: { x: 0, y: 0, w: 1, h: 0.66 }
+        src:
+          ru: scenarios/bot-event-page-materials/captures/ru/m_02_materials.png
+          en: scenarios/bot-event-page-materials/captures/en/m_02_materials.png
+          es: scenarios/bot-event-page-materials/captures/es/m_02_materials.png
+    texts:
+      ru:
+        line1: "ФОТО, ВИДЕО И КАРТА"
+        line2: "НА СТРАНИЦЕ МЕРОПРИЯТИЯ"
+        sub: "Добавьте их в боте: покупатель увидит всё на странице."
+      en:
+        line1: "PHOTOS, VIDEO AND A MAP"
+        line2: "ON THE EVENT PAGE"
+        sub: "Add them in the bot: the buyer sees them on the page."
+      es:
+        line1: "FOTOS, VÍDEO Y MAPA"
+        line2: "EN LA PÁGINA DEL EVENTO"
+        sub: "Añádelos en el bot: el comprador los ve en la página."
+
+  bot-refer-a-friend:
+    # The program Refer a friend is on. The capture has an empty lower part, so crop it.
+    item:
+      default:
+        kind: phone
+        crop: { x: 0, y: 0, w: 1, h: 0.66 }
+        src:
+          ru: scenarios/bot-refer-a-friend/captures/ru/r_08_on.png
+          en: scenarios/bot-refer-a-friend/captures/en/r_08_on.png
+          es: scenarios/bot-refer-a-friend/captures/es/r_08_on.png
+    texts:
+      ru:
+        line1: "ПРИВЕДИ ДРУГА"
+        line2: "ДРУГУ СКИДКА, ВАМ ПРОДАЖИ"
+        sub: "Покупатели приводят друзей: включается в боте."
+      en:
+        line1: "REFER A FRIEND"
+        line2: "MORE BUYERS FOR YOU"
+        sub: "Buyers bring their friends: turn it on in the bot."
+      es:
+        line1: "TRAE A UN AMIGO"
+        line2: "MÁS COMPRADORES PARA TI"
+        sub: "Los compradores traen a sus amigos: actívalo en el bot."
+
+  bot-sales-statistics:
+    # The sales summary of an event. The capture has an empty lower part, so crop it.
+    item:
+      default:
+        kind: phone
+        crop: { x: 0, y: 0, w: 1, h: 0.66 }
+        src:
+          ru: scenarios/bot-sales-statistics/captures/ru/st_03_summary.png
+          en: scenarios/bot-sales-statistics/captures/en/st_03_summary.png
+          es: scenarios/bot-sales-statistics/captures/es/st_03_summary.png
+    texts:
+      ru:
+        line1: "ПРОДАЖИ"
+        line2: "В ЛЮБОЙ МОМЕНТ"
+        sub: "Просмотры страницы, сводка и выгрузка CSV в боте."
+      en:
+        line1: "YOUR SALES"
+        line2: "AT ANY TIME"
+        sub: "Page views, the summary and the CSV export in the bot."
+      es:
+        line1: "TUS VENTAS"
+        line2: "EN CUALQUIER MOMENTO"
+        sub: "Visitas, resumen y exportación CSV en el bot."
+
+  bot-smart-price:
+    # The price steps before saving. The capture has an empty lower part, so crop it.
+    item:
+      default:
+        kind: phone
+        crop: { x: 0, y: 0, w: 1, h: 0.66 }
+        src:
+          ru: scenarios/bot-smart-price/captures/ru/sp_04_preview.png
+          en: scenarios/bot-smart-price/captures/en/sp_04_preview.png
+          es: scenarios/bot-smart-price/captures/es/sp_04_preview.png
+    texts:
+      ru:
+        line1: "УМНАЯ ЦЕНА"
+        line2: "РАСТЁТ САМА"
+        sub: "Задайте правило в боте: цена поднимется без вас."
+      en:
+        line1: "SMART PRICE"
+        line2: "GOES UP AUTOMATICALLY"
+        sub: "Give the rule in the bot: the price goes up without you."
+      es:
+        line1: "PRECIO INTELIGENTE"
+        line2: "SUBE SOLO"
+        sub: "Pon la regla en el bot: el precio sube sin ti."
+
+  bot-brand-page:
+    # The card of a new brand. The capture has an empty lower part, so crop it.
+    item:
+      default:
+        kind: phone
+        crop: { x: 0, y: 0, w: 1, h: 0.66 }
+        src:
+          ru: scenarios/bot-brand-page/captures/ru/br_04_card.png
+          en: scenarios/bot-brand-page/captures/en/br_04_card.png
+          es: scenarios/bot-brand-page/captures/es/br_04_card.png
+    texts:
+      ru:
+        line1: "ВАШ БРЕНД"
+        line2: "И ЕГО СТРАНИЦА"
+        sub: "Все мероприятия бренда на одной странице."
+      en:
+        line1: "YOUR BRAND"
+        line2: "AND ITS PAGE"
+        sub: "All events of the brand on one page."
+      es:
+        line1: "TU MARCA"
+        line2: "Y SU PÁGINA"
+        sub: "Todos los eventos de la marca en una página."

@@ -1,0 +1,96 @@
+id: bot-sales-statistics
+fps: 30
+# To add a language: add it here, add its text to every narration, title and heading,
+# and put its pictures in captures/<language>/. Nothing else changes.
+languages: [ru, en, es]
+title:
+  ru: "Статистика продаж в боте"
+  en: "Sales statistics in the bot"
+  es: "Estadísticas de ventas en el bot"
+
+# Instruction film about the event-center bot: where the bot shows page views, the sales summary and the CSV export of an event.
+# The orders of the film are free test orders, thus the money totals are zero.
+# Pictures are made on the staging stand with the test Telegram account in the organization
+# "Luna Events" (see README, "Bot instruction films") and are not committed.
+# Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in apply-in-telegram-bot.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [9x16, 4x5]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-result
+    narration:
+      ru: "Сколько билетов продано и сколько людей смотрят страницу? Ответ — в боте Arena Sold Out, в любой момент."
+      en: "How many tickets are sold, and how many people look at the page? The answer is in the Arena Sold Out bot at any time."
+      es: "¿Cuántas entradas se han vendido y cuánta gente mira la página? La respuesta está en el bot de Arena Sold Out, en cualquier momento."
+    pause_after: 0.4
+    shots:
+      - image: captures/st_03_summary.png
+        frame: phone
+        title: { ru: "Продажи — в любой момент", en: "Sales — at any time", es: "Ventas, en cualquier momento" }
+        scroll: { from: 0.4, to: 0.7 }
+
+  - id: s2-card
+    narration:
+      ru: "В карточке мероприятия видно просмотры страницы за тридцать дней, проданные и свободные места, оплаченные заказы и возвраты."
+      en: "The event card shows the page views for thirty days, the sold and free seats, the paid orders and the refunds."
+      es: "La ficha del evento muestra las visitas a la página en treinta días, las plazas vendidas y libres, los pedidos pagados y las devoluciones."
+    pause_after: 0.6
+    shots:
+      - image: captures/st_00_menu.png
+        frame: phone
+        title: { ru: "Меню → «Мои мероприятия»", en: "Menu → «My events»", es: "Menú → «Mis eventos»" }
+        scroll: { from: 0.6, to: 0.9 }
+      - image: captures/st_01_card.png
+        frame: phone
+        title: { ru: "Карточка мероприятия", en: "Event card", es: "Ficha del evento" }
+        weight: 3
+        scroll: { from: 0.2, to: 0.7 }
+
+  - id: s3-summary
+    narration:
+      ru: "Нажмите «Продажи и заказы», потом «Сводка». Здесь билеты, заказы, места, пригласительные, скидки и итог по каждой категории."
+      en: "Press «Sales and orders», then «Summary». Here are the tickets, the orders, the seats, the invitations, the discounts and the total for each category."
+      es: "Pulsa «Ventas y pedidos» y luego «Resumen». Aquí están las entradas, los pedidos, las plazas, las invitaciones, los descuentos y el total de cada categoría."
+    pause_after: 0.8
+    shots:
+      - image: captures/st_02_sales.png
+        frame: phone
+        title: { ru: "«Продажи и заказы»", en: "«Sales and orders»", es: "«Ventas y pedidos»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/st_03_summary.png
+        frame: phone
+        title: { ru: "«Сводка»", en: "«Summary»", es: "«Resumen»" }
+        weight: 3
+        scroll: { from: 0.3, to: 0.9 }
+
+  - id: s4-csv
+    narration:
+      ru: "Кнопка «Выгрузка CSV» присылает файл с продажами. В нём есть контакты покупателей, поэтому держите его у себя."
+      en: "The button «Export CSV» sends a file with the sales. It holds the contacts of the buyers, thus keep it private."
+      es: "El botón «Exportar CSV» te envía un archivo con las ventas. Contiene datos de los compradores, así que no lo compartas."
+    pause_after: 1.2
+    shots:
+      - image: captures/st_04_csv.png
+        frame: phone
+        title: { ru: "«Выгрузка CSV»", en: "«Export CSV»", es: "«Exportar CSV»" }
+        scroll: { from: 0.5, to: 0.9 }
+
+  - id: cta
+    narration:
+      ru: "Оставьте заявку на arenasoldout.com или в нашем Telegram-боте. Мы ждём вас."
+      en: "Apply at arenasoldout.com or in our Telegram bot. We look forward to working with you."
+      es: "Deja tu solicitud en arenasoldout.com o en nuestro bot de Telegram. Te esperamos."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Оставьте заявку", en: "Apply now", es: "Deja tu solicitud" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"
