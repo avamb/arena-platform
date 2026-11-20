@@ -48,7 +48,7 @@ scenes:
         frame: phone
         title: { ru: "Дата и время на билете", en: "The date and the time on the ticket", es: "La fecha y la hora en la entrada" }
         weight: 4
-        zoom: { from: 1.0, to: 1.25, x: 0.75, y: 0.1 }
+        zoom: { from: 1.0, to: 1.08, x: 0.5, y: 0.0 }
 
   - id: s3-zone
     narration:
@@ -61,7 +61,7 @@ scenes:
         frame: phone
         title: { ru: "Время — по месту проведения", en: "The time is the local time of the venue", es: "La hora es la del lugar del evento" }
         weight: 4
-        zoom: { from: 1.15, to: 1.3, x: 0.4, y: 0.3 }
+        zoom: { from: 1.0, to: 1.1, x: 0.5, y: 0.25 }
 
   - id: s4-doors
     narration:
@@ -74,12 +74,12 @@ scenes:
         frame: phone
         title: { ru: "«Вход с» — раньше начала", en: "Doors open: before the start", es: "Apertura de puertas: antes del inicio" }
         weight: 3
-        zoom: { from: 1.0, to: 1.2, x: 0.5, y: 0.25 }
+        zoom: { from: 1.0, to: 1.08, x: 0.5, y: 0.25 }
       - image: captures/z_02_ticket.png
         frame: phone
         title: { ru: "Та же строка на билете", en: "The same line on the ticket", es: "La misma línea en la entrada" }
         weight: 2
-        zoom: { from: 1.1, to: 1.3, x: 0.75, y: 0.1 }
+        zoom: { from: 1.0, to: 1.08, x: 0.5, y: 0.0 }
 
   - id: s5-page
     narration:
