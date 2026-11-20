@@ -1,0 +1,112 @@
+id: web-sales-statistics
+fps: 30
+languages: [ru, en, es]
+title:
+  ru: "Статистика продаж: итоги, посещения страницы, воронка и сводка"
+  en: "Sales statistics: totals, page visits, the funnel and the summary"
+  es: "Estadísticas de venta: totales, visitas a la página, el embudo y el resumen"
+
+# Pictures in captures/ are made by scripts/capture-web.ts (stage `stats`, see README, "How-to films of the web
+# event center") and are not committed. The numbers are small: they come from the test visits and the free test
+# order of these films.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [16x9]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-totals
+    narration:
+      ru: "Сколько билетов продано и откуда пришли покупатели? Откройте мероприятие. В разделе «Продажи и заказы» видны итоги: продано, свободно, оплачено, по каждой категории."
+      en: "How many tickets are sold, and where did the buyers come from? Open the event. The section Sales and orders shows the totals: sold, free, paid, for each category."
+      es: "¿Cuántas entradas se han vendido y de dónde llegaron los compradores? Abre el evento. La sección de ventas y pedidos muestra los totales: vendidas, libres, pagado, por cada categoría."
+    pause_after: 0.4
+    shots:
+      - image: captures/t_01_totals.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Мероприятие → «Продажи и заказы»", en: "Event → Sales and orders", es: "Evento → ventas y pedidos" }
+        zoom: { from: 1.3, to: 1.45, x: 0.5, y: 0.5 }
+
+  - id: s2-page
+    narration:
+      ru: "Ниже — статистика страницы: сколько раз её открыли и из каких источников пришли посетители. Это оценка: ботов Arena считает отдельно."
+      en: "Below are the page statistics: how many times the page was opened and where the visitors came from. This is an estimate: Arena counts bots separately."
+      es: "Debajo están las estadísticas de la página: cuántas veces se abrió y de dónde llegaron los visitantes. Es una estimación: Arena cuenta los bots aparte."
+    pause_after: 0.4
+    shots:
+      - image: captures/t_02_page_stats.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Статистика страницы", en: "Page statistics", es: "Estadísticas de la página" }
+        zoom: { from: 1.3, to: 1.45, x: 0.5, y: 0.35 }
+
+  - id: s3-funnel
+    narration:
+      ru: "Кнопка «Воронка продаж» показывает путь покупателя по шагам: увидел мероприятие, выбрал билеты, начал оформление, открыл оплату, оплатил. Видно, на каком шаге люди уходят."
+      en: "The button Sales funnel shows the way of the buyer step by step: saw the event, selected tickets, started checkout, opened the payment page, paid. You see at which step people leave."
+      es: "El botón del embudo de ventas muestra el camino del comprador paso a paso: vio el evento, eligió entradas, empezó la compra, abrió el pago, pagó. Ves en qué paso se va la gente."
+    pause_after: 0.4
+    shots:
+      - image: captures/t_03_funnel.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Воронка продаж", en: "Sales funnel", es: "Embudo de ventas" }
+        weight: 2
+        zoom: { from: 1.15, to: 1.25, x: 0.5, y: 0.4 }
+      - image: captures/t_04_steps.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "От первого взгляда до оплаты", en: "From the first look to the payment", es: "De la primera mirada al pago" }
+        weight: 4
+        zoom: { from: 1.2, to: 1.3, x: 0.5, y: 0.35 }
+
+  - id: s4-sources
+    narration:
+      ru: "Таблица источников показывает ту же воронку по каждой ссылке и кампании, например по QR-коду с афиши."
+      en: "The table of sources shows the same funnel for each link and campaign, for example for the QR code from a poster."
+      es: "La tabla de fuentes muestra el mismo embudo por cada enlace y campaña, por ejemplo por el código QR de un cartel."
+    pause_after: 0.4
+    shots:
+      - image: captures/t_05_sources.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Откуда пришли покупатели", en: "Where buyers came from", es: "De dónde llegaron los compradores" }
+        zoom: { from: 1.15, to: 1.25, x: 0.5, y: 0.9 }
+
+  - id: s5-summary
+    narration:
+      ru: "Раздел «Сводка продаж» собирает все сеансы за период: выручка, заказы, проданные билеты и пригласительные. Отсюда же скачивается Excel для бухгалтера."
+      en: "The section Summary collects all dates of a period: the revenue, the orders, the sold tickets and the invitations. Here you also download the Excel file for the accountant."
+      es: "La sección de resumen reúne todas las sesiones de un periodo: ingresos, pedidos, entradas vendidas e invitaciones. Aquí también descargas el Excel para contabilidad."
+    pause_after: 1.0
+    shots:
+      - image: captures/t_06_summary.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Сводка за период", en: "Summary of a period", es: "Resumen de un periodo" }
+        weight: 3
+        zoom: { from: 1.4, to: 1.55, x: 0.15, y: 0.4 }
+      - image: captures/t_07_summary_more.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Итоги и Excel для бухгалтера", en: "Totals and Excel for the accountant", es: "Totales y Excel para contabilidad" }
+        weight: 3
+        zoom: { from: 1.4, to: 1.55, x: 0.15, y: 0.4 }
+
+  - id: s6-cta
+    narration:
+      ru: "Следите за продажами в ивент-центре Arena Sold Out."
+      en: "Follow your sales in the Arena Sold Out event center."
+      es: "Sigue tus ventas en el centro de eventos de Arena Sold Out."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Статистика продаж", en: "Sales statistics", es: "Estadísticas de venta" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://arenasoldout.com"

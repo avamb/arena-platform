@@ -159,7 +159,7 @@ const ShotView: React.FC<{
       }
       body = (
         <>
-          <BrowserFrame box={box} barH={barH}>
+          <BrowserFrame box={box} barH={barH} address={shot.address}>
             {(c: Box) => {
               const ph = vertical ? (c.w * ih) / iw : c.h;
               const view = vertical ? { w: c.w, h: c.h, cx: c.w / 2, cy: c.h / 2 } : undefined;
@@ -259,7 +259,7 @@ const SceneView: React.FC<{
         const shotLead = j > 0 ? FADE_FRAMES : 0;
         return (
           <Sequence key={j} from={lead + shot.startFrame - shotLead} durationInFrames={shot.frames + shotLead} layout="none">
-            <ShotView shot={shot} format={format} width={width} height={height} background={background} lead={shotLead} />
+            <ShotView shot={{ ...shot, ...(shot.perFormat?.[format] ?? {}) }} format={format} width={width} height={height} background={background} lead={shotLead} />
           </Sequence>
         );
       })}
@@ -316,7 +316,7 @@ export const Video: React.FC<VideoProps> = ({ manifest, format, width, height })
   const allCues = React.useMemo(() => manifest.scenes.flatMap((s) => s.cues), [manifest]);
   // In 16:9 the subtitles of a phone shot stand in the right column, beside the phone.
   const current = manifest.scenes
-    .flatMap((sc) => sc.shots.map((sh) => ({ sh, start: sc.startFrame + sh.startFrame })))
+    .flatMap((sc) => sc.shots.map((sh) => ({ sh: { ...sh, ...(sh.perFormat?.[format] ?? {}) }, start: sc.startFrame + sh.startFrame })))
     .filter((x) => x.start <= frame)
     .pop();
   const p169 = phone169(width, height);

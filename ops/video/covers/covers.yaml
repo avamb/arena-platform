@@ -55,25 +55,24 @@ films:
         line2: "DIRECTAMENTE EN TELEGRAM"
         sub: "Unos minutos en el bot y ya estás en Arena Sold Out."
 
-  onb-02:
+  apply-on-website:
     # The site's "Start selling" application page: desktop window for 16x9, phone for the vertical formats.
-    # Captures live in another worktree (read only).
     item:
       16x9:
         kind: browser
         crop: { x: 0.04, y: 0.14, w: 0.62, h: 0.62 }
         src:
-          ru: C:/Projects/arena_new/.claude/worktrees/serene-fermat-bab452/ops/video/scenarios/onb-02/captures/d_f_01_start.png
-          en: C:/Projects/arena_new/.claude/worktrees/serene-fermat-bab452/ops/video/scenarios/onb-02/captures/en/d_f_01_start.png
-          es: C:/Projects/arena_new/.claude/worktrees/serene-fermat-bab452/ops/video/scenarios/onb-02/captures/es/d_f_01_start.png
+          ru: scenarios/apply-on-website/captures/d_f_01_start.png
+          en: scenarios/apply-on-website/captures/en/d_f_01_start.png
+          es: scenarios/apply-on-website/captures/es/d_f_01_start.png
       default:
         kind: phone
         status: "#ffffff"
         crop: { x: 0, y: 0, w: 1, h: 0.5 }
         src:
-          ru: C:/Projects/arena_new/.claude/worktrees/serene-fermat-bab452/ops/video/scenarios/onb-02/captures/f_01_start.png
-          en: C:/Projects/arena_new/.claude/worktrees/serene-fermat-bab452/ops/video/scenarios/onb-02/captures/en/f_01_start.png
-          es: C:/Projects/arena_new/.claude/worktrees/serene-fermat-bab452/ops/video/scenarios/onb-02/captures/es/f_01_start.png
+          ru: scenarios/apply-on-website/captures/f_01_start.png
+          en: scenarios/apply-on-website/captures/en/f_01_start.png
+          es: scenarios/apply-on-website/captures/es/f_01_start.png
     texts:
       ru:
         line1: "НАЧНИТЕ ПРОДАВАТЬ"
@@ -87,6 +86,318 @@ films:
         line1: "EMPIEZA A VENDER"
         line2: "SOLICITUD EN LA WEB"
         sub: "De la solicitud a tu centro de eventos."
+
+  # The how-to films of the web event center: a desktop capture in a browser window for 16x9,
+  # the middle column of the same capture (or the poster) in a phone frame for the vertical formats.
+  web-create-event:
+    formats: [16x9, 9x16, 4x5]
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.27, y: 0.12, w: 0.46, h: 0.46 }
+        src:
+          ru: scenarios/web-create-event/captures/w_03_name.png
+          en: scenarios/web-create-event/captures/en/w_03_name.png
+          es: scenarios/web-create-event/captures/es/w_03_name.png
+      default:
+        kind: phone
+        status: "#0b1230"
+        src:
+          ru: scenarios/web-create-event/assets/poster_4x5.png
+          en: scenarios/web-create-event/assets/en/poster_4x5.png
+          es: scenarios/web-create-event/assets/es/poster_4x5.png
+    texts:
+      ru:
+        line1: "МЕРОПРИЯТИЕ ВРУЧНУЮ"
+        line2: "ОТ НАЗВАНИЯ ДО ПРОДАЖИ"
+        sub: "Название, дата, площадка, билеты и афиша в веб-ивент-центре."
+      en:
+        line1: "ADD AN EVENT BY HAND"
+        line2: "FROM THE NAME TO THE SALE"
+        sub: "Name, date, venue, tickets and poster in the web event center."
+      es:
+        line1: "CREA UN EVENTO A MANO"
+        line2: "DEL NOMBRE A LA VENTA"
+        sub: "Nombre, fecha, recinto, entradas y cartel en el centro de eventos web."
+
+  web-payments-status:
+    formats: [16x9, 9x16, 4x5]
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.27, y: 0.12, w: 0.46, h: 0.46 }
+        src:
+          ru: scenarios/web-payments-status/captures/p_03_not_connected.png
+          en: scenarios/web-payments-status/captures/en/p_03_not_connected.png
+          es: scenarios/web-payments-status/captures/es/p_03_not_connected.png
+      default:
+        kind: phone
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.88 }
+        src:
+          ru: scenarios/web-payments-status/captures/p_03_not_connected.png
+          en: scenarios/web-payments-status/captures/en/p_03_not_connected.png
+          es: scenarios/web-payments-status/captures/es/p_03_not_connected.png
+    texts:
+      ru:
+        line1: "ПРИЁМ ОПЛАТЫ"
+        line2: "ПОДКЛЮЧЁН ИЛИ НЕТ?"
+        sub: "Где это посмотреть в ивент-центре."
+      en:
+        line1: "PAYMENTS FROM BUYERS"
+        line2: "CONNECTED OR NOT?"
+        sub: "Where to see it in the event center."
+      es:
+        line1: "COBRO A COMPRADORES"
+        line2: "¿CONECTADO O NO?"
+        sub: "Dónde verlo en el centro de eventos."
+
+  web-organization-details:
+    formats: [16x9, 9x16, 4x5]
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.5 }
+        src:
+          ru: scenarios/web-organization-details/captures/o_03_legal.png
+          en: scenarios/web-organization-details/captures/en/o_03_legal.png
+          es: scenarios/web-organization-details/captures/es/o_03_legal.png
+      default:
+        kind: phone
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.88 }
+        src:
+          ru: scenarios/web-organization-details/captures/o_03_legal.png
+          en: scenarios/web-organization-details/captures/en/o_03_legal.png
+          es: scenarios/web-organization-details/captures/es/o_03_legal.png
+    texts:
+      ru:
+        line1: "ДАННЫЕ ОРГАНИЗАЦИИ"
+        line2: "ЧТО ВИДИТ ПОКУПАТЕЛЬ"
+        sub: "Юридические данные и контакты: заполните один раз."
+      en:
+        line1: "ORGANIZATION DATA"
+        line2: "WHAT THE BUYER SEES"
+        sub: "Legal data and contacts: fill them in once."
+      es:
+        line1: "DATOS DE LA ORGANIZACIÓN"
+        line2: "LO QUE VE EL COMPRADOR"
+        sub: "Datos legales y contactos: rellénalos una sola vez."
+
+  web-sales-link-and-qr:
+    formats: [16x9, 9x16, 4x5]
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.1, y: 0.03, w: 0.5, h: 0.62 }
+        src:
+          ru: scenarios/web-sales-link-and-qr/captures/k_05_qr.png
+          en: scenarios/web-sales-link-and-qr/captures/en/k_05_qr.png
+          es: scenarios/web-sales-link-and-qr/captures/es/k_05_qr.png
+      default:
+        kind: phone
+        crop: { x: 0.13, y: 0.05, w: 0.32, h: 0.7 }
+        src:
+          ru: scenarios/web-sales-link-and-qr/captures/k_05_qr.png
+          en: scenarios/web-sales-link-and-qr/captures/en/k_05_qr.png
+          es: scenarios/web-sales-link-and-qr/captures/es/k_05_qr.png
+    texts:
+      ru:
+        line1: "ССЫЛКА И QR"
+        line2: "ДЛЯ КАЖДОЙ АФИШИ"
+        sub: "Каждый скан считается, заказы привязаны к коду."
+      en:
+        line1: "LINK AND QR"
+        line2: "FOR EACH POSTER"
+        sub: "Each scan is counted, orders are tied to the code."
+      es:
+        line1: "ENLACE Y QR"
+        line2: "PARA CADA CARTEL"
+        sub: "Cada escaneo se cuenta y los pedidos quedan ligados al código."
+
+  web-orders-and-refund:
+    formats: [16x9, 9x16, 4x5]
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.5 }
+        src:
+          ru: scenarios/web-orders-and-refund/captures/d_02_card.png
+          en: scenarios/web-orders-and-refund/captures/en/d_02_card.png
+          es: scenarios/web-orders-and-refund/captures/es/d_02_card.png
+      default:
+        kind: phone
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.88 }
+        src:
+          ru: scenarios/web-orders-and-refund/captures/d_02_card.png
+          en: scenarios/web-orders-and-refund/captures/en/d_02_card.png
+          es: scenarios/web-orders-and-refund/captures/es/d_02_card.png
+    texts:
+      ru:
+        line1: "ЗАКАЗЫ"
+        line2: "БИЛЕТЫ И ВОЗВРАТ"
+        sub: "Карточка заказа, повторная отправка билетов и возврат."
+      en:
+        line1: "ORDERS"
+        line2: "TICKETS AND REFUNDS"
+        sub: "The order card, sending tickets again and refunds."
+      es:
+        line1: "PEDIDOS"
+        line2: "ENTRADAS Y DEVOLUCIONES"
+        sub: "La ficha del pedido, reenviar entradas y devoluciones."
+
+  web-promo-codes:
+    formats: [16x9, 9x16, 4x5]
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.5 }
+        src:
+          ru: scenarios/web-promo-codes/captures/r_05_card.png
+          en: scenarios/web-promo-codes/captures/en/r_05_card.png
+          es: scenarios/web-promo-codes/captures/es/r_05_card.png
+      default:
+        kind: phone
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.88 }
+        src:
+          ru: scenarios/web-promo-codes/captures/r_05_card.png
+          en: scenarios/web-promo-codes/captures/en/r_05_card.png
+          es: scenarios/web-promo-codes/captures/es/r_05_card.png
+    texts:
+      ru:
+        line1: "ПРОМОКОДЫ"
+        line2: "СКИДКА ПО КОДУ"
+        sub: "Создайте код, и покупатель применит его в корзине."
+      en:
+        line1: "PROMO CODES"
+        line2: "A DISCOUNT BY CODE"
+        sub: "Make a code, and the buyer uses it in the cart."
+      es:
+        line1: "CÓDIGOS PROMOCIONALES"
+        line2: "DESCUENTO CON CÓDIGO"
+        sub: "Crea un código y el comprador lo usa en el carrito."
+
+  web-invitations:
+    formats: [16x9, 9x16, 4x5]
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.48, y: 0.08, w: 0.42, h: 0.5 }
+        src:
+          ru: scenarios/web-invitations/captures/i_04_guest.png
+          en: scenarios/web-invitations/captures/en/i_04_guest.png
+          es: scenarios/web-invitations/captures/es/i_04_guest.png
+      default:
+        kind: phone
+        crop: { x: 0.5, y: 0.08, w: 0.3, h: 0.7 }
+        src:
+          ru: scenarios/web-invitations/captures/i_04_guest.png
+          en: scenarios/web-invitations/captures/en/i_04_guest.png
+          es: scenarios/web-invitations/captures/es/i_04_guest.png
+    texts:
+      ru:
+        line1: "ПРИГЛАСИТЕЛЬНЫЕ"
+        line2: "БИЛЕТ ДЛЯ ГОСТЯ"
+        sub: "Бесплатный билет гостю, которого вы называете."
+      en:
+        line1: "INVITATIONS"
+        line2: "A TICKET FOR A GUEST"
+        sub: "A free ticket for a guest that you name."
+      es:
+        line1: "INVITACIONES"
+        line2: "UNA ENTRADA PARA UN INVITADO"
+        sub: "Una entrada gratuita para un invitado que tú indicas."
+
+  web-invite-manager:
+    formats: [16x9, 9x16, 4x5]
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.5 }
+        src:
+          ru: scenarios/web-invite-manager/captures/m_04_invited.png
+          en: scenarios/web-invite-manager/captures/en/m_04_invited.png
+          es: scenarios/web-invite-manager/captures/es/m_04_invited.png
+      default:
+        kind: phone
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.88 }
+        src:
+          ru: scenarios/web-invite-manager/captures/m_04_invited.png
+          en: scenarios/web-invite-manager/captures/en/m_04_invited.png
+          es: scenarios/web-invite-manager/captures/es/m_04_invited.png
+    texts:
+      ru:
+        line1: "КОМАНДА"
+        line2: "ПРИГЛАСИТЕ МЕНЕДЖЕРА"
+        sub: "Менеджер ведёт мероприятия, заказы и промокоды."
+      en:
+        line1: "TEAM"
+        line2: "INVITE A MANAGER"
+        sub: "A manager works with events, orders and promo codes."
+      es:
+        line1: "EQUIPO"
+        line2: "INVITA A UN GESTOR"
+        sub: "Un gestor lleva los eventos, los pedidos y los códigos."
+
+  web-change-price:
+    formats: [16x9, 9x16, 4x5]
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.12, y: 0.1, w: 0.5, h: 0.5 }
+        src:
+          ru: scenarios/web-change-price/captures/c_03_new_price.png
+          en: scenarios/web-change-price/captures/en/c_03_new_price.png
+          es: scenarios/web-change-price/captures/es/c_03_new_price.png
+      default:
+        kind: phone
+        crop: { x: 0.13, y: 0.1, w: 0.42, h: 0.88 }
+        src:
+          ru: scenarios/web-change-price/captures/c_03_new_price.png
+          en: scenarios/web-change-price/captures/en/c_03_new_price.png
+          es: scenarios/web-change-price/captures/es/c_03_new_price.png
+    texts:
+      ru:
+        line1: "ЦЕНА БИЛЕТА"
+        line2: "ИЗМЕНИТЕ В ЛЮБОЙ МОМЕНТ"
+        sub: "Новая цена действует для новых покупок."
+      en:
+        line1: "TICKET PRICE"
+        line2: "CHANGE IT AT ANY TIME"
+        sub: "The new price applies to new purchases."
+      es:
+        line1: "PRECIO DE LA ENTRADA"
+        line2: "CÁMBIALO CUANDO QUIERAS"
+        sub: "El nuevo precio vale para las compras nuevas."
+
+  web-move-or-cancel-session:
+    formats: [16x9, 9x16, 4x5]
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.12, y: 0.12, w: 0.5, h: 0.6 }
+        src:
+          ru: scenarios/web-move-or-cancel-session/captures/v_02_move.png
+          en: scenarios/web-move-or-cancel-session/captures/en/v_02_move.png
+          es: scenarios/web-move-or-cancel-session/captures/es/v_02_move.png
+      default:
+        kind: phone
+        crop: { x: 0.13, y: 0.1, w: 0.42, h: 0.88 }
+        src:
+          ru: scenarios/web-move-or-cancel-session/captures/v_02_move.png
+          en: scenarios/web-move-or-cancel-session/captures/en/v_02_move.png
+          es: scenarios/web-move-or-cancel-session/captures/es/v_02_move.png
+    texts:
+      ru:
+        line1: "ПЕРЕНОС И ОТМЕНА"
+        line2: "СЕАНСА"
+        sub: "Покупатели получат письмо об изменении."
+      en:
+        line1: "MOVE OR CANCEL"
+        line2: "A DATE OF AN EVENT"
+        sub: "The buyers get a letter about the change."
+      es:
+        line1: "MOVER O CANCELAR"
+        line2: "UNA SESIÓN"
+        sub: "Los compradores reciben un correo sobre el cambio."
 
   bot-create-event-from-poster:
     # The bot has read the poster; the capture has an empty lower part, so crop it.
@@ -136,6 +447,204 @@ films:
         line2: "Y CÓDIGO QR"
         sub: "El bot te da un enlace y un código para el cartel, y cuenta los escaneos."
 
+  web-brands:
+    formats: [16x9, 9x16, 4x5]
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.2, y: 0.08, w: 0.5, h: 0.5 }
+        src:
+          ru: scenarios/web-brands/captures/n_05_card.png
+          en: scenarios/web-brands/captures/en/n_05_card.png
+          es: scenarios/web-brands/captures/es/n_05_card.png
+      default:
+        kind: phone
+        crop: { x: 0.24, y: 0.08, w: 0.36, h: 0.88 }
+        src:
+          ru: scenarios/web-brands/captures/n_05_card.png
+          en: scenarios/web-brands/captures/en/n_05_card.png
+          es: scenarios/web-brands/captures/es/n_05_card.png
+    texts:
+      ru:
+        line1: "ВАШ БРЕНД"
+        line2: "НА КАЖДОМ БИЛЕТЕ"
+        sub: "Продавайте под своим именем, со своей страницей."
+      en:
+        line1: "YOUR BRAND"
+        line2: "ON EACH TICKET"
+        sub: "Sell under your own name, with a page of its own."
+      es:
+        line1: "TU MARCA"
+        line2: "EN CADA ENTRADA"
+        sub: "Vende con tu propio nombre y con una página propia."
+
+  web-refund-order:
+    formats: [16x9, 9x16, 4x5]
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.26, y: 0.1, w: 0.48, h: 0.5 }
+        src:
+          ru: scenarios/web-refund-order/captures/g_06_final.png
+          en: scenarios/web-refund-order/captures/en/g_06_final.png
+          es: scenarios/web-refund-order/captures/es/g_06_final.png
+      default:
+        kind: phone
+        crop: { x: 0.27, y: 0.08, w: 0.4, h: 0.9 }
+        src:
+          ru: scenarios/web-refund-order/captures/g_06_final.png
+          en: scenarios/web-refund-order/captures/en/g_06_final.png
+          es: scenarios/web-refund-order/captures/es/g_06_final.png
+    texts:
+      ru:
+        line1: "ВОЗВРАТ ДЕНЕГ"
+        line2: "ИЗ КАРТОЧКИ ЗАКАЗА"
+        sub: "Выберите билеты, укажите причину и подтвердите."
+      en:
+        line1: "A REFUND"
+        line2: "FROM THE ORDER CARD"
+        sub: "Select the tickets, give the reason and confirm."
+      es:
+        line1: "DEVOLVER EL DINERO"
+        line2: "DESDE EL PEDIDO"
+        sub: "Elige las entradas, indica el motivo y confirma."
+
+  web-sales-statistics:
+    formats: [16x9, 9x16, 4x5]
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.25, y: 0.08, w: 0.62, h: 0.62 }
+        src:
+          ru: scenarios/web-sales-statistics/captures/t_04_steps.png
+          en: scenarios/web-sales-statistics/captures/en/t_04_steps.png
+          es: scenarios/web-sales-statistics/captures/es/t_04_steps.png
+      default:
+        kind: phone
+        crop: { x: 0.3, y: 0.08, w: 0.4, h: 0.88 }
+        src:
+          ru: scenarios/web-sales-statistics/captures/t_04_steps.png
+          en: scenarios/web-sales-statistics/captures/en/t_04_steps.png
+          es: scenarios/web-sales-statistics/captures/es/t_04_steps.png
+    texts:
+      ru:
+        line1: "СТАТИСТИКА ПРОДАЖ"
+        line2: "ОТ ПРОСМОТРА ДО ОПЛАТЫ"
+        sub: "Итоги, посещения страницы, воронка и сводка."
+      en:
+        line1: "SALES STATISTICS"
+        line2: "FROM A LOOK TO A PAYMENT"
+        sub: "Totals, page visits, the funnel and the summary."
+      es:
+        line1: "ESTADÍSTICAS DE VENTA"
+        line2: "DE LA VISITA AL PAGO"
+        sub: "Totales, visitas a la página, el embudo y el resumen."
+
+  web-buyer-messages-and-notifications:
+    formats: [16x9, 9x16, 4x5]
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.5 }
+        src:
+          ru: scenarios/web-buyer-messages-and-notifications/captures/g_02_on.png
+          en: scenarios/web-buyer-messages-and-notifications/captures/en/g_02_on.png
+          es: scenarios/web-buyer-messages-and-notifications/captures/es/g_02_on.png
+      default:
+        kind: phone
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.88 }
+        src:
+          ru: scenarios/web-buyer-messages-and-notifications/captures/g_02_on.png
+          en: scenarios/web-buyer-messages-and-notifications/captures/en/g_02_on.png
+          es: scenarios/web-buyer-messages-and-notifications/captures/es/g_02_on.png
+    texts:
+      ru:
+        line1: "ВЕРНИТЕ ПОКУПАТЕЛЯ"
+        line2: "ПИСЬМА И УВЕДОМЛЕНИЯ"
+        sub: "Напоминание о неоплаченном заказе, подписка и сообщения о продажах."
+      en:
+        line1: "BRING THE BUYER BACK"
+        line2: "MESSAGES AND NOTIFICATIONS"
+        sub: "A reminder about an unpaid order, a subscription and sales notifications."
+      es:
+        line1: "RECUPERA AL COMPRADOR"
+        line2: "MENSAJES Y AVISOS"
+        sub: "Recordatorio de pedido sin pagar, suscripción y avisos de ventas."
+
+  web-entrance-and-guest-list:
+    formats: [16x9, 9x16, 4x5]
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.25, y: 0.06, w: 0.52, h: 0.52 }
+        src:
+          ru: scenarios/web-entrance-and-guest-list/captures/e_01_entrance.png
+          en: scenarios/web-entrance-and-guest-list/captures/en/e_01_entrance.png
+          es: scenarios/web-entrance-and-guest-list/captures/es/e_01_entrance.png
+      default:
+        kind: phone
+        crop: { x: 0.27, y: 0.06, w: 0.4, h: 0.9 }
+        src:
+          ru: scenarios/web-entrance-and-guest-list/captures/e_01_entrance.png
+          en: scenarios/web-entrance-and-guest-list/captures/en/e_01_entrance.png
+          es: scenarios/web-entrance-and-guest-list/captures/es/e_01_entrance.png
+    texts:
+      ru:
+        line1: "ВХОД БЕЗ ОЧЕРЕДИ"
+        line2: "СКАНЕР И СПИСОК ГОСТЕЙ"
+        sub: "Где взять сканер билетов и как получить список гостей."
+      en:
+        line1: "A FAST ENTRANCE"
+        line2: "SCANNER AND GUEST LIST"
+        sub: "Where to get the ticket scanner and how to get the guest list."
+      es:
+        line1: "ENTRADA SIN COLAS"
+        line2: "ESCÁNER Y LISTA DE INVITADOS"
+        sub: "Dónde está el escáner de entradas y cómo recibir la lista de invitados."
+
+  buyer-where-is-my-ticket:
+    item:
+      default:
+        kind: phone
+        src:
+          ru: scenarios/buyer-where-is-my-ticket/captures/y_05_done.png
+          en: scenarios/buyer-where-is-my-ticket/captures/en/y_05_done.png
+          es: scenarios/buyer-where-is-my-ticket/captures/es/y_05_done.png
+    texts:
+      ru:
+        line1: "ГДЕ МОЙ БИЛЕТ?"
+        line2: "ПИСЬМО И PDF"
+        sub: "Где искать билет и что делать, если письмо не пришло."
+      en:
+        line1: "WHERE IS MY TICKET?"
+        line2: "THE E-MAIL AND THE PDF"
+        sub: "Where to find the ticket and what to do if the e-mail did not come."
+      es:
+        line1: "¿DÓNDE ESTÁ MI ENTRADA?"
+        line2: "EL CORREO Y EL PDF"
+        sub: "Dónde buscar la entrada y qué hacer si el correo no llega."
+
+  buyer-how-to-read-the-date:
+    item:
+      default:
+        kind: phone
+        src:
+          ru: scenarios/buyer-how-to-read-the-date/captures/y_02_date.png
+          en: scenarios/buyer-how-to-read-the-date/captures/en/y_02_date.png
+          es: scenarios/buyer-how-to-read-the-date/captures/es/y_02_date.png
+    texts:
+      ru:
+        line1: "КОГДА ПРИХОДИТЬ?"
+        line2: "ДАТА В БИЛЕТЕ"
+        sub: "День мероприятия, время по месту проведения и строка «Вход с»."
+      en:
+        line1: "WHEN TO COME?"
+        line2: "THE DATE ON THE TICKET"
+        sub: "The day of the event, the local time of the venue and the line Doors open."
+      es:
+        line1: "¿CUÁNDO IR?"
+        line2: "LA FECHA DE LA ENTRADA"
+        sub: "El día del evento, la hora local del lugar y la apertura de puertas."
   bot-orders-resend-tickets:
     # An order card in the bot. The capture has an empty lower part, so crop it.
     item:

@@ -182,6 +182,28 @@ scenes:
   space under the picture and use `scroll` (see `sell-tickets-from-poster`, pictures `*_close.png`).
   A chat column is narrower than the screen, thus a zoom larger than 1.2 cuts
   its text at the sides.
+- A picture shot can look different in one format. `per_format` has the keys
+  `16x9`, `9x16`, `4x5`; each holds any of `image`, `frame`, `zoom`,
+  `highlight`, `cursor`, `scroll`, `address`. For that format the given field
+  replaces the shot's own field as a whole, and it also wins over `per_language`.
+  A picture of `per_format` follows the same `<lang>/` folder rule.
+  `address` is the text in the address bar of a `frame: browser` shot: a string,
+  or a mapping language to string.
+
+  ```yaml
+  - image: captures/site/page.png
+    frame: browser
+    address: arenasoldout.com/apply
+    per_format:
+      9x16:
+        frame: phone
+        image: captures/site/page_mobile.png
+        zoom: { from: 1, to: 1.3, y: 0.2 }
+  ```
+
+- `VIDEO_FORMATS=16x9` (a comma list) makes `build:video` render only these
+  formats of the scenario. A format that is not in the scenario is an error.
+  Not set: all formats of the scenario.
 - A QR code is made at build time from the `qr` text. No network.
 - `manifest.json` records for each scene the number of characters sent to the
   voice provider and if the sound came from the cache; the build prints the
@@ -230,6 +252,42 @@ and `assets/es/`; the buyer page was opened with `?lang=en` and `?lang=es`, and
 the web event center with a browser of that language. The sale message is
 English in each film, as in production. The scanner and the payouts list are
 English in each film.
+
+### Film apply-on-website
+
+`scenarios/apply-on-website` shows a new organizer who applies on the website and signs
+in to the web event center (ru, en, es; about 55 seconds). The pictures were
+made on 2026-11-19 with two committed scripts:
+
+- `scripts/capture-apply-on-website.ts <ru|en|es> <form|approve|login|signin>` does the
+  steps in a phone-size browser of the language of the film. Its header lists
+  the environment variables. The steps change data on the stand: each language
+  makes one application, one organization and one owner account.
+- `scripts/render-letter.ts` draws a letter as a phone mail screen. The body is
+  the text of the letter that the stand sent (read from the test mailbox); the
+  bar with the sender and the subject is drawn by the script.
+
+The stand has no copy of the website. The form was filmed on a local run of
+the site repository (`npx astro dev`) with two changes in its working copy
+that are not committed: the API address is the stand, and the captcha key is
+the test key of the captcha provider that always passes (the stand does not
+check the captcha). The stand does not list a local address in its CORS
+settings, thus the script sends the API calls itself (`context.route`) and no
+setting of the stand changes. The one-time tokens of the letters are read from
+the mail jobs of the stand (`VIDEO_STAND_PSQL`).
+
+Before each screenshot the script replaces the test mailbox with
+`carmen@example.com`, the stand name of the organization with `Aurora Events`
+and the local and stand hosts with the public hosts, and it hides the captcha
+box and the fixed bars. The picture `f_04_confirmed.png` of this build was a
+cut of the form block put on an empty phone-size background; the script now
+takes the top of the page instead.
+
+The 16:9 film shows desktop pictures in a browser window with a close-up
+(`per_format` in the scenario); 9:16 and 4:5 show the phone pictures. The
+desktop pictures have the names `d_*.png`. They come from a second run of the
+same scripts with `ONB_VIEW=desktop` (window 1280 x 720, new test addresses
+and organization names) and from `render-letter.ts ... desktop`.
 
 To build without the paid voice: set `VIDEO_VOICE=silent`.
 
@@ -465,6 +523,85 @@ you buy.
 - Background music and a logo sting.
 - Upload to YouTube or Cloudflare Stream.
 
+## How-to films of the web event center (web-*)
+
+Fifteen films show the organizer's web event center in a browser window. They have one format, 16x9.
+Two more films of the same script are for the BUYER (`buyer-*`): a phone frame, formats 9x16 and 4x5.
+
+| Film | Subject | Stage of the capture script |
+|---|---|---|
+| `web-create-event` | add an event by hand, upload the poster, publish, the buyers' page | `event` |
+| `web-payments-status` | the section "Payments from buyers" and its two notes | `pay` |
+| `web-organization-details` | organization data, contact e-mail, the seller block on the buyers' page | `org` |
+| `web-sales-link-and-qr` | a tracked sales link, its QR code and its scan count | `links` |
+| `web-promo-codes` | a new promo code and the cart of a buyer with the code | `promo` |
+| `web-orders-and-refund` | the orders list, the order card, sending tickets again, the refund screens | `order`, `refund` |
+| `web-refund-order` | the refund of a PAID order: tickets, reason, last check, password, the order after it | `paidrefund`, `refunded` |
+| `web-invitations` | a free ticket for a named guest | `invite` |
+| `web-invite-manager` | an invitation of a manager to the team | `team` |
+| `web-change-price` | a new price of a category and the buyer page | `price` |
+| `web-move-or-cancel-session` | moving a date to a new day, cancelling it | `move`, `cancel` |
+| `web-brands` | a brand (the name under which tickets are sold) and its public page | `brand` |
+| `web-sales-statistics` | totals of an event, page statistics, the sales funnel, the summary for a period | `stats` |
+| `web-buyer-messages-and-notifications` | the unpaid-order reminder, the news subscription, sales notifications by the Telegram bot | `messages` |
+| `web-entrance-and-guest-list` | where the ticket scanner is (a mobile app), the guest list as Excel, the tickets of a date | `entrance` |
+| `buyer-where-is-my-ticket` | the page after the order, the ticket letter, the PDF, the form "Write to the organizer" | `ticket` |
+| `buyer-how-to-read-the-date` | the date of the event on the page, in the letter and on the ticket, the line "Doors open" | pictures of `ticket` |
+
+1. Draw the poster of the invented event: `npx tsx scripts/make-web-posters.ts`.
+2. Take the pictures for each language, in this order: `npx tsx scripts/capture-web.ts <ru|en|es> event`,
+   then `org`, `links`, `pay`, `promo`, `order`, `refund`, `invite`, `team`, `price`, `move`, `brand`, `stats`, `messages`, and `cancel` last. The stages `ticket` and `entrance` need a new event after that (see below). The script signs in as the test organizer of film apply-on-website
+   (`VIDEO_ONB_EMAIL_<LANG>`, `VIDEO_ONB_ORG_<LANG>`, `VIDEO_ONB_PASSWORD`, `VIDEO_BASE_URL` in `.env`).
+3. Build: `npm run build:video -- web-create-event ru` and so on.
+
+Rules of these pictures:
+
+- The script opens only staging hosts. It replaces the stand data in the page before each picture
+  (mailbox, organization name, `-staging` in hosts) and puts the real text back after it.
+- Stage `event` creates a real event on the stand. `reset` deletes that event (off sale, "Delete", the typed word).
+  `card` repeats the pictures of the event card: it takes the event off sale first and publishes it again. `WEB_STOP=ready` stops before the event is created.
+  `WEB_ONLY=<regexp>` takes only the pictures with such names.
+- Stage `links` creates a real link. `WEB_LINK_EXISTS=1` opens the first link of the list (the link of an earlier run) and does not create a second one.
+  The QR code in the pictures is drawn for the short address on the public host, not for the address of the stand.
+  The buyer's visit uses an ordinary browser name: the stand counts a headless browser as a bot, not as a scan.
+- Stage `pay`: the web event center has no screen where an organizer selects a provider or types its keys.
+  The note of the section is the real one: `p_03_not_connected` in an organization without a provider,
+  `p_05_connected` in the one with a payment config. No picture is staged.
+- `WEB_ACCOUNT=es` takes the pictures of language `<lang>` in the organization of ANOTHER test account: only one
+  test organization has a test payment config and paid orders. The browser language decides the language of the
+  screens; the event and the buyers stay those of that organization. Used by `stats`, `pay`, `paidrefund`, `refunded`.
+- Stage `paidrefund` films the refund of the paid order `WEB_ORDER=<number>`. Without `WEB_REFUND_GO=1` it stops
+  at the password question and sends nothing, so it runs in each language. With `WEB_REFUND_GO=1` it SENDS the
+  refund through the payment provider (test money of the stand, cannot be undone): run it once, in one language,
+  and only after the owner said yes. Stage `refunded` takes the order after the refund in each language.
+  Take the pictures of `stats` before the refund.
+- `WEB_BRAND=1 WEB_STATE=brand` at stage `event` creates one more event sold under the brand of stage `brand`
+  (its state file is `.cache/web-<lang>-brand.json`), so the public page of the brand shows an event.
+- Stage `order` makes a real FREE order on the stand: a promo code of 100 % (`GUEST100`), the buyer Carmen Ortega,
+  the mailbox of the test organizer. No card is typed and no payment page is opened. For a free order the
+  screen "Refund" answers that there is nothing to refund; the refund of a paid order is the film `web-refund-order`, stage `paidrefund`.
+- Stage `team` sends a real invitation letter of the stand to `marco@example.com`.
+- Stages `move` and `cancel` send real letters of the stand to the holders of tickets. Run them only for the
+  event of stage `event`, whose holders are the test addresses of these films. `WEB_STOP=move` and
+  `WEB_STOP=cancel` stop before the change is saved.
+- A half-hidden address on a screen (`a***@a***.com`) is replaced too: it keeps the first letters of the real mailbox.
+- A film is named by what the function does, not by the name of its screen: the screen `/promoters` is "Brands",
+  `/growth` is "Messages to buyers", and the web event center has no ticket scanner (the screen "Entrance" sends
+  the organizer to the scanner app), so no film shows a scan.
+- Stage `brand` creates the brand "Aurora Jazz Club"; stage `messages` switches on the reminder and the subscription.
+- Stage `ticket` needs an event with the line "Doors open": create it with `WEB_DOORS=19:30` at stage `event`.
+  It makes a free order in a phone window (390 x 844) and saves the PDF ticket to `.cache/ticket-<lang>.pdf` when
+  the page shows its link. The masks of the pictures work inside the ticket widget too (shadow DOM).
+- The ticket letter of the buyer films is drawn again from the TEXT of the real letter: copy its lines to
+  `scenarios/buyer-where-is-my-ticket/captures/letters/<lang>.json` with the invented addresses, then
+  `npx tsx scripts/make-ticket-letter.ts <fields.json> <letter.json>` and `npx tsx scripts/render-letter.ts <letter.json> <out.png>`.
+  The PDF ticket becomes a picture with PyMuPDF; the organization name and the contact address in it are replaced.
+  `buyer-how-to-read-the-date` uses copies of these pictures in its own `captures/`.
+- `look` prints the text of a screen of the event center and takes no picture; use it to read a screen before a film is planned.
+- The web event center has no logo of the organization, so `web-organization-details` does not show one.
+- Stage `org` writes the mailbox of the test organizer as the contact e-mail and as the e-mail of the sales page.
+  The stand sends buyers' letters and messages of the page form to it; the pictures show `carmen@example.com`.
+
 ## Covers
 
 Covers are still images for the videos, in the Arena Sold Out Instagram style.
@@ -472,8 +609,9 @@ Run `npm run covers` to make them.
 
 - `covers/cover.html` is the one template. `covers/covers.yaml` holds the texts and the subject images.
 - The script writes each cover next to its film: `out/<film>/<lang>/<film>_<lang>_<format>_cover.png` (folders are created).
-- Formats of a film: the `formats` list in `scenarios/<film>/scenario.yaml` (16x9, 9x16, 4x5 when the key is missing), plus 16x9 always for YouTube. A film with no scenario in this repo (onb-02) gets all three.
-- Films: sell-tickets-from-poster, apply-in-telegram-bot, onb-02 and the bot instruction films (names start with `bot-`). Languages: ru, en, es.
+- Formats of a film: the `formats` list in `scenarios/<film>/scenario.yaml` (16x9, 9x16, 4x5 when the key is missing), plus 16x9 always for YouTube.
+  A film can name its cover formats itself with `formats:` in `covers/covers.yaml`: the films of the web event center are 16x9 only, and their covers are made in all three formats. A film with no scenario in this repo (onb-02) gets all three.
+- Films: sell-tickets-from-poster, apply-in-telegram-bot, apply-on-website, the bot instruction films (names start with `bot-`), the films of the web event center (`web-`) and the films for the buyer (`buyer-`). Languages: ru, en, es.
 - Long lines get a smaller font by themselves, so they never leave the frame.
 - Subject images live in ignored folders. If a file is missing, the cover is made without it.
 - Fonts are system fonts (Impact, Inter, Segoe UI). Nothing is loaded from the network.

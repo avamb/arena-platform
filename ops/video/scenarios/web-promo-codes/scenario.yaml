@@ -1,0 +1,143 @@
+id: web-promo-codes
+fps: 30
+languages: [ru, en, es]
+title:
+  ru: "Промокоды: создать код и как его применяет покупатель"
+  en: "Promo codes: make a code and how the buyer uses it"
+  es: "Códigos promocionales: crear un código y cómo lo usa el comprador"
+
+# Pictures in captures/ are made by scripts/capture-web.ts (stage `promo`, see README, "How-to films of the web
+# event center") and are not committed. The buyer part stops in the cart: nothing is bought.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [16x9]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-result
+    narration:
+      ru: "Промокод даёт покупателю скидку. Покупатель вводит код в корзине и сразу видит новую цену."
+      en: "A promo code gives the buyer a discount. The buyer types the code in the cart and sees the new price at once."
+      es: "Un código promocional da un descuento al comprador. El comprador escribe el código en el carrito y ve el nuevo precio al instante."
+    pause_after: 0.4
+    shots:
+      - image: captures/b_03_applied.png
+        frame: browser
+        address: { ru: "tickets.arenasoldout.com/aurora-events/vecher-dzhaza", en: "tickets.arenasoldout.com/aurora-events/jazz-night", es: "tickets.arenasoldout.com/aurora-events/noche-de-jazz" }
+        title: { ru: "Что получится: скидка в корзине", en: "The result: a discount in the cart", es: "El resultado: un descuento en el carrito" }
+        zoom: { from: 1.4, to: 1.55, x: 0.5, y: 0.8 }
+
+  - id: s2-new
+    narration:
+      ru: "Откройте «Продвижение», затем «Промокоды», и нажмите «Новый промокод»."
+      en: "Open Promotion, then Promo codes, and press New code."
+      es: "Abre «Promoción», luego «Códigos promocionales», y pulsa «Nuevo código»."
+    pause_after: 0.4
+    shots:
+      - image: captures/r_01_list.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Промокоды → «Новый промокод»", en: "Promo codes → New code", es: "Códigos promocionales → «Nuevo código»" }
+        zoom: { from: 1.5, to: 1.7, x: 0.5, y: 0.2 }
+
+  - id: s3-form
+    narration:
+      ru: "Напишите код и выберите скидку: процент или фиксированную сумму. Код работает на всех сеансах или только на выбранных."
+      en: "Type the code and choose the discount: a percent or a fixed amount. The code works for all dates or only for the dates you select."
+      es: "Escribe el código y elige el descuento: un porcentaje o un importe fijo. El código vale para todas las sesiones o solo para las que elijas."
+    pause_after: 0.4
+    shots:
+      - image: captures/r_02_form.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Код и скидка", en: "Code and discount", es: "Código y descuento" }
+        zoom: { from: 1.5, to: 1.65, x: 0.5, y: 0.55 }
+
+  - id: s4-limits
+    narration:
+      ru: "По желанию задайте ограничения: сколько раз код можно использовать и последний день. После создания их изменить нельзя."
+      en: "If you want, set limits: how many times the code can be used and its last day. You cannot change them after the code is made."
+      es: "Si quieres, pon límites: cuántas veces se puede usar el código y su último día. No se pueden cambiar después de crear el código."
+    pause_after: 0.4
+    shots:
+      - image: captures/r_03_limits.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Ограничения, по желанию", en: "Limits, optional", es: "Límites, opcional" }
+        zoom: { from: 1.5, to: 1.65, x: 0.5, y: 0.45 }
+
+  - id: s5-create
+    narration:
+      ru: "Нажмите «Проверить промокод», посмотрите итог и нажмите «Создать промокод». Код работает сразу."
+      en: "Press Check the code, examine the summary and press Make the code. The code works at once."
+      es: "Pulsa «Revisar el código», revisa el resumen y pulsa «Crear el código». El código funciona al instante."
+    pause_after: 0.5
+    shots:
+      - image: captures/r_04_review.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Проверьте новый промокод", en: "Examine the new code", es: "Revisa el nuevo código" }
+        weight: 3
+        zoom: { from: 1.5, to: 1.65, x: 0.25, y: 0.35 }
+      - image: captures/r_05_card.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Промокод создан", en: "The code is made", es: "Código creado" }
+        weight: 3
+        zoom: { from: 1.45, to: 1.6, x: 0.5, y: 0.35 }
+
+  - id: s6-buyer
+    narration:
+      ru: "Покупатель открывает корзину, нажимает «Есть промокод?», вводит код и нажимает «Применить». Скидка видна отдельной строкой."
+      en: "The buyer opens the cart, presses Have a promo code?, types the code and presses Apply. The discount is a separate line."
+      es: "El comprador abre el carrito, pulsa la pregunta sobre el código promocional, escribe el código y pulsa aplicar. El descuento aparece en una línea aparte."
+    pause_after: 0.5
+    shots:
+      - image: captures/b_01_cart.png
+        frame: browser
+        address: { ru: "tickets.arenasoldout.com/aurora-events/vecher-dzhaza", en: "tickets.arenasoldout.com/aurora-events/jazz-night", es: "tickets.arenasoldout.com/aurora-events/noche-de-jazz" }
+        title: { ru: "Корзина покупателя", en: "The buyer's cart", es: "El carrito del comprador" }
+        weight: 2
+        zoom: { from: 1.4, to: 1.55, x: 0.5, y: 0.8 }
+      - image: captures/b_02_code.png
+        frame: browser
+        address: { ru: "tickets.arenasoldout.com/aurora-events/vecher-dzhaza", en: "tickets.arenasoldout.com/aurora-events/jazz-night", es: "tickets.arenasoldout.com/aurora-events/noche-de-jazz" }
+        title: { ru: "Код введён", en: "The code is typed", es: "Código escrito" }
+        weight: 2
+        zoom: { from: 1.4, to: 1.55, x: 0.5, y: 0.8 }
+      - image: captures/b_03_applied.png
+        frame: browser
+        address: { ru: "tickets.arenasoldout.com/aurora-events/vecher-dzhaza", en: "tickets.arenasoldout.com/aurora-events/jazz-night", es: "tickets.arenasoldout.com/aurora-events/noche-de-jazz" }
+        title: { ru: "Скидка применена", en: "Discount applied", es: "Descuento aplicado" }
+        weight: 3
+        zoom: { from: 1.4, to: 1.55, x: 0.5, y: 0.8 }
+
+  - id: s7-usage
+    narration:
+      ru: "В списке промокодов видно, сколько раз каждый код использовали."
+      en: "The list of promo codes shows how many times each code was used."
+      es: "La lista de códigos muestra cuántas veces se usó cada código."
+    pause_after: 1.0
+    shots:
+      - image: captures/r_06_list.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Список промокодов", en: "List of promo codes", es: "Lista de códigos" }
+        zoom: { from: 1.45, to: 1.6, x: 0.5, y: 0.3 }
+
+  - id: s8-cta
+    narration:
+      ru: "Создайте промокод в ивент-центре Arena Sold Out."
+      en: "Make your promo code in the Arena Sold Out event center."
+      es: "Crea tu código promocional en el centro de eventos de Arena Sold Out."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Промокоды", en: "Promo codes", es: "Códigos promocionales" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://arenasoldout.com"

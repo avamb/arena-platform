@@ -1,0 +1,118 @@
+id: web-move-or-cancel-session
+fps: 30
+languages: [ru, en, es]
+title:
+  ru: "Перенести или отменить сеанс"
+  en: "Move or cancel a date of an event"
+  es: "Mover o cancelar una sesión"
+
+# Pictures in captures/ are made by scripts/capture-web.ts (stages `move` and `cancel`, see README, "How-to films
+# of the web event center") and are not committed. The holders of tickets on the stand are test addresses of the
+# film: one free order and one invitation.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [16x9]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-where
+    narration:
+      ru: "Дата изменилась или мероприятие не состоится? Откройте сеанс. В блоке «Перенести или отменить сеанс» есть две кнопки."
+      en: "Did the date change, or will the event not take place? Open the date of the event. The block Move or cancel has two buttons."
+      es: "¿Cambió la fecha o el evento no se celebrará? Abre la sesión. El bloque para mover o cancelar la sesión tiene dos botones."
+    pause_after: 0.4
+    shots:
+      - image: captures/v_01_session.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Сеанс → «Перенести или отменить сеанс»", en: "Date → Move or cancel", es: "Sesión → mover o cancelar" }
+        zoom: { from: 1.35, to: 1.5, x: 0.1, y: 0.4 }
+
+  - id: s2-move
+    narration:
+      ru: "Для переноса выберите новый день в календаре. Если нужно, измените время начала."
+      en: "To move the date, choose the new day in the calendar. Change the start time if necessary."
+      es: "Para mover la sesión, elige el nuevo día en el calendario. Cambia la hora de inicio si hace falta."
+    pause_after: 0.4
+    shots:
+      - image: captures/v_02_move.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Перенос: новая дата", en: "Move: the new day", es: "Mover: el nuevo día" }
+        zoom: { from: 1.35, to: 1.5, x: 0.2, y: 0.6 }
+
+  - id: s3-check
+    narration:
+      ru: "Ниже — сообщение покупателям и проверка: сколько заказов и билетов затронуто и сколько писем отправит Arena. Билеты остаются действительными."
+      en: "Below are the message to the buyers and a check: how many orders and tickets change and how many letters Arena sends. The tickets stay valid."
+      es: "Debajo están el mensaje a los compradores y una comprobación: cuántos pedidos y entradas cambian y cuántos correos envía Arena. Las entradas siguen siendo válidas."
+    pause_after: 0.4
+    shots:
+      - image: captures/v_03_check.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Сообщение покупателям и проверка", en: "Message to buyers and the check", es: "Mensaje a los compradores y comprobación" }
+        zoom: { from: 1.35, to: 1.5, x: 0.2, y: 0.6 }
+
+  - id: s4-moved
+    narration:
+      ru: "Нажмите «Перенести сеанс». Сеанс перенесён, письма покупателям поставлены в очередь."
+      en: "Press Move the session. The date is moved, and the letters to the buyers are in the queue."
+      es: "Pulsa «Mover la sesión». La sesión está movida y los correos a los compradores están en cola."
+    pause_after: 0.6
+    shots:
+      - image: captures/v_04_moved.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Сеанс перенесён", en: "The date is moved", es: "Sesión movida" }
+        zoom: { from: 1.35, to: 1.5, x: 0.1, y: 0.45 }
+
+  - id: s5-cancel
+    narration:
+      ru: "Для отмены нажмите «Отменить сеанс». Важно: покупатели получат письмо, но платформа деньги не возвращает. Возвраты вы делаете отдельно."
+      en: "To cancel, press Cancel the session. Important: the buyers get a letter, but the platform does not return the money. You make the refunds separately."
+      es: "Para cancelar, pulsa «Cancelar la sesión». Importante: los compradores reciben un correo, pero la plataforma no devuelve el dinero. Las devoluciones las haces aparte."
+    pause_after: 0.4
+    shots:
+      - image: captures/x_01_cancel.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Отмена сеанса: что увидят покупатели", en: "Cancellation: what the buyers see", es: "Cancelación: lo que ven los compradores" }
+        zoom: { from: 1.35, to: 1.5, x: 0.1, y: 0.5 }
+
+  - id: s6-word
+    narration:
+      ru: "Отмену нельзя сделать случайно: Arena просит написать слова подтверждения. После этого сеанс отменён."
+      en: "You cannot cancel by accident: Arena asks you to type the words of confirmation. After that the date is cancelled."
+      es: "No puedes cancelar por error: Arena te pide escribir las palabras de confirmación. Después, la sesión queda cancelada."
+    pause_after: 1.0
+    shots:
+      - image: captures/x_02_word.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Подтверждение словами", en: "Confirmation with words", es: "Confirmación con palabras" }
+        weight: 3
+        zoom: { from: 1.5, to: 1.65, x: 0.5, y: 0.55 }
+      - image: captures/x_03_cancelled.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Сеанс отменён", en: "The date is cancelled", es: "Sesión cancelada" }
+        weight: 3
+        zoom: { from: 1.35, to: 1.5, x: 0.5, y: 0.35 }
+
+  - id: s7-cta
+    narration:
+      ru: "Управляйте сеансами в ивент-центре Arena Sold Out."
+      en: "Control your event dates in the Arena Sold Out event center."
+      es: "Gestiona tus sesiones en el centro de eventos de Arena Sold Out."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Перенос и отмена", en: "Move or cancel", es: "Mover o cancelar" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://arenasoldout.com"

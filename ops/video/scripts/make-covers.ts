@@ -9,6 +9,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cfg = parse(fs.readFileSync(path.join(root, 'covers', 'covers.yaml'), 'utf8')) as {
   formats: Record<string, { width: number; height: number }>;
   films: Record<string, {
+    /** cover formats of this film, when they must differ from the formats of its scenario */
+    formats?: string[];
     item?: Record<string, { kind: 'phone' | 'browser'; status?: string; crop?: { x: number; y: number; w: number; h: number }; src: Record<string, string> }>;
     texts: Record<string, { line1: string; line2: string; sub: string }>;
   }>;
@@ -36,7 +38,7 @@ const written: string[] = [];
 try {
   for (const [film, def] of Object.entries(cfg.films)) {
     for (const lang of Object.keys(def.texts)) {
-      for (const fmt of formatsOf(film)) {
+      for (const fmt of def.formats ?? formatsOf(film)) {
         const size = cfg.formats[fmt];
         const t = def.texts[lang];
         const spec = def.item?.[fmt] ?? def.item?.default;

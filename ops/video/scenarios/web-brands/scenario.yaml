@@ -1,0 +1,129 @@
+id: web-brands
+fps: 30
+languages: [ru, en, es]
+title:
+  ru: "Бренды: под каким именем вы продаёте билеты"
+  en: "Brands: the name under which you sell tickets"
+  es: "Marcas: el nombre con el que vendes entradas"
+
+# Pictures in captures/ are made by scripts/capture-web.ts (stage `brand`, see README, "How-to films of the web
+# event center") and are not committed.
+# The task named this screen "promoters"; in the event center it is "Brands": the name under which tickets are
+# sold, with a public page of its own. The brand of the film is invented (Aurora Jazz Club). Its public page
+# shows one published event, made by stage `event` with WEB_BRAND=1 WEB_STATE=brand (the picture
+# n_07_wizard_brand is the field of the wizard where the brand is chosen).
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [16x9]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-why
+    narration:
+      ru: "У вас несколько проектов: клуб, фестиваль, театр? Продавайте билеты под именем каждого. Бренд — это имя, которое покупатель видит на билете как организатора."
+      en: "Do you have more than one project: a club, a festival, a theatre? Sell tickets under the name of each. A brand is the name that the buyer sees on the ticket as the organizer."
+      es: "¿Tienes varios proyectos: un club, un festival, un teatro? Vende entradas con el nombre de cada uno. Una marca es el nombre que el comprador ve en la entrada como organizador."
+    pause_after: 0.4
+    shots:
+      - image: captures/n_06_public.png
+        frame: browser
+        address: "tickets.arenasoldout.com/aurora-jazz-club"
+        title: { ru: "Что получится: своя страница бренда", en: "The result: a page of the brand", es: "El resultado: una página de la marca" }
+        weight: 2
+        zoom: { from: 1.0, to: 1.1, x: 0.4, y: 0.4 }
+      - image: captures/n_01_brands.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Меню → «Бренды»", en: "Menu → Brands", es: "Menú → «Marcas»" }
+        weight: 3
+        zoom: { from: 1.45, to: 1.6, x: 0.5, y: 0.3 }
+
+  - id: s2-new
+    narration:
+      ru: "Нажмите «Новый бренд». Обязательно только название. По желанию добавьте адрес, налоговый номер, телефон, e-mail и сайт."
+      en: "Press New brand. Only the name is necessary. If you want, add the address, the tax number, the phone number, the e-mail and the site."
+      es: "Pulsa «Nueva marca». Solo el nombre es obligatorio. Si quieres, añade la dirección, el número fiscal, el teléfono, el correo y el sitio web."
+    pause_after: 0.4
+    shots:
+      - image: captures/n_02_form.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Новый бренд", en: "New brand", es: "Nueva marca" }
+        weight: 3
+        zoom: { from: 1.45, to: 1.6, x: 0.5, y: 0.6 }
+      - image: captures/n_03_form_end.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Контакты бренда", en: "Contacts of the brand", es: "Contactos de la marca" }
+        weight: 2
+        zoom: { from: 1.45, to: 1.6, x: 0.5, y: 0.6 }
+
+  - id: s3-email
+    narration:
+      ru: "E-mail бренда важен: когда вы переносите или отменяете сеанс, письмо покупателям просит писать на этот адрес."
+      en: "The e-mail of the brand is important: when you move or cancel a date, the letter to the buyers asks them to write to this address."
+      es: "El correo de la marca es importante: cuando mueves o cancelas una sesión, el correo a los compradores les pide escribir a esta dirección."
+    pause_after: 0.4
+    shots:
+      - image: captures/n_03_form_end.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "E-mail для покупателей", en: "E-mail for buyers", es: "Correo para compradores" }
+        zoom: { from: 1.55, to: 1.7, x: 0.5, y: 0.6 }
+
+  - id: s4-card
+    narration:
+      ru: "Бренд создан. У него сразу есть публичная страница: ссылку можно скопировать и открыть."
+      en: "The brand is made. It has a public page at once: you can copy the link and open the page."
+      es: "La marca está creada. Tiene una página pública desde el primer momento: puedes copiar el enlace y abrir la página."
+    pause_after: 0.4
+    shots:
+      - image: captures/n_04_list.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Бренд добавлен", en: "The brand is added", es: "Marca añadida" }
+        weight: 2
+        zoom: { from: 1.45, to: 1.6, x: 0.5, y: 0.5 }
+      - image: captures/n_05_card.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Карточка бренда: публичная страница", en: "Brand card: the public page", es: "Ficha de la marca: la página pública" }
+        weight: 3
+        zoom: { from: 1.45, to: 1.6, x: 0.4, y: 0.3 }
+
+  - id: s5-page
+    narration:
+      ru: "Бренд выбирают при создании мероприятия, в поле «Бренд мероприятия». Когда мероприятие опубликовано, оно появляется на странице бренда: афиша, дата и площадка."
+      en: "You choose the brand when you add an event, in the field Brand of the event. When the event is published, it shows on the page of the brand: the poster, the date and the venue."
+      es: "Eliges la marca al crear un evento, en el campo «Marca del evento». Cuando el evento está publicado, aparece en la página de la marca: el cartel, la fecha y el lugar."
+    pause_after: 1.0
+    shots:
+      - image: captures/n_07_wizard_brand.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Новое мероприятие → «Бренд мероприятия»", en: "New event → Brand of the event", es: "Nuevo evento → «Marca del evento»" }
+        weight: 2
+        zoom: { from: 1.45, to: 1.6, x: 0.5, y: 0.4 }
+      - image: captures/n_06_public.png
+        frame: browser
+        address: "tickets.arenasoldout.com/aurora-jazz-club"
+        title: { ru: "Публичная страница бренда", en: "The public page of the brand", es: "La página pública de la marca" }
+        weight: 3
+        zoom: { from: 1.0, to: 1.15, x: 0.4, y: 0.6 }
+
+  - id: s6-cta
+    narration:
+      ru: "Добавьте свой бренд в ивент-центре Arena Sold Out."
+      en: "Add your brand in the Arena Sold Out event center."
+      es: "Añade tu marca en el centro de eventos de Arena Sold Out."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Ваш бренд", en: "Your brand", es: "Tu marca" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://arenasoldout.com"

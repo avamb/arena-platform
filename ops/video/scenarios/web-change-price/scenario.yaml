@@ -1,0 +1,117 @@
+id: web-change-price
+fps: 30
+languages: [ru, en, es]
+title:
+  ru: "Изменить цену билета"
+  en: "Change the price of a ticket"
+  es: "Cambiar el precio de una entrada"
+
+# Pictures in captures/ are made by scripts/capture-web.ts (stage `price`, see README, "How-to films of the web
+# event center") and are not committed.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [16x9]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-where
+    narration:
+      ru: "Цену билета можно изменить в любой момент. Откройте сеанс мероприятия и в таблице категорий нажмите «Изменить»."
+      en: "You can change the price of a ticket at any time. Open the date of the event and press Edit in the table of categories."
+      es: "Puedes cambiar el precio de una entrada en cualquier momento. Abre la sesión del evento y pulsa «Editar» en la tabla de categorías."
+    pause_after: 0.4
+    shots:
+      - image: captures/c_01_session.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Сеанс → Категории → «Изменить»", en: "Date → Categories → Edit", es: "Sesión → Categorías → «Editar»" }
+        zoom: { from: 1.18, to: 1.28, x: 0.5, y: 0.45 }
+
+  - id: s2-card
+    narration:
+      ru: "Открывается карточка категории: цена сейчас, проданные и свободные места, даты продаж."
+      en: "The card of the category opens: the price now, the sold and free seats, the sales dates."
+      es: "Se abre la ficha de la categoría: el precio actual, las plazas vendidas y libres y las fechas de venta."
+    pause_after: 0.4
+    shots:
+      - image: captures/c_02_category.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Карточка категории", en: "Category card", es: "Ficha de la categoría" }
+        zoom: { from: 1.3, to: 1.45, x: 0.1, y: 0.4 }
+
+  - id: s3-new
+    narration:
+      ru: "Нажмите «Изменить цену» и напишите новую цену. Она действует только для новых покупок: оплаченные заказы и начатые корзины сохраняют свою цену."
+      en: "Press Change price and type the new price. It applies only to new purchases: paid orders and started carts keep their price."
+      es: "Pulsa «Cambiar el precio» y escribe el nuevo precio. Vale solo para las compras nuevas: los pedidos pagados y los carritos iniciados conservan su precio."
+    pause_after: 0.4
+    shots:
+      - image: captures/c_03_new_price.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Новая цена", en: "New price", es: "Nuevo precio" }
+        zoom: { from: 1.18, to: 1.28, x: 0.5, y: 0.5 }
+
+  - id: s4-confirm
+    narration:
+      ru: "Нажмите «Проверить цену». Arena показывает старую и новую цену. Подтвердите изменение."
+      en: "Press Check the price. Arena shows the old price and the new price. Confirm the change."
+      es: "Pulsa «Revisar el precio». Arena muestra el precio anterior y el nuevo. Confirma el cambio."
+    pause_after: 0.4
+    shots:
+      - image: captures/c_04_confirm.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Проверьте и подтвердите", en: "Examine and confirm", es: "Revisa y confirma" }
+        weight: 3
+        zoom: { from: 1.18, to: 1.28, x: 0.5, y: 0.5 }
+      - image: captures/c_05_saved.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Цена сохранена", en: "Price saved", es: "Precio guardado" }
+        weight: 2
+        zoom: { from: 1.18, to: 1.28, x: 0.5, y: 0.35 }
+
+  - id: s5-buyer
+    narration:
+      ru: "Покупатель сразу видит новую цену на странице мероприятия."
+      en: "The buyer sees the new price on the event page at once."
+      es: "El comprador ve el nuevo precio en la página del evento al instante."
+    pause_after: 0.5
+    shots:
+      - image: captures/c_06_buyer.png
+        frame: browser
+        address: { ru: "tickets.arenasoldout.com/aurora-events/vecher-dzhaza", en: "tickets.arenasoldout.com/aurora-events/jazz-night", es: "tickets.arenasoldout.com/aurora-events/noche-de-jazz" }
+        title: { ru: "Страница покупателя: новая цена", en: "The buyer's page: the new price", es: "La página del comprador: el nuevo precio" }
+        zoom: { from: 1.2, to: 1.3, x: 0.0, y: 0.55 }
+
+  - id: s6-smart
+    narration:
+      ru: "В той же карточке есть «Умная цена»: цена растёт сама по вашему правилу."
+      en: "The same card has Smart price: the price goes up by itself by your rule."
+      es: "La misma ficha tiene el precio inteligente: el precio sube solo según tu regla."
+    pause_after: 1.0
+    shots:
+      - image: captures/c_02_category.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Умная цена", en: "Smart price", es: "Precio inteligente" }
+        zoom: { from: 1.35, to: 1.5, x: 0.1, y: 0.75 }
+
+  - id: s7-cta
+    narration:
+      ru: "Управляйте ценами в ивент-центре Arena Sold Out."
+      en: "Control your prices in the Arena Sold Out event center."
+      es: "Gestiona tus precios en el centro de eventos de Arena Sold Out."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Цена билета", en: "Ticket price", es: "Precio de la entrada" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://arenasoldout.com"
