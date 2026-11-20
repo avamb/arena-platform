@@ -10,9 +10,9 @@ title:
 # event center") and are not committed. Russian pictures lie in captures/, English and Spanish in captures/en/
 # and captures/es/.
 # The web event center has no screen where an organizer chooses a provider or types its keys: the film shows
-# only the section "Payments from buyers" and its two notes. The picture p_05_connected is the same screen of the
-# test organization with the answer "payment configs" replaced by one accepted config (WEB_PAY_CONNECTED=1):
-# no test organizer of the stand that this script can sign in as has a provider connected.
+# only the section "Payments from buyers" and its two notes. Both notes are real: p_03_not_connected is the
+# screen of a test organization without a provider, p_05_connected is the screen of the test organization with
+# a test payment config (stage `pay` with WEB_ACCOUNT=es for ru and en). The screen shows no key and no account.
 
 voice:
   provider: auto

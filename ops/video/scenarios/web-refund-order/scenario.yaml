@@ -1,0 +1,149 @@
+id: web-refund-order
+fps: 30
+languages: [ru, en, es]
+title:
+  ru: "Возврат денег покупателю из карточки заказа"
+  en: "A refund to the buyer from the order card"
+  es: "Devolver el dinero al comprador desde el pedido"
+
+# Pictures in captures/ are made by scripts/capture-web.ts (stages `paidrefund` and `refunded`, see README,
+# "How-to films of the web event center") and are not committed. Russian pictures lie in captures/, English and
+# Spanish in captures/en/ and captures/es/.
+# The order of the film was paid with a test card on the stand and its refund was really sent one time, to the
+# test payment provider. The pictures g_* show the order before the refund, the pictures h_* show it after the
+# refund. The result panel itself (g_08_result) exists in one language only, so the film does not use it: the
+# order card after the refund shows the same state in the three languages.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [16x9]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-why
+    narration:
+      ru: "Покупатель попросил вернуть деньги за билет? Возврат делается из карточки заказа. Откройте «Заказы» и найдите заказ по номеру, имени или e-mail."
+      en: "Did a buyer ask for the money back? You make the refund from the order card. Open Orders and find the order by its number, the name or the e-mail."
+      es: "¿Un comprador pide que le devuelvas el dinero? La devolución se hace desde el pedido. Abre «Pedidos» y busca el pedido por número, nombre o correo."
+    pause_after: 0.4
+    shots:
+      - image: captures/g_01_orders.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Заказы", en: "Orders", es: "Pedidos" }
+        weight: 3
+        zoom: { from: 1.3, to: 1.45, x: 0.5, y: 0.7 }
+      - image: captures/g_02_card.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Карточка заказа", en: "The order card", es: "El pedido" }
+        weight: 2
+        zoom: { from: 1.3, to: 1.45, x: 0.5, y: 0.4 }
+
+  - id: s2-pick
+    narration:
+      ru: "Под списком билетов нажмите «Вернуть деньги». Отметьте билеты или верните весь заказ. Для одного билета можно ввести меньшую сумму. Укажите причину. Письмо покупателю о возврате уже отмечено."
+      en: "Below the list of tickets, press Refund. Select the tickets, or refund the full order. For one ticket you can enter a smaller sum. Give the reason. The e-mail to the buyer about the refund is already selected."
+      es: "Debajo de la lista de entradas, pulsa «Devolver dinero». Marca las entradas o devuelve todo el pedido. Para una entrada puedes escribir un importe menor. Indica el motivo. El correo al comprador sobre la devolución ya está marcado."
+    pause_after: 0.4
+    shots:
+      - image: captures/g_03_button.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Кнопка «Вернуть деньги»", en: "The button Refund", es: "El botón «Devolver dinero»" }
+        weight: 2
+        zoom: { from: 1.4, to: 1.55, x: 0.4, y: 0.4 }
+      - image: captures/g_04_pick.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Билеты и причина", en: "Tickets and the reason", es: "Entradas y motivo" }
+        weight: 3
+        zoom: { from: 1.3, to: 1.45, x: 0.5, y: 0.45 }
+      - image: captures/g_05_reason.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Сумма и причина", en: "The sum and the reason", es: "Importe y motivo" }
+        weight: 3
+        zoom: { from: 1.3, to: 1.45, x: 0.5, y: 0.6 }
+
+  - id: s3-check
+    narration:
+      ru: "Дальше — последняя проверка: заказ, билеты, сумма и причина. Важно: эти билеты перестанут действовать для входа, а отменить возврат нельзя."
+      en: "Then comes the last check: the order, the tickets, the sum and the reason. Important: these tickets stop being valid for entry, and you cannot undo the refund."
+      es: "Después llega la última comprobación: el pedido, las entradas, el importe y el motivo. Importante: estas entradas dejan de ser válidas para entrar y la devolución no se puede deshacer."
+    pause_after: 0.4
+    shots:
+      - image: captures/g_06_final.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Последняя проверка", en: "Last check", es: "Última comprobación" }
+        zoom: { from: 1.35, to: 1.5, x: 0.5, y: 0.45 }
+
+  - id: s4-password
+    narration:
+      ru: "Чтобы защитить деньги, ивент-центр попросит ещё раз ввести пароль вашей учётной записи. Подтверждение действует пять минут."
+      en: "To protect the money, the event center asks for the password of your account one more time. The confirmation is valid for five minutes."
+      es: "Para proteger el dinero, el centro de eventos pide otra vez la contraseña de tu cuenta. La confirmación vale cinco minutos."
+    pause_after: 0.4
+    shots:
+      - image: captures/g_07_password.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Подтвердите пароль", en: "Confirm your password", es: "Confirma tu contraseña" }
+        zoom: { from: 1.3, to: 1.45, x: 0.5, y: 0.5 }
+
+  - id: s5-done
+    narration:
+      ru: "Готово. Заказ получил статус «Возвращён», билет отменён. Деньги вернутся на карту, которой платил покупатель. Письмо о возврате Arena отправит сама."
+      en: "Done. The order has the status Refunded, and the ticket is canceled. The money goes back to the card with which the buyer paid. Arena sends the refund e-mail itself."
+      es: "Listo. El pedido tiene el estado «Devuelto» y la entrada está cancelada. El dinero vuelve a la tarjeta con la que pagó el comprador. Arena envía el correo de la devolución."
+    pause_after: 0.4
+    shots:
+      - image: captures/h_01_card.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Заказ возвращён", en: "The order is refunded", es: "Pedido devuelto" }
+        weight: 3
+        zoom: { from: 1.3, to: 1.45, x: 0.5, y: 0.35 }
+      - image: captures/h_02_tickets.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Письмо о возврате", en: "The refund e-mail", es: "El correo de la devolución" }
+        weight: 2
+        zoom: { from: 1.3, to: 1.45, x: 0.5, y: 0.55 }
+
+  - id: s6-list
+    narration:
+      ru: "Все заказы с возвратом собраны на вкладке «Возвраты». А в разделе «Возвраты» видно то, что требует вашего внимания: возвраты, которые не прошли."
+      en: "All orders with a refund are on the tab Refunds. And the section Refunds shows what needs your attention: the refunds that failed."
+      es: "Todos los pedidos con devolución están en la pestaña «Reembolsos». Y la sección «Reembolsos» muestra lo que necesita tu atención: las devoluciones que no se completaron."
+    pause_after: 0.8
+    shots:
+      - image: captures/h_03_tab.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Заказы → «Возвраты»", en: "Orders → Refunds", es: "Pedidos → «Reembolsos»" }
+        weight: 3
+        zoom: { from: 1.3, to: 1.45, x: 0.5, y: 0.8 }
+      - image: captures/h_04_queue.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Раздел «Возвраты»", en: "The section Refunds", es: "La sección «Reembolsos»" }
+        weight: 2
+        zoom: { from: 1.3, to: 1.45, x: 0.4, y: 0.25 }
+
+  - id: s7-cta
+    narration:
+      ru: "Возвращайте деньги за билеты в ивент-центре Arena Sold Out."
+      en: "Make refunds for tickets in the Arena Sold Out event center."
+      es: "Devuelve el dinero de las entradas en el centro de eventos de Arena Sold Out."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Возврат денег", en: "A refund", es: "Devolver el dinero" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://arenasoldout.com"

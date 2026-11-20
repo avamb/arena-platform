@@ -9,8 +9,9 @@ title:
 # Pictures in captures/ are made by scripts/capture-web.ts (stage `brand`, see README, "How-to films of the web
 # event center") and are not committed.
 # The task named this screen "promoters"; in the event center it is "Brands": the name under which tickets are
-# sold, with a public page of its own. The brand of the film is invented (Aurora Jazz Club) and has no events,
-# so its public page says that there are no dates.
+# sold, with a public page of its own. The brand of the film is invented (Aurora Jazz Club). Its public page
+# shows one published event, made by stage `event` with WEB_BRAND=1 WEB_STATE=brand (the picture
+# n_07_wizard_brand is the field of the wizard where the brand is chosen).
 
 voice:
   provider: auto
@@ -34,7 +35,7 @@ scenes:
         address: "tickets.arenasoldout.com/aurora-jazz-club"
         title: { ru: "Что получится: своя страница бренда", en: "The result: a page of the brand", es: "El resultado: una página de la marca" }
         weight: 2
-        zoom: { from: 1.2, to: 1.35, x: 0.5, y: 0.3 }
+        zoom: { from: 1.0, to: 1.1, x: 0.4, y: 0.4 }
       - image: captures/n_01_brands.png
         frame: browser
         address: "events.arenasoldout.com"
@@ -97,16 +98,23 @@ scenes:
 
   - id: s5-page
     narration:
-      ru: "На странице бренда покупатель видит все его мероприятия. Бренд выбирают при создании мероприятия, в поле «Бренд мероприятия». Пока мероприятий нет, страница так и говорит."
-      en: "On the page of the brand the buyer sees all its events. You choose the brand when you add an event, in the field for the brand of the event. While there are no events, the page says so."
-      es: "En la página de la marca el comprador ve todos sus eventos. Eliges la marca al crear un evento, en el campo de la marca del evento. Mientras no haya eventos, la página lo dice."
+      ru: "Бренд выбирают при создании мероприятия, в поле «Бренд мероприятия». Когда мероприятие опубликовано, оно появляется на странице бренда: афиша, дата и площадка."
+      en: "You choose the brand when you add an event, in the field Brand of the event. When the event is published, it shows on the page of the brand: the poster, the date and the venue."
+      es: "Eliges la marca al crear un evento, en el campo «Marca del evento». Cuando el evento está publicado, aparece en la página de la marca: el cartel, la fecha y el lugar."
     pause_after: 1.0
     shots:
+      - image: captures/n_07_wizard_brand.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Новое мероприятие → «Бренд мероприятия»", en: "New event → Brand of the event", es: "Nuevo evento → «Marca del evento»" }
+        weight: 2
+        zoom: { from: 1.45, to: 1.6, x: 0.5, y: 0.4 }
       - image: captures/n_06_public.png
         frame: browser
         address: "tickets.arenasoldout.com/aurora-jazz-club"
         title: { ru: "Публичная страница бренда", en: "The public page of the brand", es: "La página pública de la marca" }
-        zoom: { from: 1.2, to: 1.35, x: 0.5, y: 0.3 }
+        weight: 3
+        zoom: { from: 1.0, to: 1.15, x: 0.4, y: 0.6 }
 
   - id: s6-cta
     narration:

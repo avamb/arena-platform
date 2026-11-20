@@ -36,6 +36,12 @@ type Lang = "ru" | "en" | "es";
 const SHOWN = { email: "carmen@example.com", org: "Aurora Events" };
 const BROWSER_LOCALE: Record<Lang, string> = { ru: "ru-RU", en: "en-GB", es: "es-ES" };
 const DEBUG = process.env.WEB_DEBUG === "1";
+/**
+ * WEB_ACCOUNT=es: the pictures of language <lang> are taken in the organization of ANOTHER test account (the
+ * only one with paid orders). The browser language decides the language of the screens; the data of the
+ * organization (the name of the event, the buyers) stay as they are.
+ */
+const account = (lang: Lang): Lang => (process.env.WEB_ACCOUNT as Lang | undefined) ?? lang;
 
 /** The invented event of the films: a jazz evening in Berlin, 25 EUR. */
 const EVENT: Record<Lang, { name: string; text: string; category: string; poster: string }> = {
@@ -80,7 +86,9 @@ class Shots {
     else if (at === undefined) await page.evaluate(() => window.scrollTo(0, 0));
     await page.evaluate((pairs) => {
       // a half-hidden address (a***@a***.com) keeps the first letters of the real mailbox
-      const swap = (s: string) => pairs.reduce((acc, [from, to]) => acc.split(from).join(to), s).replace(/([a-z]+)-staging\./g, "$1.").replace(/\w\*+@\w\*+\.[a-z]+/g, "c*****@e******.com");
+      const swap = (s: string) => pairs.reduce((acc, [from, to]) => acc.split(from).join(to), s).replace(/([a-z]+)-staging\./g, "$1.").replace(/\w\*+@\w\*+\.[a-z]+/g, "c*****@e******.com")
+        // any other real mailbox (a buyer of a paid test order): an invented address by the name in it
+        .replace(/[\w.+-]+@(?!example\.)[\w-]+(\.[\w-]+)+/g, (m) => `${/lukas|weber/i.test(m) ? "lukas" : /carmen|ortega/i.test(m) ? "carmen" : "buyer"}@example.com`);
       const kept: [Node, string][] = [];
       (window as unknown as { videoKept: [Node, string][] }).videoKept = kept;
       // the ticket widget of the sales page lives in a shadow tree: its texts and fields are replaced too
@@ -119,7 +127,7 @@ class Shots {
 }
 
 function statePath(lang: Lang): string {
-  return path.join(ROOT, ".cache", `web-${lang}.json`);
+  return path.join(ROOT, ".cache", `web-${account(lang)}${process.env.WEB_STATE ? `-${process.env.WEB_STATE}` : ""}.json`);
 }
 function readState(lang: Lang): Record<string, string> {
   return fs.existsSync(statePath(lang)) ? (JSON.parse(fs.readFileSync(statePath(lang), "utf8")) as Record<string, string>) : {};
@@ -138,7 +146,7 @@ async function signIn(lang: Lang): Promise<{ ctx: BrowserContext; page: Page; ap
   await ctx.addInitScript("window.__name = (f) => f");
   const page = await ctx.newPage();
   await page.goto(`${app}/login`, { waitUntil: "networkidle" });
-  await page.fill("input[type=email]", env(`VIDEO_ONB_EMAIL_${lang.toUpperCase()}`));
+  await page.fill("input[type=email]", env(`VIDEO_ONB_EMAIL_${account(lang).toUpperCase()}`));
   await page.fill("input[type=password]", env("VIDEO_ONB_PASSWORD"));
   await page.click("button[type=submit]");
   await page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 30000 });
@@ -176,6 +184,13 @@ async function event(lang: Lang, shots: Shots): Promise<void> {
     await tid(page, "wizard-name").fill(ev.name);
     await tid(page, "wizard-description").locator('[role="textbox"][aria-multiline="true"]').fill(ev.text);
     await shots.take(page, "w_03_name", tid(page, "wizard-name"), 200);
+    // WEB_BRAND=1: the event is sold under the brand of stage `brand`, so the public page of the brand shows it.
+    // Use it with WEB_STATE=brand, to keep the event of the other films in its own state file.
+    if (process.env.WEB_BRAND === "1") {
+      await tid(page, "wizard-promoter").selectOption({ label: BRAND.name });
+      await settle(page, 500);
+      await shots.take(page, "n_07_wizard_brand", tid(page, "wizard-promoter"), 300);
+    }
 
     await tid(page, "wizard-venue-mode-new").check();
     await tid(page, "wizard-venue-name").fill(VENUE.name);
@@ -461,22 +476,12 @@ async function pay(lang: Lang, shots: Shots): Promise<void> {
     await shots.take(page, "p_02_menu", null);
     await tid(page, "nav-payments").click();
     await settle(page, 1500);
-    await shots.take(page, "p_03_not_connected", tid(page, "org-data-payments-section"), 200);
+    // The note is the real one of the organization: "not connected" in a test organization without a provider,
+    // "connected" in the one with a test payment config (WEB_ACCOUNT=es). The screen shows no key and no account.
+    const connected = (await tid(page, "org-data-payments-connected").count()) > 0;
+    await shots.take(page, connected ? "p_05_connected" : "p_03_not_connected", tid(page, "org-data-payments-section"), 200);
     await shots.take(page, "p_04_org_data");
     await shots.take(page, "p_06_receipt", tid(page, "org-data-receipt"), 260);
-    if (process.env.WEB_PAY_CONNECTED === "1") {
-      // The test organizations have no payment provider and no stand account with one is open to this script.
-      // The answer of the stand to "payment configs" gets one accepted config, so the screen draws its own "connected" note.
-      await ctx.route(/\/v1\/organizations\/[0-9a-f-]+\/payment-configs/, async (route) => {
-        if (route.request().method() !== "GET") return route.continue();
-        const res = await route.fetch();
-        const item = { id: "00000000-0000-7000-8000-000000000001", provider: "stripe", mode: "live", status: "active", is_active: true, verification_status: "ok" };
-        return route.fulfill({ response: res, json: { payment_configs: [item] } });
-      });
-      await page.goto(`${app}${org}/org-data`, { waitUntil: "networkidle" });
-      await settle(page, 1500);
-      await shots.take(page, "p_05_connected", tid(page, "org-data-payments-section"), 200);
-    }
   } finally {
     await close();
   }
@@ -636,6 +641,85 @@ async function refund(lang: Lang, shots: Shots): Promise<void> {
     await ids(page, "extref");
     if (DEBUG) console.log("EXTREF", await page.evaluate(() => document.querySelector("main")?.innerText.slice(0, 2500)));
     await shots.take(page, "f_02_outside", tid(page, "ticket-list"), 200);
+  } finally {
+    await close();
+  }
+}
+
+/** Opens the card of the order with this number from the list "Orders". */
+async function openOrder(page: Page, app: string, org: string, num: string): Promise<void> {
+  await page.goto(`${app}${org}/orders`, { waitUntil: "networkidle" });
+  await settle(page, 1500);
+  await tid(page, "order-row").filter({ hasText: num }).getByTestId("order-card-open").click();
+  await page.waitForURL(/\/orders\/[0-9a-f-]{36}/);
+  await settle(page, 1800);
+}
+
+/**
+ * web-refund-order, before the refund: the PAID order WEB_ORDER (a test card of the stand), the refund panel,
+ * the last check and the password question. Without WEB_REFUND_GO=1 nothing is sent: the stage stops at the
+ * password question, so it can be run in each language. With WEB_REFUND_GO=1 it sends the refund (the money of
+ * the test payment goes back, this cannot be undone) and takes the answer; run it ONCE, in one language.
+ */
+async function paidRefund(lang: Lang, shots: Shots): Promise<void> {
+  const num = env("WEB_ORDER");
+  const { page, app, org, close } = await signIn(lang);
+  try {
+    await page.goto(`${app}${org}/orders`, { waitUntil: "networkidle" });
+    await settle(page, 1500);
+    await shots.take(page, "g_01_orders");
+    await openOrder(page, app, org, num);
+    if (!(await tid(page, "refund-open").count())) throw new Error("capture-web: the order has no button Refund (refunded already?), use stage refunded");
+    await shots.take(page, "g_02_card");
+    await shots.take(page, "g_03_button", tid(page, "ticket-list"), 200);
+    await tid(page, "refund-open").click();
+    await tid(page, "refund-pick").waitFor({ timeout: 30000 });
+    await settle(page, 800);
+    if (DEBUG) console.log("REFUND", await tid(page, "refund-panel").innerText());
+    await shots.take(page, "g_04_pick", tid(page, "refund-panel"), 120);
+    await tid(page, "refund-ticket").first().check();
+    await tid(page, "refund-reason-buyer").check();
+    await page.waitForTimeout(400);
+    await shots.take(page, "g_05_reason", tid(page, "refund-ticket").first(), 200);
+    await tid(page, "refund-continue").click();
+    await tid(page, "refund-final").waitFor({ timeout: 20000 });
+    await settle(page, 600);
+    if (DEBUG) console.log("FINAL", await tid(page, "refund-panel").innerText());
+    await shots.take(page, "g_06_final", tid(page, "refund-panel"), 120);
+    await tid(page, "refund-go").click();
+    const password = page.locator("#step-up-password");
+    await password.waitFor({ timeout: 20000 });
+    await page.waitForTimeout(600);
+    await shots.take(page, "g_07_password", null);
+    if (process.env.WEB_REFUND_GO !== "1") return;
+    await password.fill(env("VIDEO_ONB_PASSWORD"));
+    await page.locator("[aria-labelledby=step-up-title] button[type=submit]").click();
+    await tid(page, "refund-result").waitFor({ timeout: 150000 });
+    await settle(page, 1500);
+    console.log("RESULT", await tid(page, "refund-result").innerText());
+    await shots.take(page, "g_08_result", tid(page, "refund-result"), 200);
+  } finally {
+    await close();
+  }
+}
+
+/** web-refund-order, after the refund: the card of the order WEB_ORDER, its tickets, the tab "Refunds", the screen "Refunds". */
+async function refunded(lang: Lang, shots: Shots): Promise<void> {
+  const num = env("WEB_ORDER");
+  const { page, app, org, close } = await signIn(lang);
+  try {
+    await openOrder(page, app, org, num);
+    await ids(page, "refunded card");
+    if (DEBUG) console.log("CARD", await page.evaluate(() => document.querySelector("main")?.innerText ?? ""));
+    await shots.take(page, "h_01_card");
+    await shots.take(page, "h_02_tickets", tid(page, "ticket-list"), 200);
+    await page.goto(`${app}${org}/orders?tab=refunds`, { waitUntil: "networkidle" });
+    await settle(page, 1800);
+    await shots.take(page, "h_03_tab");
+    await page.goto(`${app}${org}/refunds`, { waitUntil: "networkidle" });
+    await settle(page, 1800);
+    if (DEBUG) console.log("QUEUE", await page.evaluate(() => document.querySelector("main")?.innerText ?? ""));
+    await shots.take(page, "h_04_queue");
   } finally {
     await close();
   }
@@ -1048,6 +1132,7 @@ const FILMS: Record<string, string> = {
   invite: "web-invitations", team: "web-invite-manager", price: "web-change-price",
   move: "web-move-or-cancel-session", cancel: "web-move-or-cancel-session",
   ticket: "buyer-where-is-my-ticket", entrance: "web-entrance-and-guest-list",
+  paidrefund: "web-refund-order", refunded: "web-refund-order",
   brand: "web-brands", stats: "web-sales-statistics", messages: "web-buyer-messages-and-notifications",
 };
 const STAGES = [...Object.keys(FILMS), "look"];
@@ -1060,10 +1145,11 @@ async function main(): Promise<void> {
     throw new Error(`usage: tsx scripts/capture-web.ts <ru|en|es> <${STAGES.join("|")}>`);
   }
   const film = FILMS[stage] ?? "look";
+  const acc = account(lang).toUpperCase();
   const shots = new Shots(film, lang, [
-    [env(`VIDEO_ONB_EMAIL_${lang.toUpperCase()}`), SHOWN.email],
-    [env(`VIDEO_ONB_ORG_${lang.toUpperCase()}`), SHOWN.org],
-    [env(`VIDEO_ONB_ORG_${lang.toUpperCase()}`).toLowerCase().replace(/[^a-z0-9]+/g, "-"), "aurora-events"],
+    [env(`VIDEO_ONB_EMAIL_${acc}`), SHOWN.email],
+    [env(`VIDEO_ONB_ORG_${acc}`), SHOWN.org],
+    [env(`VIDEO_ONB_ORG_${acc}`).toLowerCase().replace(/[^a-z0-9]+/g, "-"), "aurora-events"],
   ]);
   console.log(`${film} ${lang} ${stage}`);
   if (stage === "look") return look(lang);
@@ -1080,6 +1166,8 @@ async function main(): Promise<void> {
   else if (stage === "price") await price(lang, shots);
   else if (stage === "move") await move(lang, shots);
   else if (stage === "cancel") await cancel(lang, shots);
+  else if (stage === "paidrefund") await paidRefund(lang, shots);
+  else if (stage === "refunded") await refunded(lang, shots);
   else if (stage === "brand") await brand(lang, shots);
   else if (stage === "ticket") await ticket(lang, shots);
   else if (stage === "entrance") await entrance(lang, shots);

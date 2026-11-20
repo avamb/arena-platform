@@ -495,7 +495,7 @@ you buy.
 
 ## How-to films of the web event center (web-*)
 
-Fourteen films show the organizer's web event center in a browser window. They have one format, 16x9.
+Fifteen films show the organizer's web event center in a browser window. They have one format, 16x9.
 Two more films of the same script are for the BUYER (`buyer-*`): a phone frame, formats 9x16 and 4x5.
 
 | Film | Subject | Stage of the capture script |
@@ -506,6 +506,7 @@ Two more films of the same script are for the BUYER (`buyer-*`): a phone frame, 
 | `web-sales-link-and-qr` | a tracked sales link, its QR code and its scan count | `links` |
 | `web-promo-codes` | a new promo code and the cart of a buyer with the code | `promo` |
 | `web-orders-and-refund` | the orders list, the order card, sending tickets again, the refund screens | `order`, `refund` |
+| `web-refund-order` | the refund of a PAID order: tickets, reason, last check, password, the order after it | `paidrefund`, `refunded` |
 | `web-invitations` | a free ticket for a named guest | `invite` |
 | `web-invite-manager` | an invitation of a manager to the team | `team` |
 | `web-change-price` | a new price of a category and the buyer page | `price` |
@@ -534,11 +535,21 @@ Rules of these pictures:
   The QR code in the pictures is drawn for the short address on the public host, not for the address of the stand.
   The buyer's visit uses an ordinary browser name: the stand counts a headless browser as a bot, not as a scan.
 - Stage `pay`: the web event center has no screen where an organizer selects a provider or types its keys.
-  `WEB_PAY_CONNECTED=1` replaces the stand's answer "payment configs" with one accepted config, and the screen
-  draws its own note "connected" (picture `p_05_connected`). Without the variable this picture is not taken.
+  The note of the section is the real one: `p_03_not_connected` in an organization without a provider,
+  `p_05_connected` in the one with a payment config. No picture is staged.
+- `WEB_ACCOUNT=es` takes the pictures of language `<lang>` in the organization of ANOTHER test account: only one
+  test organization has a test payment config and paid orders. The browser language decides the language of the
+  screens; the event and the buyers stay those of that organization. Used by `stats`, `pay`, `paidrefund`, `refunded`.
+- Stage `paidrefund` films the refund of the paid order `WEB_ORDER=<number>`. Without `WEB_REFUND_GO=1` it stops
+  at the password question and sends nothing, so it runs in each language. With `WEB_REFUND_GO=1` it SENDS the
+  refund through the payment provider (test money of the stand, cannot be undone): run it once, in one language,
+  and only after the owner said yes. Stage `refunded` takes the order after the refund in each language.
+  Take the pictures of `stats` before the refund.
+- `WEB_BRAND=1 WEB_STATE=brand` at stage `event` creates one more event sold under the brand of stage `brand`
+  (its state file is `.cache/web-<lang>-brand.json`), so the public page of the brand shows an event.
 - Stage `order` makes a real FREE order on the stand: a promo code of 100 % (`GUEST100`), the buyer Carmen Ortega,
   the mailbox of the test organizer. No card is typed and no payment page is opened. For a free order the
-  screen "Refund" answers that there is nothing to refund; the refund of a paid order is not filmed.
+  screen "Refund" answers that there is nothing to refund; the refund of a paid order is the film `web-refund-order`, stage `paidrefund`.
 - Stage `team` sends a real invitation letter of the stand to `marco@example.com`.
 - Stages `move` and `cancel` send real letters of the stand to the holders of tickets. Run them only for the
   event of stage `event`, whose holders are the test addresses of these films. `WEB_STOP=move` and

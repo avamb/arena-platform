@@ -478,6 +478,37 @@ films:
         line2: "EN CADA ENTRADA"
         sub: "Vende con tu propio nombre y con una página propia."
 
+  web-refund-order:
+    formats: [16x9, 9x16, 4x5]
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.26, y: 0.1, w: 0.48, h: 0.5 }
+        src:
+          ru: scenarios/web-refund-order/captures/g_06_final.png
+          en: scenarios/web-refund-order/captures/en/g_06_final.png
+          es: scenarios/web-refund-order/captures/es/g_06_final.png
+      default:
+        kind: phone
+        crop: { x: 0.27, y: 0.08, w: 0.4, h: 0.9 }
+        src:
+          ru: scenarios/web-refund-order/captures/g_06_final.png
+          en: scenarios/web-refund-order/captures/en/g_06_final.png
+          es: scenarios/web-refund-order/captures/es/g_06_final.png
+    texts:
+      ru:
+        line1: "ВОЗВРАТ ДЕНЕГ"
+        line2: "ИЗ КАРТОЧКИ ЗАКАЗА"
+        sub: "Выберите билеты, укажите причину и подтвердите."
+      en:
+        line1: "A REFUND"
+        line2: "FROM THE ORDER CARD"
+        sub: "Select the tickets, give the reason and confirm."
+      es:
+        line1: "DEVOLVER EL DINERO"
+        line2: "DESDE EL PEDIDO"
+        sub: "Elige las entradas, indica el motivo y confirma."
+
   web-sales-statistics:
     formats: [16x9, 9x16, 4x5]
     item:
