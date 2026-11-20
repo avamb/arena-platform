@@ -29,12 +29,14 @@ scenes:
     narration:
       ru: "Вы купили билет. Где он? Сразу после оплаты на странице появляется номер заказа и ссылка «Скачать PDF». И тот же билет приходит на e-mail, который вы указали при покупке."
       en: "You bought a ticket. Where is it? Immediately after the payment, the page shows the order number and the link Download PDF. And the same ticket comes to the e-mail address that you gave during the purchase."
-      es: "Has comprado una entrada. ¿Dónde está? Justo después del pago, la página muestra el número de pedido y el enlace «Descargar PDF». Y la misma entrada llega al correo que indicaste en la compra."
+      # The Spanish page after the order is in English and shows no PDF link on the stand, so the Spanish text
+      # does not promise the link.
+      es: "Has comprado una entrada. ¿Dónde está? Justo después del pago, la página muestra el número de pedido. La entrada llega al correo que indicaste en la compra."
     pause_after: 0.4
     shots:
       - image: captures/y_05_done.png
         frame: phone
-        title: { ru: "После оплаты: заказ и билет", en: "After the payment: the order and the ticket", es: "Después del pago: el pedido y la entrada" }
+        title: { ru: "После оплаты: заказ и билет", en: "After the payment: the order and the ticket", es: "Después del pago: el número de pedido" }
         weight: 3
         zoom: { from: 1.0, to: 1.12, x: 0.5, y: 0.4 }
       - image: captures/y_04_form.png

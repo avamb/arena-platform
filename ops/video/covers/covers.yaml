@@ -90,6 +90,7 @@ films:
   # The how-to films of the web event center: a desktop capture in a browser window for 16x9,
   # the middle column of the same capture (or the poster) in a phone frame for the vertical formats.
   web-create-event:
+    formats: [16x9, 9x16, 4x5]
     item:
       16x9:
         kind: browser
@@ -120,6 +121,7 @@ films:
         sub: "Nombre, fecha, recinto, entradas y cartel en el centro de eventos web."
 
   web-payments-status:
+    formats: [16x9, 9x16, 4x5]
     item:
       16x9:
         kind: browser
@@ -150,6 +152,7 @@ films:
         sub: "Dónde verlo en el centro de eventos."
 
   web-organization-details:
+    formats: [16x9, 9x16, 4x5]
     item:
       16x9:
         kind: browser
@@ -180,6 +183,7 @@ films:
         sub: "Datos legales y contactos: rellénalos una sola vez."
 
   web-sales-link-and-qr:
+    formats: [16x9, 9x16, 4x5]
     item:
       16x9:
         kind: browser
@@ -210,6 +214,7 @@ films:
         sub: "Cada escaneo se cuenta y los pedidos quedan ligados al código."
 
   web-orders-and-refund:
+    formats: [16x9, 9x16, 4x5]
     item:
       16x9:
         kind: browser
@@ -240,6 +245,7 @@ films:
         sub: "La ficha del pedido, reenviar entradas y devoluciones."
 
   web-promo-codes:
+    formats: [16x9, 9x16, 4x5]
     item:
       16x9:
         kind: browser
@@ -270,6 +276,7 @@ films:
         sub: "Crea un código y el comprador lo usa en el carrito."
 
   web-invitations:
+    formats: [16x9, 9x16, 4x5]
     item:
       16x9:
         kind: browser
@@ -300,6 +307,7 @@ films:
         sub: "Una entrada gratuita para un invitado que tú indicas."
 
   web-invite-manager:
+    formats: [16x9, 9x16, 4x5]
     item:
       16x9:
         kind: browser
@@ -330,6 +338,7 @@ films:
         sub: "Un gestor lleva los eventos, los pedidos y los códigos."
 
   web-change-price:
+    formats: [16x9, 9x16, 4x5]
     item:
       16x9:
         kind: browser
@@ -360,6 +369,7 @@ films:
         sub: "El nuevo precio vale para las compras nuevas."
 
   web-move-or-cancel-session:
+    formats: [16x9, 9x16, 4x5]
     item:
       16x9:
         kind: browser
@@ -438,6 +448,7 @@ films:
         sub: "El bot te da un enlace y un código para el cartel, y cuenta los escaneos."
 
   web-brands:
+    formats: [16x9, 9x16, 4x5]
     item:
       16x9:
         kind: browser
@@ -468,6 +479,7 @@ films:
         sub: "Vende con tu propio nombre y con una página propia."
 
   web-sales-statistics:
+    formats: [16x9, 9x16, 4x5]
     item:
       16x9:
         kind: browser
@@ -498,6 +510,7 @@ films:
         sub: "Totales, visitas a la página, el embudo y el resumen."
 
   web-buyer-messages-and-notifications:
+    formats: [16x9, 9x16, 4x5]
     item:
       16x9:
         kind: browser
@@ -528,6 +541,7 @@ films:
         sub: "Recordatorio de pedido sin pagar, suscripción y avisos de ventas."
 
   web-entrance-and-guest-list:
+    formats: [16x9, 9x16, 4x5]
     item:
       16x9:
         kind: browser
@@ -600,3 +614,170 @@ films:
         line1: "¿CUÁNDO IR?"
         line2: "LA FECHA DE LA ENTRADA"
         sub: "El día del evento, la hora local del lugar y la apertura de puertas."
+  bot-orders-resend-tickets:
+    # An order card in the bot. The capture has an empty lower part, so crop it.
+    item:
+      default:
+        kind: phone
+        crop: { x: 0, y: 0, w: 1, h: 0.66 }
+        src:
+          ru: scenarios/bot-orders-resend-tickets/captures/ru/o_04_card.png
+          en: scenarios/bot-orders-resend-tickets/captures/en/o_04_card.png
+          es: scenarios/bot-orders-resend-tickets/captures/es/o_04_card.png
+    texts:
+      ru:
+        line1: "ЗАКАЗ НАЙДЕН"
+        line2: "БИЛЕТЫ ОТПРАВЛЕНЫ"
+        sub: "Найдите заказ в боте и вышлите билеты ещё раз."
+      en:
+        line1: "FIND THE ORDER"
+        line2: "SEND THE TICKETS AGAIN"
+        sub: "Find an order in the bot and send its tickets again."
+      es:
+        line1: "BUSCA EL PEDIDO"
+        line2: "REENVÍA LAS ENTRADAS"
+        sub: "Busca un pedido en el bot y reenvía sus entradas."
+
+  bot-promo-codes:
+    # The card of a new promo code. The capture has an empty lower part, so crop it.
+    item:
+      default:
+        kind: phone
+        crop: { x: 0, y: 0, w: 1, h: 0.66 }
+        src:
+          ru: scenarios/bot-promo-codes/captures/ru/c_12_created.png
+          en: scenarios/bot-promo-codes/captures/en/c_12_created.png
+          es: scenarios/bot-promo-codes/captures/es/c_12_created.png
+    texts:
+      ru:
+        line1: "ПРОМОКОД"
+        line2: "НА СКИДКУ"
+        sub: "Создайте код в боте за минуту."
+      en:
+        line1: "A PROMO CODE"
+        line2: "FOR A DISCOUNT"
+        sub: "Make a code in the bot in a minute."
+      es:
+        line1: "UN CÓDIGO"
+        line2: "DE DESCUENTO"
+        sub: "Crea un código en el bot en un minuto."
+
+  bot-invite-manager:
+    # The team list after an invitation. The capture has an empty lower part, so crop it.
+    item:
+      default:
+        kind: phone
+        crop: { x: 0, y: 0, w: 1, h: 0.66 }
+        src:
+          ru: scenarios/bot-invite-manager/captures/ru/t_04_sent.png
+          en: scenarios/bot-invite-manager/captures/en/t_04_sent.png
+          es: scenarios/bot-invite-manager/captures/es/t_04_sent.png
+    texts:
+      ru:
+        line1: "ПРИГЛАСИТЕ"
+        line2: "МЕНЕДЖЕРА"
+        sub: "Добавьте коллегу в команду прямо из бота."
+      en:
+        line1: "INVITE"
+        line2: "A MANAGER"
+        sub: "Add a colleague to your team from the bot."
+      es:
+        line1: "INVITA"
+        line2: "A UN GESTOR"
+        sub: "Añade a un compañero a tu equipo desde el bot."
+
+  bot-change-price:
+    # The bot asks to save the new price. The capture has an empty lower part, so crop it.
+    item:
+      default:
+        kind: phone
+        crop: { x: 0, y: 0, w: 1, h: 0.66 }
+        src:
+          ru: scenarios/bot-change-price/captures/ru/pr_06_confirm.png
+          en: scenarios/bot-change-price/captures/en/pr_06_confirm.png
+          es: scenarios/bot-change-price/captures/es/pr_06_confirm.png
+    texts:
+      ru:
+        line1: "НОВАЯ ЦЕНА"
+        line2: "БИЛЕТА"
+        sub: "Измените цену в боте, когда продажа уже идёт."
+      en:
+        line1: "A NEW"
+        line2: "TICKET PRICE"
+        sub: "Change the price in the bot while tickets are on sale."
+      es:
+        line1: "NUEVO PRECIO"
+        line2: "DE LA ENTRADA"
+        sub: "Cambia el precio en el bot con la venta abierta."
+
+  bot-invitations:
+    # The bot has issued two invitations. The capture has an empty lower part, so crop it.
+    item:
+      default:
+        kind: phone
+        crop: { x: 0, y: 0, w: 1, h: 0.66 }
+        src:
+          ru: scenarios/bot-invitations/captures/ru/i_07_sent.png
+          en: scenarios/bot-invitations/captures/en/i_07_sent.png
+          es: scenarios/bot-invitations/captures/es/i_07_sent.png
+    texts:
+      ru:
+        line1: "БЕСПЛАТНЫЕ БИЛЕТЫ"
+        line2: "ДЛЯ ГОСТЕЙ"
+        sub: "Выдайте приглашения в боте: билет придёт гостю на почту."
+      en:
+        line1: "FREE TICKETS"
+        line2: "FOR GUESTS"
+        sub: "Issue invitations in the bot: each guest gets a ticket by e-mail."
+      es:
+        line1: "ENTRADAS GRATUITAS"
+        line2: "PARA INVITADOS"
+        sub: "Emite invitaciones en el bot: cada invitado recibe su entrada por e-mail."
+
+  bot-move-or-cancel-session:
+    # The bot shows the move of a session and the message to buyers. The capture has an empty lower part, so crop it.
+    item:
+      default:
+        kind: phone
+        crop: { x: 0, y: 0, w: 1, h: 0.66 }
+        src:
+          ru: scenarios/bot-move-or-cancel-session/captures/ru/s_08_review.png
+          en: scenarios/bot-move-or-cancel-session/captures/en/s_08_review.png
+          es: scenarios/bot-move-or-cancel-session/captures/es/s_08_review.png
+    texts:
+      ru:
+        line1: "ПЕРЕНОС"
+        line2: "ИЛИ ОТМЕНА СЕАНСА"
+        sub: "Измените дату в боте: покупатели получат письмо."
+      en:
+        line1: "MOVE OR CANCEL"
+        line2: "A SESSION"
+        sub: "Change the date in the bot: the buyers get an e-mail."
+      es:
+        line1: "CAMBIA O CANCELA"
+        line2: "UNA SESIÓN"
+        sub: "Cambia la fecha en el bot: los compradores reciben un e-mail."
+
+  sell-tickets-from-poster-short:
+    # The short vertical version has the same cover.
+    item:
+      default:
+        kind: phone
+        status: "#0b1230"
+        src:
+          ru: scenarios/sell-tickets-from-poster/assets/poster_vecher_dzhaza_4x5.png
+          en: scenarios/sell-tickets-from-poster/assets/en/poster_vecher_dzhaza_4x5.png
+          es: scenarios/sell-tickets-from-poster/assets/es/poster_vecher_dzhaza_4x5.png
+    texts:
+      ru:
+        line1: "АФИША ГОТОВА?"
+        line2: "ПРОДАВАЙТЕ БИЛЕТЫ"
+        sub: "Продажа запускается за несколько минут. Деньги сразу на ваш счёт."
+      en:
+        line1: "GOT A POSTER?"
+        line2: "START SELLING TICKETS"
+        sub: "Go on sale in a few minutes. Money goes straight to your account."
+      es:
+        line1: "¿TIENES UN CARTEL?"
+        line2: "VENDE ENTRADAS"
+        sub: "Empieza a vender en unos minutos. El dinero va directo a tu cuenta."
