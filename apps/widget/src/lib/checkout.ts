@@ -635,7 +635,7 @@ export function isCheckoutRecoverable(status: CheckoutPublicStatus): boolean {
  * `utils.ts` re-exports this set for host-attribute parsing; do not add a
  * locale here without adding its translation table.
  */
-export const SUPPORTED_LOCALES = ['en', 'ru', 'cs', 'he'] as const;
+export const SUPPORTED_LOCALES = ['en', 'ru', 'cs', 'he', 'es'] as const;
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
 export type CheckoutLocale = SupportedLocale;
@@ -1033,14 +1033,83 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     seat_hint_paid: 'בחרו מקומות בתרשים.',
     seat_hint_free_label: 'חינם',
   },
+  es: {
+    email_label: 'Correo electrónico',
+    email_placeholder: 'tu@correo.es',
+    email_required: 'Introduce tu correo electrónico',
+    email_invalid: 'Introduce un correo electrónico válido',
+    email_suggestion: '¿Querías decir {suggestion}?',
+    name_label: 'Nombre y apellidos',
+    name_placeholder: 'Ana García',
+    name_required: 'Introduce tu nombre y apellidos',
+    optional_label: '(opcional)',
+    phone_label: 'Teléfono',
+    phone_placeholder: '+34 600 000 000',
+    phone_required: 'Introduce tu número de teléfono',
+    submit_label: 'Continuar al pago',
+    status_paid: '¡Pago realizado con éxito!',
+    status_expired: 'Tu reserva ha caducado',
+    status_failed: 'El pago ha fallado',
+    status_pending: 'Estamos procesando tu pedido…',
+    order_ref_label: 'Pedido',
+    seats_heading: 'Tus asientos',
+    ticket_heading: 'Tus entradas',
+    human_code_label: 'Código',
+    send_again: 'Reenviar las entradas',
+    buy_more: 'Comprar más entradas',
+    retry_label: 'Intentarlo de nuevo',
+    recover_label: 'Recuperar los asientos',
+    continue_to_payment: 'Continuar al pago',
+    session_cancelled: 'Cancelada',
+    session_cancelled_notice: 'Esta fecha ha sido cancelada.',
+    download_pdf: 'Descargar PDF',
+    loading: 'Cargando…',
+    error_generic: 'Algo ha salido mal. Inténtalo de nuevo.',
+    error_load_event: 'No se ha podido cargar el evento.',
+    error_checkout: 'No se ha podido iniciar el pago. Inténtalo de nuevo.',
+    error_order_status: 'No se ha podido cargar el estado del pedido.',
+    error_recovery: 'No se ha podido recuperar la reserva. Inténtalo de nuevo.',
+    conflict_notice: 'Algunos asientos de tu carrito ya no están disponibles.',
+    continue_without_conflicts: 'Continuar sin los asientos no disponibles',
+    cart_title: 'Tu carrito',
+    cart_details_title: 'Tus datos',
+    cart_empty: 'Tu carrito está vacío.',
+    cart_total_label: 'Total',
+    cart_fee_label: 'Cargo por servicio',
+    cart_back: 'Atrás',
+    expires_warn: '¡tus asientos caducarán pronto!',
+    ticket_singular: 'entrada',
+    ticket_plural: 'entradas',
+    redirecting_to_payment: 'Redirigiendo al pago…',
+    remaining: 'restantes',
+    seatmap_loading: 'Cargando el plano de asientos…',
+    seatmap_error_load: 'No se ha podido cargar el plano de asientos',
+    seatmap_aria_label: 'Plano de asientos interactivo',
+    seatmap_controls_label: 'Controles del plano de asientos',
+    seatmap_fit_title: 'Ajustar a la pantalla',
+    seatmap_fit_aria: 'Ajustar el plano de asientos a la pantalla',
+    seatmap_reset_title: 'Restablecer vista',
+    seatmap_reset_aria: 'Restablecer la vista del plano de asientos',
+    seatcard_sector: 'Sector',
+    seatcard_row: 'Fila',
+    seatcard_seat: 'Asiento',
+    seatcard_sold: 'Vendido',
+    seatcard_held: 'Reservado por otro comprador',
+    seatcard_unavailable: 'No está a la venta',
+    seatcard_selected: 'Seleccionado',
+    seat_hint_free: 'Entrada gratuita: elige un asiento en el plano.',
+    seat_hint_paid: 'Elige tus asientos en el plano.',
+    seat_hint_free_label: 'Gratis',
+  },
 };
 
 /**
  * Get the i18n strings for a given locale, falling back to English.
  */
 export function getCheckoutI18n(locale: string): CheckoutI18nStrings {
-  const key = (locale as CheckoutLocale) in CHECKOUT_I18N
-    ? (locale as CheckoutLocale)
+  const lang = (locale ?? '').trim().toLowerCase().split(/[-_]/)[0] ?? '';
+  const key = (lang as CheckoutLocale) in CHECKOUT_I18N
+    ? (lang as CheckoutLocale)
     : 'en';
   return CHECKOUT_I18N[key];
 }
