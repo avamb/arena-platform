@@ -344,9 +344,9 @@ orders paid with its test card. The film `bot-refund-order` was made then, and
   new pass needs a new paid order. Make the statistics pictures before the
   refund, because the refund changes the totals.
 - The page of the payment provider is never in a picture.
-- The pictures of these three films show the bot menu and the event card of
-  the stand of that day (the menu with sections and "First steps"). The
-  earlier bot films show the menu and the card that were there before.
+- After the payment provider was connected, the main menu lost the button
+  "Connect payments", thus every menu button below it moved up by one. A
+  capture script that presses menu buttons by position must be checked.
 
 ## Environment variables
 
