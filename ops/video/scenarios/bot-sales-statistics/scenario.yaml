@@ -9,7 +9,7 @@ title:
   es: "Estadísticas de ventas en el bot"
 
 # Instruction film about the event-center bot: where the bot shows page views, the sales summary and the CSV export of an event.
-# The orders of the film are free test orders, thus the money totals are zero.
+# The orders of the film were paid with a test card of the payment provider.
 # Pictures are made on the staging stand with the test Telegram account in the organization
 # "Luna Events" (see README, "Bot instruction films") and are not committed.
 # Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in apply-in-telegram-bot.
@@ -26,9 +26,9 @@ background: "#4f46e5"
 scenes:
   - id: s1-result
     narration:
-      ru: "Сколько билетов продано и сколько людей смотрят страницу? Ответ — в боте Arena Sold Out, в любой момент."
-      en: "How many tickets are sold, and how many people look at the page? The answer is in the Arena Sold Out bot at any time."
-      es: "¿Cuántas entradas se han vendido y cuánta gente mira la página? La respuesta está en el bot de Arena Sold Out, en cualquier momento."
+      ru: "Сколько билетов продано, сколько денег пришло и сколько людей смотрят страницу? Ответ — в боте Arena Sold Out, в любой момент."
+      en: "How many tickets are sold, how much money came in, and how many people look at the page? The answer is in the Arena Sold Out bot at any time."
+      es: "¿Cuántas entradas se han vendido, cuánto dinero ha entrado y cuánta gente mira la página? La respuesta está en el bot de Arena Sold Out, en cualquier momento."
     pause_after: 0.4
     shots:
       - image: captures/st_03_summary.png
@@ -38,15 +38,15 @@ scenes:
 
   - id: s2-card
     narration:
-      ru: "В карточке мероприятия видно просмотры страницы за тридцать дней, проданные и свободные места, оплаченные заказы и возвраты."
-      en: "The event card shows the page views for thirty days, the sold and free seats, the paid orders and the refunds."
-      es: "La ficha del evento muestra las visitas a la página en treinta días, las plazas vendidas y libres, los pedidos pagados y las devoluciones."
+      ru: "В карточке мероприятия видно просмотры страницы за тридцать дней, проданные и свободные места, оплаченную сумму и возвраты."
+      en: "The event card shows the page views for thirty days, the sold and free seats, the paid amount and the refunds."
+      es: "La ficha del evento muestra las visitas a la página en treinta días, las plazas vendidas y libres, el importe pagado y las devoluciones."
     pause_after: 0.6
     shots:
-      - image: captures/st_00_menu.png
+      - image: captures/st_00b_list.png
         frame: phone
-        title: { ru: "Меню → «Мои мероприятия»", en: "Menu → «My events»", es: "Menú → «Mis eventos»" }
-        scroll: { from: 0.6, to: 0.9 }
+        title: { ru: "«Мои мероприятия»", en: "«My events»", es: "«Mis eventos»" }
+        scroll: { from: 0.5, to: 0.9 }
       - image: captures/st_01_card.png
         frame: phone
         title: { ru: "Карточка мероприятия", en: "Event card", es: "Ficha del evento" }
@@ -55,9 +55,9 @@ scenes:
 
   - id: s3-summary
     narration:
-      ru: "Нажмите «Продажи и заказы», потом «Сводка». Здесь билеты, заказы, места, пригласительные, скидки и итог по каждой категории."
-      en: "Press «Sales and orders», then «Summary». Here are the tickets, the orders, the seats, the invitations, the discounts and the total for each category."
-      es: "Pulsa «Ventas y pedidos» y luego «Resumen». Aquí están las entradas, los pedidos, las plazas, las invitaciones, los descuentos y el total de cada categoría."
+      ru: "Нажмите «Продажи и заказы», потом «Сводка». Здесь билеты, заказы, места, оплаченная сумма, скидки, возвраты и итог по каждой категории."
+      en: "Press «Sales and orders», then «Summary». Here are the tickets, the orders, the seats, the paid amount, the discounts, the refunds and the total for each category."
+      es: "Pulsa «Ventas y pedidos» y luego «Resumen». Aquí están las entradas, los pedidos, las plazas, el importe pagado, los descuentos, las devoluciones y el total de cada categoría."
     pause_after: 0.8
     shots:
       - image: captures/st_02_sales.png

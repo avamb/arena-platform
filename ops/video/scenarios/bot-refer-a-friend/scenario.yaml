@@ -8,8 +8,8 @@ title:
   en: "The «Refer a friend» program"
   es: "El programa «Trae a un amigo»"
 
-# Instruction film about the event-center bot: how an organizer turns on the program Refer a friend for an event and what the rules are.
-# The test organization has no paid orders, thus the film does not show the personal code of a buyer.
+# Instruction film about the event-center bot: how an organizer turns on the program Refer a friend for an event, what the rules are, and where the buyer sees the personal code.
+# The orders of the film were paid with a test card of the payment provider.
 # Pictures are made on the staging stand with the test Telegram account in the organization
 # "Luna Events" (see README, "Bot instruction films") and are not committed.
 # Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in apply-in-telegram-bot.
@@ -110,12 +110,24 @@ scenes:
       ru: "После включения каждый покупатель получает личный код. В боте видно, сколько кодов выдано и сколько друзей пришло. Программу можно поставить на паузу."
       en: "After that, each buyer gets a personal code. The bot shows how many codes were issued and how many friends came. You can pause the program."
       es: "Después, cada comprador recibe un código personal. El bot muestra cuántos códigos se han emitido y cuántos amigos han venido. Puedes poner el programa en pausa."
-    pause_after: 1.2
+    pause_after: 0.8
     shots:
-      - image: captures/r_08_on.png
+      - image: captures/r_09_status.png
         frame: phone
-        title: { ru: "Программа включена", en: "The program is on", es: "Programa activado" }
+        title: { ru: "Коды выданы", en: "The codes are issued", es: "Códigos emitidos" }
         scroll: { from: 0.4, to: 0.9 }
+
+  - id: s6-buyer
+    narration:
+      ru: "Покупатель видит свой код сразу после оплаты. Он копирует ссылку и отправляет её другу."
+      en: "The buyer sees the code immediately after the payment. The buyer copies the link and sends it to a friend."
+      es: "El comprador ve su código justo después del pago. Copia el enlace y se lo envía a un amigo."
+    pause_after: 2.5
+    shots:
+      - image: captures/pr_buyer.png
+        frame: phone
+        title: { ru: "Что видит покупатель", en: "What the buyer sees", es: "Lo que ve el comprador" }
+        scroll: { from: 0.3, to: 0.7 }
 
   - id: cta
     narration:

@@ -305,9 +305,8 @@ organization "Luna Events", one pass for each language and film.
   on the buyer's page with a 100 % promo code. The films about orders and
   about the move and the cancellation of a session use it. The second event
   is for the price and the invitations.
-- The test organization has no paid orders, because payments are not
-  connected. The bot answers that a free order has nothing to refund, thus
-  no film shows a refund.
+- The bot answers that a free order has nothing to refund. The refund has
+  its own film, `bot-refund-order` (see below).
 - A promo code name stays taken after the code is deleted, thus each language
   has its own code (LUNA10, NIGHT10, NOCHE10).
 - The invited manager and the guests have `example.com` addresses. The
@@ -327,13 +326,27 @@ organization: `bot-event-page-materials`, `bot-refer-a-friend`,
   needs a new event.
 - The photos of the materials film are two pictures drawn for it. No video
   link was added, because the film has no own video.
-- Refer a friend gives a personal code only for a paid order. The test
-  organization has none, thus the film shows the organizer's side only.
+- Refer a friend gives a personal code only for a paid order. The buyer's
+  picture is the page after the payment; it opens only with the
+  `checkout_token` of the order in its address, and the address is not in the
+  picture.
 - Sales notifications are not filmed: they come from another bot in a group
   chat, and the capture account opens only the chat of the test bot.
 - An active brand keeps its name: each language has its own brand name.
 - The language switch must be checked after it is made (the menu must show
   the labels of the language). A pass in the wrong language spends the event.
+
+Later the same day the test organization got a test payment provider and
+orders paid with its test card. The film `bot-refund-order` was made then, and
+`bot-sales-statistics` and `bot-refer-a-friend` got new pictures.
+
+- A refund cannot be undone: each language has one paid order for it, and a
+  new pass needs a new paid order. Make the statistics pictures before the
+  refund, because the refund changes the totals.
+- The page of the payment provider is never in a picture.
+- The pictures of these three films show the bot menu and the event card of
+  the stand of that day (the menu with sections and "First steps"). The
+  earlier bot films show the menu and the card that were there before.
 
 ## Environment variables
 

@@ -1,0 +1,144 @@
+id: bot-refund-order
+fps: 30
+# To add a language: add it here, add its text to every narration, title and heading,
+# and put its pictures in captures/<language>/. Nothing else changes.
+languages: [ru, en, es]
+title:
+  ru: "Вернуть деньги за заказ в боте"
+  en: "Refund an order in the bot"
+  es: "Devolver el dinero de un pedido en el bot"
+
+# Instruction film about the event-center bot: how an organizer refunds a paid order: find the order, select the tickets, give the cause, type the word, confirm.
+# The orders of the film were paid with a test card of the payment provider and refunded in its test mode.
+# Pictures are made on the staging stand with the test Telegram account in the organization
+# "Luna Events" (see README, "Bot instruction films") and are not committed.
+# Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in apply-in-telegram-bot.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [9x16, 4x5]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-result
+    narration:
+      ru: "Покупатель попросил вернуть деньги? Верните их прямо в боте Arena Sold Out: деньги уйдут на карту, которой он платил."
+      en: "Does a buyer ask for the money back? Refund the order in the Arena Sold Out bot: the money goes to the card that the buyer used."
+      es: "¿Un comprador pide que le devuelvas el dinero? Devuélvelo en el bot de Arena Sold Out: el dinero vuelve a la tarjeta con la que pagó."
+    pause_after: 0.4
+    shots:
+      - image: captures/f_11_done.png
+        frame: phone
+        title: { ru: "Возврат — прямо в боте", en: "A refund — in the bot", es: "La devolución, en el bot" }
+        scroll: { from: 0.5, to: 0.8 }
+
+  - id: s2-find
+    narration:
+      ru: "Откройте «Заказы и возвраты», потом «Заказы». Найдите заказ по номеру, имени или e-mail и откройте его карточку."
+      en: "Open «Orders and refunds», then «Orders». Find the order by its number, a name or an e-mail and open its card."
+      es: "Abre «Pedidos y devoluciones» y luego «Pedidos». Busca el pedido por su número, un nombre o un e-mail y abre su ficha."
+    pause_after: 0.6
+    shots:
+      - image: captures/f_01_section.png
+        frame: phone
+        title: { ru: "«Заказы и возвраты»", en: "«Orders and refunds»", es: "«Pedidos y devoluciones»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/f_03_found.png
+        frame: phone
+        title: { ru: "Поиск по номеру заказа", en: "Search by the order number", es: "Búsqueda por número de pedido" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/f_04_card.png
+        frame: phone
+        title: { ru: "Карточка заказа", en: "Order card", es: "Ficha del pedido" }
+        weight: 3
+        scroll: { from: 0.3, to: 1.0 }
+
+  - id: s3-pick
+    narration:
+      ru: "Нажмите «Вернуть деньги» и отметьте билеты. Можно вернуть весь заказ или только часть билетов."
+      en: "Press «Refund» and select the tickets. You can refund the full order or only some of its tickets."
+      es: "Pulsa «Devolver dinero» y marca las entradas. Puedes devolver todo el pedido o solo algunas entradas."
+    pause_after: 0.6
+    shots:
+      - image: captures/f_05_pick.png
+        frame: phone
+        title: { ru: "«Вернуть деньги»", en: "«Refund»", es: "«Devolver dinero»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/f_06_all.png
+        frame: phone
+        title: { ru: "Билеты отмечены", en: "The tickets are selected", es: "Entradas marcadas" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+
+  - id: s4-reason
+    narration:
+      ru: "Выберите причину. Бот покажет сумму и попросит набрать слово «вернуть»: возврат нельзя отменить, а билеты сразу перестанут действовать."
+      en: "Select the cause. The bot shows the amount and asks you to type the word «refund»: you cannot undo a refund, and the tickets are not valid after it."
+      es: "Elige el motivo. El bot muestra el importe y te pide escribir la palabra «devolver»: la devolución no se puede deshacer y las entradas dejan de ser válidas."
+    pause_after: 0.6
+    shots:
+      - image: captures/f_07_reason.png
+        frame: phone
+        title: { ru: "Причина возврата", en: "Cause of the refund", es: "Motivo de la devolución" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/f_08_word.png
+        frame: phone
+        title: { ru: "Слово подтверждения", en: "The word of confirmation", es: "Palabra de confirmación" }
+        weight: 3
+        scroll: { from: 0.5, to: 0.95 }
+
+  - id: s5-final
+    narration:
+      ru: "После последней проверки нажмите «Да, вернуть». Деньги возвращает платёжный провайдер, а покупатель получает письмо."
+      en: "After the last check, press «Yes, refund». The payment provider sends the money back, and the buyer gets an e-mail."
+      es: "Después de la comprobación final, pulsa «Sí, devolver». El proveedor de pago devuelve el dinero y el comprador recibe un e-mail."
+    pause_after: 0.8
+    shots:
+      - image: captures/f_09_final.png
+        frame: phone
+        title: { ru: "Последняя проверка", en: "Last check", es: "Comprobación final" }
+        weight: 3
+        scroll: { from: 0.5, to: 0.95 }
+      - image: captures/f_11_done.png
+        frame: phone
+        title: { ru: "Деньги возвращены", en: "The money is refunded", es: "Dinero devuelto" }
+        weight: 2
+        scroll: { from: 0.5, to: 0.9 }
+
+  - id: s6-after
+    narration:
+      ru: "В карточке заказа видно, что деньги возвращены, а билеты отменены. Все возвраты собраны в разделе «Возвраты»."
+      en: "The order card shows that the money is refunded and the tickets are canceled. You find all refunds in the section «Refunds»."
+      es: "La ficha del pedido muestra que el dinero está devuelto y las entradas canceladas. Todas las devoluciones están en la sección «Devoluciones»."
+    pause_after: 1.2
+    shots:
+      - image: captures/f_12_card.png
+        frame: phone
+        title: { ru: "Заказ после возврата", en: "The order after the refund", es: "El pedido después de la devolución" }
+        weight: 3
+        scroll: { from: 0.3, to: 0.9 }
+      - image: captures/f_14_refunded.png
+        frame: phone
+        title: { ru: "Раздел «Возвраты»", en: "Section «Refunds»", es: "Sección «Devoluciones»" }
+        weight: 2
+        scroll: { from: 0.4, to: 0.9 }
+
+  - id: cta
+    narration:
+      ru: "Оставьте заявку на arenasoldout.com или в нашем Telegram-боте. Мы ждём вас."
+      en: "Apply at arenasoldout.com or in our Telegram bot. We look forward to working with you."
+      es: "Deja tu solicitud en arenasoldout.com o en nuestro bot de Telegram. Te esperamos."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Оставьте заявку", en: "Apply now", es: "Deja tu solicitud" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"

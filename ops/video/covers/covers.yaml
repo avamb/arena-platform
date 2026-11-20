@@ -423,3 +423,27 @@ films:
         line1: "TU MARCA"
         line2: "Y SU PÁGINA"
         sub: "Todos los eventos de la marca en una página."
+
+  bot-refund-order:
+    # The answer of the bot after a refund. The capture has an empty lower part, so crop it.
+    item:
+      default:
+        kind: phone
+        crop: { x: 0, y: 0, w: 1, h: 0.66 }
+        src:
+          ru: scenarios/bot-refund-order/captures/ru/f_11_done.png
+          en: scenarios/bot-refund-order/captures/en/f_11_done.png
+          es: scenarios/bot-refund-order/captures/es/f_11_done.png
+    texts:
+      ru:
+        line1: "ВЕРНУТЬ ДЕНЬГИ"
+        line2: "ЗА ЗАКАЗ В БОТЕ"
+        sub: "Деньги уходят на карту, которой платил покупатель."
+      en:
+        line1: "REFUND AN ORDER"
+        line2: "IN THE BOT"
+        sub: "The money goes to the card that the buyer used."
+      es:
+        line1: "DEVOLVER EL DINERO"
+        line2: "DE UN PEDIDO EN EL BOT"
+        sub: "El dinero vuelve a la tarjeta con la que se pagó."
