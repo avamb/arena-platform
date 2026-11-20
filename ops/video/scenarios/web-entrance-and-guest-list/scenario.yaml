@@ -1,0 +1,101 @@
+id: web-entrance-and-guest-list
+fps: 30
+languages: [ru, en, es]
+title:
+  ru: "Вход на мероприятие: сканер билетов и список гостей"
+  en: "Entrance to the event: the ticket scanner and the guest list"
+  es: "Entrada al evento: el escáner de entradas y la lista de invitados"
+
+# Pictures in captures/ are made by scripts/capture-web.ts (stage `entrance`, see README, "How-to films of the
+# web event center") and are not committed.
+# The task named two films, "scan tickets at the entrance" and "guest list". The web event center has NO ticket
+# scanner: its screen "Entrance" sends the organizer to the scanner app for Android and iPhone. So this is one
+# film about what the screen really gives: where the scanner is, the guest list as an Excel file, the tickets
+# of a date with the filter "Not entered", and the guest list that comes automatically.
+# A scan itself (a valid ticket, a second scan, a wrong code) is not in the film: it is done in the mobile app.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [16x9]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-why
+    narration:
+      ru: "В день мероприятия вам нужны две вещи: проверять билеты на входе и знать, кто придёт. Обе — в разделе «Вход»."
+      en: "On the day of the event, you need two things: to check tickets at the entrance and to know who will come. The two are in the section Entrance."
+      es: "El día del evento necesitas dos cosas: comprobar las entradas en la puerta y saber quién va a venir. Las dos están en la sección «Entrada»."
+    pause_after: 0.4
+    shots:
+      - image: captures/e_01_entrance.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Раздел «Вход»", en: "The section Entrance", es: "La sección «Entrada»" }
+        weight: 3
+        zoom: { from: 1.3, to: 1.5, x: 0.5, y: 0.25 }
+
+  - id: s2-scanner
+    narration:
+      ru: "Билеты проверяют в приложении-сканере Arena. Установите его на телефон каждого сотрудника на входе: есть версии для Android и iPhone. В браузере билеты не сканируют."
+      en: "Your team checks tickets with the Arena ticket scanner app. Install it on the phone of each person at the entrance: there are versions for Android and iPhone. You cannot scan tickets in the browser."
+      es: "El personal comprueba las entradas con la aplicación escáner de Arena. Instálala en el teléfono de cada persona de la puerta: hay versiones para Android y iPhone. En el navegador no se escanean entradas."
+    pause_after: 0.4
+    shots:
+      - image: captures/e_02_guest_list.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Сканер билетов — приложение", en: "The ticket scanner is an app", es: "El escáner de entradas es una aplicación" }
+        weight: 4
+        zoom: { from: 1.5, to: 1.7, x: 0.5, y: 0.3 }
+
+  - id: s3-excel
+    narration:
+      ru: "Список гостей — на странице сеанса. Откройте мероприятие, выберите сеанс и нажмите «Скачать список гостей». Вы получите файл Excel."
+      en: "The guest list is on the page of the session. Open the event, select the session and press Download the guest list. You get an Excel file."
+      es: "La lista de invitados está en la página de la sesión. Abre el evento, elige la sesión y pulsa «Descargar la lista de invitados». Recibes un archivo de Excel."
+    pause_after: 0.4
+    shots:
+      - image: captures/e_03_session.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Скачать список гостей (Excel)", en: "Download the guest list (Excel)", es: "Descargar la lista de invitados (Excel)" }
+        weight: 4
+        zoom: { from: 1.4, to: 1.65, x: 0.5, y: 0.5 }
+
+  - id: s4-tickets
+    narration:
+      ru: "Ниже — все билеты сеанса: номер, заказ, имя и e-mail покупателя. Фильтр «Не прошли» показывает, кого вы ещё ждёте, «Прошли» — кто уже в зале."
+      en: "Below are all the tickets of the session: the number, the order, the name and the e-mail of the buyer. The filter Not entered shows whom you still wait for, and Entered shows who is in the hall."
+      es: "Debajo están todas las entradas de la sesión: el número, el pedido, el nombre y el correo del comprador. El filtro «No han entrado» muestra a quién esperas todavía y «Han entrado», quién ya está dentro."
+    pause_after: 0.4
+    shots:
+      - image: captures/e_04_tickets.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Билеты сеанса", en: "The tickets of the session", es: "Las entradas de la sesión" }
+        weight: 2
+        zoom: { from: 1.4, to: 1.6, x: 0.5, y: 0.6 }
+      - image: captures/e_05_not_entered.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Фильтр «Не прошли»", en: "The filter Not entered", es: "El filtro «No han entrado»" }
+        weight: 3
+        zoom: { from: 1.5, to: 1.7, x: 0.5, y: 0.6 }
+
+  - id: s5-auto
+    narration:
+      ru: "Список может приходить сам: за сутки до начала, за три часа и к открытию входа. Поставьте галочку — и он придёт вам в чат с ботом ивент-центра. Без бота список придёт на почту."
+      en: "The list can come automatically: 24 hours before the start, 3 hours before the start and when the doors open. Set the tick, and it comes to your chat with the event center bot. Without the bot, the list comes to your e-mail."
+      es: "La lista puede llegar sola: 24 horas antes del inicio, 3 horas antes y al abrir las puertas. Marca la casilla y llegará a tu chat con el bot del centro de eventos. Sin el bot, la lista llega a tu correo."
+    pause_after: 0.6
+    shots:
+      - image: captures/e_06_auto.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Список гостей перед каждым сеансом", en: "The guest list before each session", es: "La lista de invitados antes de cada sesión" }
+        weight: 4
+        zoom: { from: 1.5, to: 1.75, x: 0.5, y: 0.95 }

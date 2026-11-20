@@ -1,0 +1,101 @@
+id: buyer-where-is-my-ticket
+fps: 30
+languages: [ru, en, es]
+title:
+  ru: "Где мой билет: письмо, PDF и что делать, если письма нет"
+  en: "Where is my ticket: the e-mail, the PDF and what to do if there is no e-mail"
+  es: "Dónde está mi entrada: el correo, el PDF y qué hacer si no llega el correo"
+
+# A film for the BUYER, vertical. Pictures in captures/ are made by scripts/capture-web.ts (stage `ticket`, a
+# phone window) and are not committed. The buyer is invented (Carmen Ortega, carmen@example.com), the order is a
+# free one of a test organizer on the stand.
+# z_01_letter is the ticket letter of that order drawn again from its text (scripts/make-ticket-letter.ts and
+# scripts/render-letter.ts): the test mailbox and the contact address of the organizer are replaced.
+# z_02_ticket is the first page of the real PDF ticket of that order with the same replacements.
+# The page has no "find my order" function: a buyer without the letter writes to the organizer, and the
+# organizer sends the tickets again from the order card.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [9x16, 4x5]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-where
+    narration:
+      ru: "Вы купили билет. Где он? Сразу после оплаты на странице появляется номер заказа и ссылка «Скачать PDF». И тот же билет приходит на e-mail, который вы указали при покупке."
+      en: "You bought a ticket. Where is it? Immediately after the payment, the page shows the order number and the link Download PDF. And the same ticket comes to the e-mail address that you gave during the purchase."
+      es: "Has comprado una entrada. ¿Dónde está? Justo después del pago, la página muestra el número de pedido y el enlace «Descargar PDF». Y la misma entrada llega al correo que indicaste en la compra."
+    pause_after: 0.4
+    shots:
+      - image: captures/y_05_done.png
+        frame: phone
+        title: { ru: "После оплаты: заказ и билет", en: "After the payment: the order and the ticket", es: "Después del pago: el pedido y la entrada" }
+        weight: 3
+        zoom: { from: 1.0, to: 1.12, x: 0.5, y: 0.4 }
+      - image: captures/y_04_form.png
+        frame: phone
+        title: { ru: "Билет придёт на этот e-mail", en: "The ticket comes to this e-mail", es: "La entrada llega a este correo" }
+        weight: 2
+        zoom: { from: 1.0, to: 1.12, x: 0.5, y: 0.6 }
+
+  - id: s2-letter
+    narration:
+      ru: "Откройте письмо с темой «Ваш билет». Его отправляет организатор. В письме — название, дата, место и ссылка «Скачать PDF». Тот же файл приложен к письму."
+      en: "Open the e-mail with the subject Your ticket. The organizer sends it. The e-mail shows the event, the date, the place and the link Download PDF. The same file is attached to the e-mail."
+      es: "Abre el correo con el asunto «Tu entrada». Lo envía el organizador. El correo muestra el evento, la fecha, el lugar y el enlace «Descargar PDF». El mismo archivo va adjunto al correo."
+    pause_after: 0.4
+    shots:
+      - image: captures/z_01_letter.png
+        frame: phone
+        title: { ru: "Письмо с билетом", en: "The e-mail with the ticket", es: "El correo con la entrada" }
+        weight: 4
+        scroll: { from: 0, to: 0.3 }
+
+  - id: s3-pdf
+    narration:
+      ru: "Билет — это PDF с кодом. Распечатывать не обязательно: откройте файл на телефоне и покажите код на входе."
+      en: "The ticket is a PDF with a code. It is not necessary to print it: open the file on your phone and show the code at the entrance."
+      es: "La entrada es un PDF con un código. No hace falta imprimirla: abre el archivo en el teléfono y enseña el código en la entrada."
+    pause_after: 0.4
+    shots:
+      - image: captures/z_02_ticket.png
+        frame: phone
+        title: { ru: "Билет PDF", en: "The PDF ticket", es: "La entrada en PDF" }
+        weight: 4
+        scroll: { from: 0, to: 0.55 }
+
+  - id: s4-no-letter
+    narration:
+      ru: "Письма нет? Посмотрите папку «Спам». Проверьте и другие свои адреса: возможно, при покупке вы указали один из них."
+      en: "There is no e-mail? Look in the Spam folder. Look also in your other mailboxes: possibly you gave one of those addresses during the purchase."
+      es: "¿No hay correo? Mira en la carpeta de correo no deseado. Mira también en tus otros buzones: quizá indicaste una de esas direcciones en la compra."
+    pause_after: 0.4
+    shots:
+      - image: captures/z_01_letter.png
+        frame: phone
+        title: { ru: "Ищите тему «Ваш билет»", en: "Look for the subject Your ticket", es: "Busca el asunto «Tu entrada»" }
+        weight: 3
+        zoom: { from: 1.0, to: 1.15, x: 0.5, y: 0.0 }
+
+  - id: s5-write
+    narration:
+      ru: "Не нашли? Откройте страницу мероприятия и внизу нажмите «Написать организатору». Укажите имя, e-mail и номер заказа, если знаете его. Организатор отправит билет ещё раз."
+      en: "You did not find it? Open the page of the event and press Write to the organizer at the bottom. Give your name, your e-mail and the order number, if you know it. The organizer will send the ticket again."
+      es: "¿No lo encuentras? Abre la página del evento y pulsa abajo «Escribir al organizador». Indica tu nombre, tu correo y el número de pedido, si lo sabes. El organizador te enviará la entrada otra vez."
+    pause_after: 0.6
+    shots:
+      - image: captures/y_06_write.png
+        frame: phone
+        title: { ru: "Внизу страницы мероприятия", en: "At the bottom of the event page", es: "Al final de la página del evento" }
+        weight: 2
+        zoom: { from: 1.0, to: 1.15, x: 0.3, y: 0.85 }
+      - image: captures/y_07_form.png
+        frame: phone
+        title: { ru: "Написать организатору", en: "Write to the organizer", es: "Escribir al organizador" }
+        weight: 3
+        zoom: { from: 1.0, to: 1.08, x: 0.5, y: 0.5 }

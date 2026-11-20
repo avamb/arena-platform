@@ -19,6 +19,8 @@ interface Letter {
   subject: string;
   html: string;
   to?: string;
+  /** the sender name of the bar; a ticket letter comes under the name of the organizer */
+  from?: string;
   replace?: [string, string][];
 }
 
@@ -60,7 +62,7 @@ async function main(): Promise<void> {
     ${desktop ? "body{background:#f1f3f6}.sheet{width:760px;margin:22px auto;background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.12);overflow:hidden}" : ""}
   </style></head><body><div class="sheet">
   <div class="bar"><p class="subj">${esc(subject)}</p>
-    <div class="from"><div class="av">A</div><div><div class="who">ArenaSoldOut</div>
+    <div class="from"><div class="av">A</div><div><div class="who">${esc(l.from ?? "ArenaSoldOut")}</div>
     <div class="to">${TO_LABEL[l.lang] ?? "To"}: ${esc(l.to ?? "carmen@example.com")}</div></div></div></div>
   <div class="body">${clean(l)}</div></div></body></html>`;
   const browser = await chromium.launch();

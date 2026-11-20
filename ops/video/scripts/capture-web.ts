@@ -82,17 +82,24 @@ class Shots {
       const swap = (s: string) => pairs.reduce((acc, [from, to]) => acc.split(from).join(to), s).replace(/([a-z]+)-staging\./g, "$1.").replace(/\w\*+@\w\*+\.[a-z]+/g, "c*****@e******.com");
       const kept: [Node, string][] = [];
       (window as unknown as { videoKept: [Node, string][] }).videoKept = kept;
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-        const t = n.nodeValue ?? "";
-        const r = swap(t);
-        if (r !== t) { kept.push([n, t]); n.nodeValue = r; }
+      // the ticket widget of the sales page lives in a shadow tree: its texts and fields are replaced too
+      const roots: (Document | ShadowRoot)[] = [document];
+      for (let i = 0; i < roots.length; i += 1) roots[i].querySelectorAll("*").forEach((e) => { if (e.shadowRoot) roots.push(e.shadowRoot); });
+      const fields: HTMLInputElement[] = [];
+      (window as unknown as { videoFields: HTMLInputElement[] }).videoFields = fields;
+      for (const root of roots) {
+        const walker = document.createTreeWalker(root === document ? document.body : root, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          const t = n.nodeValue ?? "";
+          const r = swap(t);
+          if (r !== t) { kept.push([n, t]); n.nodeValue = r; }
+        }
+        root.querySelectorAll<HTMLInputElement>("input,textarea").forEach((i) => {
+          if (["password", "checkbox", "radio", "hidden", "file"].includes(i.type)) return;
+          const r = swap(i.value);
+          if (r !== i.value) { i.dataset.videoReal = i.value; i.value = r; fields.push(i); }
+        });
       }
-      document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input,textarea").forEach((i) => {
-        if (["password", "checkbox", "radio", "hidden", "file"].includes(i.type)) return;
-        const r = swap(i.value);
-        if (r !== i.value) { i.dataset.videoReal = i.value; i.value = r; }
-      });
       (document.activeElement as HTMLElement | null)?.blur?.();
     }, this.replace);
     await page.waitForTimeout(300);
@@ -100,10 +107,10 @@ class Shots {
     await page.evaluate(() => {
       // the page must keep its real texts: a later step reads an address from it
       for (const [n, t] of (window as unknown as { videoKept?: [Node, string][] }).videoKept ?? []) n.nodeValue = t;
-      document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("[data-video-real]").forEach((i) => {
+      for (const i of (window as unknown as { videoFields?: HTMLInputElement[] }).videoFields ?? []) {
         i.value = i.dataset.videoReal ?? i.value;
         delete i.dataset.videoReal;
-      });
+      }
     });
     console.log(`  shot ${this.film} ${name}`);
     if (DEBUG) console.log((await page.evaluate(() => document.body.innerText)).replace(/[\w.+-]+@(?!example\.)[\w.-]+/g, "<mail>"));
@@ -201,6 +208,8 @@ async function event(lang: Lang, shots: Shots): Promise<void> {
     const confirm = day.getByTestId(`date-confirm-${EVENT_DAY}`);
     if (await confirm.count()) await confirm.click();
     await tid(page, "wizard-date-0-time").fill("20:00");
+    // WEB_DOORS=19:30: the line "Doors open" of the date, for the films about the ticket of a buyer
+    if (process.env.WEB_DOORS) await tid(page, "wizard-date-0-doors").fill(process.env.WEB_DOORS);
     const places = tid(page, "wizard-date-0-capacity");
     if (await places.count()) await places.fill(VENUE.capacity);
     await settle(page, 500);
@@ -789,6 +798,216 @@ async function cancel(lang: Lang, shots: Shots): Promise<void> {
   }
 }
 
+const BRAND = { name: "Aurora Jazz Club", address: "Calle Ejemplo 12, Madrid", phone: "+34 600 555 010", site: "aurora-jazz.example" };
+
+/** web-brands: a brand (the name under which tickets are sold), its card and its public page. */
+async function brand(lang: Lang, shots: Shots): Promise<void> {
+  const { ctx, page, app, org, close } = await signIn(lang);
+  try {
+    await page.goto(`${app}${org}/promoters`, { waitUntil: "networkidle" });
+    await settle(page, 1500);
+    if (!(await tid(page, "promoter-list").getByText(BRAND.name).count())) {
+      await shots.take(page, "n_01_brands");
+      await tid(page, "promoter-new").click();
+      await settle(page, 800);
+      await tid(page, "create-name").fill(BRAND.name);
+      await tid(page, "create-address").fill(BRAND.address);
+      await tid(page, "create-phone").fill(BRAND.phone);
+      await tid(page, "create-email").fill(env(`VIDEO_ONB_EMAIL_${lang.toUpperCase()}`));
+      await tid(page, "create-website").fill(BRAND.site);
+      await shots.take(page, "n_02_form", tid(page, "promoter-create"), 160);
+      await shots.take(page, "n_03_form_end", tid(page, "create-phone"), 260);
+      await tid(page, "create-submit").click();
+      await settle(page, 3000);
+    }
+    await ids(page, "brand made");
+    await shots.take(page, "n_04_list");
+    await tid(page, "promoter-list").locator("a").first().click();
+    await page.waitForURL(/\/promoters\/[0-9a-f-]{36}/);
+    await settle(page, 2000);
+    await ids(page, "brand card");
+    if (DEBUG) console.log("CARD", await page.evaluate(() => document.querySelector("main")?.innerText ?? ""), "\nLINKS", await page.evaluate(() => Array.from(document.querySelectorAll("main a[href]")).map((a) => a.getAttribute("href")).join(" ")));
+    await shots.take(page, "n_05_card");
+    const pub = await page.evaluate(() => Array.from(document.querySelectorAll<HTMLAnchorElement>("main a[href^='http']")).map((a) => a.href).find((h) => /tickets/.test(new URL(h).host)) ?? "");
+    if (pub) {
+      assertHostAllowed(pub);
+      const p2 = await ctx.newPage();
+      await p2.goto(pub, { waitUntil: "networkidle" });
+      await p2.waitForTimeout(3000);
+      await shots.take(p2, "n_06_public");
+      await p2.close();
+    } else console.log("  the brand card has no link to a public page");
+  } finally {
+    await close();
+  }
+}
+
+/** web-sales-statistics: the totals and the page statistics on the event card, the sales funnel, the summary. */
+async function stats(lang: Lang, shots: Shots): Promise<void> {
+  const { page, app, org, close } = await signIn(lang);
+  try {
+    const st = readState(lang);
+    await page.goto(`${app}${st.event}`, { waitUntil: "networkidle" });
+    await settle(page, 1800);
+    await openSection(page, "sales");
+    await shots.take(page, "t_01_totals", tid(page, "sales-figures"), 260);
+    await shots.take(page, "t_02_page_stats", tid(page, "page-stats"), 160);
+    await tid(page, "event-funnel-link").click();
+    await page.waitForURL(/\/funnel/);
+    await settle(page, 2500);
+    await shots.take(page, "t_03_funnel");
+    await shots.take(page, "t_04_steps", tid(page, "funnel-main"), 160);
+    await shots.take(page, "t_05_sources", tid(page, "funnel-source").first(), 330);
+    await page.goto(`${app}${org}/summary`, { waitUntil: "networkidle" });
+    await settle(page, 1500);
+    await tid(page, "summary-preset-all").click();
+    await settle(page, 2500);
+    await ids(page, "summary");
+    await shots.take(page, "t_06_summary");
+    await page.evaluate(() => window.scrollTo(0, 420));
+    await shots.take(page, "t_07_summary_more", null);
+  } finally {
+    await close();
+  }
+}
+
+/** web-buyer-messages-and-notifications: "Messages to buyers" (reminder, subscription) and "Sales notifications". */
+async function messages(lang: Lang, shots: Shots): Promise<void> {
+  const { page, app, org, close } = await signIn(lang);
+  try {
+    await page.goto(`${app}${org}/growth`, { waitUntil: "networkidle" });
+    await settle(page, 1500);
+    await shots.take(page, "g_01_messages");
+    for (const id of ["growth-reminder", "growth-optin"]) {
+      const box = tid(page, id);
+      if (!(await box.isChecked())) await box.check();
+    }
+    await shots.take(page, "g_02_on", tid(page, "growth-settings"), 160);
+    if (DEBUG) console.log("GROWTH", await tid(page, "growth-settings").innerText());
+    if (await tid(page, "growth-save").isEnabled()) await tid(page, "growth-save").click();
+    await settle(page, 2500);
+    await ids(page, "growth saved");
+    await shots.take(page, "g_03_saved", tid(page, "growth-settings"), 160);
+    await shots.take(page, "g_04_subscribers", tid(page, "growth-subscribers"), 160);
+    await page.goto(`${app}${org}/notifications`, { waitUntil: "networkidle" });
+    await settle(page, 1500);
+    await shots.take(page, "g_05_notifications");
+    await shots.take(page, "g_06_guest_list", tid(page, "guest-list-subscription"), 260);
+  } finally {
+    await close();
+  }
+}
+
+/** A phone window of a buyer (390 x 844), for the vertical films. */
+async function buyerPhone(ctx: BrowserContext, lang: Lang): Promise<{ page: Page; close: () => Promise<void> }> {
+  const buyer = readState(lang).buyer;
+  if (!buyer) throw new Error("capture-web: no sales page in the state file, run stage event first");
+  assertHostAllowed(buyer);
+  const bctx = await ctx.browser()!.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, locale: BROWSER_LOCALE[lang], timezoneId: "Europe/Madrid", acceptDownloads: true });
+  await bctx.addInitScript("window.__name = (f) => f");
+  const page = await bctx.newPage();
+  await page.goto(buyer, { waitUntil: "networkidle" });
+  await page.waitForTimeout(3000);
+  return { page, close: () => bctx.close() };
+}
+
+/**
+ * buyer-where-is-my-ticket and buyer-how-to-read-the-date: a buyer on a phone gets a free ticket (promo code of
+ * 100 %, no payment), the page after the order, the PDF ticket (saved to .cache), the form "Write to the organizer".
+ */
+async function ticket(lang: Lang, shots: Shots): Promise<void> {
+  const { ctx, page, app, org, close } = await signIn(lang);
+  try {
+    await promoCode(page, app, org, "GUEST100", "100");
+    const b = await buyerPhone(ctx, lang);
+    const p = b.page;
+    await shots.take(p, "y_01_page");
+    await shots.take(p, "y_02_date", p.locator("h1").first(), 150);
+    await shots.take(p, "y_03_tickets", p.locator("arena-tickets"), 110);
+    await p.locator(".mini-cart-cta").click();
+    await p.locator(".promo-link").click();
+    await p.locator("#arena-promo-input").fill("GUEST100");
+    await p.locator(".promo-apply").click();
+    await p.waitForTimeout(3000);
+    await p.locator(".cta-btn").click();
+    await p.locator("#bf-email").fill(env(`VIDEO_ONB_EMAIL_${lang.toUpperCase()}`));
+    await p.locator("#bf-name").fill("Carmen Ortega");
+    await shots.take(p, "y_04_form", null);
+    await p.locator("arena-tickets form button[type=submit]").click();
+    for (let i = 0; i < 20 && !/PDF/.test(await widgetText(p)); i += 1) await p.waitForTimeout(2000);
+    const done = await widgetText(p);
+    const number = /\b1\d{9}\b/.exec(done)?.[0] ?? "";
+    console.log(`  order ${number || "not found"}`);
+    writeState(lang, { ticketOrder: number });
+    await shots.take(p, "y_05_done", p.locator("arena-tickets"), 110);
+    const link = p.locator("arena-tickets a, arena-tickets button").filter({ hasText: /PDF/ }).first();
+    if (await link.count()) {
+      const [dl] = await Promise.all([p.waitForEvent("download", { timeout: 20000 }).catch(() => null), link.click()]);
+      if (dl) {
+        await dl.saveAs(path.join(ROOT, ".cache", `ticket-${lang}.pdf`));
+        console.log("  PDF ticket saved");
+      } else console.log("  the PDF button did not start a download");
+    }
+    await p.goto(readState(lang).buyer, { waitUntil: "networkidle" });
+    await p.waitForTimeout(2500);
+    const write = p.getByRole("button", { name: /организатору|organizer|organizador/i }).first();
+    if (await write.count()) {
+      await write.scrollIntoViewIfNeeded();
+      await shots.take(p, "y_06_write", null);
+      await write.click();
+      await p.waitForTimeout(1500);
+      if (DEBUG) console.log("FORM", await p.evaluate(() => document.body.innerText.slice(-900)));
+      await shots.take(p, "y_07_form", null);
+    }
+    await b.close();
+  } finally {
+    await close();
+  }
+}
+
+/** web-entrance-and-guest-list: the screen "Entrance to the event", the tickets of a date, the guest list files. */
+async function entrance(lang: Lang, shots: Shots): Promise<void> {
+  const { page, app, org, close } = await signIn(lang);
+  try {
+    await page.goto(`${app}${org}/entrance`, { waitUntil: "networkidle" });
+    await settle(page, 1500);
+    await shots.take(page, "e_01_entrance");
+    await shots.take(page, "e_02_guest_list", tid(page, "entrance-guest-list"), 200);
+    await openSession(page, app, lang);
+    await shots.take(page, "e_03_session");
+    await shots.take(page, "e_04_tickets", tid(page, "session-tickets"), 200);
+    if (DEBUG) console.log("TICKETS", await tid(page, "session-tickets").innerText());
+    await tid(page, "session-tickets-filter-notEntered").click();
+    await settle(page, 1200);
+    await shots.take(page, "e_05_not_entered", tid(page, "session-tickets"), 200);
+    await shots.take(page, "e_06_auto", tid(page, "guest-list-subscription"), 300);
+  } finally {
+    await close();
+  }
+}
+
+/** look: prints the text and the test ids of screens, to plan a film. Paths after the stage name; "E..." is a path under the event, "#id" clicks a test id. */
+async function look(lang: Lang): Promise<void> {
+  const { page, app, org, close } = await signIn(lang);
+  try {
+    for (const sub of process.argv.slice(4)) {
+      if (sub.startsWith("#")) {
+        await tid(page, sub.slice(1)).first().click();
+        await settle(page, 1800);
+      } else {
+        await page.goto(sub.startsWith("E") ? `${app}${readState(lang).event}${sub.slice(1)}` : `${app}${org}${sub}`, { waitUntil: "networkidle" });
+        await settle(page, 1800);
+      }
+      console.log(`\n===== ${sub} =====`);
+      console.log("TESTIDS", await page.evaluate(() => Array.from(document.querySelectorAll("main [data-testid]")).map((e) => e.getAttribute("data-testid")).filter((x) => !/^date-day/.test(x || "")).join(" ")));
+      console.log("LINKS", (await page.evaluate(() => Array.from(document.querySelectorAll("main a[href]")).map((a) => a.getAttribute("href")).join(" "))).replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, "<id>"));
+      console.log((await page.evaluate(() => document.querySelector("main")?.innerText ?? "")).replace(/[\w.+-]+@(?!example\.)[\w.-]+/g, "<mail>"));
+    }
+  } finally {
+    await close();
+  }
+}
+
 /** Deletes the event of the state file (a trial run): off sale, "Delete", the typed word. Only the test organizer's own event. */
 async function reset(lang: Lang): Promise<void> {
   const { page, app, close } = await signIn(lang);
@@ -827,8 +1046,10 @@ const FILMS: Record<string, string> = {
   promo: "web-promo-codes", order: "web-orders-and-refund", refund: "web-orders-and-refund",
   invite: "web-invitations", team: "web-invite-manager", price: "web-change-price",
   move: "web-move-or-cancel-session", cancel: "web-move-or-cancel-session",
+  ticket: "buyer-where-is-my-ticket", entrance: "web-entrance-and-guest-list",
+  brand: "web-brands", stats: "web-sales-statistics", messages: "web-buyer-messages-and-notifications",
 };
-const STAGES = Object.keys(FILMS);
+const STAGES = [...Object.keys(FILMS), "look"];
 
 async function main(): Promise<void> {
   loadEnv();
@@ -837,13 +1058,14 @@ async function main(): Promise<void> {
   if (!["ru", "en", "es"].includes(lang) || !STAGES.includes(stage)) {
     throw new Error("usage: tsx scripts/capture-web.ts <ru|en|es> <event|card|org|links|pay>");
   }
-  const film = FILMS[stage];
+  const film = FILMS[stage] ?? "look";
   const shots = new Shots(film, lang, [
     [env(`VIDEO_ONB_EMAIL_${lang.toUpperCase()}`), SHOWN.email],
     [env(`VIDEO_ONB_ORG_${lang.toUpperCase()}`), SHOWN.org],
     [env(`VIDEO_ONB_ORG_${lang.toUpperCase()}`).toLowerCase().replace(/[^a-z0-9]+/g, "-"), "aurora-events"],
   ]);
   console.log(`${film} ${lang} ${stage}`);
+  if (stage === "look") return look(lang);
   if (stage === "event") await event(lang, shots);
   else if (stage === "card") await resumeCard(lang, shots);
   else if (stage === "reset") await reset(lang);
@@ -857,6 +1079,11 @@ async function main(): Promise<void> {
   else if (stage === "price") await price(lang, shots);
   else if (stage === "move") await move(lang, shots);
   else if (stage === "cancel") await cancel(lang, shots);
+  else if (stage === "brand") await brand(lang, shots);
+  else if (stage === "ticket") await ticket(lang, shots);
+  else if (stage === "entrance") await entrance(lang, shots);
+  else if (stage === "stats") await stats(lang, shots);
+  else if (stage === "messages") await messages(lang, shots);
   else await pay(lang, shots);
 }
 

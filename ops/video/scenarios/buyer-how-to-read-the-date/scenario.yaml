@@ -1,0 +1,100 @@
+id: buyer-how-to-read-the-date
+fps: 30
+languages: [ru, en, es]
+title:
+  ru: "Как читать дату в билете: день мероприятия, время и «Вход с»"
+  en: "How to read the date on the ticket: the day of the event, the time and Doors open"
+  es: "Cómo leer la fecha de la entrada: el día del evento, la hora y la apertura de puertas"
+
+# A film for the BUYER, vertical. Its pictures are the pictures of buyer-where-is-my-ticket (stage `ticket` of
+# scripts/capture-web.ts, the letter and the PDF ticket made as that scenario says), copied to captures/ of this
+# scenario; they are not committed.
+# What the function really does: the page, the letter and the PDF show the date and the time of the EVENT in the
+# time zone of the venue (the letter names the zone), and the line "Doors open" when the organizer has set it.
+# The day of the purchase is not in the body of the letter and not on the ticket: a buyer sees it only as the
+# date of the e-mail in the mail program.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [9x16, 4x5]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-two-dates
+    narration:
+      ru: "В почте у письма с билетом стоит дата. Это день, когда вы купили билет, а не день мероприятия. Когда идти — написано в самом письме и на билете."
+      en: "In your mailbox, the e-mail with the ticket has a date. That is the day when you bought the ticket, not the day of the event. When to come is written in the e-mail itself and on the ticket."
+      es: "En tu buzón, el correo con la entrada tiene una fecha. Ese es el día en que compraste la entrada, no el día del evento. Cuándo ir está escrito en el propio correo y en la entrada."
+    pause_after: 0.4
+    shots:
+      - image: captures/z_01_letter.png
+        frame: phone
+        title: { ru: "Дата мероприятия — в рамке письма", en: "The date of the event is in the frame of the e-mail", es: "La fecha del evento está en el recuadro del correo" }
+        weight: 4
+        scroll: { from: 0, to: 0.22 }
+
+  - id: s2-ticket
+    narration:
+      ru: "На билете дата и время мероприятия стоят справа от афиши: число, время начала и день недели."
+      en: "On the ticket, the date and the time of the event are to the right of the poster: the date, the start time and the day of the week."
+      es: "En la entrada, la fecha y la hora del evento están a la derecha del cartel: la fecha, la hora de inicio y el día de la semana."
+    pause_after: 0.4
+    shots:
+      - image: captures/z_02_ticket.png
+        frame: phone
+        title: { ru: "Дата и время на билете", en: "The date and the time on the ticket", es: "La fecha y la hora en la entrada" }
+        weight: 4
+        zoom: { from: 1.0, to: 1.25, x: 0.75, y: 0.1 }
+
+  - id: s3-zone
+    narration:
+      ru: "Время указано по месту проведения, а не по вашему городу. Если вы едете из другой страны, смотрите на часовой пояс в письме: он стоит в скобках после времени."
+      en: "The time is the local time of the venue, not the time of your city. If you come from a different country, look at the time zone in the e-mail: it is in brackets after the time."
+      es: "La hora es la hora local del lugar, no la de tu ciudad. Si vienes de otro país, mira la zona horaria en el correo: está entre paréntesis después de la hora."
+    pause_after: 0.4
+    shots:
+      - image: captures/z_01_letter.png
+        frame: phone
+        title: { ru: "Время — по месту проведения", en: "The time is the local time of the venue", es: "La hora es la del lugar del evento" }
+        weight: 4
+        zoom: { from: 1.15, to: 1.3, x: 0.4, y: 0.3 }
+
+  - id: s4-doors
+    narration:
+      ru: "Строка «Вход с» — это время, с которого вас пускают в зал. Начало — позже. Приходите к открытию входа, чтобы не стоять в очереди."
+      en: "The line Doors open is the time from which you can go in. The event starts later. Come when the doors open, and you will not stand in a queue."
+      es: "La línea de apertura de puertas es la hora desde la que puedes entrar. El evento empieza más tarde. Ven cuando abren las puertas y no harás cola."
+    pause_after: 0.4
+    shots:
+      - image: captures/y_02_date.png
+        frame: phone
+        title: { ru: "«Вход с» — раньше начала", en: "Doors open: before the start", es: "Apertura de puertas: antes del inicio" }
+        weight: 3
+        zoom: { from: 1.0, to: 1.2, x: 0.5, y: 0.25 }
+      - image: captures/z_02_ticket.png
+        frame: phone
+        title: { ru: "Та же строка на билете", en: "The same line on the ticket", es: "La misma línea en la entrada" }
+        weight: 2
+        zoom: { from: 1.1, to: 1.3, x: 0.75, y: 0.1 }
+
+  - id: s5-page
+    narration:
+      ru: "Забыли дату? Она всегда есть на странице мероприятия: день недели, число, время, вход и адрес площадки."
+      en: "You forgot the date? It is always on the page of the event: the day of the week, the date, the time, the doors and the address of the venue."
+      es: "¿Has olvidado la fecha? Siempre está en la página del evento: el día de la semana, la fecha, la hora, la apertura de puertas y la dirección del lugar."
+    pause_after: 0.6
+    shots:
+      - image: captures/y_01_page.png
+        frame: phone
+        title: { ru: "Страница мероприятия", en: "The page of the event", es: "La página del evento" }
+        weight: 2
+        zoom: { from: 1.0, to: 1.15, x: 0.5, y: 0.9 }
+      - image: captures/y_03_tickets.png
+        frame: phone
+        title: { ru: "Дата, вход и адрес", en: "The date, the doors and the address", es: "La fecha, las puertas y la dirección" }
+        weight: 3
+        zoom: { from: 1.0, to: 1.1, x: 0.5, y: 0.45 }

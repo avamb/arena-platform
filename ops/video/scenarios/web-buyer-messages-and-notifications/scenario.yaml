@@ -1,0 +1,100 @@
+id: web-buyer-messages-and-notifications
+fps: 30
+languages: [ru, en, es]
+title:
+  ru: "Письма покупателям и уведомления о продажах"
+  en: "Messages to buyers and sales notifications"
+  es: "Mensajes a compradores y avisos de ventas"
+
+# Pictures in captures/ are made by scripts/capture-web.ts (stage `messages`, see README, "How-to films of the web
+# event center") and are not committed.
+# The task named these screens "Growth" and "Notification settings". In the event center the first one is
+# "Messages to buyers" (a reminder about an unpaid order, a subscription to news), the second one is
+# "Sales notifications" (a Telegram bot and the guest list). "Refer a friend" is not on these screens.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [16x9]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-reminder
+    narration:
+      ru: "Покупатель начал оплату и не закончил? Arena может вернуть его сама. Включите напоминание: через 15 минут покупатель получит одно письмо с кнопкой, чтобы вернуться к оплате."
+      en: "Did a buyer start to pay and not finish? Arena can bring the buyer back. Turn on the reminder: after 15 minutes the buyer gets one e-mail with a button to go back to the payment."
+      es: "¿Un comprador empezó a pagar y no terminó? Arena puede traerlo de vuelta. Activa el recordatorio: a los 15 minutos el comprador recibe un correo con un botón para volver al pago."
+    pause_after: 0.4
+    shots:
+      - image: captures/g_01_messages.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Продвижение → «Рассылки покупателям»", en: "Promotion → Messages to buyers", es: "Promoción → mensajes a compradores" }
+        zoom: { from: 1.45, to: 1.6, x: 0.5, y: 0.45 }
+
+  - id: s2-optin
+    narration:
+      ru: "Вторая настройка собирает подписчиков. Покупатель видит при оформлении отдельную галочку, заранее не отмеченную, и подтверждает адрес по e-mail."
+      en: "The second setting collects subscribers. At checkout the buyer sees a separate box that is empty at first, and confirms the address by e-mail."
+      es: "El segundo ajuste reúne suscriptores. Al comprar, el comprador ve una casilla aparte, sin marcar al principio, y confirma su dirección por correo."
+    pause_after: 0.4
+    shots:
+      - image: captures/g_02_on.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Подписка на ваши новости", en: "Subscription to your news", es: "Suscripción a tus novedades" }
+        zoom: { from: 1.45, to: 1.6, x: 0.5, y: 0.55 }
+
+  - id: s3-subscribers
+    narration:
+      ru: "Подтверждённые адреса собираются в списке подписчиков. Его можно скачать в CSV. Каждый подписчик может отказаться от рассылки по одной ссылке."
+      en: "The confirmed addresses are in the list of subscribers. You can download it as CSV. Each subscriber can stop the mailings with one link."
+      es: "Las direcciones confirmadas están en la lista de suscriptores. Puedes descargarla en CSV. Cada suscriptor puede darse de baja con un enlace."
+    pause_after: 0.5
+    shots:
+      - image: captures/g_04_subscribers.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Подписчики", en: "Subscribers", es: "Suscriptores" }
+        zoom: { from: 1.45, to: 1.6, x: 0.5, y: 0.75 }
+
+  - id: s4-notifications
+    narration:
+      ru: "А чтобы вы сами узнавали о каждой продаже и возврате, откройте «Мои уведомления». Arena пишет о продажах в Telegram-бот: откройте его и нажмите «Start»."
+      en: "And to learn about each sale and refund yourself, open My notifications. Arena writes about sales to a Telegram bot: open it and press Start."
+      es: "Y para enterarte tú de cada venta y devolución, abre tus avisos. Arena escribe sobre las ventas en un bot de Telegram: ábrelo y pulsa «Start»."
+    pause_after: 0.4
+    shots:
+      - image: captures/g_05_notifications.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Уведомления о продажах", en: "Sales notifications", es: "Avisos de ventas" }
+        zoom: { from: 1.45, to: 1.6, x: 0.5, y: 0.3 }
+
+  - id: s5-guest-list
+    narration:
+      ru: "Здесь же включается список гостей. Он приходит сам за 24 часа до начала, за 3 часа и к началу входа."
+      en: "Here you also turn on the guest list. It comes by itself 24 hours before the start, 3 hours before the start and when the doors open."
+      es: "Aquí también activas la lista de invitados. Llega sola 24 horas antes del inicio, 3 horas antes y cuando se abren las puertas."
+    pause_after: 1.0
+    shots:
+      - image: captures/g_06_guest_list.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Список гостей перед сеансом", en: "Guest list before each date", es: "Lista de invitados antes de cada sesión" }
+        zoom: { from: 1.45, to: 1.6, x: 0.5, y: 0.45 }
+
+  - id: s6-cta
+    narration:
+      ru: "Настройте письма и уведомления в ивент-центре Arena Sold Out."
+      en: "Set up your messages and notifications in the Arena Sold Out event center."
+      es: "Configura tus mensajes y avisos en el centro de eventos de Arena Sold Out."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Письма и уведомления", en: "Messages and notifications", es: "Mensajes y avisos" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://arenasoldout.com"
