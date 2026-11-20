@@ -1,9 +1,10 @@
 /**
  * Pictures for the how-to films of the web event center (web-*), desktop window 1280 x 720.
  *
- *   npx tsx scripts/capture-web.ts <ru|en|es> <event|org|links|pay|card|reset>
+ *   npx tsx scripts/capture-web.ts <ru|en|es> <stage>
  *
- * Stages (run in this order, each signs in as the test organizer of that language):
+ * Stages (each signs in as the test organizer of that language); the full list and its order are in the README,
+ * section "How-to films of the web event center". The first ones:
  *   event   web-create-event: the wizard "New event" filled by hand, the event card, the poster, publication, the buyers' page
  *   org     web-organization-details: "Organization data" (legal data, contact e-mail, public e-mail of the sales page), the seller block
  *   links   web-sales-link-and-qr: "Links and QR", a new link to the event of stage `event`, its card with the QR code
@@ -1056,7 +1057,7 @@ async function main(): Promise<void> {
   const lang = process.argv[2] as Lang;
   const stage = process.argv[3];
   if (!["ru", "en", "es"].includes(lang) || !STAGES.includes(stage)) {
-    throw new Error("usage: tsx scripts/capture-web.ts <ru|en|es> <event|card|org|links|pay>");
+    throw new Error(`usage: tsx scripts/capture-web.ts <ru|en|es> <${STAGES.join("|")}>`);
   }
   const film = FILMS[stage] ?? "look";
   const shots = new Shots(film, lang, [

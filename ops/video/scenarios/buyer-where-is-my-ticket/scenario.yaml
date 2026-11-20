@@ -86,9 +86,9 @@ scenes:
 
   - id: s5-write
     narration:
-      ru: "Не нашли? Откройте страницу мероприятия и внизу нажмите «Написать организатору». Укажите имя, e-mail и номер заказа, если знаете его. Организатор отправит билет ещё раз."
-      en: "You did not find it? Open the page of the event and press Write to the organizer at the bottom. Give your name, your e-mail and the order number, if you know it. The organizer will send the ticket again."
-      es: "¿No lo encuentras? Abre la página del evento y pulsa abajo «Escribir al organizador». Indica tu nombre, tu correo y el número de pedido, si lo sabes. El organizador te enviará la entrada otra vez."
+      ru: "Не нашли? Откройте страницу мероприятия и внизу нажмите «Написать организатору». Укажите имя и e-mail, а в сообщении напишите номер заказа, если знаете его. Организатор отправит билет ещё раз."
+      en: "You did not find it? Open the page of the event and press Write to the organizer at the bottom. Give your name and your e-mail, and write the order number in the message, if you know it. The organizer will send the ticket again."
+      es: "¿No lo encuentras? Abre la página del evento y pulsa abajo «Escribir al organizador». Indica tu nombre y tu correo, y escribe en el mensaje el número de pedido, si lo sabes. El organizador te enviará la entrada otra vez."
     pause_after: 0.6
     shots:
       - image: captures/y_06_write.png

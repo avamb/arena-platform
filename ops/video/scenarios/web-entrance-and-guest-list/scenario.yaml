@@ -88,7 +88,7 @@ scenes:
 
   - id: s5-auto
     narration:
-      ru: "Список может приходить сам: за сутки до начала, за три часа и к открытию входа. Поставьте галочку — и он придёт вам в чат с ботом ивент-центра. Без бота список придёт на почту."
+      ru: "Список может приходить сам: за сутки до начала, за три часа и к началу входа. Поставьте галочку — и он придёт вам в чат с ботом ивент-центра. Без бота список придёт на почту."
       en: "The list can come automatically: 24 hours before the start, 3 hours before the start and when the doors open. Set the tick, and it comes to your chat with the event center bot. Without the bot, the list comes to your e-mail."
       es: "La lista puede llegar sola: 24 horas antes del inicio, 3 horas antes y al abrir las puertas. Marca la casilla y llegará a tu chat con el bot del centro de eventos. Sin el bot, la lista llega a tu correo."
     pause_after: 0.4

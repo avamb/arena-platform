@@ -519,7 +519,7 @@ Two more films of the same script are for the BUYER (`buyer-*`): a phone frame, 
 
 1. Draw the poster of the invented event: `npx tsx scripts/make-web-posters.ts`.
 2. Take the pictures for each language, in this order: `npx tsx scripts/capture-web.ts <ru|en|es> event`,
-   then `org`, `links`, `pay`, `promo`, `order`, `refund`, `invite`, `team`, `price`, `move`, and `cancel` last. The script signs in as the test organizer of film apply-on-website
+   then `org`, `links`, `pay`, `promo`, `order`, `refund`, `invite`, `team`, `price`, `move`, `brand`, `stats`, `messages`, and `cancel` last. The stages `ticket` and `entrance` need a new event after that (see below). The script signs in as the test organizer of film apply-on-website
    (`VIDEO_ONB_EMAIL_<LANG>`, `VIDEO_ONB_ORG_<LANG>`, `VIDEO_ONB_PASSWORD`, `VIDEO_BASE_URL` in `.env`).
 3. Build: `npm run build:video -- web-create-event ru` and so on.
 
@@ -553,7 +553,7 @@ Rules of these pictures:
   the page shows its link. The masks of the pictures work inside the ticket widget too (shadow DOM).
 - The ticket letter of the buyer films is drawn again from the TEXT of the real letter: copy its lines to
   `scenarios/buyer-where-is-my-ticket/captures/letters/<lang>.json` with the invented addresses, then
-  `npx tsx scripts/make-ticket-letter.ts <fields.json> <letter.json>` and `npx tsx scripts/render-letter.ts`.
+  `npx tsx scripts/make-ticket-letter.ts <fields.json> <letter.json>` and `npx tsx scripts/render-letter.ts <letter.json> <out.png>`.
   The PDF ticket becomes a picture with PyMuPDF; the organization name and the contact address in it are replaced.
   `buyer-how-to-read-the-date` uses copies of these pictures in its own `captures/`.
 - `look` prints the text of a screen of the event center and takes no picture; use it to read a screen before a film is planned.
