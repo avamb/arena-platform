@@ -65,7 +65,7 @@ scenes:
     narration:
       ru: "Укажите число билетов и пришлите гостей: имя и e-mail, каждый с новой строки или отдельным сообщением."
       en: "Give the number of tickets and send the guests: a name and an e-mail, each on a new line or in a separate message."
-      es: "Indica cuántas entradas y envía los invitados: nombre y e-mail, cada uno en una línea o en un mensaje aparte."
+      es: "Indica cuántas entradas y envía los datos de los invitados: nombre y e-mail, cada uno en una línea o en un mensaje aparte."
     pause_after: 0.6
     shots:
       - image: captures/i_04_count.png

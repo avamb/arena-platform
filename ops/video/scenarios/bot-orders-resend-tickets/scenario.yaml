@@ -28,7 +28,7 @@ scenes:
   - id: s1-result
     narration:
       ru: "Покупатель не может найти билет? Найдите его заказ в боте Arena Sold Out и отправьте билеты ещё раз."
-      en: "Did a buyer lose the ticket? Find the order in the Arena Sold Out bot and send the tickets again."
+      en: "A buyer cannot find the ticket? Find the order in the Arena Sold Out bot and send the tickets again."
       es: "¿Un comprador no encuentra su entrada? Busca su pedido en el bot de Arena Sold Out y reenvía las entradas."
     pause_after: 0.4
     shots:
