@@ -35,6 +35,7 @@
 
 ### Отдельные конкуренты
 - [eventfrog_2026-11-12_ru.md](eventfrog_2026-11-12_ru.md) — Eventfrog (Швейцария, DACH): билеты до CHF 50 бесплатно за счёт рекламы в СМИ, деньги до конца события у платформы (12.11.2026).
+- [ticketere_2026-11-20_ru.md](ticketere_2026-11-20_ru.md) — Ticketere (Валенсия): билетёр живой музыки на Laravel и Redsys, сбор платит покупатель, организатору половина сбора по акции (20.11.2026).
 - [fridayticket_2026-11-09_ru.md](fridayticket_2026-11-09_ru.md) — FridayTicket (fridayticket.com): витрина-перепродавец русскоязычных гастролей, организатор скрыт, ретаргетинг в Facebook; как найти организаторов туров (09.11.2026).
 - [xtix_2026-11-03_ru.md](xtix_2026-11-03_ru.md) — XTIX (xtix.ai, Кипр, Израиль), конкурент в русскоязычной нише (03.11.2026).
 - [tickettailor_analysis_2026-09-04.md](tickettailor_analysis_2026-09-04.md), [tickettailor_win_features_2026-09-27.md](tickettailor_win_features_2026-09-27.md) — Ticket Tailor: разбор и функции, которые стоит повторить.
