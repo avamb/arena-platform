@@ -1,4 +1,4 @@
-id: sell-01
+id: sell-tickets-from-poster
 fps: 30
 languages: [ru, en, es]
 title:
@@ -7,7 +7,7 @@ title:
   es: "Cartel → venta de entradas"
 
 # Source text and storyboard: docs/video/01_first_video_script_ru.md.
-# Pictures in captures/ are made on the staging stand (see README, "Film sell-01")
+# Pictures in captures/ are made on the staging stand (see README, "Film sell-tickets-from-poster")
 # and are not committed. A picture of one language lies in captures/<language>/ or assets/<language>/.
 # zoom x,y is the point of the picture that the close-up looks at.
 

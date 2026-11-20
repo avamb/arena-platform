@@ -47,7 +47,6 @@
 <script>
 (function () {
   var C = window.COVER;
-  if (!C) { try { C = JSON.parse(decodeURIComponent(location.search.slice(1).replace(/^cover=/, ''))); } catch (e) {} }
   if (!C) throw new Error('window.COVER missing');
   var W = C.w, H = C.h, F = C.format;
   document.body.style.width = W + 'px';
