@@ -1,0 +1,830 @@
+[
+  {
+    "platform": "Sympla",
+    "website": "https://www.sympla.com.br",
+    "hq_country": "BR",
+    "segment": "Brazil market leader, self-serve, shows/festas/teatro/cursos/congressos, marketplace with own traffic (owned by Prosus)",
+    "markets": [
+      {
+        "market": "Brazil",
+        "currency": "BRL",
+        "vat_note": "No ISS/PIS/COFINS mentioned on the public fee pages. Sympla issues the producer a payout statement (borderô) and says it handles invoicing of its fee; producer is responsible for taxes on ticket revenue (not explicitly stated for Sympla).",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Sympla collects buyer payments (Pix, card, boleto) and pays the producer automatically on the 3rd business day AFTER the event; fee is netted from the payout. Optional advance of up to 80% of confirmed sales for 3.49%.",
+        "plans": [
+          {"name": "Paid events (standard)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 10, "per_ticket_fixed": null, "min_per_ticket": 3.99, "cap_per_ticket": null,
+           "includes": "Service fee 10% per ticket sold; tickets up to R$39.90 pay a fixed minimum R$3.99. No setup, no monthly, no adhesion fee. Check-in, attendee mgmt, ticket delivery included.",
+           "notes": "Producer chooses per event whether to absorb or pass the 10% to the buyer (must be set before publishing; locked after first sale). Plus a payment-processing fee of 2% to 2.5% per ticket (varies by Pix/card/boleto). Pricing page says processing cannot be passed on; the buyer help-centre article (updated 2026-10-05) says processing is ALWAYS paid by the buyer (worked example: R$100 absorbed -> buyer pays R$102.50, producer gets R$90.00; passed -> buyer pays R$112.75, producer gets R$100.00; R$30 passed -> buyer R$34.84). The two Sympla pages are therefore inconsistent."},
+          {"name": "Free events", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "Zero fee for free tickets, in-person or online.", "notes": null},
+          {"name": "Seated events (lugar marcado)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 15, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "Seat map events.", "notes": "Shown as 'taxas a partir de 15%' (from); contact a consultant for a quote, so exact rate is not public."}
+        ],
+        "prepaid": [],
+        "processing": {"included": false, "processors": ["Pix", "credit card (up to 12x)", "boleto"], "own_processor_allowed": false, "rate_note": "Processing 2% to 2.5% per ticket on top of the 10% service fee. Card installments up to 12x with interest of 3.49%/month paid by the buyer (third-party source, institutoitinerante.com.br, May 2026).", "platform_extra_processing_fee": "2% to 2.5%"},
+        "who_pays_default": "configurable",
+        "free_tickets": "Free events and free tickets: zero fee.",
+        "seating": "Seated events from 15% (contact consultant).",
+        "payouts": "Automatic payout on the 3rd business day after the event ends, to a registered bank account. Advance ('Adiantamento de repasse'): 3.49% of requested amount, 20/40/60/80% of confirmed sales, min R$300, request at least 4 days before the event, subject to Sympla risk approval, answer in up to 3 business days, funds within 1 business day. Not available for private or on-demand events.",
+        "refunds_chargebacks": "Buyer withdrawal right under Brazilian CDC (7 days, at least 48h before event). Complaints on Reclame Aqui indicate the service fee is not always refunded (not verified on Sympla's own page).",
+        "fine_print": [
+          "Fee is configured per event BEFORE publishing; changing after sales start 'generates inconsistencies'",
+          "State laws override the pass-on option: Acre and Roraima ban any online convenience fee (producer must absorb, set automatically); Espirito Santo requires a no-fee alternative channel unless event <=200 people; Alagoas caps at 10% and requires no-fee sales points; Fortaleza 'Ingresso Justo' law requires one fee-free channel; Rio de Janeiro state law regulates fees",
+          "Half-price (meia-entrada) quota of 40% is mandatory by federal law 12.933/2013 (affects revenue, not the fee)"
+        ],
+        "add_ons": [{"name": "Advance payout", "price": "3.49% of amount advanced"}],
+        "enterprise": "Consultant contact for seated events and volume; no public volume discounts.",
+        "sources": [
+          {"url": "https://produtores.sympla.com.br/quanto-custa/", "read": "2026-10-09", "what": "pricing page"},
+          {"url": "https://ajuda.sympla.com.br/hc/pt-br/articles/204767415-Taxas-da-Sympla-para-Organizadores-Valores-e-Como-Funcionam", "read": "2026-10-09", "what": "fee help article (updated 2026-10-05) with state laws and examples"},
+          {"url": "https://ajuda.produtor.sympla.com.br/hc/pt-br/articles/33630645675149-Adiantamento-de-Repasse-na-Sympla", "read": "2026-10-09", "what": "payout advance article"},
+          {"url": "https://institutoitinerante.com.br/blog/vender-ingressos-online-sem-sympla-alternativas", "read": "2026-10-09", "what": "third-party comparison (installment interest, payout)"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Brazil context: Pix is the dominant method. Convenience fee is legal (STJ) if disclosed up front; Procon-SP considers percentage-based fees abusive (should be fixed amount). Consumer-facing total of fees on big-event platforms is 10-20%+."
+  },
+  {
+    "platform": "Even3",
+    "website": "https://www.even3.com.br",
+    "hq_country": "BR",
+    "segment": "Academic/scientific congresses, courses and corporate events (paper submission, certificates)",
+    "markets": [
+      {
+        "market": "Brazil",
+        "currency": "BRL",
+        "vat_note": "Not stated.",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Even3 collects; money available 10 days after each payment (even if installment), organizer can request transfer anytime after that, no need to wait for event end.",
+        "plans": [
+          {"name": "Paid registrations", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 10, "per_ticket_fixed": null, "min_per_ticket": 2.5, "cap_per_ticket": null,
+           "includes": "10% on paid registrations, no monthly or setup fee. Processing fee reportedly included. Can pass all fees on to buyers.",
+           "notes": "Minimum R$2.50 per registration comes from a third-party comparison (institutoitinerante.com.br), not the official page. Small extra fee per submitted scientific paper. Free events pay no fee but a small fee applies for certificate download on free events (free for up to 90 days after the event for some)."},
+          {"name": "Annual plan", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "Annual plan with lower rates for organizers with many events.", "notes": "Contact sales; price not public."}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["credit card (cash or installments)", "Pix", "boleto", "international cards"], "own_processor_allowed": false, "rate_note": "Included in the 10% per official page.", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable",
+        "free_tickets": "Free events: no registration fees.",
+        "seating": null,
+        "payouts": "Withdrawal possible 10 days after payment confirmation, unlimited number of transfers. Advance available with risk approval once there are R$1,000 of sales (anticipation fee ~3% per uticket third-party; at least 5 business days between requests). Refunds handled by Even3 within 2 business days.",
+        "refunds_chargebacks": "Even3 runs the whole refund process on organizer's request, returns money within 2 business days.",
+        "fine_print": ["Paper-submission fee per work", "Certificate-download fee for free events"],
+        "add_ons": [],
+        "enterprise": "Annual plan by quote.",
+        "sources": [
+          {"url": "https://www.even3.com.br/como-funciona/planos-e-precos/", "read": "2026-10-09", "what": "pricing page"},
+          {"url": "https://institutoitinerante.com.br/blog/vender-ingressos-online-sem-sympla-alternativas", "read": "2026-10-09", "what": "third-party comparison (min R$2.50)"},
+          {"url": "https://uticket.com.br/blog/comparando-taxas-de-plataformas-de-ingressos/", "read": "2026-10-09", "what": "competitor blog (anticipation 3%)"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "A different LatAm payout philosophy: money can be withdrawn 10 days after each sale, not after the event."
+  },
+  {
+    "platform": "Blacktag",
+    "website": "https://blacktag.com.br",
+    "hq_country": "BR",
+    "segment": "Youth/university parties, graduations (formaturas), student associations (atleticas)",
+    "markets": [
+      {
+        "market": "Brazil",
+        "currency": "BRL",
+        "vat_note": "Blacktag invoices its service fee in the first week of the following month; organizer responsible for taxes on total sold.",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Blacktag holds the money as custodian; payout of total sold minus service fee on the 3rd business day after the organizer requests it. If the event date entered differs from reality, payout can be postponed to 3rd business day after the actual end. May hold funds for refunds/complaints/fraud and offset against the organizer's other events.",
+        "plans": [
+          {"name": "Standard", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 12, "per_ticket_fixed": null, "min_per_ticket": 3.0, "cap_per_ticket": null,
+           "includes": "12% service fee, min R$3.00 per paid ticket. Free tickets are fee-free (cl. 13.7).",
+           "notes": "Terms document is dated 2021-01-06, so the rate may have changed. Rate 12% / R$3 min also quoted by Festivalando-style comparisons (tikzet.com blog, 2026-07). Terms do not mention a separate processing fee."}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": false, "rate_note": "Terms mention no separate processing fee.", "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer",
+        "free_tickets": "Free tickets carry no fee.",
+        "seating": "Home page lists seat marking ('Marcacao de assento') as a feature; price not published.",
+        "payouts": "3rd business day after request/event end. Blacktag can retain funds for pending refunds, complaints, suspected fraud and offset them from other events of the same organizer.",
+        "refunds_chargebacks": "Chargebacks (estornos) are the organizer's responsibility regardless of reason (cl. 12.2). Organizer must refund consumers if event is cancelled; Blacktag can refund without notice and charge the organizer. Organizer may request cancellation/refund until the 2nd business day after the event; consumer 7-day withdrawal must be refunded within 7 days.",
+        "fine_print": ["Terms dated 2021 - verify current rate", "Cross-event funds retention clause (cl. 11.4 / 13.6.2)"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [
+          {"url": "https://blacktag.com.br/termos-e-politicas/organizador", "read": "2026-10-09", "what": "organizer terms (dated 2021-01-06)"},
+          {"url": "https://www.tikzet.com/blog/taxa-de-servico-ingressos-brasil", "read": "2026-10-09", "what": "third-party comparison"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": null
+  },
+  {
+    "platform": "Shotgun (Brazil)",
+    "website": "https://shotgun.live",
+    "hq_country": "FR",
+    "segment": "Nightlife, club events, festivals; ticketing + resale marketplace",
+    "markets": [
+      {
+        "market": "Brazil",
+        "currency": "BRL",
+        "vat_note": "Not stated.",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Inferred: help centre has an article 'Transferir fundos de um evento para sua conta bancaria' (transfer of event funds to your bank account), i.e. Shotgun holds and then transfers. Payout timing not read.",
+        "plans": [
+          {"name": "Standard service fee", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 12.5, "per_ticket_fixed": null, "min_per_ticket": 3.0, "cap_per_ticket": null,
+           "includes": "Service fee is 12.5% of ticket value (10% in Rio de Janeiro state), composed of Shotgun convenience fee plus the payment platform's processing fee. Charged to the END BUYER, not to the producer.",
+           "notes": "Minimum R$3. Resale marketplace adds a resale fee and a waiting-list fee (names only, numbers not read; Valor Economico reports ~15% total split buyer/seller for Ingresse's new resale, not Shotgun)."}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "Processing included inside the 12.5%.", "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "Not read.",
+        "refunds_chargebacks": null,
+        "fine_print": ["10% in RJ state vs 12.5% elsewhere (state law)", "Portugal: 10% standard fee, charged to the buyer"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [
+          {"url": "https://support-pro.shotgun.live/hc/pt-br/articles/6989212196242", "read": "2026-10-09", "what": "service fee article (BR and PT)"},
+          {"url": "https://festivalando.com.br/taxas-cobradas-pelas-plataformas-de-ingresso/", "read": "2026-10-09", "what": "context article, resale fee names"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Organizer pays nothing in the standard Shotgun model - buyer-pays 'all-in' service fee."
+  },
+  {
+    "platform": "Ingresse",
+    "website": "https://www.ingresse.com",
+    "hq_country": "BR",
+    "segment": "Shows, festivals, large entertainment; sales-team onboarding, not pure self-serve",
+    "markets": [
+      {
+        "market": "Brazil",
+        "currency": "BRL",
+        "vat_note": "Not stated.",
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "Collects; payout after the event per commercial contract (third-party statement).",
+        "plans": [
+          {"name": "Negotiated contract", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 12, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null,
+           "includes": "Service fee 12% plus processing 5% according to one competitor blog (uticket.com.br, Feb 2026); Ingresse itself does not publish rates and other comparison (institutoitinerante.com.br) says 'negotiated by contract'. A Reclame Aqui complaint cites a 10% service fee on total price.",
+           "notes": "Numbers are third_party. Ingresse site is a JS app and returned empty content, so no official page could be read. A buyer-side convenience fee is charged at checkout and varies by event. Refund to buyer deducts service and processing fees. Resale launched May 2026 at ~15% total split buyer/seller (Valor Economico snippet)."}
+        ],
+        "prepaid": [],
+        "processing": {"included": false, "processors": [], "own_processor_allowed": false, "rate_note": "5% processing per uticket third-party claim.", "platform_extra_processing_fee": "5% (third_party)"},
+        "who_pays_default": "buyer",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "After the event, per contract.",
+        "refunds_chargebacks": "Buyer refunds within 7 days (CDC) deduct service/processing fees according to third-party comparison.",
+        "fine_print": ["Rates not public - enterprise sales", "Terms at sobre.ingresse.com/termos-de-servico not read"],
+        "add_ons": [],
+        "enterprise": "Contact sales; contract-based.",
+        "sources": [
+          {"url": "https://uticket.com.br/blog/comparando-taxas-de-plataformas-de-ingressos/", "read": "2026-10-09", "what": "competitor comparison (12% + 5%)"},
+          {"url": "https://institutoitinerante.com.br/blog/vender-ingressos-online-sem-sympla-alternativas", "read": "2026-10-09", "what": "third-party comparison"},
+          {"url": "https://valor.globo.com/empresas/noticia/2026/05/28/ingresse-tera-servico-de-revenda-de-ingressos.ghtml", "read": "2026-10-09", "what": "snippet only, resale ~15%"}
+        ],
+        "confidence": "third_party"
+      }
+    ],
+    "notes": null
+  },
+  {
+    "platform": "Ticket360",
+    "website": "https://www.ticket360.com.br",
+    "hq_country": "BR",
+    "segment": "Shows, theatre, football; São Paulo-based operator with own box offices",
+    "markets": [
+      {
+        "market": "Brazil",
+        "currency": "BRL",
+        "vat_note": "Not stated.",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Platform operates as intermediary/collector; producer rules per event. Payout terms not published.",
+        "plans": [
+          {"name": "Service fee (buyer side)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null,
+           "includes": "Help centre: service fee 'can vary from 10% to 20%' of ticket value, producer sets rules (installments without cost, reduction/exemption of service fee, exemption of processing fee). Card processing fee varies by card brand; no processing fee on Pix.",
+           "notes": "Cost of installments: card fees 2.5% to 5% per installment, receivable anticipation 1.8% to 3%, IOF 0.38% + 0.0082%/day. Interest-free installments normally require a sponsor (brand/bank). 'Virtual box office' (Bilheteria Virtual) sells without fee at the venue, geo-validated. Optional 'Refund Guarantee' for buyers: adhesion fee 10% of total paid (ticket + service fee), non-refundable, refund cap R$5,000/ticket."}
+        ],
+        "prepaid": [],
+        "processing": {"included": false, "processors": ["card", "Pix"], "own_processor_allowed": false, "rate_note": "Processing only on card payments, by brand; none on Pix.", "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer",
+        "free_tickets": null,
+        "seating": "Marked seats supported; fee not published.",
+        "payouts": "Not published.",
+        "refunds_chargebacks": "Refund to buyers via Pix only to CPF of the buyer; service fee refund rules follow CDC.",
+        "fine_print": ["Rates not public for producers; becoming a producer is by request"],
+        "add_ons": [{"name": "Refund Guarantee (buyer)", "price": "10% adhesion fee on ticket + service fee"}],
+        "enterprise": "Contact sales.",
+        "sources": [
+          {"url": "https://www.ticket360.com.br/central-de-ajuda", "read": "2026-10-09", "what": "help centre (taxas section)"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": null
+  },
+  {
+    "platform": "Eventim Brasil",
+    "website": "https://www.eventim.com.br",
+    "hq_country": "DE",
+    "segment": "Large shows/stadiums via promoters; no self-serve",
+    "markets": [
+      {
+        "market": "Brazil",
+        "currency": "BRL",
+        "vat_note": "Not stated.",
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "Eventim collects and transfers funds to the promoter; payment-method surcharge explicitly covers 'transfer of funds to the event promoter'.",
+        "plans": [
+          {"name": "Buyer fees", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null,
+           "includes": "Three buyer-visible charges: service fee (not refundable), payment-method surcharge (Law 13.455/2017 allows differentiated pricing by payment method), and optional venue 'facility fee'.",
+           "notes": "From 1 October 2026 the administration (facility) fee at some arenas becomes 5% of the ticket price actually paid (excluding service and payment fees) instead of a fixed amount; events already on sale keep the fixed amount. Consumer press/Procon (Instagram snippets, not opened): service fee ~21.8% plus ~3.8% processing on some events, a R$895 ticket with R$195.11 processing; treat as snippet-only."}
+        ],
+        "prepaid": [],
+        "processing": {"included": false, "processors": [], "own_processor_allowed": false, "rate_note": "Payment-method surcharge computed on order value and method.", "platform_extra_processing_fee": "varies"},
+        "who_pays_default": "buyer",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "Not published.",
+        "refunds_chargebacks": "Service fee not refunded when the consumer used the service successfully (per help article).",
+        "fine_print": ["Facility fee is the venue manager's income, not Eventim's"],
+        "add_ons": [{"name": "Ingresso Protegido insurance", "price": "not read"}],
+        "enterprise": "Contract with promoter; no public producer rates.",
+        "sources": [
+          {"url": "https://help.eventim.com.br/hc/pt-br/articles/23063822486295-Taxas-cobradas-durante-a-compra", "read": "2026-10-09", "what": "fees article"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Eventim BR has no self-service entry for small organizers as far as the public pages show."
+  },
+  {
+    "platform": "Lets Events",
+    "website": "https://lets.events",
+    "hq_country": "BR",
+    "segment": "Brazilian small/mid producers, self-serve",
+    "markets": [
+      {
+        "market": "Brazil",
+        "currency": "BRL",
+        "vat_note": "Not stated.",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Payout reportedly 3 calendar days after the event (third-party, uticket Feb 2026).",
+        "plans": [
+          {"name": "Pay on sales", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 7.99, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null,
+           "includes": "From 7.99% per ticket sold (the 'from' is not explained), no monthly fee. Fee applies only to what the buyer actually pays (after coupons), free tickets not charged. Lets states it charges only a service fee (no separate processing fee).",
+           "notes": "Producer can absorb or pass the fee to the buyer."}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "Blog says Lets charges only the service fee, to keep clarity.", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable",
+        "free_tickets": "Not charged.",
+        "seating": null,
+        "payouts": "3 days after event (third-party).",
+        "refunds_chargebacks": null,
+        "fine_print": ["'a partir de 7,99%' - starting rate"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [
+          {"url": "https://lets.events/blog/taxa-de-conveniencia/", "read": "2026-10-09", "what": "own blog"},
+          {"url": "https://lets.events/blog/taxa-para-vender-ingressos/", "read": "2026-10-09", "what": "own blog"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Also seen but not opened: Zig Tickets (12% convenience fee charged to the consumer per Festivalando 2024), Uticket (10%, min R$2, immediate payout, third-party), Catraca Virtual (10% + R$1.99 per Pix or R$0.49 + 2.99% card, 85% of each sale available immediately, 15% after 7 days; third-party vendor blog), Ingresso Facil (3% fixed claim on Reddit, not verified), Bilheteria Digital (terms page returned 403, fee not read), Uhuu (search failed), Doity and E-inscricao (mentioned in uticket blog). Brazilian small-organizer segment is dominated by 10% (Sympla/Even3/Catraca) with 8-12% challengers."
+  },
+  {
+    "platform": "Tikzet",
+    "website": "https://www.tikzet.com",
+    "hq_country": "AR",
+    "segment": "LatAm self-serve ticketing, nightlife/festivals/theatre; 'no service fee', organizer prepays tickets",
+    "markets": [
+      {
+        "market": "Argentina",
+        "currency": "ARS",
+        "vat_note": "Not stated.",
+        "model": "prepaid_credits",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "Tikzet says it does not hold funds: buyer pays straight into the organizer's own processor account (Mercado Pago, Nave, Uala, Unicobros, Stripe, PayPal, manual bank transfer/CBU). Tikzet's fee is the prepaid ticket credit bought in advance; each sale deducts one credit.",
+        "plans": [
+          {"name": "Prepaid ticket bundle (300 tickets)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": null, "per_ticket_fixed": 256, "min_per_ticket": null, "cap_per_ticket": null,
+           "includes": "ARS 256 per ticket at the 300-ticket tier (list ARS 320, '20% off'); calculator runs from 300 to 203,000+ tickets with the unit price falling by volume (only the 300-ticket price was visible). 25 free tickets on sign-up, no credit card. Credits never expire. QR scanner app works offline.",
+           "notes": "No service fee to buyer ('sin cargo por servicio'): the buyer pays exactly the advertised price. Processor fees are separate and paid by the organizer to the processor."}
+        ],
+        "prepaid": [{"bundle": "300 tickets", "unit_price": 256, "expiry": "no expiry", "refundable": null}],
+        "processing": {"included": false, "processors": ["Mercado Pago", "Nave", "Uala", "Unicobros", "Stripe", "PayPal", "bank transfer"], "own_processor_allowed": true, "rate_note": "Processors charge their own rates; Tikzet says Mercado Pago gives 'preferential commissions' (no number).", "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer",
+        "free_tickets": "25 free tickets to start; free events not described.",
+        "seating": "Not described.",
+        "payouts": "Direct to the organizer's processor account: instant (Mercado Pago, Nave, Uala), same day (automatic transfer, Unicobros).",
+        "refunds_chargebacks": "Organizer manages each purchase and refund.",
+        "fine_print": ["Unit price at higher volumes not visible (JS calculator)", "Prepaid credit is consumed per ticket sold - cost is a fixed amount per ticket, independent of ticket price"],
+        "add_ons": [],
+        "enterprise": "Sales contact via WhatsApp.",
+        "sources": [
+          {"url": "https://www.tikzet.com/pricing", "read": "2026-10-09", "what": "AR pricing calculator"},
+          {"url": "https://www.tikzet.com/payments/ar", "read": "2026-10-09", "what": "payments page"}
+        ],
+        "confidence": "page"
+      },
+      {
+        "market": "Brazil",
+        "currency": "BRL",
+        "vat_note": "Not stated.",
+        "model": "prepaid_credits",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "Same model as Argentina.",
+        "plans": [{"name": "Prepaid ticket bundle (300 tickets)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": null, "per_ticket_fixed": 1.4, "min_per_ticket": null, "cap_per_ticket": null, "includes": "R$1.40 per ticket at 300 tickets (list R$1.75), total R$420; 25 free tickets; no expiry.", "notes": "Own blog claims competitors charge 10-12.5% (Sympla, Shotgun, Blacktag, Zig)."}],
+        "prepaid": [{"bundle": "300 tickets", "unit_price": 1.4, "expiry": "no expiry", "refundable": null}],
+        "processing": {"included": false, "processors": [], "own_processor_allowed": true, "rate_note": "Organizer's own processor.", "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer",
+        "free_tickets": "25 free tickets.",
+        "seating": null,
+        "payouts": "Direct to organizer account.",
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://www.tikzet.com/pricing/br", "read": "2026-10-09", "what": "BR pricing"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Mexico",
+        "currency": "MXN",
+        "vat_note": "Not stated.",
+        "model": "prepaid_credits",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "Same model.",
+        "plans": [{"name": "Prepaid ticket bundle (300 tickets)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": null, "per_ticket_fixed": 4.8, "min_per_ticket": null, "cap_per_ticket": null, "includes": "MXN 4.80 per ticket at 300 tickets (list MXN 6.00), total MXN 1,440; 25 free; no expiry.", "notes": null}],
+        "prepaid": [{"bundle": "300 tickets", "unit_price": 4.8, "expiry": "no expiry", "refundable": null}],
+        "processing": {"included": false, "processors": [], "own_processor_allowed": true, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer", "free_tickets": "25 free tickets.", "seating": null, "payouts": "Direct to organizer account.", "refunds_chargebacks": null, "fine_print": [], "add_ons": [], "enterprise": null,
+        "sources": [{"url": "https://www.tikzet.com/pricing/mx", "read": "2026-10-09", "what": "MX pricing"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Colombia",
+        "currency": "COP",
+        "vat_note": "Not stated.",
+        "model": "prepaid_credits",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "Same model.",
+        "plans": [{"name": "Prepaid ticket bundle (300 tickets)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": null, "per_ticket_fixed": 1040, "min_per_ticket": null, "cap_per_ticket": null, "includes": "COP 1,040 per ticket at 300 tickets (list COP 1,300), total COP 312,000; 25 free.", "notes": null}],
+        "prepaid": [{"bundle": "300 tickets", "unit_price": 1040, "expiry": "no expiry", "refundable": null}],
+        "processing": {"included": false, "processors": [], "own_processor_allowed": true, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer", "free_tickets": "25 free tickets.", "seating": null, "payouts": "Direct to organizer account.", "refunds_chargebacks": null, "fine_print": [], "add_ons": [], "enterprise": null,
+        "sources": [{"url": "https://www.tikzet.com/pricing/co", "read": "2026-10-09", "what": "CO pricing"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Chile",
+        "currency": "CLP",
+        "vat_note": "Not stated.",
+        "model": "prepaid_credits",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "Same model.",
+        "plans": [{"name": "Prepaid ticket bundle (300 tickets)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": null, "per_ticket_fixed": 229, "min_per_ticket": null, "cap_per_ticket": null, "includes": "CLP 229 per ticket at 300 tickets (list CLP 287), total CLP 68,700; 25 free.", "notes": null}],
+        "prepaid": [{"bundle": "300 tickets", "unit_price": 229, "expiry": "no expiry", "refundable": null}],
+        "processing": {"included": false, "processors": [], "own_processor_allowed": true, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer", "free_tickets": "25 free tickets.", "seating": null, "payouts": "Direct to organizer account.", "refunds_chargebacks": null, "fine_print": [], "add_ons": [], "enterprise": null,
+        "sources": [{"url": "https://www.tikzet.com/pricing/cl", "read": "2026-10-09", "what": "CL pricing"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Peru",
+        "currency": "PEN",
+        "vat_note": "Not stated.",
+        "model": "prepaid_credits",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "Same model.",
+        "plans": [{"name": "Prepaid ticket bundle (300 tickets)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": null, "per_ticket_fixed": 0.92, "min_per_ticket": null, "cap_per_ticket": null, "includes": "S/0.92 per ticket at 300 tickets (list S/1.15), total S/276; 25 free.", "notes": null}],
+        "prepaid": [{"bundle": "300 tickets", "unit_price": 0.92, "expiry": "no expiry", "refundable": null}],
+        "processing": {"included": false, "processors": [], "own_processor_allowed": true, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer", "free_tickets": "25 free tickets.", "seating": null, "payouts": "Direct to organizer account.", "refunds_chargebacks": null, "fine_print": [], "add_ons": [], "enterprise": null,
+        "sources": [{"url": "https://www.tikzet.com/pricing/pe", "read": "2026-10-09", "what": "PE pricing"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Uruguay",
+        "currency": "UYU",
+        "vat_note": "Not stated.",
+        "model": "prepaid_credits",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "Same model.",
+        "plans": [{"name": "Prepaid ticket bundle (300 tickets)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": null, "per_ticket_fixed": 10, "min_per_ticket": null, "cap_per_ticket": null, "includes": "UYU 10 per ticket at 300 tickets (list UYU 12.5), total UYU 3,000; 25 free.", "notes": null}],
+        "prepaid": [{"bundle": "300 tickets", "unit_price": 10, "expiry": "no expiry", "refundable": null}],
+        "processing": {"included": false, "processors": [], "own_processor_allowed": true, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer", "free_tickets": "25 free tickets.", "seating": null, "payouts": "Direct to organizer account.", "refunds_chargebacks": null, "fine_print": [], "add_ons": [], "enterprise": null,
+        "sources": [{"url": "https://www.tikzet.com/pricing/uy", "read": "2026-10-09", "what": "UY pricing"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Closest business-model analogue to Arena in the whole LatAm set: organizer connects own processor, platform sells prepaid per-ticket credits (about USD 0.20-0.35 per ticket at the 300 tier, falling with volume). Dominican Republic comparison article by Tikzet names Tix (tix.do): buyer fee 8.5% + RD$15 and organizer fee 4.9% + RD$25 per ticket (Dominican Republic is outside this group; single page, 2026-08-10)."
+  },
+  {
+    "platform": "Tickean",
+    "website": "https://www.tickean.com",
+    "hq_country": "US",
+    "segment": "LatAm self-serve (Argentina, Chile, Mexico, Colombia, Peru, US), 0% to organizer, buyer pays 15% service fee, WhatsApp QR delivery",
+    "markets": [
+      {
+        "market": "Argentina / Chile / Mexico / Colombia / Peru (same terms on each country site)",
+        "currency": "ARS (local currency per site)",
+        "vat_note": "Not stated.",
+        "model": "free_buyer_pays",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "'Acredita cada venta via el proveedor de pagos' - each sale credited to the organizer's own payment-provider account, no wait for the event end (subject to reserve/chargeback terms of the processor). The platform earns the buyer's service fee.",
+        "plans": [
+          {"name": "Standard", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null,
+           "includes": "0% commission to the organizer, no activation, monthly fee or minimum tickets, unlimited QR at no cost, WhatsApp Marketing with 1,000 free messages per month ('promotion with conditions'), live dashboard, QR anti-fraud, QR validation from phone browser.",
+           "notes": "Buyer pays a 15% service fee on top of the ticket price (ticket 10,000 -> buyer pays 11,500)."}
+        ],
+        "prepaid": [],
+        "processing": {"included": false, "processors": ["undisclosed 'proveedor de pagos' (cards, Apple Pay, Google Pay)"], "own_processor_allowed": true, "rate_note": "Processor fees not disclosed.", "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer",
+        "free_tickets": "Not described.",
+        "seating": "Not mentioned.",
+        "payouts": "Instant per sale via payment provider.",
+        "refunds_chargebacks": "Not read.",
+        "fine_print": ["Operated by Tickean Holdings LLC (US)", "Mexico site still shows Argentina contact elements"],
+        "add_ons": [{"name": "WhatsApp Marketing", "price": "1,000 messages/month free, beyond that 'with conditions'"}],
+        "enterprise": null,
+        "sources": [
+          {"url": "https://www.tickean.com/comisiones-ticketera", "read": "2026-10-09", "what": "pricing/commissions page"},
+          {"url": "https://www.tickean.com.mx/", "read": "2026-10-09", "what": "Mexico page"},
+          {"url": "https://www.tickean.com/alternativa-a-passline", "read": "2026-10-09", "what": "comparison page"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Tickean's competitor claims (6-15% producer commission, ARS 120-200 per QR, payout 5-7 business days after the event) are the vendor's own, unverified assumptions."
+  },
+  {
+    "platform": "Enter.ar",
+    "website": "https://enter.ar",
+    "hq_country": "AR",
+    "segment": "Argentine producers, Mercado Pago marketplace, flat 2%",
+    "markets": [
+      {
+        "market": "Argentina",
+        "currency": "ARS",
+        "vat_note": "Not stated.",
+        "model": "percent",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "Mercado Pago Marketplace: the sale lands directly in the organizer's Mercado Pago account at purchase time minus Enter's 2% application fee; Enter does not hold funds.",
+        "plans": [
+          {"name": "Standard", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 2, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "2% per sale, no contract, no minimums, creating events free.", "notes": "Mercado Pago's own fee (card, installments) is separate and not stated on the page read."}
+        ],
+        "prepaid": [],
+        "processing": {"included": false, "processors": ["Mercado Pago"], "own_processor_allowed": true, "rate_note": "Mercado Pago fees separate.", "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer",
+        "free_tickets": null,
+        "seating": "Not mentioned.",
+        "payouts": "At the moment of purchase, into the organizer's Mercado Pago account.",
+        "refunds_chargebacks": null,
+        "fine_print": ["Page is a vendor comparison versus Passline"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://enter.ar/vs/passline", "read": "2026-10-09", "what": "vendor page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Application-fee-on-each-payment model through Mercado Pago Marketplace, i.e. the same technical pattern as Arena with Stripe Connect."
+  },
+  {
+    "platform": "Passline",
+    "website": "https://www.passline.com",
+    "hq_country": "CL",
+    "segment": "LatAm-wide (19 countries), nightlife, concerts, festivals; self-service plus advisor",
+    "markets": [
+      {
+        "market": "LatAm (Chile, Argentina, Mexico, Peru, Colombia, Paraguay etc.; no per-country price published)",
+        "currency": "local",
+        "vat_note": "Not stated.",
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "Money comes first into Passline's account and is transferred to the producer afterwards (Enter.ar claim). Third-party sources: payout 7 business days after the event in Argentina (Tickean claim).",
+        "plans": [
+          {"name": "Producer agreement", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 15, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null,
+           "includes": "Creating events is 100% free and most tools are free. Not published: per-ticket percentage, fixed per-QR fee, setup. Passline's own refund policy page states the Passline commission 'is 15%' for use of the platform, charged to the buyer as service charge; third parties say 10% to 20% depending on event. Producer sets the service charges per event according to terms.",
+           "notes": "Sample Passline contract on Scribd (title 'Modelo Contrato Passline', not opened) shows costs to the producer loaded onto the final buyer. Extras (self-service totems, physical box office POS/printers, access control staff) are priced in the agreement."}
+        ],
+        "prepaid": [],
+        "processing": {"included": false, "processors": [], "own_processor_allowed": false, "rate_note": "'comisiones propias de los servicios recaudadores' on top of 15% according to the refund policy.", "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "7 business days after the event (third-party claim).",
+        "refunds_chargebacks": "On cancelled events the refund deducts Passline's 15% and collector commissions (per policy); refund time not less than 15 business days; Passline cannot refund without the organizer's authorization.",
+        "fine_print": ["Rates not published, negotiated in the commercial agreement and may vary by volume, country and extras"],
+        "add_ons": [{"name": "Totems, POS, access control staff", "price": "per agreement"}, {"name": "Spotify event integration", "price": "free per producers page"}],
+        "enterprise": "Advisor-led; price by agreement.",
+        "sources": [
+          {"url": "https://producers.passline.com/", "read": "2026-10-09", "what": "producers landing"},
+          {"url": "https://www.passline.com/politicas-de-cancelacion.php", "read": "2026-10-09", "what": "refund policy with 15% commission"},
+          {"url": "https://www.tickean.com/alternativa-a-passline", "read": "2026-10-09", "what": "competitor claims"},
+          {"url": "https://fanz.com.py/blog/costos-ticketeras-paraguay-2025-comparativa-completa-organizadores", "read": "2026-10-09", "what": "Paraguay comparison 'not published'"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "8.4 million tickets, 117k events in the last year across 19 countries per its own page."
+  },
+  {
+    "platform": "Boletia",
+    "website": "https://boletia.com",
+    "hq_country": "MX",
+    "segment": "Mexico's largest 'do it yourself' ticketing (concerts, festivals, expos, theatre, graduations), OXXO + card + installments",
+    "markets": [
+      {
+        "market": "Mexico",
+        "currency": "MXN",
+        "vat_note": "Boletia invoices its fee and withheld amounts to the organizer 'plus applicable taxes' (IVA); installment commissions are quoted '+ IVA'. Organizer invoices buyers directly. Boletia withholds 1% ISR on the net total (after Boletia's service fee). Mexico also has entertainment tax (ISEP) of ~8% in CDMX and 3-10% elsewhere on the organizer.",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "Boletia acts as commercial agent: it receives all buyer payments and pays the organizer the remainder after retaining fees. Dispersal: cut-off every Sunday and deposit on Wednesday after the event ends (event ending Monday/Tuesday goes to the Wednesday of next week); final invoice 5 business days after close. May hold a security percentage for chargebacks, released within 60 days.",
+        "plans": [
+          {"name": "Online (card, OXXO)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 10, "per_ticket_fixed": 10, "min_per_ticket": null, "cap_per_ticket": null,
+           "includes": "Service fee 10% + MXN 10 per ticket issued + payment-method rate 5% (card or OXXO). USD events: 10% + USD 0.50 per ticket + 5%.",
+           "notes": "Help centre: the fee is set 'by type of event'. Free events: no fee."},
+          {"name": "Physical box office / POS", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 5, "per_ticket_fixed": 10, "min_per_ticket": null, "cap_per_ticket": null, "includes": "Physical ticket 5% + MXN 10 per ticket (no payment-method rate); POS card 5% + MXN 10 + 5% method rate; POS cash 5% + MXN 10.", "notes": null},
+          {"name": "Installments (meses sin intereses), absorbed by organizer", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "3 MSI 7.5% + IVA, 6 MSI 12% + IVA, 9 MSI 15% + IVA, 12 MSI 18% + IVA. With interest: 3 months 8% + IVA, 6 m 12%, 9 m 16%, 12 m 20%, 18 m 24%, all + IVA. Online payment without installments 5%.", "notes": "Minimum ticket: MXN 300 for 3, 600 for 6, 900 for 9, 1,200 for 12, 1,400 for 18 months. Calculated on the final transaction amount and deducted from final dispersal; the buyer still pays ticket + service fee. Third-party report (Facebook group snippet) says service fees went up to 24% - unverified."}
+        ],
+        "prepaid": [],
+        "processing": {"included": false, "processors": ["cards", "OXXO (20,000+ stores)"], "own_processor_allowed": false, "rate_note": "5% method rate quoted as a Boletia charge; installments rate above.", "platform_extra_processing_fee": "5% (card/OXXO), installments 7.5-24% + IVA"},
+        "who_pays_default": "configurable",
+        "free_tickets": "Free events: no Boletia service fee.",
+        "seating": "Numbered seats via a venue-mapping service (request to organizadores@boletia.com, quote); ticket price list not published.",
+        "payouts": "Weekly cut-off Sunday, deposit Wednesday after event end. Foreign-account refund deposit fee USD 35 + IVA per refund when buyer's account is outside Mexico and purchase was 6+ months before refund.",
+        "refunds_chargebacks": "On cancellation/modification the organizer must return money delivered by Boletia within 72 business hours or pay a MXN 300,000 penalty (T&C). Chargebacks before the event are cancelled from the event account; Boletia not responsible for chargebacks; organizer liable after payout.",
+        "fine_print": [
+          "Charging model (fee included in price vs fee on top of price) can only be changed before the first sale",
+          "Contract penalty MXN 300,000 for missing the refund deadline",
+          "Security reserve held up to 60 days after the event for chargebacks",
+          "Invoice of Boletia's commission issued on the last day of every month the event is on sale"
+        ],
+        "add_ons": [{"name": "Boletia ADS / marketing campaigns, bank partnerships", "price": "quote"}, {"name": "Check-in app, onsite sales, wallet, virtual queue, streaming", "price": "not itemised"}],
+        "enterprise": "Demo request for large events.",
+        "sources": [
+          {"url": "https://boletia.com/terms-of-service", "read": "2026-10-09", "what": "terms of service (pricing tables in MXN and USD)"},
+          {"url": "https://knowledge.boletia.com/knowledge/cual-es-el-cargo-por-servicio-que-boletia-cobra", "read": "2026-10-09", "what": "fee help article (10%, 10 pesos, 5%)"},
+          {"url": "https://knowledge.boletia.com/knowledge/c%C3%B3mo-elijo-el-modelo-de-cobro", "read": "2026-10-09", "what": "charging model"},
+          {"url": "https://blog.boletia.com/organizadores/dudas-comunes-organizadores-sobre-venta-boletos-digitales-boletia", "read": "2026-10-09", "what": "payout Wednesday, 1% ISR"},
+          {"url": "https://organizadores.boletia.com/", "read": "2026-10-09", "what": "homepage (payout Wednesday after event end)"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Contractually an agent but economically a collecting platform. The 'who pays' choice is a free switch."
+  },
+  {
+    "platform": "MaunaOne",
+    "website": "https://maunaone.com",
+    "hq_country": "MX",
+    "segment": "Mexican experiences/events SaaS on Stripe Connect",
+    "markets": [
+      {
+        "market": "Mexico",
+        "currency": "MXN",
+        "vat_note": "Prices exclude IVA (fee quoted '+ IVA').",
+        "model": "mixed",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "Money goes straight into the organizer's own Stripe account via Stripe Connect; MaunaOne does not touch funds. Fee taken as an application fee per online sale plus (Pro) monthly subscription.",
+        "plans": [
+          {"name": "Inicia", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 5, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "Basic sales, calendar, QR check-in, CRM. 5% + IVA on online sales. Self-service support. Cash/transfer sales at POS not included.", "notes": null},
+          {"name": "Pro", "monthly_fee": 899, "annual_fee": 7548, "per_ticket_percent": 2, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "2% + IVA online, no fee on cash/transfer at POS, priority support, advances, private groups, iframe, resellers, own branding, Meta and Google Ads pixels.", "notes": "MXN 629/month with annual contract (MXN 7,548/year). 20% promo on monthly (MXN 719 + IVA) if bought before 2026-10-31. 'Launch session' MXN 2,500 + IVA, included in Pro annual."},
+          {"name": "A la medida", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "Reduced by volume, integrations, consulting.", "notes": "Quote."}
+        ],
+        "prepaid": [],
+        "processing": {"included": false, "processors": ["Stripe"], "own_processor_allowed": true, "rate_note": "Stripe Mexico 3.6% + MXN 3 + IVA per domestic card payment, deducted from the organizer's account by Stripe.", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable",
+        "free_tickets": "Not mentioned.",
+        "seating": "Not mentioned (capacity calendar only).",
+        "payouts": "Stripe's schedule to the organizer's bank.",
+        "refunds_chargebacks": null,
+        "fine_print": ["Fee can be passed to buyer as service charge (5% + IVA or 2% + IVA)"],
+        "add_ons": [{"name": "Launch session", "price": "MXN 2,500 + IVA"}],
+        "enterprise": "Custom plan by quote.",
+        "sources": [{"url": "https://maunaone.com/pricing", "read": "2026-10-09", "what": "pricing page"}, {"url": "https://maunaone.com/blog/boletia-vs-passline-vs-maunaone", "read": "2026-10-09", "what": "own comparison blog"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Subscription + application fee on Stripe Connect: the same architecture class as Arena."
+  },
+  {
+    "platform": "Boletopolis",
+    "website": "https://boletopolis.com",
+    "hq_country": "MX",
+    "segment": "Mexican free ticketing system for organizers, OXXO/SPEI",
+    "markets": [
+      {
+        "market": "Mexico",
+        "currency": "MXN",
+        "vat_note": "Not stated.",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "Not verified (page is JS-rendered); inferred.",
+        "plans": [{"name": "Per-sale commission", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 3.5, "per_ticket_fixed": 10, "min_per_ticket": null, "cap_per_ticket": null, "includes": "Search snippet: 'Boletopolis charges a 3.5% commission per sale plus MXN 10 per ticket sold'; free system for organizers.", "notes": "Could not open the page (JavaScript), snippet only."}],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": null, "free_tickets": null, "seating": null, "payouts": null, "refunds_chargebacks": null, "fine_print": [], "add_ons": [], "enterprise": null,
+        "sources": [{"url": "https://boletopolis.com/es/que-hacemos", "read": "2026-10-09", "what": "search snippet only"}],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "Also seen in Mexico: PuroBoleto (https://puroboleto.com/para-organizadores): 10-15% commission charged to the BUYER per the comparison table, seat maps, OXXO/SPEI/card, payout and IVA not stated (page read 2026-10-09, confidence page-partial). Eticket MX: quote on contact, collects as ticketer, no public rates (Yoteinvito comparison, 2026-03). Ticketmaster MX service fee 15-24% (same comparison, third-party). Mexican taxes: public-show tickets exempt from IVA (art. 15 XIII), CDMX entertainment tax 8%, other states 3-10% (futuratickets.com blog, 2026-08)."
+  },
+  {
+    "platform": "Alpogo",
+    "website": "https://alpogo.com",
+    "hq_country": "AR",
+    "segment": "Argentine promoters, nightlife and shows, up to 3 installments without interest",
+    "markets": [
+      {
+        "market": "Argentina",
+        "currency": "ARS",
+        "vat_note": "Organizer pays IVA and taxes of the event and must issue fiscal receipts to attendees; Alpogo issues fiscal receipts for its commissions and service charges.",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Platform collects the money and pays out to the producer within 5 business days after the producer provides bank data or a transfer request, or at an agreed period; bank account must be in the name of the event's CUIT/CUIL. May withhold funds until the organizer proves the event took place. After formal notice it may retain 30% of gross collections for 90 days after the event for chargebacks/fraud.",
+        "plans": [{"name": "Producer terms", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 17.5, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "15% to 20% of total tickets sold depending on service scope and agreed terms, deducted from gross revenue; a 'cargo por servicio' (amount not stated) also exists.", "notes": "per_ticket_percent is the midpoint of the 15-20% range, not a published single rate. Terms document last updated 2022-02-03."}],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": false, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer",
+        "free_tickets": null, "seating": null,
+        "payouts": "5 business days after request/bank details; 30% retention for 90 days post-event possible; no interest on held funds.",
+        "refunds_chargebacks": "Chargebacks and refunds already generated are deducted before payout; organizer indemnifies Alpogo and reimburses within 5 days of demand plus bank interest.",
+        "fine_print": ["Terms dated 2022", "Retention clause 30% / 90 days"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://alpogo.com/pagina/terminos-productorxs", "read": "2026-10-09", "what": "producer terms"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Also researched in Argentina but not available: EntradaWeb (snippet from its producers page: charges the organizer no commission, all collected goes to the organizer's bank account, the service commission is paid by the buyer; page body could not be read; confidence snippet; https://www.entradaweb.com.ar/productores-y-salas), Plateanet (theatre ticketing, contract-based, no published rates), AllTickets (Instagram claim '0 commission for producers', unverified), Fanz (white-label, custom price, 'direct collection, instant settlement' claims). Venti and EntradaUno were not researched in this pass."
+  },
+  {
+    "platform": "Welcu",
+    "website": "https://welcu.com",
+    "hq_country": "CL",
+    "segment": "Chile/Colombia/Mexico/Peru self-serve for events of every type (also sports, business)",
+    "markets": [
+      {
+        "market": "Chile",
+        "currency": "CLP",
+        "vat_note": "Commission is '10% + taxes': IVA 19% charged on the commission (search snippet example: ticket CLP 26,000, Welcu commission CLP 2,600, IVA on commission CLP 494). The pricing calculator shows IVA 0 in its example, so treatment is inconsistent on the page.",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Welcu offers local payment methods in USA, Brazil, Chile, Peru, Mexico and Colombia; payout timing not published on the pricing page. Terms: price of services (fixed fee per ticket and Welcu commission) is the organizer's, settled from the balance.",
+        "plans": [
+          {"name": "Standard", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 10, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "10% + taxes of the ticket value. Free events free for organizer and guests. 'No cobras, no pagas'. Option 'Pass commission to attendee' (otherwise organizer pays).", "notes": "A 'corporate' paid tier exists (no price). Calculator example shows ticket 200,000 -> attendee pays 213,078 and commission 13,078 (inconsistent with 10%; the example may include processing)."}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": ["local methods"], "own_processor_allowed": null, "rate_note": "Not itemised.", "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer",
+        "free_tickets": "Free events: no cost.",
+        "seating": null,
+        "payouts": "Not published on pricing page.",
+        "refunds_chargebacks": null,
+        "fine_print": ["Pricing calculator offers CLP, COP and USD; Mexico and Peru are listed as countries but no MXN/PEN rate shown"],
+        "add_ons": [],
+        "enterprise": "Corporate tier by quote.",
+        "sources": [
+          {"url": "https://welcu.com/es/pricing", "read": "2026-10-09", "what": "pricing page"},
+          {"url": "https://nexopass.cl/ticketeras-en-chile/", "read": "2026-10-09", "what": "Chile comparison (verified 2026-09-05)"},
+          {"url": "https://welcu.com/en/terms", "read": "2026-10-09", "what": "terms snippet"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Chile market: Puntoticket (ticketer; producer sets 'cargo por servicio', per-ticket cost paid by buyer; money collected belongs to the principal; delivery charges CLP 5,990 RM / 5,490 regions, Will Call CLP 2,490, POS retrieval CLP 1,490 non-refundable; no public producer rates - https://www.puntoticket.com/paginas/condiciones). Ticketplus: contract or white-label (https://ticketplus.com/servicios/ , commissions defined by the client), no published rate. PortalTickets: self-serve, no published fee. NexoPass: free during testing, announces 10% + IVA. Press quotes service charges of 10-20% (16.5% on a Ticketmaster stadium show, BioBioChile 2026-06-23 via NexoPass). Tikzet and Tickean also operate in Chile (see their entries)."
+  },
+  {
+    "platform": "BoletaDirecta",
+    "website": "https://www.boletadirecta.com",
+    "hq_country": "CO",
+    "segment": "Colombian organizers, two modes: managed collection or direct to organizer's own gateway",
+    "markets": [
+      {
+        "market": "Colombia",
+        "currency": "COP",
+        "vat_note": "Not stated.",
+        "model": "percent_plus_fixed",
+        "money_flow": "both",
+        "money_flow_note": "'Recaudo gestionado' (BoletaDirecta collects, pays net 100% to any Colombian bank within 24 business hours after the event ends) vs 'Recaudo directo' (organizer's own payment gateway). Gateways cited: Wompi, Bold, Bancolombia, PSE. Price difference between the two modes not published.",
+        "plans": [{"name": "Direct (calculator)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 3, "per_ticket_fixed": 2000, "min_per_ticket": null, "cap_per_ticket": null, "includes": "Calculator on its own site shows '3% + COP 2,000 per ticket (Directo)'. The same page estimates TuBoleta ~10% + COP 3,000 and TicketExpress ~8% + COP 2,500 per ticket (marked 'est.', vendor assumptions).", "notes": "The calculator's worked totals do not match its own formulas, so treat the numbers as indicative only."}],
+        "prepaid": [],
+        "processing": {"included": null, "processors": ["Wompi", "Bold", "Bancolombia", "PSE", "Nequi", "Daviplata"], "own_processor_allowed": true, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": null, "free_tickets": null, "seating": null,
+        "payouts": "Managed collection: 24 business hours after the event; no '30 days waiting'.",
+        "refunds_chargebacks": null,
+        "fine_print": ["Organizer approval within 24 business hours", "Direct-collection plan details at /partners not read"],
+        "add_ons": [],
+        "enterprise": "WhatsApp/commercial contact.",
+        "sources": [{"url": "https://www.boletadirecta.com/", "read": "2026-10-09", "what": "home page"}, {"url": "https://www.boletadirecta.com/calculadora", "read": "2026-10-09", "what": "commission calculator"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Colombia: TuBoleta (market leader, ~65% share per its LinkedIn, negotiated per event with the promoter; service charge to buyer 10-15% of ticket value per El Tiempo 2023-10-13; no public producer rates). Eticket CO and Primerafila not found. Welcu also operates in Colombia (10% + taxes, see Welcu). Tikzet CO price COP 1,040 per ticket (see Tikzet). Joinnus operates in Colombia too but no CO terms were read."
+  },
+  {
+    "platform": "Joinnus",
+    "website": "https://www.joinnus.com",
+    "hq_country": "PE",
+    "segment": "Peru's self-serve ticketing (Credicorp-owned), events of all sizes; also Colombia, Chile",
+    "markets": [
+      {
+        "market": "Peru",
+        "currency": "PEN",
+        "vat_note": "Commission is '9% + IGV' (IGV = Peru VAT 18%) per ticket.",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Inferred; the commercial agreement text read was truncated, payout terms not visible. Joinnus T&C: percentage of each ticket sold includes service access commission and the payment commission.",
+        "plans": [{"name": "Commercial agreement (2019 template)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 9, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "Charge of 9% + IGV per ticket sold; organizer must show the Joinnus logo and purchase option in all communication.", "notes": "From a Scribd copy of an old agreement ('Acuerdo Comercial (1).pdf'), so third_party and possibly outdated. Joinnus terms say it charges a percentage of each ticket that includes use commission and the payment-processor commission."}],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "Payment commission is included in the percentage per its terms.", "platform_extra_processing_fee": null},
+        "who_pays_default": null, "free_tickets": null, "seating": null, "payouts": null,
+        "refunds_chargebacks": "Per event T&C (example Huaralino): refund limited to the price paid to the organizer.",
+        "fine_print": ["Rate comes from a 2019 sample contract"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://es.scribd.com/document/429545219/Acuerdo-Comercial-1-pdf", "read": "2026-10-09", "what": "old agreement (partial)"}, {"url": "https://www.joinnus.com/terminos-y-condiciones", "read": "2026-10-09", "what": "page is JS-rendered, text only via search snippet"}],
+        "confidence": "third_party"
+      }
+    ],
+    "notes": "Peru others: Teleticket (Ticket-collection agent for the organizer; commission included in the price and not published; organizer issues the receipt - https://teleticket.com.pe/paginas/TerminoCondiciones). Tickean's competitor page quotes 15% for Joinnus (vendor claim). Atrapalo PE not researched. Welcu and Tikzet operate in Peru (PEN 0.92 prepaid per ticket)."
+  },
+  {
+    "platform": "RedTickets (Uruguay) and Tickantel",
+    "website": "https://www.redtickets.uy",
+    "hq_country": "UY",
+    "segment": "Uruguay: RedTickets self-service (claims over half of events); Tickantel (Antel state telecom) for theatres/venues",
+    "markets": [
+      {
+        "market": "Uruguay",
+        "currency": "UYU",
+        "vat_note": "Not stated.",
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "RedTickets acts as mandatary 'on behalf of' the organizer (terms snippet), with 'Redpagos' physical points and crypto acceptance; no payout timing seen. Tickantel not opened.",
+        "plans": [{"name": "Not public", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "No producer fee published by either. Tikzet UY quotes UYU 10 per prepaid ticket (see Tikzet).", "notes": "RedTickets terms page returned 403 to the reader; only the search snippet is known. A cooparte.uy article (2021) notes Tickantel exempted ticket-issue commission at box offices."}],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": null, "free_tickets": null, "seating": null, "payouts": null, "refunds_chargebacks": null, "fine_print": [], "add_ons": [], "enterprise": "Contact sales.",
+        "sources": [{"url": "https://redtickets.uy/tyc_compra", "read": "2026-10-09", "what": "snippet only (mandataria)"}],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": null
+  },
+  {
+    "platform": "Paraguay and Bolivia platforms (Fanz PY, RedTicket PY, Ticket Go BO, TicketBO)",
+    "website": "https://fanz.com.py",
+    "hq_country": "PY",
+    "segment": "Smaller national platforms; one main self-serve per country as far as found",
+    "markets": [
+      {
+        "market": "Paraguay",
+        "currency": "PYG",
+        "vat_note": "Fanz: IVA added on top of the commission.",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Fanz settles to the organizer after 2, 10 or 20 days depending on plan (vendor claim).",
+        "plans": [{"name": "Fanz service charge", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 8.26, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "8.26% + IVA paid by the buyer as service charge, no setup, no monthly; cost about PYG 10,890 on a PYG 100,000 ticket with debit card.", "notes": "Own blog also says local market rates range 8% to 18% and Eventbrite ~6-18% per plan. Passline's PY rate 'not published'. RedTicket PY (new.redticket.com.py): 'small commission', no monthly cost, no setup fee, pays via Bancard QR, Pix, card, transfer; no numbers."}],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["Tigo Money", "Billetera Personal", "debit/credit card"], "own_processor_allowed": false, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer", "free_tickets": null, "seating": null,
+        "payouts": "2, 10 or 20 days depending on plan (Fanz claim).",
+        "refunds_chargebacks": null, "fine_print": ["Vendor-written comparison"], "add_ons": [], "enterprise": null,
+        "sources": [{"url": "https://fanz.com.py/blog/costos-ticketeras-paraguay-2025-comparativa-completa-organizadores", "read": "2026-10-09", "what": "vendor comparison"}, {"url": "https://new.redticket.com.py/registro-organizador", "read": "2026-10-09", "what": "RedTicket PY organizer page"}],
+        "confidence": "third_party"
+      },
+      {
+        "market": "Bolivia",
+        "currency": "BOB",
+        "vat_note": "Not stated.",
+        "model": "flat_per_ticket",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "Ticket Go terms are contradictory: the terms say ticket payment goes straight to the organizer's account, but its refund policy says Ticket Go receives and retains the payment and then pays the organizer minus its agreed commission. TicketBO says it takes no financial responsibility for the organizer's funds (suggests direct) but does not confirm.",
+        "plans": [{"name": "Ticket Go service fee", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": 10, "min_per_ticket": null, "cap_per_ticket": null, "includes": "Price shown to buyer includes a service commission of Bs 10 per ticket; rotating anti-fraud QR, ID-card binding, offline validation.", "notes": "Organizer commission 'agreed' but not published. TicketBO (ticket.bo) publishes no fees; QR bank payment."}],
+        "prepaid": [],
+        "processing": {"included": null, "processors": ["bank QR"], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer", "free_tickets": null, "seating": null, "payouts": null, "refunds_chargebacks": "Ticket Go: organizer decides buyer refunds; TicketBO: organizer refunds within 30 days on cancellation.", "fine_print": ["Very small platforms; terms dated July 2026"], "add_ons": [], "enterprise": null,
+        "sources": [{"url": "https://ticketgobo.com/legal", "read": "2026-10-09", "what": "terms"}, {"url": "https://ticket.bo/terminos", "read": "2026-10-09", "what": "terms"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Ecuador: no self-serve platform with public fees found (Ticketshow is a printed-ticket/collection business; terms not read). Uruguay is in the RedTickets entry."
+  }
+]
