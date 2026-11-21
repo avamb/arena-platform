@@ -407,15 +407,24 @@ func New(
 //     Stripe HMAC-SHA256 verification with the 5-minute replay-attack window.
 //   - When secrets are configured but no recognized signature header is found,
 //     returns ErrInvalidWebhookSignature (caller → 401 Unauthorized, no state change).
+//
+// It is the error-only form of verifyLegacyWebhookSigner, resolving the
+// organization as the payment route does.
 func (h *Handler) verifyWebhookSignature(r *http.Request, body []byte) error {
-	// AB-41: per-organization secrets from payment_provider_configs take
-	// precedence over the process-env secrets (which stay as the
-	// platform-level fallback). The org is located from the refund /
-	// payment-intent id carried in the body: a read-only lookup that
-	// mutates nothing; the HMAC is still verified over the raw bytes.
-	// PAY-01: the per-provider checks run through the module registry
-	// (payment_modules.go), in registry order.
+	_, err := h.verifyLegacyWebhookSigner(r, body, legacyWebhookPayment)
+	return err
+}
+
+// verifyLegacyWebhookSigner verifies a legacy-route delivery and reports who
+// verified it (legacyWebhookSigner). AB-41: per-organization secrets from
+// payment_provider_configs take precedence over the process-env secrets
+// (which stay as the platform-level fallback). The org is located from the
+// id the route's processing uses (webhookSecretsFromOrgConfig): a read-only
+// lookup that mutates nothing; the HMAC is still verified over the raw
+// bytes. PAY-01: the per-provider checks run through the module registry
+// (payment_modules.go), in registry order.
+func (h *Handler) verifyLegacyWebhookSigner(r *http.Request, body []byte, kind legacyWebhookKind) (legacyWebhookSigner, error) {
 	return verifyLegacyWebhook(r.Context(), r, body,
-		h.webhookSecretsFromOrgConfig(r.Context(), body),
+		h.webhookSecretsFromOrgConfig(r.Context(), body, kind),
 		paymodules.PlatformWebhookSecrets(h.webhookStripeSecret, h.webhookAllPaySecret))
 }

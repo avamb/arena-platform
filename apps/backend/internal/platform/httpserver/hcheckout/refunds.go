@@ -1005,7 +1005,8 @@ func (h *Handler) HandleRefundWebhook(w http.ResponseWriter, r *http.Request) {
 	// Verify provider HMAC signature before processing the body. This prevents
 	// forged refund events that could cancel legitimate tickets.
 	// Returns nil in dev/mock mode (no secrets); production requires a secret.
-	if sigErr := h.verifyWebhookSignature(r, body); sigErr != nil {
+	signer, sigErr := h.verifyLegacyWebhookSigner(r, body, legacyWebhookRefund)
+	if sigErr != nil {
 		if h.logger != nil {
 			h.logger.Warn("refund_webhook: invalid signature; rejecting request",
 				slog.String("error", sigErr.Error()),
@@ -1096,6 +1097,18 @@ func (h *Handler) HandleRefundWebhook(w http.ResponseWriter, r *http.Request) {
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("refund_webhook.lookup_failed", "failed to locate refund", r))
+		return
+	}
+
+	// A delivery verified with an organization's own secret moves only a
+	// refund of that organization. Answered like a missing refund, so the
+	// answer does not tell whether the id exists.
+	if signer.OrgID != nil && refund.OrgID != *signer.OrgID {
+		h.logger.Warn("refund_webhook: refund belongs to a different organization than the secret that verified the delivery",
+			slog.String("refund_id", refundID.String()),
+			slog.String("signer_org_id", signer.OrgID.String()),
+		)
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("refund_webhook.refund_not_found", "no refund found for refund_id", r))
 		return
 	}
 
