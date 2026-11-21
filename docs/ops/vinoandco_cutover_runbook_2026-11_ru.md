@@ -326,7 +326,7 @@ curl -s -o /dev/null -D - https://vinoandco.events/ | head -n 8     # ждём 5
 ```
 W=$(docker ps --format '{{.Names}}' | grep -E '^asoconnector-vinoandcotempvino-.*-wordpress-1$')
 docker cp /root/vino-cutover/wp-inventory.php $W:/tmp/wp-inventory.php
-docker exec $W php /tmp/wp-inventory.php --allpay > /root/vino-cutover/inventory-T0-before.json
+docker exec $W php -r 'define("DOING_CRON", true); $argv = ["wp-inventory.php", "--allpay"]; require "/tmp/wp-inventory.php";' > /root/vino-cutover/inventory-T0-before.json   # заглушка уже включена и перехватывает обычный CLI-запуск
 docker exec $W rm /tmp/wp-inventory.php
 python3 -c "import json;d=json.load(open('/root/vino-cutover/inventory-T0-before.json'));print(json.dumps({k:d[k]['counts'] if 'counts' in d[k] else d[k] for k in ('open_orders','pay_order_refusals','recent_allpay_payments','stop_condition_14_4')},indent=1,default=str))"
 ```
@@ -488,13 +488,17 @@ docker logs dokploy-traefik --since 1m 2>&1 | grep -iE 'vino|error' | head
 
 | Время | Шаг | Результат | Кто |
 |---|---|---|---|
-|  | Заглушка WP включена, кеш сброшен |  |  |
-|  | Инвентаризация `T0-before` |  |  |
-|  | Файл `vino-site.yml` установлен |  |  |
-|  | `traefik-routing-check.sh`, 66 проб |  |  |
-|  | Кеш Cloudflare сброшен |  |  |
-|  | Тестовая покупка и «Мои билеты» |  |  |
-|  | Search Console |  |  |
+| 08.11 21:42 | Заглушка WP включена, кеш сброшен | `vino_maintenance=1`, снаружи 503 + `retry-after: 1800`; кеш сброшен с ноутбука (`200 true`), с сервера очистка отвечает 10000 | оператор |
+| 08.11 21:43 | Инвентаризация `T0-before` | как в базовой: pending 0, on-hold 0, processing 4 (старые, устаревшие по решению владельца), оплаченных без билетов 0, очередь возвратов пуста. Заглушка перехватывает и CLI: скрипт запускается с `define("DOING_CRON", true)` | оператор |
+| 08.11 21:43:28 | Файл `vino-site.yml` установлен | в журнале Traefik ошибок нет, `vino-webhook.yml` не тронут | оператор |
+| 08.11 21:44 | `traefik-routing-check.sh`, 66 проб | `66 probes, 0 failed`, IPN `order_id 0` дошёл до WP | оператор |
+| 08.11 21:44 | Кеш Cloudflare сброшен | второй раз, `200 true` | оператор |
+| 08.11 21:46 | Проверка снаружи | главная, `/en/`, `/he/`, `sitemap.xml`, `/order-status/`, `/my-tickets/` — 200; `/payment-successful/` — 301 на `/order-status/`; `robots.txt` без `Disallow: /` для всех; окно покупки открывается; пиксель и GA4 грузятся после согласия на cookies | оператор |
+| — | Тестовая покупка и «Мои билеты» | не делалась в ночь переключения: покупка проверена на стейджинге по приёмке §13 | — |
+| — | Search Console | за владельцем | владелец |
+
+Перед переключением (08.11): старые билеты Bil24 перенесены на платформу (§3.5), прод на `7db4a42`, SPF
+`v=spf1 include:spf.brevo.com ~all` добавлен в зону.
 
 ## 11. Открытые вопросы к владельцу
 
