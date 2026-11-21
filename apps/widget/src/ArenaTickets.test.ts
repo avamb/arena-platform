@@ -105,8 +105,8 @@ describe('parseSessionId', () => {
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 describe('SUPPORTED_LOCALES', () => {
-  it('is exactly the spec set en / ru / cs / he', () => {
-    expect([...SUPPORTED_LOCALES]).toEqual(['en', 'ru', 'cs', 'he']);
+  it('is exactly the set en / ru / cs / he / es', () => {
+    expect([...SUPPORTED_LOCALES]).toEqual(['en', 'ru', 'cs', 'he', 'es']);
   });
 
   it('is the same object as the checkout translation source of truth', () => {
@@ -120,8 +120,8 @@ describe('SUPPORTED_LOCALES', () => {
     }
   });
 
-  it('does not list locales without translations (de/fr/es/uk dropped)', () => {
-    for (const dropped of ['de', 'fr', 'es', 'uk']) {
+  it('does not list locales without translations (de/fr/uk dropped)', () => {
+    for (const dropped of ['de', 'fr', 'uk']) {
       expect(SUPPORTED_LOCALES).not.toContain(dropped);
     }
   });
