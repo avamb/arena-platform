@@ -1717,8 +1717,12 @@ export interface paths {
          *     scoped to the org in the path. The full secret is returned only
          *     in this response (`api_key` field) and cannot be retrieved again.
          *     Scopes are validated against the service-actor allowlist: empty
-         *     scopes, `platform.`/`admin.`-prefixed scopes, and the exact
-         *     scope `api_key.manage` are all rejected. Requires `api_key.manage`
+         *     scopes, `platform.`/`admin.`/`network.`/`superadmin.`/`scaffold.`/
+         *     `onboarding.`-prefixed scopes, and the platform-level exact
+         *     scopes such as `api_key.manage` are all rejected. A caller who is
+         *     not a platform superadmin may only grant scopes they hold in this
+         *     organization; an unknown permission code is refused the same way.
+         *     Keys issued earlier keep their scopes. Requires `api_key.manage`
          *     and an `X-Admin-Reason` header.
          */
         post: operations["createOrganizationApiKey"];
@@ -44613,10 +44617,15 @@ export interface operations {
                 };
             };
             /**
-             * @description Empty scopes list, a scope is forbidden (`platform.`/
-             *     `admin.` prefix, or the exact scope `api_key.manage`), or
-             *     `channel_id` is not a sales channel of this organization
-             *     (`api_key.invalid_channel`).
+             * @description Empty scopes list, a scope is forbidden
+             *     (`api_key.forbidden_scope`: a `platform.`, `admin.`,
+             *     `network.`, `superadmin.`, `scaffold.` or `onboarding.`
+             *     prefix, or an exact platform-level scope such as
+             *     `api_key.manage`), a scope the caller does not hold in this
+             *     organization or an unknown permission code
+             *     (`api_key.scope_not_held`; a platform superadmin is not
+             *     limited), or `channel_id` is not a sales channel of this
+             *     organization (`api_key.invalid_channel`).
              */
             422: {
                 headers: {
@@ -85904,7 +85913,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Missing permission */
+            /** @description Missing permission, or `superadmin.required` for a caller who is not a platform superadmin */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -85936,7 +85945,7 @@ export interface operations {
                     "application/json": components["schemas"]["OnboardingAdminDetail"];
                 };
             };
-            /** @description Missing permission */
+            /** @description Missing permission, or `superadmin.required` for a caller who is not a platform superadmin */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -85977,7 +85986,7 @@ export interface operations {
                     "application/json": components["schemas"]["OnboardingAdminDetail"];
                 };
             };
-            /** @description Missing permission */
+            /** @description Missing permission, or `superadmin.required` for a caller who is not a platform superadmin */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -86030,7 +86039,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Missing permission */
+            /** @description Missing permission, or `superadmin.required` for a caller who is not a platform superadmin */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -86096,7 +86105,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Missing permission */
+            /** @description Missing permission, or `superadmin.required` for a caller who is not a platform superadmin */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -86171,7 +86180,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Missing permission */
+            /** @description Missing permission, or `superadmin.required` for a caller who is not a platform superadmin */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -86246,7 +86255,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Missing permission */
+            /** @description Missing permission, or `superadmin.required` for a caller who is not a platform superadmin */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -86308,7 +86317,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Missing permission */
+            /** @description Missing permission, or `superadmin.required` for a caller who is not a platform superadmin */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -86379,7 +86388,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Missing permission */
+            /** @description Missing permission, or `superadmin.required` for a caller who is not a platform superadmin */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -86433,7 +86442,7 @@ export interface operations {
                     "application/json": components["schemas"]["OnboardingNote"];
                 };
             };
-            /** @description Missing permission */
+            /** @description Missing permission, or `superadmin.required` for a caller who is not a platform superadmin */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -86480,7 +86489,7 @@ export interface operations {
                     "application/json": components["schemas"]["OnboardingSettings"];
                 };
             };
-            /** @description Missing permission */
+            /** @description Missing permission, or `superadmin.required` for a caller who is not a platform superadmin */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -86525,7 +86534,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Missing permission */
+            /** @description Missing permission, or `superadmin.required` for a caller who is not a platform superadmin */
             403: {
                 headers: {
                     [name: string]: unknown;

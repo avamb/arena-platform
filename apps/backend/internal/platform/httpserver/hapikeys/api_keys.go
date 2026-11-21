@@ -123,6 +123,10 @@ func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.requireScopesHeld(w, r, orgID, req.Scopes) {
+		return
+	}
+
 	// The key speaks for its channel: himports publishes every event the key
 	// imports into that channel's feed and delivers the channel's site
 	// webhooks. The FK only proves the channel exists, so without this check
