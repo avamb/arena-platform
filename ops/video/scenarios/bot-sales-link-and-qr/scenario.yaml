@@ -1,0 +1,134 @@
+id: bot-sales-link-and-qr
+fps: 30
+# To add a language: add it here, add its text to every narration, title and heading,
+# and put its pictures in captures/<language>/. Nothing else changes.
+languages: [ru, en, es]
+title:
+  ru: "Ссылка продаж и QR-код в боте"
+  en: "Sales link and QR code in the bot"
+  es: "Enlace de venta y código QR en el bot"
+
+# Instruction film: where the event-center bot gives the link of an event and its QR code,
+# how to make a separate tracked code for a poster, and what the buyer sees.
+# Pictures are made on the staging stand with the test Telegram account in the organization
+# "Luna Events" (see README, "Films bot-create-event-from-poster and bot-sales-link-and-qr") and are not committed.
+# Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in apply-in-telegram-bot.
+# The QR pictures in the chat are replaced before the screenshot with a code of the public
+# site, because the real ones open the staging stand.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [9x16, 4x5]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-result
+    narration:
+      ru: "Нужна ссылка на мероприятие и QR-код для афиши? Всё это есть в боте Arena Sold Out. И вы увидите, сколько человек отсканировали код."
+      en: "Do you need a link to your event and a QR code for the poster? The Arena Sold Out bot gives you both. And you see how many people scanned the code."
+      es: "¿Necesitas un enlace a tu evento y un código QR para el cartel? El bot de Arena Sold Out te da los dos. Y ves cuántas personas han escaneado el código."
+    pause_after: 0.4
+    shots:
+      - image: captures/q_06_qr.png
+        frame: phone
+        title: { ru: "Ссылка и QR-код — в боте", en: "Link and QR code — in the bot", es: "Enlace y código QR, en el bot" }
+        scroll: { from: 0.45, to: 0.6 }
+
+  - id: s2-link
+    narration:
+      ru: "Откройте в меню «Мои мероприятия» и выберите мероприятие. Нажмите «Ссылка для покупателей». Бот пришлёт адрес страницы и QR-код картинкой."
+      en: "In the menu, open «My events» and select the event. Press «Link for buyers». The bot sends the address of the page and the QR code as an image."
+      es: "En el menú, abre «Mis eventos» y elige el evento. Pulsa «Enlace para compradores». El bot te envía la dirección de la página y el código QR como imagen."
+    pause_after: 0.6
+    shots:
+      - image: captures/q_00_menu.png
+        frame: phone
+        title: { ru: "Меню → «Мои мероприятия»", en: "Menu → «My events»", es: "Menú → «Mis eventos»" }
+        weight: 2
+        scroll: { from: 0.6, to: 0.9 }
+      - image: captures/q_02_card.png
+        frame: phone
+        title: { ru: "«Ссылка для покупателей»", en: "«Link for buyers»", es: "«Enlace para compradores»" }
+        weight: 3
+        scroll: { from: 0.5, to: 0.9 }
+      - image: captures/q_03_link.png
+        frame: phone
+        title: { ru: "Адрес страницы и QR-код", en: "Page address and QR code", es: "Dirección de la página y código QR" }
+        weight: 4
+        scroll: { from: 0.2, to: 0.75 }
+
+  - id: s3-tracked
+    narration:
+      ru: "Хотите знать, какая реклама приводит покупателей? Нажмите «Другие ссылки и QR-коды». Выберите, где разместите код, например на афише, и напишите название места."
+      en: "Do you want to know which advertisement brings buyers? Press «More links and QR codes». Select where you will put the code, for example on a poster, and type a name for the location."
+      es: "¿Quieres saber qué publicidad trae compradores? Pulsa «Más enlaces y códigos QR». Elige dónde pondrás el código, por ejemplo en un cartel, y escribe un nombre para ese lugar."
+    pause_after: 0.6
+    shots:
+      - image: captures/q_04_links.png
+        frame: phone
+        title: { ru: "Где вы разместите код", en: "Where you will put the code", es: "Dónde pondrás el código" }
+        weight: 3
+        scroll: { from: 0.7, to: 1.0 }
+      - image: captures/q_05_place.png
+        frame: phone
+        title: { ru: "Название места", en: "Name of the location", es: "Nombre del lugar" }
+        weight: 2
+        scroll: { from: 0.6, to: 0.9 }
+
+  - id: s4-code
+    narration:
+      ru: "Бот пришлёт отдельный QR-код, файл для печати, вкладыш формата А6 и короткий адрес."
+      en: "The bot sends a separate QR code, a file for printing, an A6 sheet and a short address."
+      es: "El bot te envía un código QR propio, un archivo para imprimir, una hoja A6 y una dirección corta."
+    pause_after: 0.8
+    shots:
+      - image: captures/q_06_qr.png
+        frame: phone
+        title: { ru: "Отдельный QR-код для афиши", en: "A separate QR code for the poster", es: "Un código QR propio para el cartel" }
+        weight: 2
+        scroll: { from: 0.4, to: 0.7 }
+      - image: captures/q_07_card.png
+        frame: phone
+        title: { ru: "Файлы для печати и короткий адрес", en: "Files for printing and a short address", es: "Archivos para imprimir y dirección corta" }
+        weight: 3
+        scroll: { from: 0.1, to: 0.6 }
+
+  - id: s5-buyer
+    narration:
+      ru: "Покупатель наводит камеру телефона на код и попадает на страницу мероприятия."
+      en: "The buyer points the phone camera at the code and gets to the event page."
+      es: "El comprador apunta la cámara del móvil al código y llega a la página del evento."
+    pause_after: 1.0
+    shots:
+      - image: captures/p_01_full.png
+        frame: phone
+        title: { ru: "Что видит покупатель", en: "What the buyer sees", es: "Lo que ve el comprador" }
+        scroll: { from: 0, to: 0.45 }
+
+  - id: s6-stats
+    narration:
+      ru: "А вы нажимаете «Статистика» и видите, сколько раз код сканировали и сколько заказов он принёс."
+      en: "And you press «Statistics» and see how many times the code was scanned and how many orders it brought."
+      es: "Y tú pulsas «Estadísticas» y ves cuántas veces se ha escaneado el código y cuántos pedidos ha traído."
+    pause_after: 1.2
+    shots:
+      - image: captures/q_08_stats.png
+        frame: phone
+        title: { ru: "Сканы и заказы по каждому коду", en: "Scans and orders for each code", es: "Escaneos y pedidos de cada código" }
+        scroll: { from: 0.5, to: 0.85 }
+
+  - id: s7-cta
+    narration:
+      ru: "Оставьте заявку на arenasoldout.com или в нашем Telegram-боте. Мы ждём вас."
+      en: "Apply at arenasoldout.com or in our Telegram bot. We look forward to working with you."
+      es: "Deja tu solicitud en arenasoldout.com o en nuestro bot de Telegram. Te esperamos."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Оставьте заявку", en: "Apply now", es: "Deja tu solicitud" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"

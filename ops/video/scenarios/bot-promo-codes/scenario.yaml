@@ -1,0 +1,147 @@
+id: bot-promo-codes
+fps: 30
+# To add a language: add it here, add its text to every narration, title and heading,
+# and put its pictures in captures/<language>/. Nothing else changes.
+languages: [ru, en, es]
+title:
+  ru: "Промокод на скидку в боте"
+  en: "A discount promo code in the bot"
+  es: "Un código promocional de descuento en el bot"
+
+# Instruction film about the event-center bot: how to make a promo code in the bot and what the buyer sees in the cart.
+# Pictures are made on the staging stand with the test Telegram account in the organization
+# "Luna Events" (see README, "Bot instruction films") and are not committed.
+# Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in apply-in-telegram-bot.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [9x16, 4x5]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-result
+    narration:
+      ru: "Хотите дать покупателям скидку? Создайте промокод в боте Arena Sold Out. Это занимает минуту."
+      en: "Do you want to give buyers a discount? Make a promo code in the Arena Sold Out bot. It takes a minute."
+      es: "¿Quieres dar un descuento a tus compradores? Crea un código promocional en el bot de Arena Sold Out. Es un minuto."
+    pause_after: 0.4
+    shots:
+      - image: captures/c_12_created.png
+        frame: phone
+        title: { ru: "Промокод — за минуту", en: "A promo code in a minute", es: "Un código promocional en un minuto" }
+        scroll: { from: 0.4, to: 0.7 }
+
+  - id: s2-new
+    narration:
+      ru: "В меню откройте «Продвижение», потом «Промокоды» и нажмите «Новый код». Напишите код, который будут вводить покупатели."
+      en: "In the menu, open «Promotion», then «Promo codes», and press «New code». Type the code that buyers will enter."
+      es: "En el menú, abre «Promoción», luego «Códigos promocionales» y pulsa «Nuevo código». Escribe el código que usarán los compradores."
+    pause_after: 0.6
+    shots:
+      - image: captures/c_00_menu.png
+        frame: phone
+        title: { ru: "Меню → «Продвижение»", en: "Menu → «Promotion»", es: "Menú → «Promoción»" }
+        weight: 2
+        scroll: { from: 0.6, to: 0.9 }
+      - image: captures/c_01_promo.png
+        frame: phone
+        title: { ru: "«Промокоды»", en: "«Promo codes»", es: "«Códigos promocionales»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/c_03_code.png
+        frame: phone
+        title: { ru: "«Новый код»", en: "«New code»", es: "«Nuevo código»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/c_04_kind.png
+        frame: phone
+        title: { ru: "Код для покупателей", en: "The code for buyers", es: "El código para los compradores" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+
+  - id: s3-discount
+    narration:
+      ru: "Выберите скидку: процент или фиксированная сумма. Потом укажите, на каких сеансах действует код."
+      en: "Select the discount: a percent or a fixed amount. Then tell the bot on which sessions the code works."
+      es: "Elige el descuento: un porcentaje o un importe fijo. Después indica en qué sesiones vale el código."
+    pause_after: 0.6
+    shots:
+      - image: captures/c_05_pct.png
+        frame: phone
+        title: { ru: "Процент или сумма", en: "Percent or amount", es: "Porcentaje o importe" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/c_06_where.png
+        frame: phone
+        title: { ru: "Где действует код", en: "Where the code works", es: "Dónde vale el código" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+
+  - id: s4-limits
+    narration:
+      ru: "Можно ограничить число покупок, число использований одним покупателем и срок действия. Любой из этих шагов можно пропустить."
+      en: "You can limit the number of purchases, the number of uses for one buyer, and the end date. You can skip each of these steps."
+      es: "Puedes limitar el número de compras, los usos por comprador y la fecha de fin. Puedes saltar cualquiera de estos pasos."
+    pause_after: 0.6
+    shots:
+      - image: captures/c_07_limit.png
+        frame: phone
+        title: { ru: "Сколько покупок", en: "How many purchases", es: "Cuántas compras" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/c_08_per.png
+        frame: phone
+        title: { ru: "Сколько раз на покупателя", en: "How many times for one buyer", es: "Cuántas veces por comprador" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/c_09_until.png
+        frame: phone
+        title: { ru: "До какого дня", en: "Until which day", es: "Hasta qué día" }
+        weight: 2
+        scroll: { from: 0.5, to: 0.8 }
+
+  - id: s5-create
+    narration:
+      ru: "Проверьте код и нажмите «Создать». Код действует сразу."
+      en: "Examine the code and press «Add». The code works at once."
+      es: "Revisa el código y pulsa «Crear». El código vale desde ese momento."
+    pause_after: 0.8
+    shots:
+      - image: captures/c_11_check.png
+        frame: phone
+        title: { ru: "Проверьте и создайте", en: "Examine and add", es: "Revisa y crea" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/c_12_created.png
+        frame: phone
+        title: { ru: "Код действует", en: "The code works", es: "El código está activo" }
+        weight: 2
+        scroll: { from: 0.5, to: 0.9 }
+
+  - id: s6-buyer
+    narration:
+      ru: "Покупатель вводит код в корзине и видит скидку до оплаты."
+      en: "The buyer enters the code in the cart and sees the discount before payment."
+      es: "El comprador escribe el código en el carrito y ve el descuento antes de pagar."
+    pause_after: 1.2
+    shots:
+      - image: captures/pc_01_cart.png
+        frame: phone
+        title: { ru: "Что видит покупатель", en: "What the buyer sees", es: "Lo que ve el comprador" }
+        scroll: { from: 0.6, to: 1.0 }
+
+  - id: cta
+    narration:
+      ru: "Оставьте заявку на arenasoldout.com или в нашем Telegram-боте. Мы ждём вас."
+      en: "Apply at arenasoldout.com or in our Telegram bot. We look forward to working with you."
+      es: "Deja tu solicitud en arenasoldout.com o en nuestro bot de Telegram. Te esperamos."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Оставьте заявку", en: "Apply now", es: "Deja tu solicitud" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"
