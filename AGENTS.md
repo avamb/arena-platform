@@ -32,6 +32,7 @@ Rules that bite in every session (details in the items named in the index):
 - A new migration takes the next free number at MERGE time (renumber after merging `origin/master`) and moves the migration-head pin in tests.
 - Actions minutes are scarce: verify locally, push once per finished stage, never push just to "see CI".
 - Texts for people follow `docs/text_style_standard_ru.md`; answers and instructions for the owner are in Russian, PowerShell only, times in Madrid time.
+- Shared journals (in Russian): `docs/progress.md` (what is done and the state of each stream), `docs/decisions.md` (owner decisions with reasons), `docs/known-issues.md` (where traps live by topic plus open debts). After a PR is merged, add one line to `docs/progress.md`. Order of work for two people: `docs/team-workflow.md`.
 
 ## Build & run
 
