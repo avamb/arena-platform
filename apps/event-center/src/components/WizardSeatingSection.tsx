@@ -2,18 +2,30 @@
  * The section "Hall plan" of the wizard (spec 40 §5.S, S3a; lib/wizard/seating.ts).
  * Shown once an existing venue is chosen. It reads the venue's plans (their
  * current versions) and offers "sell by this plan" or "without a plan" (free
- * seating). A venue without a plan is said so plainly, with the way out:
- * another venue, or free seating. A chosen plan brings its categories to
+ * seating). A venue without a plan is said so plainly. A person who may create
+ * seating plans (spec 64) gets the way forward: copy the verified plan of the
+ * venue when there is one, or upload their own files, or continue without a
+ * plan (lib/venuePlan/wizardFlow.ts). A person who may not gets the old text:
+ * another venue, or free seating. The state of a running upload of the venue
+ * shows with a link to its page, and the plans are read again when an upload
+ * becomes approved. A chosen plan brings its categories to
  * price; extra price categories (name, price, colour) can be added over them
  * and get their seats on the seat map after the save.
  *
  * Nothing is written here: the bundle carries the plan (bundle.ts).
  */
-import { useId } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useId, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import { ErrorNotice } from "@/components/ErrorNotice";
 import { TextField } from "@/components/FormField";
-import { listSeatingPlanVersions, listVenueSeatingPlans } from "@/lib/api/endpoints";
+import { PlanUpload } from "@/components/venuePlan/PlanUpload";
+import { ApiError } from "@/lib/api/http";
+import { forkSeatingPlan, listPlanTemplates, listSeatingPlanVersions, listVenuePlanIntakes, listVenueSeatingPlans } from "@/lib/api/endpoints";
+import type { PlanTemplate } from "@/lib/api/types";
 import { useI18n } from "@/lib/i18n";
+import { pollDelayMs, runningIntake, stateKey } from "@/lib/venuePlan/intakeState";
+import { NO_PLAN, approvedKey, noPlanView, reduceNoPlan, templateToOffer, type NoPlanAction } from "@/lib/venuePlan/wizardFlow";
 import { makeId } from "@/lib/wizard/ids";
 import type { DraftAction, WizardDraft } from "@/lib/wizard/draft";
 import {
@@ -62,8 +74,102 @@ export function WizardSeatingSection({ draft, dispatch, touch, errorOf }: Seatin
     staleTime: 60_000,
     retry: false,
   });
+  const client = useQueryClient();
+  const canCreate = access.can("seating_plan.create");
+  const canFork = access.can("seating_plan.fork");
+  const noPlans = plans.isSuccess && (plans.data?.length ?? 0) === 0;
+  const intakes = useQuery({
+    queryKey: ["venuePlan", "intakes", orgId, venueId],
+    queryFn: () => listVenuePlanIntakes(orgId, { venueId, limit: 20 }),
+    enabled: venueId !== "" && canRead,
+    retry: false,
+    refetchInterval: (query) => pollDelayMs(runningIntake(query.state.data?.intakes ?? [])?.state, query.state.fetchFailureCount),
+  });
+  const templates = useQuery({
+    queryKey: ["wizard", "planTemplates", orgId, venueId],
+    queryFn: () => listPlanTemplates(orgId, venueId),
+    enabled: venueId !== "" && canRead && canCreate && canFork && noPlans,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const [flowState, setFlowState] = useState({ venue: "", s: NO_PLAN });
+  const flow = flowState.venue === venueId ? flowState.s : NO_PLAN;
+  const step = (a: NoPlanAction) => setFlowState({ venue: venueId, s: reduceNoPlan(flow, a) });
+  const [forking, setForking] = useState(false);
+  const [forkFailure, setForkFailure] = useState<{ error: unknown } | null>(null);
+  // The copy was made, but it cannot be selected yet: the offer stays hidden, a second copy is never made.
+  const [copyNote, setCopyNote] = useState<{ venue: string; kind: "noVersion" | "listFailed" } | null>(null);
+  // The venue the person looks at now: an answer that comes after a change of venue is dropped.
+  const venueNow = useRef(venueId);
+  venueNow.current = venueId;
+
+  // An upload of this venue became approved: read the plans again, so the new plan can be chosen.
+  const approved = approvedKey(intakes.data?.intakes ?? []);
+  const seen = useRef<{ venue: string; key: string } | null>(null);
+  useEffect(() => {
+    if (!intakes.isSuccess) return;
+    const before = seen.current;
+    seen.current = { venue: venueId, key: approved };
+    if (before !== null && before.venue === venueId && before.key !== approved) void plans.refetch();
+    // `plans` is a new object on every render: the key of the approved intakes says when to read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [approved, intakes.isSuccess, venueId]);
+
   if (venueId === "" || !canRead) return null;
   const list = plans.data ?? [];
+  const note = copyNote !== null && copyNote.venue === venueId ? copyNote.kind : null;
+  const offer: PlanTemplate | null = canCreate && canFork && note === null ? templateToOffer(templates.data?.plan_templates) : null;
+  const view = noPlanView(flow, offer !== null, templates.isLoading);
+  const running = runningIntake(intakes.data?.intakes ?? []);
+
+  /**
+   * Copies the verified plan and selects the copy. The copy is taken from the ANSWER of the
+   * copy request (its plan id and current version), never searched for in a list. After a
+   * successful copy no second copy is ever made from here.
+   */
+  const useTemplate = async (tpl: PlanTemplate) => {
+    const forVenue = venueId;
+    const key = ["wizard", "venuePlans", orgId, forVenue];
+    const here = () => venueNow.current === forVenue;
+    setForking(true);
+    setForkFailure(null);
+    let made: Awaited<ReturnType<typeof forkSeatingPlan>> | null = null;
+    try {
+      made = await forkSeatingPlan(tpl.plan_id, { owner_org_id: orgId, venue_id: forVenue });
+      if (made.seating_plan.current_version_id === undefined || made.seating_plan.current_version_id === null || made.seating_plan.current_version_id === "") {
+        if (here()) setCopyNote({ venue: forVenue, kind: "noVersion" });
+        return;
+      }
+      const versions = (await listSeatingPlanVersions(made.seating_plan.id)).seating_plan_versions ?? [];
+      const mine = planChoiceOf(made.seating_plan, versions, orgId);
+      void client.invalidateQueries({ queryKey: ["venueCard"] });
+      if (mine === null) {
+        if (here()) setCopyNote({ venue: forVenue, kind: "noVersion" });
+        return;
+      }
+      let fresh: PlanChoice[];
+      try {
+        fresh = await readVenuePlans(forVenue, orgId);
+      } catch {
+        fresh = [];
+      }
+      // The list may not hold the copy yet: the answer of the copy request wins.
+      client.setQueryData(key, fresh.some((c) => c.versionId === mine.versionId) ? fresh : [...fresh, mine]);
+      if (here()) dispatch({ type: "seatingPlan", plan: mine });
+    } catch (error) {
+      if (!here()) return;
+      if (made !== null) {
+        // The copy exists; only the read after it failed.
+        setCopyNote({ venue: forVenue, kind: "listFailed" });
+        return;
+      }
+      setForkFailure({ error });
+      // 409: the organization already has a copy. The list shows it.
+      if (error instanceof ApiError && error.code === "seating_plan.fork_own_plan") void plans.refetch();
+    } finally {
+      setForking(false);
+    }
+  };
   const cur = draft.currency.trim().toUpperCase();
   const total = s.categories.length + s.extras.length;
 
@@ -83,10 +189,78 @@ export function WizardSeatingSection({ draft, dispatch, touch, errorOf }: Seatin
           </button>
         </div>
       )}
-      {plans.isSuccess && list.length === 0 && (
+      {running !== null && (
+        <div className="notice" role="status" data-testid="wizard-seating-intake" data-state={running.state}>
+          <p>
+            {t("venuePlan.wizard.running", { state: t(stateKey(running.state)) })}{" "}
+            <Link to="/o/$orgId/venues/$venueId/plan-intakes/$intakeId" params={{ orgId, venueId, intakeId: running.id }} data-testid="wizard-seating-intake-open">
+              {t("venuePlan.slot.open")}
+            </Link>
+          </p>
+          <p className="field-hint">{t("venuePlan.wizard.draftSaved")}</p>
+        </div>
+      )}
+      {noPlans && !canCreate && (
         <p className="notice" role="status" data-testid="wizard-seating-none">
           {t("wizard.seating.none", { venue: v.existingName })}
         </p>
+      )}
+      {noPlans && canCreate && (
+        <>
+          <div className="notice" role="status" data-testid="wizard-seating-none">
+            {note !== null ? (
+              <div data-testid="wizard-seating-copy-note" data-kind={note}>
+                <p>{note === "noVersion" ? t("venuePlan.wizard.template.noVersion") : t("venuePlan.wizard.template.copyExists")}</p>
+                <button type="button" className="btn btn-primary" onClick={() => void plans.refetch()} data-testid="wizard-seating-reload">
+                  {t("venuePlan.wizard.template.reload")}
+                </button>
+              </div>
+            ) : view === "wait" ? (
+              <p className="field-hint" data-testid="wizard-seating-templates-loading">
+                {t("venuePlan.wizard.template.loading")}
+              </p>
+            ) : view === "template" && offer !== null ? (
+              <p data-testid="wizard-seating-template">{t("venuePlan.wizard.template.offer", { name: offer.name, seats: offer.capacity_seated ?? 0 })}</p>
+            ) : (
+              <p>{view === "continued" ? t("wizard.seating.noPlan") : t("venuePlan.wizard.none", { venue: v.existingName })}</p>
+            )}
+            <div className="actions">
+              {view === "template" && offer !== null && (
+                <>
+                  <button type="button" className="btn btn-primary" disabled={forking} onClick={() => void useTemplate(offer)} data-testid="wizard-seating-template-use">
+                    {forking ? t("venuePlan.wizard.template.working") : t("venuePlan.wizard.template.use")}
+                  </button>
+                  <button type="button" className="btn" disabled={forking} onClick={() => step("declineTemplate")} data-testid="wizard-seating-template-decline">
+                    {t("venuePlan.wizard.template.decline")}
+                  </button>
+                </>
+              )}
+              {view !== "wait" && view !== "template" && view !== "upload" && (
+                <button type="button" className="btn btn-primary" onClick={() => step("openUpload")} data-testid="wizard-seating-upload">
+                  {t("venuePlan.upload.button")}
+                </button>
+              )}
+              {(view === "ask" || view === "upload") && (
+                <button type="button" className="btn" onClick={() => step("continue")} data-testid="wizard-seating-continue">
+                  {t("venuePlan.wizard.continue")}
+                </button>
+              )}
+            </div>
+            {forkFailure !== null && <ErrorNotice error={forkFailure.error} testId="wizard-seating-template-error" />}
+          </div>
+          {view === "upload" && (
+            <PlanUpload
+              orgId={orgId}
+              venueId={venueId}
+              testId="wizard-plan-upload"
+              onClose={() => step("closeUpload")}
+              onSent={() => {
+                step("closeUpload");
+                void intakes.refetch();
+              }}
+            />
+          )}
+        </>
       )}
       {plans.isSuccess && list.length > 0 && (
         <div role="radiogroup" aria-label={t("wizard.section.seating")}>

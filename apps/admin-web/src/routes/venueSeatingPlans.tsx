@@ -15,7 +15,8 @@
  *
  *   GET  /v1/venues/{venue_id}/seating-plans                (SEAT-A3 list)
  *   POST /v1/venues/{venue_id}/seating-plans                (SEAT-A3 create)
- *   PATCH  /v1/seating-plans/{id}          (archive via status="archived")
+ *   PATCH  /v1/seating-plans/{id}          (archive via status="archived",
+ *                                          activate via status="active")
  *   POST /v1/seating-plans/{id}/fork                        (SEAT-A3 fork)
  *   POST /v1/seating-plans/{id}/versions                    (SEAT-A3 upload)
  *   GET  /v1/seating-plans/{id}/versions      (AB-25c history + preview src)
@@ -342,12 +343,12 @@ export function createPlanFormIssues(
 ): readonly CreatePlanFormIssue[] {
   const issues: CreatePlanFormIssue[] = [];
   if (name.trim() === "") {
-    issues.push({ field: "name", message: "Plan name is required." });
+    issues.push({ field: "name", message: "Type the plan name." });
   }
   if (ownerOrgID.trim() === "") {
     issues.push({
       field: "owner_org_id",
-      message: "Owner organization is required.",
+      message: "Select the owner organization.",
     });
   }
   return issues;
@@ -416,7 +417,7 @@ export function VenueSeatingPlansDrawer({
       id="venues-plans-drawer"
       forceLayout={forceLayout}
     >
-      <div style={tabsBarStyle} role="tablist" aria-label="Venue detail tabs">
+      <div style={tabsBarStyle} role="tablist" aria-label="Venue tabs">
         <TabButton
           active={tab === "details"}
           onClick={() => setTab("details")}
@@ -549,7 +550,7 @@ function SeatingPlansPanel({ venue }: { venue: Venue }) {
         </div>
       ) : query.isError ? (
         <div style={errorBoxStyle} role="alert" data-testid="venues-plans-error">
-          <strong>Failed to load seating plans.</strong>
+          <strong>We did not load the seating plans.</strong>
           <div style={errorCodeStyle}>{query.error?.code ?? "unknown.error"}</div>
           {query.error?.message ? (
             <div style={errorParaStyle}>{query.error.message}</div>
@@ -564,7 +565,7 @@ function SeatingPlansPanel({ venue }: { venue: Venue }) {
         </div>
       ) : plans.length === 0 ? (
         <div style={statusBoxStyle} role="status" data-testid="venues-plans-empty">
-          No seating plans yet. Create the first plan below.
+          This venue has no seating plans. Make the first plan below.
         </div>
       ) : (
         <ul style={planListStyle} data-testid="venues-plans-list">
@@ -668,7 +669,7 @@ function SeatingPlanBody({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
           </div>
         ) : versionsQuery.isError ? (
           <div style={errorBoxStyle} role="alert">
-            <strong>Could not load version history.</strong>
+            <strong>We did not load the version history.</strong>
             <div style={errorCodeStyle}>
               {versionsQuery.error?.code ?? "unknown.error"}
             </div>
@@ -812,7 +813,7 @@ function CategoryTablePanel({
                     data-testid={`venues-plan-category-name-${plan.id}-${cat.index}`}
                   />
                   {effective !== cat.name ? (
-                    <div style={mutedHintTextStyle}>imported as “{cat.name}”</div>
+                    <div style={mutedHintTextStyle}>name in the file: “{cat.name}”</div>
                   ) : null}
                 </td>
                 <td style={gaEditorCellStyle}>
@@ -1121,19 +1122,20 @@ export function UploadSVGFormView({
     <div style={sectionStyle} data-testid={`venues-plan-upload-${planID}`}>
       <div style={sectionTitleStyle}>Upload SVG · new version</div>
       <p style={hintStyle}>
-        Upload an SVG file to create a new version and publish it as the plan&apos;s
-        current version. The importer canonicalises geometry and derives seated
-        capacity from the parsed seats; the original SVG is stored for preview.
-        Accepted: {acceptedExtensionsLabel(SEATING_PLAN_SVG_OWNER_TYPE)} up to{" "}
+        Upload an SVG file to make a new version. The platform publishes it as
+        the current version of the plan. The importer derives seated
+        capacity from the seats that it reads. The platform keeps the original
+        SVG for the preview. Accepted:{" "}
+        {acceptedExtensionsLabel(SEATING_PLAN_SVG_OWNER_TYPE)}, maximum{" "}
         {formatBytes(OWNER_TYPE_MAX_BYTES[SEATING_PLAN_SVG_OWNER_TYPE])}.
-        Per-element validation errors appear below.
+        Errors for each element appear below.
       </p>
       {gaHint ? (
         <p style={hintStyle} data-testid={`venues-plan-upload-ga-${planID}`}>
-          General-admission areas: label an element &quot;#GA &lt;name&gt;&quot; whose
-          &lt;title&gt; carries the capacity and whose fill matches a category
-          swatch. Both capacities are derived from the file — nothing to
-          enter by hand.
+          General-admission areas: give an element the label &quot;#GA &lt;name&gt;&quot;.
+          The &lt;title&gt; of the element has the capacity. The fill of the element
+          matches a category swatch. The platform derives both capacities from the
+          file. You do not type them.
         </p>
       ) : null}
       <label style={fileButtonStyle}>
@@ -1145,7 +1147,7 @@ export function UploadSVGFormView({
           style={{ display: "none" }}
           data-testid={`venues-plan-upload-input-${planID}`}
         />
-        <span>{pending ? (step ?? "Uploading…") : "Choose SVG file"}</span>
+        <span>{pending ? (step ?? "Uploading…") : "Select SVG file"}</span>
       </label>
       {fileError !== null ? (
         <div
@@ -1153,7 +1155,7 @@ export function UploadSVGFormView({
           role="alert"
           data-testid={`venues-plan-upload-file-error-${planID}`}
         >
-          <strong>File rejected.</strong>
+          <strong>The platform did not accept the file.</strong>
           <div style={errorParaStyle}>{fileError}</div>
         </div>
       ) : null}
@@ -1209,7 +1211,7 @@ export function UploadSVGFormView({
           role="alert"
           data-testid={`venues-plan-upload-fatal-${planID}`}
         >
-          <strong>Upload failed.</strong>
+          <strong>The upload did not complete.</strong>
           <div style={errorCodeStyle}>{uploadError.code}</div>
           <div style={errorParaStyle}>{uploadError.message}</div>
         </div>
@@ -1249,9 +1251,9 @@ export function VersionHistoryTable({
   if (versions.length === 0) {
     return (
       <p style={hintStyle} data-testid="venues-plan-versions-empty">
-        No versions yet. A plan is only a container — Upload an SVG above to
-        create version 1, which carries the parsed geometry, the derived seat
-        capacity, and the original SVG asset stored in the media library.
+        This plan has no versions. A plan is only a container. Upload an SVG
+        above to make version 1. Version 1 has the geometry, the seat
+        capacity and the original SVG asset from the media library.
       </p>
     );
   }
@@ -1391,9 +1393,9 @@ function PlanPreviewSection({ version, hasGA }: { version: SeatingPlanVersion | 
       <div style={sectionTitleStyle}>Preview</div>
       {version === null ? (
         <p style={hintStyle}>
-          No version yet. Upload an SVG above to create version 1. A seating
-          plan is a container — the version carries the geometry, seat
-          capacity, and the original SVG asset.
+          This plan has no version. Upload an SVG above to make version 1. A
+          seating plan is a container. The version has the geometry, the seat
+          capacity and the original SVG asset.
         </p>
       ) : (
         <VersionPreview
@@ -1463,8 +1465,8 @@ export function VersionPreview({
         <>
           {hasAsset && error !== null ? (
             <div style={hintStyle} data-testid="venues-plan-preview-asset-error">
-              Stored SVG could not be loaded ({error.code}); showing the parsed
-              geometry instead.
+              We did not load the stored SVG ({error.code}). The preview shows the
+              geometry from the file.
             </div>
           ) : null}
           <GeometrySVG geometry={version.geometry} />
@@ -1496,10 +1498,11 @@ export function GeometrySVG({ geometry }: { geometry: SeatingGeometry }) {
 // Fork / Archive actions
 // ---------------------------------------------------------------------------
 
-function PlanActions({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
+export function PlanActions({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
   const qc = useQueryClient();
   const [forkError, setForkError] = useState<ApiError | null>(null);
   const [archiveError, setArchiveError] = useState<ApiError | null>(null);
+  const [activateError, setActivateError] = useState<ApiError | null>(null);
   const [forkOrgID, setForkOrgID] = useState<string>(plan.owner_org_id);
 
   const fork = useMutation<SeatingPlanEnvelope, ApiError, void>({
@@ -1530,14 +1533,29 @@ function PlanActions({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
     onError: (err) => setArchiveError(err),
   });
 
+  const activate = useMutation<SeatingPlanEnvelope, ApiError, void>({
+    mutationFn: () =>
+      authedFetch<SeatingPlanEnvelope>({
+        method: "PATCH",
+        path: `/v1/seating-plans/${plan.id}`,
+        body: { status: "active" },
+      }),
+    onSuccess: () => {
+      setActivateError(null);
+      qc.invalidateQueries({ queryKey: ["seating-plans", "by-venue", venue.id] });
+    },
+    onError: (err) => setActivateError(err),
+  });
+
   const alreadyArchived = plan.status === "archived";
+  const isDraft = plan.status === "draft";
 
   return (
     <div style={sectionStyle}>
       <div style={sectionTitleStyle}>Actions</div>
       <div style={actionRowStyle}>
         <label style={forkInputWrapStyle}>
-          <span style={miniLabelStyle}>Fork owner org UUID</span>
+          <span style={miniLabelStyle}>UUID of the owner organization for the fork</span>
           <input
             type="text"
             value={forkOrgID}
@@ -1556,6 +1574,17 @@ function PlanActions({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
         >
           {fork.isPending ? "Forking…" : "Fork"}
         </button>
+        {isDraft ? (
+          <button
+            type="button"
+            style={secondaryButtonStyle}
+            onClick={() => activate.mutate()}
+            disabled={activate.isPending}
+            data-testid={`venues-plan-activate-${plan.id}`}
+          >
+            {activate.isPending ? "Activating…" : "Activate"}
+          </button>
+        ) : null}
         <button
           type="button"
           style={dangerButtonStyle}
@@ -1586,6 +1615,16 @@ function PlanActions({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
           <div style={errorParaStyle}>{archiveError.message}</div>
         </div>
       ) : null}
+      {activateError !== null ? (
+        <div
+          style={errorBoxStyle}
+          role="alert"
+          data-testid={`venues-plan-activate-error-${plan.id}`}
+        >
+          <div style={errorCodeStyle}>{activateError.code}</div>
+          <div style={errorParaStyle}>{activateError.message}</div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1605,12 +1644,12 @@ const PLAN_TYPES: readonly SeatingPlanType[] = [
 // reshapes with the choice instead of assuming an SVG is the only path.
 export const PLAN_TYPE_HINTS: Readonly<Record<SeatingPlanType, string>> = {
   assigned_seats:
-    "Assigned seats: upload the hall SVG after creating — seats and categories come from the file.",
+    "Assigned seats: after you make the plan, upload the SVG of the seating plan. The seats and categories come from the file.",
   general_admission:
-    "General admission: no file needed — enter the named capacities below; they become the plan's categories.",
-  tables: "Tables: reserved plan type (not yet supported end-to-end).",
+    "General admission: no file needed. Type the named capacities below. They become the categories of the plan.",
+  tables: "Tables: a plan type for the future. The platform does not support it from start to end.",
   mixed:
-    "Combined: upload an SVG whose #GA-labeled area carries the floor capacity alongside the seats.",
+    "Combined: upload an SVG with seats. The area with the #GA label has the capacity of the floor.",
 };
 
 // The 15-swatch Bil24 palette (First..Fifteenth), used to auto-colour
@@ -1642,11 +1681,11 @@ export function gaCategoryIssues(
   );
   const issues: string[] = [];
   if (active.length === 0) {
-    issues.push("Add at least one general-admission category (name + capacity).");
+    issues.push("Add one general-admission category or more. Each one needs a name and a capacity.");
     return issues;
   }
   if (active.length > 15) {
-    issues.push("At most 15 categories are allowed (the Bil24 ceiling).");
+    issues.push("A plan can have 15 categories at most (the limit in Bil24).");
   }
   const seen = new Set<string>();
   active.forEach((d, i) => {
@@ -1664,10 +1703,10 @@ export function gaCategoryIssues(
       !Number.isInteger(cap) ||
       cap <= 0
     ) {
-      issues.push(`Category ${label} needs a positive whole-number capacity.`);
+      issues.push(`Category ${label} needs a whole number more than 0 as the capacity.`);
     }
     if (d.price.trim() !== "" && (!/^\d+$/.test(d.price.trim()) || Number(d.price.trim()) < 0)) {
-      issues.push(`Category ${label} starting price must be a whole number of minor units.`);
+      issues.push(`The starting price of category ${label} must be a whole number of minor units.`);
     }
   });
   return issues;
@@ -1907,7 +1946,7 @@ export function CreatePlanFormView({
           value={name}
           onChange={(e) => onNameChange(e.target.value)}
           style={nameIssue !== null ? inputInvalidStyle : inputStyle}
-          placeholder="e.g. Main Hall — Assigned Seating"
+          placeholder="Example: Main plan, assigned seats"
           aria-invalid={nameIssue !== null}
           aria-describedby={
             nameIssue !== null ? "venue-plan-name-error" : undefined
@@ -1968,7 +2007,7 @@ export function CreatePlanFormView({
             <option value="">Loading organizations…</option>
           ) : (
             <>
-              <option value="">Select organization</option>
+              <option value="">Select an organization</option>
               {organizations.map((org) => (
                 <option key={org.id} value={org.id}>
                   {org.name}
@@ -1993,7 +2032,7 @@ export function CreatePlanFormView({
           role="alert"
           data-testid="venues-plan-create-validation"
         >
-          <strong>Cannot create this plan yet:</strong>
+          <strong>You cannot make this plan before you do this:</strong>
           <ul style={validationListStyle}>
             {issues.map((i) => (
               <li key={i.field}>{i.message}</li>
@@ -2058,7 +2097,7 @@ export function GACategoryEditorView({
                 <input
                   type="text"
                   value={d.name}
-                  placeholder="e.g. Dance floor"
+                  placeholder="Example: Dance floor"
                   onChange={(e) => update(i, { name: e.target.value })}
                   style={inputStyle}
                   aria-label={`Category ${i + 1} name`}
@@ -2082,7 +2121,7 @@ export function GACategoryEditorView({
                   type="text"
                   inputMode="numeric"
                   value={d.price}
-                  placeholder="minor units, optional"
+                  placeholder="Minor units. Optional."
                   onChange={(e) => update(i, { price: e.target.value })}
                   style={inputStyle}
                   aria-label={`Category ${i + 1} starting price`}

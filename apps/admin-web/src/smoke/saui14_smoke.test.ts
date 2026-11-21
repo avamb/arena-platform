@@ -229,6 +229,7 @@ const ROUTE_REGISTRY: Readonly<
     file: "promoCodes.tsx",
   },
   "/onboarding": { routeId: "OnboardingRoute", file: "onboarding.tsx" },
+  "/venue-plans": { routeId: "VenuePlansRoute", file: "venuePlans.tsx" },
   "/billing/prices": { routeId: "BillingPricesRoute", file: "billingPrices.tsx" },
   "/billing/invoices": { routeId: "BillingInvoicesRoute", file: "billingInvoices.tsx" },
   "/billing/payment-fees": { routeId: "BillingPaymentFeesRoute", file: "billingPaymentFees.tsx" },
@@ -270,6 +271,10 @@ const NON_NAV_ROUTE_IDS: ReadonlySet<string> = new Set([
   // /onboarding queue. Inherits its gate (onboarding.review) from the
   // backend; the component wraps itself in RequirePermission as well.
   "OnboardingDetailRoute",
+  // Seating plans (spec 64): one intake's card, reached from the queue and from
+  // the administrator notifications. The component wraps itself in
+  // RequirePermission with the /venue-plans entry.
+  "VenuePlanDetailRoute",
   // Product analytics (spec 50, A8): one person's timeline, reached only by
   // the link of a CRM card or a dashboard row. The component wraps itself in
   // RequirePermission with the Flows entry (superadmin.read) and the backend

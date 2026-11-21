@@ -14,8 +14,11 @@ SELECT token, user_id, expires_at, used_at
 FROM password_reset_tokens
 WHERE token = $1;
 
--- name: MarkPasswordResetTokenUsed :exec
--- Stamps used_at on the token so replay attempts are rejected with 410 Gone.
+-- name: ConsumePasswordResetToken :one
+-- Stamps used_at on an unused, unexpired token and returns its owner.
+-- A token is consumed at most once,
+-- so no row is returned when it is unknown, already used or expired.
 UPDATE password_reset_tokens
 SET used_at = now()
-WHERE token = $1;
+WHERE token = $1 AND used_at IS NULL AND expires_at > now()
+RETURNING user_id;

@@ -275,7 +275,7 @@ export function sessionsCellTitle(
   labelsById: ReadonlyMap<string, string>,
 ): string {
   if (sessionIds.length === 0) {
-    return "Applies to any session of the organization.";
+    return "Applies to all sessions of the organization.";
   }
   return sessionIds.map((id) => labelsById.get(id) ?? id).join("\n");
 }
@@ -375,7 +375,7 @@ function validatePositiveIntOrBlank(raw: string): string | undefined {
     return undefined;
   }
   if (!/^\d+$/.test(trimmed) || Number(trimmed) <= 0) {
-    return "Must be a whole number greater than zero, or left blank for unlimited.";
+    return "Enter an integer more than 0. Keep it empty for no limit.";
   }
   return undefined;
 }
@@ -395,22 +395,22 @@ export function validatePromoForm(v: PromoFormValues): PromoFormErrors {
   if (v.discount_type === "percent") {
     const trimmed = v.value.trim();
     if (trimmed === "" || !/^\d+$/.test(trimmed)) {
-      errors.value = "Percent must be a whole number between 1 and 100.";
+      errors.value = "Percent must be an integer from 1 to 100.";
     } else {
       const n = Number(trimmed);
       if (n < 1 || n > 100) {
-        errors.value = "Percent must be between 1 and 100.";
+        errors.value = "Percent must be from 1 to 100.";
       }
     }
   } else {
     const cents = decimalToCents(v.value);
     if (cents === null || cents <= 0) {
-      errors.value = "Amount must be a decimal greater than zero (e.g. 12.50).";
+      errors.value = "Amount must be a decimal number more than 0, for example 12.50.";
     }
     if (v.currency.trim() === "") {
       errors.currency = "Currency is required for a fixed-amount code.";
     } else if (!/^[A-Za-z]{3}$/.test(v.currency.trim())) {
-      errors.currency = "Currency must be a 3-letter ISO 4217 code (e.g. EUR).";
+      errors.currency = "Currency must be a 3-letter ISO 4217 code, for example EUR.";
     }
   }
 
@@ -425,11 +425,11 @@ export function validatePromoForm(v: PromoFormValues): PromoFormErrors {
 
   const from = v.valid_from.trim() === "" ? null : parseLocalDatetime(v.valid_from);
   if (v.valid_from.trim() !== "" && from === null) {
-    errors.valid_from = "Valid-from must be a valid date/time.";
+    errors.valid_from = "Valid-from must be a correct date and time.";
   }
   const until = v.valid_until.trim() === "" ? null : parseLocalDatetime(v.valid_until);
   if (v.valid_until.trim() !== "" && until === null) {
-    errors.valid_until = "Valid-until must be a valid date/time.";
+    errors.valid_until = "Valid-until must be a correct date and time.";
   }
   if (from !== null && until !== null && until.getTime() <= from.getTime()) {
     errors.valid_until = "Valid-until must be after valid-from.";
@@ -493,29 +493,29 @@ export function mapPromoError(err: ApiError): string {
     case "promo.invalid_discount_type":
       return "Discount type must be percent or fixed amount.";
     case "promo.invalid_discount_value":
-      return "Discount value is invalid.";
+      return "The discount value is not correct.";
     case "promo.invalid_currency":
       return "Currency must be a 3-letter ISO 4217 code.";
     case "promo.currency_required":
       return "Currency is required for a fixed-amount code.";
     case "promo.invalid_session_id":
-      return "One of the selected sessions is invalid.";
+      return "One of the selected sessions is not correct.";
     case "promo.invalid_session":
       return "One of the selected sessions does not belong to this organization.";
     case "promo.invalid_valid_from":
-      return "Valid-from must be a valid RFC3339 timestamp.";
+      return "Valid-from must be a correct RFC3339 timestamp.";
     case "promo.invalid_valid_until":
-      return "Valid-until must be a valid RFC3339 timestamp.";
+      return "Valid-until must be a correct RFC3339 timestamp.";
     case "promo.duplicate":
-      return "A promo code with this code already exists in this organization.";
+      return "This organization has a promo code with this code. Use a different code.";
     case "permissions.denied":
-      return "Your account is missing the required permission.";
+      return "Your account has no permission for this.";
     default:
       if (err.status === 401) {
         return "Session expired. Please sign in again.";
       }
       if (err.status === 403) {
-        return "Forbidden — missing the required promo permission.";
+        return "Forbidden. Your account has no promo permission.";
       }
       return `${err.message} (${err.code})`;
   }
@@ -737,7 +737,7 @@ function PromoCodesModule({ orgId }: { orgId: string }) {
       const blob = await fetchRedemptionsCsvBlob(orgId, promoCodeId);
       triggerBlobDownload(blob, redemptionsCsvFilename(code));
     } catch (err) {
-      setCsvError(err instanceof Error ? err.message : "Could not download the CSV.");
+      setCsvError(err instanceof Error ? err.message : "We did not download the CSV.");
     } finally {
       setCsvBusy(null);
     }
@@ -760,8 +760,8 @@ function PromoCodesModule({ orgId }: { orgId: string }) {
           </h1>
           <p style={subheadingStyle}>
             Organization <code style={monoStyle}>{orgId}</code>. Discount
-            vouchers redeemable at checkout, optionally restricted to
-            specific sessions.
+            codes that buyers use at checkout. A code can apply to
+            specific sessions only.
           </p>
         </div>
         <div style={refreshWrapStyle}>
@@ -883,7 +883,7 @@ function ListErrorState({
   }
   return (
     <div style={errorBoxStyle} role="alert" data-testid="promo-codes-error">
-      <strong>Failed to load promo codes.</strong>
+      <strong>We did not load the promo codes.</strong>
       <div style={errorCodeStyle}>{error?.code ?? "unknown.error"}</div>
       {error?.message ? <div style={errorParaStyle}>{error.message}</div> : null}
       <button type="button" style={errorRetryStyle} onClick={onRetry}>
@@ -1023,7 +1023,7 @@ function PromoCodeForm({
         </label>
 
         <label style={fieldGroupStyle}>
-          <span style={fieldLabelStyle}>Max uses per customer</span>
+          <span style={fieldLabelStyle}>Max uses for each buyer</span>
           <input
             type="text"
             inputMode="numeric"
@@ -1090,8 +1090,8 @@ function PromoCodeForm({
           <p style={mutedStyle}>Loading sessions…</p>
         ) : sessionOptions.length === 0 ? (
           <p style={mutedStyle}>
-            No sessions found for this organization — the code will apply to
-            any session.
+            This organization has no sessions. The code will apply to all
+            sessions.
           </p>
         ) : (
           <div style={sessionPickerStyle} data-testid="promo-codes-field-sessions">
@@ -1109,7 +1109,7 @@ function PromoCodeForm({
           </div>
         )}
         <span style={fieldHintStyle}>
-          Leave every box unchecked to apply the code to any session.
+          Keep all boxes empty to apply the code to all sessions.
         </span>
       </div>
 
@@ -1126,7 +1126,7 @@ function PromoCodeForm({
           disabled={submitting}
           data-testid="promo-codes-form-submit"
         >
-          {submitting ? "Creating…" : "Create promo code"}
+          {submitting ? "Creating…" : "Add promo code"}
         </button>
         <button
           type="button"
@@ -1177,7 +1177,7 @@ export function PromoCodesTable({
   if (codes.length === 0) {
     return (
       <div style={statusBoxStyle} role="status" data-testid="promo-codes-empty">
-        No promo codes yet.
+        This organization has no promo codes.
       </div>
     );
   }
@@ -1316,7 +1316,7 @@ function UsagePanel({
   return (
     <div style={usagePanelStyle} data-testid={`promo-codes-usage-panel-${code.id}`}>
       <div style={usageHeaderStyle}>
-        <h3 style={usageTitleStyle}>Usage — {code.code}</h3>
+        <h3 style={usageTitleStyle}>Usage: {code.code}</h3>
         <button
           type="button"
           style={refreshButtonStyle}
@@ -1331,11 +1331,11 @@ function UsagePanel({
         <p style={mutedStyle}>Loading redemptions…</p>
       ) : error !== null ? (
         <div style={fieldErrorStyle} data-testid={`promo-codes-usage-error-${code.id}`}>
-          Could not load usage: {error}
+          We did not load the usage: {error}
         </div>
       ) : redemptions.length === 0 ? (
         <p style={mutedStyle} data-testid={`promo-codes-usage-empty-${code.id}`}>
-          This code has not been redeemed yet.
+          No buyer used this code.
         </p>
       ) : (
         <table style={miniTableStyle} data-testid={`promo-codes-usage-table-${code.id}`}>

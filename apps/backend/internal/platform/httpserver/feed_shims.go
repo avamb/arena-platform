@@ -8,12 +8,15 @@
 package httpserver
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hbil24"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hfeed"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/mytickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesubscribe"
 )
 
@@ -47,6 +50,7 @@ func (s *Server) feedHandler() *hfeed.Handler {
 		hcheckout.PricingRules(s.pricingRules),
 		trustedProxies,
 	).WithMediaSigner(s.signedMediaURL).
+		WithAPIPublicBase(s.apiPublicURL).
 		WithPayments(
 			s.hostedPaymentStarter(),
 			s.checkoutReturnURLPolicy(),
@@ -61,7 +65,12 @@ func (s *Server) feedHandler() *hfeed.Handler {
 		WithFunnelDeduper(&s.funnelDedupe).
 		WithPromoAttempts(s.promoAttemptRecorder()).
 		WithSaleSubscriptions(s.saleSubscriptionService(), s.saleSubscriptionSalt()).
-		WithTicketAccessLog(s.ticketAccessRecorder())
+		WithMyTickets(s.myTicketsService(), s.saleSubscriptionSalt()).
+		WithMyTicketsCaptcha(s.myTicketsCaptcha()).
+		WithMyTicketsPageCheck(s.myTicketsPageCheck()).
+		WithTicketAccessLog(s.ticketAccessRecorder()).
+		WithCheckoutIdempotency(s.checkoutStartIdempotency()).
+		WithPaymentApplier(s.confirmedPaymentApplier())
 }
 
 // ticketAccessRecorder is the buyer's ticket access log (migration 0184); nil
@@ -79,6 +88,34 @@ func (s *Server) saleSubscriptionService() *salesubscribe.Service {
 		return nil
 	}
 	return salesubscribe.New(s.pgxPool, nil)
+}
+
+// myTicketsService is "my tickets by link"; nil without a pool.
+func (s *Server) myTicketsService() *mytickets.Service {
+	if s.pgxPool == nil {
+		return nil
+	}
+	return mytickets.New(s.pgxPool, nil)
+}
+
+func (s *Server) handleMyTicketsRequestLink(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandleMyTicketsRequestLink(w, r)
+}
+
+func (s *Server) handleMyTicketsExchange(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandleMyTicketsExchange(w, r)
+}
+
+func (s *Server) handleMyTicketsLogout(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandleMyTicketsLogout(w, r)
+}
+
+func (s *Server) handleMyTicketsOrders(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandleMyTicketsOrders(w, r)
+}
+
+func (s *Server) handleMyTicketsPDF(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandleMyTicketsPDF(w, r)
 }
 
 // withGatewaySaleSubscriptions wires the gateway's SUBSCRIBE_SALE to the
@@ -233,6 +270,25 @@ func (s *Server) handlePublicCheckoutReferral(w http.ResponseWriter, r *http.Req
 
 func (s *Server) handlePublicCheckoutRecover(w http.ResponseWriter, r *http.Request) {
 	s.feedHandler().HandlePublicCheckoutRecover(w, r)
+}
+
+// handlePublicCheckoutCancel is the buyer's cancel of an unpaid order (П-2).
+func (s *Server) handlePublicCheckoutCancel(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandlePublicCheckoutCancel(w, r)
+}
+
+// handlePublicCheckoutConsent updates the tracking consent of a purchase (П-20).
+func (s *Server) handlePublicCheckoutConsent(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandlePatchCheckoutTrackingConsent(w, r)
+}
+
+// confirmedPaymentApplier runs a payment the provider reports as paid
+// through the payment webhook's state machine (the cancel pre-check).
+func (s *Server) confirmedPaymentApplier() hfeed.ConfirmedPaymentApplier {
+	return func(ctx context.Context, src hcheckout.ConfirmedPaymentSource, ev payments.NormalizedEvent) error {
+		_, _, err := s.checkoutHandler().ApplyProviderConfirmedPayment(ctx, src, ev)
+		return err
+	}
 }
 
 // ─── widget funnel telemetry shim (feature #322 WID-0e) ──────────────────────

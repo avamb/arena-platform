@@ -21,6 +21,7 @@ import { useMe } from "@/lib/auth";
 import { describeApiError } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
 import { useI18n, type Locale } from "@/lib/i18n";
+import { ScreenHelp } from "@/components/ScreenHelp";
 import {
   INVITE_LOCALES,
   canRemoveRow,
@@ -269,7 +270,10 @@ export function TeamScreen() {
 
   return (
     <section aria-labelledby="team-title">
-      <h1 id="team-title">{t("team.title")}</h1>
+      <div className="screen-head">
+        <h1 id="team-title">{t("team.title")}</h1>
+        <ScreenHelp screenId="team" />
+      </div>
       {!canRead ? (
         <p className="notice" role="status" data-testid="team-no-access">
           {t("team.noAccess")}

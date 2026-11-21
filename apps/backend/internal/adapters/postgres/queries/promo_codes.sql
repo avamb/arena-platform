@@ -98,16 +98,16 @@ RETURNING id, org_id, code, discount_type, discount_value, applies_to_tier_ids,
 
 -- name: CountPromoCodeRedemptions :one
 -- Count total redemptions for a promo code (for max_uses check).
-SELECT COUNT(*)::int FROM promo_code_redemptions WHERE promo_code_id = $1;
+SELECT COUNT(*)::int FROM promo_code_redemptions r WHERE r.promo_code_id = $1 AND NOT EXISTS (SELECT 1 FROM orders t WHERE t.id = r.order_id AND t.is_test);
 
 -- name: CountUserRedemptions :one
 -- Count redemptions for a specific platform user (legacy REST checkout).
-SELECT COUNT(*)::int FROM promo_code_redemptions WHERE promo_code_id = $1 AND user_id = $2;
+SELECT COUNT(*)::int FROM promo_code_redemptions r WHERE r.promo_code_id = $1 AND r.user_id = $2 AND NOT EXISTS (SELECT 1 FROM orders t WHERE t.id = r.order_id AND t.is_test);
 
 -- name: CountPromoRedemptionsByCustomer :one
 -- Count redemptions of one customer (max_uses_per_customer on the gateway,
 -- where the buyer is known before the order exists).
-SELECT COUNT(*)::int FROM promo_code_redemptions WHERE promo_code_id = $1 AND customer_id = $2;
+SELECT COUNT(*)::int FROM promo_code_redemptions r WHERE r.promo_code_id = $1 AND r.customer_id = $2 AND NOT EXISTS (SELECT 1 FROM orders t WHERE t.id = r.order_id AND t.is_test);
 
 -- name: CountPromoRedemptionsByBuyerEmail :one
 -- Count redemptions whose order was bought under this e-mail
@@ -115,7 +115,7 @@ SELECT COUNT(*)::int FROM promo_code_redemptions WHERE promo_code_id = $1 AND cu
 SELECT COUNT(*)::int
 FROM promo_code_redemptions r
 JOIN orders o ON o.id = r.order_id
-WHERE r.promo_code_id = $1 AND lower(o.buyer_email) = lower($2);
+WHERE r.promo_code_id = $1 AND lower(o.buyer_email) = lower($2) AND NOT o.is_test;
 
 -- name: InsertPromoCodeRedemption :exec
 -- One redemption per order: a replayed PAY_ORDER or payment webhook is a no-op.
@@ -185,7 +185,7 @@ WITH pc AS (
 ), taken AS (
     SELECT o.customer_id, o.buyer_email
     FROM   orders o, pc
-    WHERE  o.org_id = pc.org_id AND o.promo_code_id = pc.id
+    WHERE  o.org_id = pc.org_id AND o.promo_code_id = pc.id AND NOT o.is_test
       AND  NOT EXISTS (SELECT 1 FROM promo_code_redemptions r WHERE r.order_id = o.id)
       AND  (o.status IN ('paid', 'partially_refunded', 'refunded', 'manual_review')
             OR (o.status = 'pending_payment' AND o.expires_at > now()
@@ -198,6 +198,7 @@ WITH pc AS (
     FROM   promo_code_redemptions r
     JOIN   pc ON pc.id = r.promo_code_id
     LEFT JOIN orders o ON o.id = r.order_id
+    WHERE  o.is_test IS NOT TRUE
 )
 SELECT pc.max_uses, pc.max_uses_per_customer,
        ((SELECT COUNT(*) FROM redeemed) + (SELECT COUNT(*) FROM taken))::int AS used,

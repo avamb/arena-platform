@@ -278,8 +278,13 @@ export interface CheckoutStatusTicketItem {
   pdf_url?: string | null;
 }
 
-/** Public-facing order status. */
-export type CheckoutPublicStatus = 'pending' | 'paid' | 'expired' | 'failed';
+/**
+ * Public-facing order status as the widget handles it. The platform also
+ * answers needs_help and refunded; getCheckoutStatus folds those into pending
+ * and failed. cancelled (the buyer cancelled through POST .../cancel, or an
+ * operator did) is final and shows the closed-order screen.
+ */
+export type CheckoutPublicStatus = 'pending' | 'paid' | 'expired' | 'failed' | 'cancelled';
 
 /** Response from GET /v1/public/checkout/{token}. */
 export interface CheckoutStatusResponse {
@@ -445,21 +450,33 @@ export function suggestEmailFix(email: string): string | null {
 
 // ─── Email format validation ─────────────────────────────────────────────────
 
+/** One domain label: letters (any script), digits and inner hyphens. */
+const DOMAIN_LABEL = /^[\p{L}\p{N}](?:[\p{L}\p{N}-]{0,61}[\p{L}\p{N}])?$/u;
+/** The top-level domain: letters only (two or more), or an IDN one as xn--. */
+const TLD = /^(?:\p{L}{2,}|xn--[a-z0-9-]+)$/iu;
+/** Characters an address never carries: spaces, brackets, quotes, separators. */
+const FORBIDDEN = /[\s<>()[\]\\,;:"]/u;
+
 /**
- * Lightweight email format check — no DNS lookups.
- *
- * Accepts the vast majority of valid email addresses without being overly
- * strict; the backend performs authoritative validation.
+ * E-mail format check — no DNS lookups. Mirrors the backend's rules
+ * (internal/platform/emailaddr) so the buyer fixes a typo on the form instead
+ * of after the seats were held (F-BR-03): one "@", a local part of up to 64
+ * characters, no spaces, a domain of dot-separated labels and a top-level
+ * domain of letters only ("comRUN1109-FC" is refused). Surrounding spaces
+ * are ignored; the checkout sends the trimmed address.
  */
 export function isValidEmail(email: string): boolean {
   const trimmed = email.trim();
-  if (!trimmed) return false;
+  if (!trimmed || trimmed.length > 254 || FORBIDDEN.test(trimmed)) return false;
   const at = trimmed.lastIndexOf('@');
-  if (at < 1) return false;                   // at least one char before @
-  const domain = trimmed.slice(at + 1);
-  if (domain.length < 3) return false;         // e.g. "a.b"
-  if (!domain.includes('.')) return false;     // must have a dot
-  return true;
+  if (at < 1 || at > 64) return false; // at least one char before @
+  if (trimmed.indexOf('@') !== at) return false; // exactly one @
+  const local = trimmed.slice(0, at);
+  if (local.startsWith('.') || local.endsWith('.') || local.includes('..')) return false;
+  const labels = trimmed.slice(at + 1).split('.');
+  if (labels.length < 2) return false; // must have a dot
+  if (!labels.every((l) => DOMAIN_LABEL.test(l))) return false;
+  return TLD.test(labels[labels.length - 1] ?? '');
 }
 
 // ─── Buyer form validation ───────────────────────────────────────────────────
@@ -714,6 +731,20 @@ export interface CheckoutI18nStrings {
   seatmap_reset_title: string;
   /** Accessible label for the "reset view" button. */
   seatmap_reset_aria: string;
+  /** Seat card: the word before a sector name. */
+  seatcard_sector: string;
+  /** Seat card: the word before a row name. */
+  seatcard_row: string;
+  /** Seat card: the word before a seat number. */
+  seatcard_seat: string;
+  /** Seat card state line: the seat is sold. */
+  seatcard_sold: string;
+  /** Seat card state line: another buyer holds the seat. */
+  seatcard_held: string;
+  /** Seat card state line: the seat is not on sale. */
+  seatcard_unavailable: string;
+  /** Seat card state line: the buyer has chosen the seat. */
+  seatcard_selected: string;
   /** Hint above the plan when every seated category is free. */
   seat_hint_free: string;
   /** Hint above the plan when seated categories cost money. */
@@ -785,6 +816,13 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     seatmap_fit_aria: 'Fit seat map to screen',
     seatmap_reset_title: 'Reset view',
     seatmap_reset_aria: 'Reset seat map view',
+    seatcard_sector: 'Sector',
+    seatcard_row: 'Row',
+    seatcard_seat: 'Seat',
+    seatcard_sold: 'Sold',
+    seatcard_held: 'Held by another buyer',
+    seatcard_unavailable: 'Not on sale',
+    seatcard_selected: 'Selected',
     seat_hint_free: 'Free entry ticket: choose a seat on the seating plan.',
     seat_hint_paid: 'Choose your seats on the seating plan.',
     seat_hint_free_label: 'Free',
@@ -847,6 +885,13 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     seatmap_fit_aria: 'Вписать схему зала в экран',
     seatmap_reset_title: 'Сбросить вид',
     seatmap_reset_aria: 'Сбросить вид схемы зала',
+    seatcard_sector: 'Сектор',
+    seatcard_row: 'Ряд',
+    seatcard_seat: 'Место',
+    seatcard_sold: 'Продано',
+    seatcard_held: 'В брони у другого покупателя',
+    seatcard_unavailable: 'Не в продаже',
+    seatcard_selected: 'Выбрано',
     seat_hint_free: 'Бесплатный входной билет: выберите место на схеме.',
     seat_hint_paid: 'Выберите места на схеме.',
     seat_hint_free_label: 'Бесплатно',
@@ -909,6 +954,13 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     seatmap_fit_aria: 'Přizpůsobit mapu sedadel obrazovce',
     seatmap_reset_title: 'Obnovit zobrazení',
     seatmap_reset_aria: 'Obnovit zobrazení mapy sedadel',
+    seatcard_sector: 'Sektor',
+    seatcard_row: 'Řada',
+    seatcard_seat: 'Sedadlo',
+    seatcard_sold: 'Prodáno',
+    seatcard_held: 'Drží jiný kupující',
+    seatcard_unavailable: 'Není v prodeji',
+    seatcard_selected: 'Vybráno',
     seat_hint_free: 'Vstupenka zdarma: vyberte místo ve schématu.',
     seat_hint_paid: 'Vyberte místa ve schématu.',
     seat_hint_free_label: 'Zdarma',
@@ -970,6 +1022,13 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     seatmap_fit_aria: 'התאם מפת מושבים למסך',
     seatmap_reset_title: 'אפס תצוגה',
     seatmap_reset_aria: 'אפס תצוגת מפת המושבים',
+    seatcard_sector: 'אזור',
+    seatcard_row: 'שורה',
+    seatcard_seat: 'מושב',
+    seatcard_sold: 'נמכר',
+    seatcard_held: 'מוחזק על ידי קונה אחר',
+    seatcard_unavailable: 'לא למכירה',
+    seatcard_selected: 'נבחר',
     seat_hint_free: 'כרטיס כניסה חינם: בחרו מקום בתרשים.',
     seat_hint_paid: 'בחרו מקומות בתרשים.',
     seat_hint_free_label: 'חינם',

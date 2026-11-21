@@ -184,7 +184,7 @@ describe("ShopOrderNote", () => {
       await sleep(50);
     });
     expect(router.state.location.pathname).toBe("/");
-    expect(byId(el, "unsaved-dialog").textContent).toContain("There are unsaved changes. Leave?");
+    expect(byId(el, "unsaved-dialog").textContent).toContain("You have changes that are not saved. Close the page?");
   });
 
   it("stops with the colleague's text when a note was saved after the one the person started from (SA-26)", async () => {

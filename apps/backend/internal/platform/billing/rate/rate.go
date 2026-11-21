@@ -21,8 +21,10 @@
 // its session, never interleave. An event the job cannot rate yet stays
 // unrated and is tried again: a deferred one (no exchange rate), one without
 // usable terms, one whose rule the engine cannot compute, a cancellation that
-// waits for the unrated sales of its session. A database failure stops the
-// pass.
+// waits for the unrated sales of its session. Two kinds never wait for terms
+// (chargeWithoutTerms): a journal-only event and an approved hall plan intake
+// (venue_plan_intake, always free) get their zero charge in the account
+// currency at once. A database failure stops the pass.
 package rate
 
 import (
@@ -207,12 +209,12 @@ func (r *Rater) price(ctx context.Context, q *gen.Queries, ev gen.BillableEventR
 		if !dataError(err) {
 			return billing.Charge{}, "", err
 		}
-		if journalOnly(ev.Kind) {
+		if reason := chargeWithoutTerms(ev.Kind); reason != "" {
 			acc, aerr := q.GetBillingAccountByID(ctx, ev.AccountID)
 			if aerr != nil {
 				return billing.Charge{}, "", aerr
 			}
-			return billing.Charge{Currency: acc.Currency, Reason: billing.ReasonJournalOnly, Inputs: map[string]int64{}}, "", nil
+			return billing.Charge{Currency: acc.Currency, Reason: reason, Inputs: map[string]int64{}}, "", nil
 		}
 		return billing.Charge{}, err.Error(), nil
 	}
@@ -267,12 +269,20 @@ func overFreeLimit(ctx context.Context, q *gen.Queries, terms billing.Terms, row
 	return used >= *limit, nil
 }
 
-func journalOnly(kind string) bool {
+// chargeWithoutTerms is the reason of the zero charge an event of kind gets
+// when its account has no usable terms, or "" when such an event must wait
+// for terms. A journal-only event (a refund, a cancelled ticket, a session
+// cancellation) and an approved hall plan intake (always free, spec 64
+// section 4.7) cost nothing whatever the terms say, so they never stay
+// unrated for want of terms.
+func chargeWithoutTerms(kind string) string {
 	switch billing.EventKind(kind) {
 	case billing.KindTicketRefunded, billing.KindTicketCancelled, billing.KindSessionCancelled:
-		return true
+		return billing.ReasonJournalOnly
+	case billing.KindVenuePlanIntake:
+		return billing.ReasonFree
 	}
-	return false
+	return ""
 }
 
 func (r *Rater) rateOne(ctx context.Context, ev gen.BillableEventRow) (out outcome, err error) {

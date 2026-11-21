@@ -27,6 +27,8 @@ const (
 	seatBatchCodeAlreadyReverted = "seat_batch.already_reverted"
 	seatBatchCodeNotFound        = "seat_batch.not_found"
 	seatBatchCodeTooMany         = "seat_batch.too_many_changes"
+	seatBatchCodeTierNameTaken   = "seat_batch.tier_name_taken"
+	seatBatchCodeTooManyTiers    = "seat_batch.too_many_tiers"
 	seatLayoutCodeNoPlan         = "seat_layout.no_seating_plan"
 	seatLayoutCodeAnnotation     = "seat_layout.annotation_required"
 	seatLayoutCodeNoSeats        = "seat_layout.no_seats"

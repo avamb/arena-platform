@@ -1,0 +1,94 @@
+# Dependabot version and security updates.
+# Goal: a few grouped pull requests per week, not dozens of single ones.
+# Every ecosystem groups minor and patch updates into one pull request.
+# A major update is never grouped: it arrives alone so it can be read and tested alone.
+# Not covered on purpose:
+#   - Docker base images: the Go version is pinned in five places that move together (see AGENTS.md).
+#   - apps/venue-svg-generator/sdk_experiments: experiments, not built into any image.
+version: 2
+
+updates:
+  # Go modules (go.mod at the repository root).
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Madrid
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      go-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+      go-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  # npm: one entry for every folder that has its own package-lock.json.
+  - package-ecosystem: npm
+    directories:
+      - /
+      - /apps/admin-web
+      - /apps/event-center
+      - /apps/rich-editor
+      - /apps/shop-page
+      - /apps/tickets-page
+      - /apps/widget
+      - /packages/arena-track
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:30"
+      timezone: Europe/Madrid
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  # Python: the venue plan generator service.
+  - package-ecosystem: pip
+    directory: /apps/venue-svg-generator
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Europe/Madrid
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      python-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+      python-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  # GitHub Actions used by the workflows.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+      timezone: Europe/Madrid
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]

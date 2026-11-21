@@ -29,7 +29,7 @@ WITH pc AS (
 ), taken AS (
     SELECT o.customer_id, o.buyer_email
     FROM   orders o, pc
-    WHERE  o.org_id = pc.org_id AND o.promo_code_id = pc.id
+    WHERE  o.org_id = pc.org_id AND o.promo_code_id = pc.id AND NOT o.is_test
       AND  NOT EXISTS (SELECT 1 FROM promo_code_redemptions r WHERE r.order_id = o.id)
       AND  (o.status IN ('paid', 'partially_refunded', 'refunded', 'manual_review')
             OR (o.status = 'pending_payment' AND o.expires_at > now()
@@ -42,6 +42,7 @@ WITH pc AS (
     FROM   promo_code_redemptions r
     JOIN   pc ON pc.id = r.promo_code_id
     LEFT JOIN orders o ON o.id = r.order_id
+    WHERE  o.is_test IS NOT TRUE
 )
 SELECT pc.max_uses, pc.max_uses_per_customer,
        ((SELECT COUNT(*) FROM redeemed) + (SELECT COUNT(*) FROM taken))::int AS used,

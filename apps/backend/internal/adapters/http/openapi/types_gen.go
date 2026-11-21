@@ -206,6 +206,15 @@ const (
 	Owner   BotInvitationCreateRequestRole = "owner"
 )
 
+// Defines values for BotVenuePlanNoticeKind.
+const (
+	BotVenuePlanNoticeKindApproved   BotVenuePlanNoticeKind = "approved"
+	BotVenuePlanNoticeKindDraftReady BotVenuePlanNoticeKind = "draft_ready"
+	BotVenuePlanNoticeKindEscalated  BotVenuePlanNoticeKind = "escalated"
+	BotVenuePlanNoticeKindRejected   BotVenuePlanNoticeKind = "rejected"
+	BotVenuePlanNoticeKindReturned   BotVenuePlanNoticeKind = "returned"
+)
+
 // Defines values for CancelTicketRequestRefundMode.
 const (
 	Automatic CancelTicketRequestRefundMode = "automatic"
@@ -232,10 +241,13 @@ const (
 
 // Defines values for CheckoutStatusResponseStatus.
 const (
-	CheckoutStatusResponseStatusExpired CheckoutStatusResponseStatus = "expired"
-	CheckoutStatusResponseStatusFailed  CheckoutStatusResponseStatus = "failed"
-	CheckoutStatusResponseStatusPaid    CheckoutStatusResponseStatus = "paid"
-	CheckoutStatusResponseStatusPending CheckoutStatusResponseStatus = "pending"
+	CheckoutStatusResponseStatusCancelled CheckoutStatusResponseStatus = "cancelled"
+	CheckoutStatusResponseStatusExpired   CheckoutStatusResponseStatus = "expired"
+	CheckoutStatusResponseStatusFailed    CheckoutStatusResponseStatus = "failed"
+	CheckoutStatusResponseStatusNeedsHelp CheckoutStatusResponseStatus = "needs_help"
+	CheckoutStatusResponseStatusPaid      CheckoutStatusResponseStatus = "paid"
+	CheckoutStatusResponseStatusPending   CheckoutStatusResponseStatus = "pending"
+	CheckoutStatusResponseStatusRefunded  CheckoutStatusResponseStatus = "refunded"
 )
 
 // Defines values for ComplimentaryIssuanceStatus.
@@ -446,6 +458,14 @@ const (
 	EventItemVisibilityPrivate  EventItemVisibility = "private"
 	EventItemVisibilityPublic   EventItemVisibility = "public"
 	EventItemVisibilityUnlisted EventItemVisibility = "unlisted"
+)
+
+// Defines values for GettingStartedStepKey.
+const (
+	GettingStartedStepKeyEvent     GettingStartedStepKey = "event"
+	GettingStartedStepKeyOrgData   GettingStartedStepKey = "org_data"
+	GettingStartedStepKeyPayments  GettingStartedStepKey = "payments"
+	GettingStartedStepKeySalesLink GettingStartedStepKey = "sales_link"
 )
 
 // Defines values for GrantMembershipRequestRole.
@@ -964,10 +984,10 @@ const (
 
 // Defines values for GetV1AdminCustomerImportsIdRowsParamsAction.
 const (
-	GetV1AdminCustomerImportsIdRowsParamsActionCreated        GetV1AdminCustomerImportsIdRowsParamsAction = "created"
-	GetV1AdminCustomerImportsIdRowsParamsActionMatched        GetV1AdminCustomerImportsIdRowsParamsAction = "matched"
-	GetV1AdminCustomerImportsIdRowsParamsActionMergeCandidate GetV1AdminCustomerImportsIdRowsParamsAction = "merge_candidate"
-	GetV1AdminCustomerImportsIdRowsParamsActionSkipped        GetV1AdminCustomerImportsIdRowsParamsAction = "skipped"
+	Created        GetV1AdminCustomerImportsIdRowsParamsAction = "created"
+	Matched        GetV1AdminCustomerImportsIdRowsParamsAction = "matched"
+	MergeCandidate GetV1AdminCustomerImportsIdRowsParamsAction = "merge_candidate"
+	Skipped        GetV1AdminCustomerImportsIdRowsParamsAction = "skipped"
 )
 
 // Defines values for ListEventsParamsVisibility.
@@ -5431,6 +5451,102 @@ type BotTeamResponse struct {
 	Members []BotTeamMember `json:"members"`
 }
 
+// BotTelegramConnectAcceptResponse The Telegram account is linked.
+type BotTelegramConnectAcceptResponse struct {
+	// AlreadyLinked True when the account was already linked to this person (only the organization changed).
+	AlreadyLinked bool `json:"already_linked"`
+
+	// Locale The language stored with the link.
+	Locale string `json:"locale"`
+
+	// OrgId The organization that is now current in the bot.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Its name.
+	OrgName string `json:"org_name"`
+
+	// Role The person's role there in the bot's words: `owner` or `manager` (empty when unknown).
+	Role string `json:"role"`
+
+	// UserId The person the account is linked to.
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// BotTelegramConnectPreview The facts of the bot's "Connect this Telegram to <organization>?" screen.
+type BotTelegramConnectPreview struct {
+	// EmailMasked The e-mail of the account the link belongs to, masked (`a•••@example.com`).
+	EmailMasked string `json:"email_masked"`
+
+	// OrgId The organization the bot opens after the link.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Its name.
+	OrgName string `json:"org_name"`
+
+	// State What the Telegram account is to that person: `new` (not linked), `same_user` (already linked to them; the link only switches the organization) or `other_user` (linked to someone else; accept answers 409).
+	State string `json:"state"`
+}
+
+// BotTelegramConnectRequest A "Connect Telegram" code the bot received in `/start con_<code>`, and the Telegram account that opened it.
+type BotTelegramConnectRequest struct {
+	// Code The code, with or without the `con_` prefix.
+	Code string `json:"code"`
+
+	// Locale The language of the Telegram client, stored with the link (accept only; en, ru or es, else en).
+	Locale *string `json:"locale,omitempty"`
+
+	// TelegramUserId The Telegram account that opened the link.
+	TelegramUserId int64 `json:"telegram_user_id"`
+
+	// TelegramUsername Its Telegram username, stored with the link (accept only).
+	TelegramUsername *string `json:"telegram_username,omitempty"`
+}
+
+// BotVenuePlanNotice A message about a hall plan intake that the bot must send to the person who sent the intake.
+type BotVenuePlanNotice struct {
+	// CreatedAt When the notice was made.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CurrentDraft Number of the current draft, or null when the intake has no draft.
+	CurrentDraft *int32 `json:"current_draft"`
+
+	// DraftChanged True for a `returned` notice when the current draft was uploaded by an administrator (author `operator` or `operator_svg`) at or after the moment the administrator took the intake; false when the administrator returned the intake without a new draft and for every other kind of notice.
+	DraftChanged bool `json:"draft_changed"`
+
+	// Id Id of the notice.
+	Id openapi_types.UUID `json:"id"`
+
+	// IntakeId Id of the intake the notice is about.
+	IntakeId openapi_types.UUID `json:"intake_id"`
+
+	// Kind What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan), `approved` (an administrator saved the plan) or `escalated` (arena could not build a draft, an administrator builds the plan now).
+	Kind BotVenuePlanNoticeKind `json:"kind"`
+
+	// Note The administrator's note or reason for the organizer, or null when there is none.
+	Note *string `json:"note"`
+
+	// OrgId Id of the organization that owns the intake.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// TelegramUserIds Live Telegram chats of the person who sent the intake. The list is empty when that person has no live bot link; the notice is then claimed and never comes again.
+	TelegramUserIds []int64 `json:"telegram_user_ids"`
+
+	// VenueId Id of the venue the intake is for.
+	VenueId openapi_types.UUID `json:"venue_id"`
+
+	// VenueName Name of the venue, for the text of the message.
+	VenueName string `json:"venue_name"`
+}
+
+// BotVenuePlanNoticeKind What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan), `approved` (an administrator saved the plan) or `escalated` (arena could not build a draft, an administrator builds the plan now).
+type BotVenuePlanNoticeKind string
+
+// BotVenuePlanNoticesResponse Answer of POST /v1/bot/venue-plan-notices/claim.
+type BotVenuePlanNoticesResponse struct {
+	// Notices Notices not told yet, oldest first; each is handed out once.
+	Notices []BotVenuePlanNotice `json:"notices"`
+}
+
 // BotWebLoginCodeRequest Body of POST /v1/bot/web-login-codes.
 type BotWebLoginCodeRequest struct {
 	// EventId The event whose text (or whose session) the mini app opens. Required, and only used, for `purpose: miniapp`.
@@ -5595,6 +5711,12 @@ type CancelTicketResponse struct {
 // distinct distribution points (e.g. online widget, box office, API partner)
 // that sell tickets under a shared organizational account.
 type Channel struct {
+	// CollectName Buyer name is required at checkout for this channel (widget and hosted page).
+	CollectName *bool `json:"collect_name,omitempty"`
+
+	// CollectPhone Buyer phone is required at checkout for this channel (widget and hosted page).
+	CollectPhone *bool `json:"collect_phone,omitempty"`
+
 	// CreatedAt ISO-8601 timestamp when the channel was created.
 	CreatedAt time.Time `json:"created_at"`
 
@@ -5604,11 +5726,26 @@ type Channel struct {
 	// Id UUIDv7 channel identifier.
 	Id openapi_types.UUID `json:"id"`
 
+	// IsTest True for a test sales channel. Every order created in it is
+	// marked `is_test` and is left out of the sales figures. Payments
+	// still go through the live provider.
+	IsTest *bool `json:"is_test,omitempty"`
+
 	// Name Human-readable channel label (e.g. "Online Widget", "Box Office").
 	Name string `json:"name"`
 
 	// OrgId Organization that owns this channel.
 	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PaymentWindowSeconds The channel's own payment window in seconds (spec 62 П-3): how
+	// long the buyer has on the provider's payment page. `null` means
+	// the deployment default (`WIDGET_PAYMENT_WINDOW_SECONDS`). A
+	// provider with a floor of its own (Stripe refuses a Checkout
+	// Session that expires sooner than 30 minutes) never gets less than
+	// the deployment default; a longer value is honoured. The hold,
+	// order and checkout expire this window plus the payment grace
+	// after `checkout/start`.
+	PaymentWindowSeconds *int32 `json:"payment_window_seconds"`
 
 	// Settings Opaque JSONB blob of per-channel settings (e.g. `gateway_token_hash`
 	// for Bil24 compat channels). Structure is channel-type-specific.
@@ -5779,6 +5916,23 @@ type CheckoutAttributionFirst struct {
 	UtmSource *string `json:"utm_source,omitempty"`
 }
 
+// CheckoutCancelResponse Response of `POST /v1/public/checkout/{checkout_token}/cancel`.
+type CheckoutCancelResponse struct {
+	// Cancelled True when the order is cancelled (now or by an earlier call).
+	Cancelled bool `json:"cancelled"`
+
+	// CheckoutToken The checkout token, echoed.
+	CheckoutToken string `json:"checkout_token"`
+
+	// Status The public status the order has now, as
+	// `GET /v1/public/checkout/{checkout_token}` reports it:
+	// `cancelled` (this call or an earlier one cancelled it), `paid`
+	// (the payment came first: show "thank you"), `expired` (the
+	// window had already closed), `needs_help` (an operator holds the
+	// order) or `refunded`.
+	Status string `json:"status"`
+}
+
 // CheckoutRecoverResponse Response body for `POST /v1/public/checkout/{checkout_token}/recover`
 // (feature #320 WID-0c).  Returned when a fresh reservation was
 // successfully created for the same seats/zones.
@@ -5933,6 +6087,31 @@ type CheckoutSessionItem struct {
 // `completed`, `abandoned`, `expired` are terminal.
 type CheckoutSessionItemState string
 
+// CheckoutStatusEvent The event block of the anonymous order status
+// (`GET /v1/public/checkout/{checkout_token}`).
+type CheckoutStatusEvent struct {
+	// EventId The event the order is for.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Name The event's name.
+	Name string `json:"name"`
+
+	// SessionId The session the order is for.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// Slug The event's public page address; null until one is assigned.
+	Slug *string `json:"slug"`
+
+	// StartAt Session start, RFC 3339 UTC.
+	StartAt time.Time `json:"start_at"`
+
+	// Timezone IANA time zone of the venue to render `start_at` in; null when unknown.
+	Timezone *string `json:"timezone"`
+
+	// VenueName The session venue's name.
+	VenueName *string `json:"venue_name"`
+}
+
 // CheckoutStatusItem A single cart item (seat or general-admission) included in the
 // anonymous order-status response (feature #319 WID-0b).
 type CheckoutStatusItem struct {
@@ -5977,16 +6156,34 @@ type CheckoutStatusResponse struct {
 	// Discount Total discount applied; null until pricing_confirmed.
 	Discount *int `json:"discount"`
 
+	// Event What the order is for: event name and slug, the session start
+	// (UTC) and the venue with its IANA time zone, so a static page can
+	// render the order without a second call. Omitted when the session
+	// cannot be resolved.
+	Event *CheckoutStatusEvent `json:"event,omitempty"`
+
 	// ExpiresAt RFC3339 timestamp when the underlying reservation expires.
 	ExpiresAt *time.Time `json:"expires_at"`
 
 	// Items Cart items held at the time of the request.
 	Items []CheckoutStatusItem `json:"items"`
 
+	// LatePayment Set when a payment arrived after the order stopped waiting for it
+	// (spec 62 П-15): `refund_requested` (the full amount goes back to
+	// the buyer's card), `operator_review` (the organizer returns it)
+	// or `reacquired` (the places were taken again and the order is
+	// paid). Omitted otherwise.
+	LatePayment *string `json:"late_payment,omitempty"`
+
 	// OrderNumber The order number the buyer sees in the ticket e-mail and on the PDF
 	// (`orders.system_id`). Present once the order exists for this
 	// checkout (always for a paid one); omitted before that.
 	OrderNumber *int64 `json:"order_number"`
+
+	// PaymentExpiresAt When the provider's page stops taking the payment (the sales
+	// channel's payment window, spec 62 П-3): `expires_at` minus the
+	// payment grace. Only while the order is `pending`.
+	PaymentExpiresAt *time.Time `json:"payment_expires_at,omitempty"`
 
 	// PaymentUrl The provider-hosted payment page for this order, present only
 	// while the order is still `pending` and its hold has not expired.
@@ -6004,11 +6201,21 @@ type CheckoutStatusResponse struct {
 	// ProviderFee Payment provider fee; null until pricing_confirmed.
 	ProviderFee *int `json:"provider_fee"`
 
-	// Status Public order status derived from the checkout_session.state:
-	// - `pending`: created | pricing_confirmed | payment_started | manual_review
-	// - `paid`: completed
+	// Status Public order status, derived from the checkout_session.state and
+	// refined by the order the session produced:
+	// - `pending`: created | pricing_confirmed | payment_started
+	// - `paid`: completed (also a partially refunded order)
 	// - `expired`: expired
 	// - `failed`: abandoned
+	// - `needs_help`: manual_review - an operator has to look at the
+	//   order; the page should say "we are checking your order" and
+	//   show the organizer's contact, not a spinner (it used to be
+	//   reported as `pending`)
+	// - `refunded`: the order was fully refunded
+	// - `cancelled`: the order was cancelled — by the buyer
+	//   (`POST .../cancel`, spec 62 П-2) or an operator
+	// Only `pending` is transient; the other statuses are final for a
+	// polling client.
 	Status CheckoutStatusResponseStatus `json:"status"`
 
 	// Subtotal Order subtotal in smallest currency unit; null until pricing_confirmed.
@@ -6024,11 +6231,22 @@ type CheckoutStatusResponse struct {
 	Total *int `json:"total"`
 }
 
-// CheckoutStatusResponseStatus Public order status derived from the checkout_session.state:
-// - `pending`: created | pricing_confirmed | payment_started | manual_review
-// - `paid`: completed
-// - `expired`: expired
-// - `failed`: abandoned
+// CheckoutStatusResponseStatus Public order status, derived from the checkout_session.state and
+// refined by the order the session produced:
+//   - `pending`: created | pricing_confirmed | payment_started
+//   - `paid`: completed (also a partially refunded order)
+//   - `expired`: expired
+//   - `failed`: abandoned
+//   - `needs_help`: manual_review - an operator has to look at the
+//     order; the page should say "we are checking your order" and
+//     show the organizer's contact, not a spinner (it used to be
+//     reported as `pending`)
+//   - `refunded`: the order was fully refunded
+//   - `cancelled`: the order was cancelled — by the buyer
+//     (`POST .../cancel`, spec 62 П-2) or an operator
+//
+// Only `pending` is transient; the other statuses are final for a
+// polling client.
 type CheckoutStatusResponseStatus string
 
 // CheckoutStatusTicketItem A single issued ticket included in the anonymous order-status response
@@ -6041,8 +6259,10 @@ type CheckoutStatusTicketItem struct {
 	// Number Seat number denormalized at issuance time.
 	Number *string `json:"number"`
 
-	// PdfUrl Path to download the PDF e-ticket:
-	// `GET /v1/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf`.
+	// PdfUrl ABSOLUTE URL to download the PDF e-ticket:
+	// `GET {api public origin}/v1/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf`.
+	// Deployments without a configured public origin answer the
+	// host-relative path instead.
 	PdfUrl *string `json:"pdf_url"`
 
 	// Row Row label denormalized at issuance time.
@@ -6053,6 +6273,28 @@ type CheckoutStatusTicketItem struct {
 
 	// TicketId UUIDv7 of the issued ticket.
 	TicketId openapi_types.UUID `json:"ticket_id"`
+}
+
+// CheckoutTrackingConsentResponse Response of `PATCH /v1/public/checkout/{checkout_token}/consent`.
+type CheckoutTrackingConsentResponse struct {
+	// Applied False when a newer choice was already stored; `tracking_consent`
+	// then shows the stored one.
+	Applied bool `json:"applied"`
+
+	// CheckoutToken The checkout token, echoed.
+	CheckoutToken string `json:"checkout_token"`
+
+	// TrackingConsent The consent the order carries now.
+	TrackingConsent struct {
+		// At When the buyer chose.
+		At *time.Time `json:"at"`
+
+		// Granted The buyer allowed tracking.
+		Granted bool `json:"granted"`
+
+		// Version The banner text version.
+		Version string `json:"version"`
+	} `json:"tracking_consent"`
 }
 
 // CompleteCheckoutRequest Request body for `POST /v1/checkout/{id}/complete`. Two completion
@@ -6346,6 +6588,31 @@ type ConnectShopModuleRequest struct {
 	StartsOn *openapi_types.Date `json:"starts_on"`
 }
 
+// ConversionSettings An organization's server-side conversion credentials. The two secrets
+// are write-only: only whether one is set is reported.
+type ConversionSettings struct {
+	// Ga4ApiSecretSet A Measurement Protocol API secret is stored.
+	Ga4ApiSecretSet bool `json:"ga4_api_secret_set"`
+
+	// Ga4MeasurementId GA4 measurement id (G-XXXXXXXXXX), empty when not set.
+	Ga4MeasurementId string `json:"ga4_measurement_id"`
+
+	// MetaCapiTokenSet A Conversions API access token is stored.
+	MetaCapiTokenSet bool `json:"meta_capi_token_set"`
+
+	// MetaPixelId Meta pixel id, empty when not set.
+	MetaPixelId string `json:"meta_pixel_id"`
+
+	// MetaTestEventCode Meta test event code used for orders of a test channel, empty when not set.
+	MetaTestEventCode string `json:"meta_test_event_code"`
+}
+
+// ConversionSettingsEnvelope Envelope of the conversion-settings routes.
+type ConversionSettingsEnvelope struct {
+	// ConversionSettings The settings as stored after the call.
+	ConversionSettings ConversionSettings `json:"conversion_settings"`
+}
+
 // CopyEventMaterialsResponse What `POST .../materials/copy-from/{source_event_id}` copied.
 type CopyEventMaterialsResponse struct {
 	// EventId UUIDv7 of the event that received the materials.
@@ -6485,9 +6752,19 @@ type CreateBarcodeAuthorityRequestType string
 // `direct_merchant` and `provider` defaults to `stripe` when omitted
 // or empty, matching `HandleCreateChannel`'s server-side defaults.
 type CreateChannelRequest struct {
+	// CollectName Require the buyer name at checkout (default false).
+	CollectName *bool `json:"collect_name,omitempty"`
+
+	// CollectPhone Require the buyer phone at checkout (default false).
+	CollectPhone *bool `json:"collect_phone,omitempty"`
+
 	// FeePercent Platform fee percentage as a decimal string, e.g. `"2.50"`.
 	// Defaults to `"0.00"` when omitted or empty.
 	FeePercent *string `json:"fee_percent,omitempty"`
+
+	// IsTest Create the channel as a test channel (default false). Orders
+	// created in it carry `is_test` from then on.
+	IsTest *bool `json:"is_test,omitempty"`
 
 	// Name Human-readable channel label, e.g. "Online Widget",
 	// "Box Office". Trimmed; empty after trim returns 400
@@ -6501,6 +6778,12 @@ type CreateChannelRequest struct {
 	// it; anyone else gets 403
 	// `channel.merchant_of_record_superadmin_only`.
 	PaymentMode *CreateChannelRequestPaymentMode `json:"payment_mode,omitempty"`
+
+	// PaymentWindowSeconds The channel's own payment window in seconds, 120 to 86400 (spec
+	// 62 П-3; 1200 = 20 minutes for an AllPay site). Omit or `null` for
+	// the deployment default. Out of range: 400
+	// `channel.invalid_payment_window`.
+	PaymentWindowSeconds *int32 `json:"payment_window_seconds"`
 
 	// Provider Defaults to `stripe` when omitted or empty. Any other value
 	// returns 400 `channel.invalid_config`. The values are the
@@ -6707,10 +6990,18 @@ type CreateOrderRefundsResponse struct {
 	Replayed bool `json:"replayed"`
 }
 
-// CreateOrgCityRequest Body of POST /v1/organizations/{org_id}/cities.
+// CreateOrgCityRequest Body of POST /v1/organizations/{org_id}/cities. Name the country by `country_id` or by `country_iso2`.
 type CreateOrgCityRequest struct {
-	// CountryId The existing country the city belongs to.
-	CountryId openapi_types.UUID `json:"country_id"`
+	// CountryId The existing country the city belongs to. Wins over `country_iso2` when both are sent.
+	CountryId *openapi_types.UUID `json:"country_id,omitempty"`
+
+	// CountryIso2 ISO 3166-1 alpha-2 code of the country, instead of `country_id`.
+	// The country must already be in the platform reference: a country
+	// outside it is 409 `city.country_not_in_reference`, because a new
+	// country comes only with a venue (POST
+	// /v1/organizations/{org_id}/venues with `country_iso2` and
+	// `city_name`).
+	CountryIso2 *string `json:"country_iso2,omitempty"`
 
 	// Locale Language of `name` (e.g. "cs", "ru", "en"; a region subtag is
 	// dropped). Defaults to "en". A non-English name is also stored as
@@ -7251,8 +7542,17 @@ type CreateVenueRequest struct {
 	// CapacityDefault Optional default capacity (positive integer).
 	CapacityDefault *int `json:"capacity_default"`
 
-	// CityId Optional UUID of a row in the geo.cities reference table.
+	// CityId Optional UUID of a row in the geo.cities reference table. Send
+	// either `city_id` or `country_iso2` with `city_name`; both groups
+	// together are 400 `venue.city_conflict`.
 	CityId *openapi_types.UUID `json:"city_id,omitempty"`
+
+	// CityName Name of the venue's city inside `country_iso2`, sent with it
+	// instead of `city_id`. The city is found by name (any locale, case
+	// and spacing ignored) or created, with the rules of
+	// `POST /v1/organizations/{org_id}/cities`, in the venue's
+	// transaction.
+	CityName *string `json:"city_name,omitempty"`
 
 	// ContactEmail Public contact email (V-1 field).
 	ContactEmail *openapi_types.Email `json:"contact_email,omitempty"`
@@ -7264,6 +7564,19 @@ type CreateVenueRequest struct {
 	// When set, must equal the owning organization's country
 	// unless an explicit override flag is passed.
 	Country *string `json:"country,omitempty"`
+
+	// CountryIso2 ISO 3166-1 alpha-2 code of the country of the venue's city, sent
+	// with `city_name` instead of `city_id`. Any country of
+	// `GET /v1/geo/world-countries`: a country the platform reference
+	// does not have is created from the world table (iso3, slug,
+	// currency, region, English and Russian names) in the venue's
+	// transaction, and the platform administrators are told. An
+	// organization API key may use a reference country but never
+	// creates one (403 `venue.country_create_forbidden`), and never
+	// creates a city by name (403 `venue.city_create_forbidden`). A code the
+	// world table does not know is 400 `venue.unknown_country`. When
+	// `country` is not sent, the venue's `country` takes this code.
+	CountryIso2 *string `json:"country_iso2,omitempty"`
 
 	// GeoLat WGS-84 latitude in decimal degrees (V-1 field).
 	GeoLat *float64 `json:"geo_lat,omitempty"`
@@ -8560,8 +8873,15 @@ type EventItem struct {
 	// Tri-state PATCH: absent=keep, null=clear, value=set.
 	ShortDescription *string `json:"short_description"`
 
-	// Slug URL-safe marketing slug for the event page (AB-45c, migration 0051).
-	// Set via PATCH with the tri-state field: absent=keep, null=clear, value=set.
+	// Slug The event's public page address (AB-45c, migration 0051):
+	// `<tickets origin>/<page>/<slug>`. Latin letters, digits and single
+	// hyphens, 1-120 characters, unique per organization. Set via PATCH
+	// with the tri-state field: absent=keep, null=clear, value=set; a
+	// typed value is lower-cased, a malformed one is 400
+	// `event.invalid_slug`, a taken one 409 `event.duplicate_slug`. An
+	// event without a slug gets one when it is published. The public
+	// feed returns it as well (null while there is none); the same goes
+	// for `age_rating` and `short_description`.
 	Slug *string `json:"slug"`
 
 	// Status Lifecycle status.
@@ -8633,6 +8953,30 @@ type EventMapPoint struct {
 
 	// UpdatedAt When the point was last changed.
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// EventMapPointSaved The map point as stored by PUT, with the advisory warnings. The point is stored whatever the warnings say.
+type EventMapPointSaved struct {
+	// CreatedAt When the point was first set.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventId UUIDv7 of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Label Optional text shown with the point, up to 200 characters.
+	Label *string `json:"label"`
+
+	// Latitude Latitude in degrees, -90 to 90, six decimals kept.
+	Latitude float64 `json:"latitude"`
+
+	// Longitude Longitude in degrees, -180 to 180, six decimals kept.
+	Longitude float64 `json:"longitude"`
+
+	// UpdatedAt When the point was last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Warnings Advisory remarks on the point, see MapPointWarning. Empty when nothing looks wrong.
+	Warnings []MapPointWarning `json:"warnings"`
 }
 
 // EventPageDate One date of the event as the page writes it.
@@ -8938,6 +9282,12 @@ type EventSalesSummary struct {
 	// Refunds Refund totals of every session grouped by settlement, state and currency.
 	Refunds []SummaryRefundsItem `json:"refunds"`
 
+	// TestOrders Paid orders that came through a test sales channel
+	// (`is_test`). They are left out of orders, money, refunds, promo
+	// codes, invitations and the revenue of the categories above; their
+	// tickets still occupy places.
+	TestOrders *int64 `json:"test_orders,omitempty"`
+
 	// Tickets Tickets of every session by status.
 	Tickets SummaryTickets `json:"tickets"`
 }
@@ -9011,6 +9361,12 @@ type EventSummary struct {
 	// Sessions Every non-deleted session of the event in start order, each with its own figures.
 	Sessions []EventSummarySession `json:"sessions"`
 
+	// TestOrders Paid orders that came through a test sales channel
+	// (`is_test`). They are left out of orders, money, refunds, promo
+	// codes, invitations and the revenue of the categories above; their
+	// tickets still occupy places.
+	TestOrders *int64 `json:"test_orders,omitempty"`
+
 	// Tickets Tickets of every session by status.
 	Tickets SummaryTickets `json:"tickets"`
 
@@ -9064,6 +9420,12 @@ type EventSummarySession struct {
 
 	// Status Session status (draft, scheduled, cancelled, completed).
 	Status string `json:"status"`
+
+	// TestOrders Paid orders that came through a test sales channel
+	// (`is_test`). They are left out of orders, money, refunds, promo
+	// codes, invitations and the revenue of the categories above; their
+	// tickets still occupy places.
+	TestOrders *int64 `json:"test_orders,omitempty"`
 
 	// Tickets Tickets of the session by status.
 	Tickets SummaryTickets `json:"tickets"`
@@ -9198,6 +9560,60 @@ type ExternalAllocation struct {
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
 }
 
+// ExternalRefundItem One ticket of an external refund.
+type ExternalRefundItem struct {
+	// AmountMinor The FINAL amount returned for this ticket, in minor units. Positive, at most the price paid for the ticket.
+	AmountMinor int64 `json:"amount_minor"`
+
+	// ProviderRefundRef The refund number of the provider's cabinet (AllPay), kept for reconciliation. Up to 120 characters; may repeat across tickets.
+	ProviderRefundRef *string `json:"provider_refund_ref,omitempty"`
+
+	// TicketId UUID of an active ticket of the order.
+	TicketId openapi_types.UUID `json:"ticket_id"`
+}
+
+// ExternalRefundRequest Body of the external-refund route.
+type ExternalRefundRequest struct {
+	// Items The tickets to refund, 1 to 200, each at most once.
+	Items []ExternalRefundItem `json:"items"`
+}
+
+// ExternalRefundResponse What the external refund recorded.
+type ExternalRefundResponse struct {
+	// Currency ISO 4217 currency of the order.
+	Currency string `json:"currency"`
+
+	// Items One entry per refunded ticket, in request order.
+	Items []ExternalRefundResultItem `json:"items"`
+
+	// OrderId UUID of the order.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// OrderStatus The order status after the call, `partially_refunded` or `refunded`.
+	OrderStatus string `json:"order_status"`
+
+	// TotalMinor The sum recorded by this call, in minor units.
+	TotalMinor int64 `json:"total_minor"`
+}
+
+// ExternalRefundResultItem One recorded external refund.
+type ExternalRefundResultItem struct {
+	// AmountMinor The final amount recorded for the ticket, in minor units.
+	AmountMinor int64 `json:"amount_minor"`
+
+	// Currency ISO 4217 currency of the order.
+	Currency string `json:"currency"`
+
+	// ProviderRefundRef The provider refund number as given; empty when none was given.
+	ProviderRefundRef string `json:"provider_refund_ref"`
+
+	// RefundId UUID of the refunds row (settlement external).
+	RefundId openapi_types.UUID `json:"refund_id"`
+
+	// TicketId UUID of the cancelled ticket.
+	TicketId openapi_types.UUID `json:"ticket_id"`
+}
+
 // FeedToken A long-lived bearer token that grants a scanner device read access to the
 // agent feed for a specific sales channel. Presented as
 // `Authorization: Bearer <token>` to authenticated feed endpoints.
@@ -9326,7 +9742,7 @@ type GeoCountriesResponse struct {
 
 // GeoCountryCurrencyResponse Response of GET /v1/geo/countries/{iso2}/currency.
 type GeoCountryCurrencyResponse struct {
-	// Currency ISO 4217 currency of the country, as stored on the platform's country row.
+	// Currency ISO 4217 currency of the country, as stored on the platform's country row, else the one of the embedded world table.
 	Currency string `json:"currency"`
 }
 
@@ -9467,6 +9883,79 @@ type GeoUpdateCountryRequest struct {
 	Slug *string `json:"slug,omitempty"`
 }
 
+// GeoWorldCountriesResponse Response of GET /v1/geo/world-countries.
+type GeoWorldCountriesResponse struct {
+	// Countries Every ISO 3166-1 country, sorted by `name`.
+	Countries []GeoWorldCountryItem `json:"countries"`
+
+	// Regions The seven regions in display order: europe, middle_east, asia, africa, north_america, latin_america, oceania. The client names them with its own texts.
+	Regions []string `json:"regions"`
+}
+
+// GeoWorldCountryItem One ISO 3166-1 country of the embedded world table.
+type GeoWorldCountryItem struct {
+	// CountryId UUID of the reference country when `in_reference` is true, else null.
+	CountryId *openapi_types.UUID `json:"country_id"`
+
+	// Currency ISO 4217 national currency, the currency a reference row of this country gets.
+	Currency string `json:"currency"`
+
+	// HasOrganizers True when at least one organization is registered in this country. The quick pick of a form is the countries with organizers.
+	HasOrganizers bool `json:"has_organizers"`
+
+	// InReference True when the platform reference (`GET /v1/geo/countries`) has the country.
+	InReference bool `json:"in_reference"`
+
+	// Iso2 ISO 3166-1 alpha-2 code.
+	Iso2 string `json:"iso2"`
+
+	// Iso3 ISO 3166-1 alpha-3 code.
+	Iso3 string `json:"iso3"`
+
+	// Name Name in the request language, Russian for `ru` and English for any other.
+	Name string `json:"name"`
+
+	// NameEn English name, whatever the request language.
+	NameEn string `json:"name_en"`
+
+	// Region One of europe, middle_east, asia, africa, north_america, latin_america, oceania.
+	Region string `json:"region"`
+}
+
+// GettingStarted The first steps of an organization that the caller may do, and
+// whether all of them are done.
+type GettingStarted struct {
+	// Complete True when every listed step is done. An empty list is complete.
+	Complete bool `json:"complete"`
+
+	// Steps The steps the caller holds the permission for in this
+	// organization, always in the order org_data, payments, event,
+	// sales_link. Never null.
+	Steps []GettingStartedStep `json:"steps"`
+}
+
+// GettingStartedResponse The answer of GET /v1/organizations/{org_id}/getting-started.
+type GettingStartedResponse struct {
+	// GettingStarted The first steps of the organization the caller may do.
+	GettingStarted GettingStarted `json:"getting_started"`
+}
+
+// GettingStartedStep One first step of an organization.
+type GettingStartedStep struct {
+	// Done True when the organization's data shows the step is done.
+	Done bool `json:"done"`
+
+	// Key The step: `org_data` (seller data complete), `payments` (a
+	// payment provider connected and accepted), `event` (an event
+	// created, a draft counts), `sales_link` (a sales link created).
+	Key GettingStartedStepKey `json:"key"`
+}
+
+// GettingStartedStepKey The step: `org_data` (seller data complete), `payments` (a
+// payment provider connected and accepted), `event` (an event
+// created, a draft counts), `sales_link` (a sales link created).
+type GettingStartedStepKey string
+
 // GrantMembershipRequest Request body for `POST /v1/organizations/{org_id}/members`
 // (feature #120). Binds an existing user to the organization in
 // the path with a named role. A user may hold multiple roles in
@@ -9507,6 +9996,18 @@ type GrowthSettingsUpdate struct {
 
 	// MarketingOptinEnabled Offer the marketing consent tick at checkout.
 	MarketingOptinEnabled bool `json:"marketing_optin_enabled"`
+}
+
+// GuestListSettings The organization's switch for the automatic team guest list.
+type GuestListSettings struct {
+	// AutoSend True (the default) when the current guest list of every session is sent to the owners, managers and the organization's sales Telegram groups 24 h and 3 h before the start.
+	AutoSend bool `json:"auto_send"`
+}
+
+// GuestListSettingsRequest Body of PUT .../guest-list-settings.
+type GuestListSettingsRequest struct {
+	// AutoSend True turns the automatic team guest list on, false turns it off.
+	AutoSend bool `json:"auto_send"`
 }
 
 // GuestListSubscription The caller's automatic guest list setting.
@@ -10912,6 +11413,30 @@ type InvitationChargePreview struct {
 	Tickets int `json:"tickets"`
 }
 
+// InvitationReissueOptions The check screen of a reissue for an invitation without an order.
+type InvitationReissueOptions struct {
+	// Blocked The error code a reissue would answer now, null when it may run.
+	Blocked *string `json:"blocked"`
+
+	// GuestEmail The guest's current address.
+	GuestEmail string `json:"guest_email"`
+
+	// InvitationId UUID of the invitation (complimentary issuance).
+	InvitationId openapi_types.UUID `json:"invitation_id"`
+
+	// InvitationStatus The invitation status; only `issued` can be replaced.
+	InvitationStatus string `json:"invitation_status"`
+
+	// PendingReissue A reissue that has not been applied, when there is one.
+	PendingReissue *ReissuePending `json:"pending_reissue,omitempty"`
+
+	// Tickets Every ticket of the invitation.
+	Tickets []ReissueTicketOption `json:"tickets"`
+
+	// VenueTimezone The IANA time zone of the event's venue, to print scanned_at in; empty when unknown.
+	VenueTimezone *string `json:"venue_timezone,omitempty"`
+}
+
 // LegalDocument One version of a terms template (P3a). Immutable once published.
 type LegalDocument struct {
 	// BodyTemplate The template text with its placeholders.
@@ -11173,6 +11698,42 @@ type MACSWebhookSubscriber struct {
 
 	// UpdatedAt ISO 8601 last-update timestamp.
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+}
+
+// MapPointCheck Advisory verdict on a map point against the cities of the event's venues.
+type MapPointCheck struct {
+	// Checked False when none of the venue cities is in the geo data (or the event has no venue city), so nothing could be said.
+	Checked bool `json:"checked"`
+
+	// Warnings Empty when the point looks right or could not be checked; at most one remark otherwise.
+	Warnings []MapPointWarning `json:"warnings"`
+}
+
+// MapPointWarning Advisory remark that a map point looks wrong for the event's city. It never
+// blocks a save; the point is stored either way. The distance is measured from
+// the city centre. The usual distance is max(15 km, 4 times a radius estimated
+// from the city's population), at most 60 km.
+type MapPointWarning struct {
+	// City The event's venue city the point was compared with (ASCII name).
+	City string `json:"city"`
+
+	// Code `venue.point_far_from_city` when the point is beyond the usual distance, `venue.point_nearer_other_city` when it is within it but outside the city's own radius and another city is closer.
+	Code string `json:"code"`
+
+	// DistanceKm Distance from the point to that city's centre, in kilometres, one decimal.
+	DistanceKm float64 `json:"distance_km"`
+
+	// Message English text for the organizer, naming the cities and the distances.
+	Message string `json:"message"`
+
+	// NearerCity A city of the same country that is nearer to the point than the venue city centre is, or null.
+	NearerCity *string `json:"nearer_city"`
+
+	// NearerDistanceKm Distance from the point to `nearer_city`, in kilometres, or null.
+	NearerDistanceKm *float64 `json:"nearer_distance_km"`
+
+	// ThresholdKm The usual distance for a city of this size, in kilometres, one decimal.
+	ThresholdKm float64 `json:"threshold_km"`
 }
 
 // MarketingSubscriber One address that ticked the marketing consent.
@@ -11439,6 +12000,124 @@ type MembershipItemRole string
 
 // MembershipItemStatus Lifecycle state of the membership. active = in force, revoked = soft-removed by an admin, suspended = paused.
 type MembershipItemStatus string
+
+// MyTicketsExchangeRequest Body of `POST /v1/public/my-tickets/session`.
+type MyTicketsExchangeRequest struct {
+	// Token The one-time token from the e-mailed link (fragment `#t=`; links mailed before the switch carry it as the query parameter `t`).
+	Token string `json:"token"`
+}
+
+// MyTicketsLinkRequest Body of `POST /v1/public/feeds/{feed_token}/my-tickets/link`.
+type MyTicketsLinkRequest struct {
+	// Email The address that placed the orders.
+	Email string `json:"email"`
+
+	// Locale Language of the letter (a short tag such as `ru`); the organization's language when omitted.
+	Locale *string `json:"locale,omitempty"`
+
+	// PageUrl The site page the letter links to (it receives the token in the URL
+	// fragment, `#t=<token>`, never in the query). Used only
+	// when its origin is one of the feed token's own channel site origins
+	// (`settings.site.origins`); otherwise the letter links the tickets
+	// site's `/my-tickets` page.
+	PageUrl *string `json:"page_url,omitempty"`
+
+	// TurnstileToken Cloudflare Turnstile token solved with the action `my_tickets` on
+	// one of the channel's site origins (`settings.site.origins`).
+	// Required when the channel lists site origins (a static site such
+	// as Vino&Co), ignored for any other channel.
+	TurnstileToken *string `json:"turnstile_token,omitempty"`
+}
+
+// MyTicketsOrder One listed order.
+type MyTicketsOrder struct {
+	// CreatedAt When the order was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 currency code.
+	Currency string `json:"currency"`
+
+	// Event What the order is for.
+	Event CheckoutStatusEvent `json:"event"`
+
+	// OrderId The order.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// OrderNumber The number printed on the ticket e-mail and PDF.
+	OrderNumber int64 `json:"order_number"`
+
+	// PaidAt When the order was paid; absent for an invitation.
+	PaidAt *time.Time `json:"paid_at,omitempty"`
+
+	// SessionCancelled True when the session's date was cancelled.
+	SessionCancelled bool `json:"session_cancelled"`
+
+	// Status The public order status, `paid`, `refunded` or `cancelled` (same words as the order status route).
+	Status string `json:"status"`
+
+	// Tickets The order's tickets.
+	Tickets []MyTicketsTicket `json:"tickets"`
+
+	// Total Order total in the smallest currency unit.
+	Total int64 `json:"total"`
+}
+
+// MyTicketsOrdersPage One page of the session's orders.
+type MyTicketsOrdersPage struct {
+	// Orders The orders of this page, newest session first.
+	Orders []MyTicketsOrder `json:"orders"`
+
+	// Pagination Paging of the list.
+	Pagination struct {
+		// Page This page, 1-based.
+		Page int `json:"page"`
+
+		// PerPage Orders per page (20).
+		PerPage int `json:"per_page"`
+
+		// Total All matching orders.
+		Total int `json:"total"`
+
+		// TotalPages Number of pages, at least 1.
+		TotalPages int `json:"total_pages"`
+	} `json:"pagination"`
+}
+
+// MyTicketsSession A "my tickets" session.
+type MyTicketsSession struct {
+	// ExpiresAt When the session ends, RFC 3339 UTC (4 hours after the exchange).
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// SessionToken Bearer token for the other my-tickets routes. Shown once.
+	SessionToken string `json:"session_token"`
+}
+
+// MyTicketsTicket One ticket of a listed order.
+type MyTicketsTicket struct {
+	// HumanCode The human-readable fallback code in display form.
+	HumanCode *string `json:"human_code"`
+
+	// Number Seat number.
+	Number *string `json:"number"`
+
+	// PdfUrl Absolute URL of the PDF; needs the session's bearer token.
+	PdfUrl string `json:"pdf_url"`
+
+	// Row Row of an assigned seat.
+	Row *string `json:"row"`
+
+	// Sector Sector of an assigned seat.
+	Sector *string `json:"sector"`
+
+	// Status The ticket's status (`active`, `cancelled`, ...).
+	Status string `json:"status"`
+
+	// TicketId The ticket.
+	TicketId openapi_types.UUID `json:"ticket_id"`
+
+	// TierName Name of the ticket category.
+	TierName *string `json:"tier_name"`
+}
 
 // NetworkAgentsListResponse defines model for NetworkAgentsListResponse.
 type NetworkAgentsListResponse struct {
@@ -12518,6 +13197,11 @@ type OrderDetail struct {
 	// Id UUIDv7 primary key of the order row.
 	Id openapi_types.UUID `json:"id"`
 
+	// IsTest True when the order was created in a test sales channel. Set once
+	// at creation from the channel and never changed. Such orders are
+	// left out of the sales summaries.
+	IsTest *bool `json:"is_test,omitempty"`
+
 	// Items Line items of the order.
 	Items []OrderItemSummary `json:"items"`
 
@@ -12794,6 +13478,11 @@ type OrderListItem struct {
 	// Id UUIDv7 primary key of the order row.
 	Id openapi_types.UUID `json:"id"`
 
+	// IsTest True when the order was created in a test sales channel. Set once
+	// at creation from the channel and never changed. Such orders are
+	// left out of the sales summaries.
+	IsTest *bool `json:"is_test,omitempty"`
+
 	// LetterFailed True when the buyer most likely did not get a letter: a
 	// ticket letter that failed (bounced, blocked, refused by the
 	// relay) or is stuck (see OrderLetter.stuck), or a change,
@@ -12838,11 +13527,43 @@ type OrderListItem struct {
 	// SystemId Bigint id surfaced to Bil24-compat clients.
 	SystemId int64 `json:"system_id"`
 
+	// Tickets The order's issued tickets in line order, for the expanded card of the list (EC-V3).
+	Tickets *[]OrderListTicket `json:"tickets,omitempty"`
+
 	// Total Order total, in minor currency units.
 	Total int `json:"total"`
 
 	// UpdatedAt When the order was last updated.
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// OrderListTicket A ticket of an order as the expanded list card shows it (EC-V3): its
+// number, status, category, seat, the price paid for it and the state of
+// its letter.
+type OrderListTicket struct {
+	// DeliveryStatus State of the ticket's letter. pending or processing while a letter job waits to go out; otherwise the mail provider's status of the last letter that carried the ticket (sending, sent, delayed, delivered, opened, failed), which also covers a letter the selling site sent; otherwise the job's status (sent, failed, skipped, disabled); none when there is neither.
+	DeliveryStatus string `json:"delivery_status"`
+
+	// Id UUID of the ticket.
+	Id openapi_types.UUID `json:"id"`
+
+	// Price What the buyer paid for this unit, in minor currency units.
+	Price int64 `json:"price"`
+
+	// RecipientEmail Address the ticket's letter went or goes to, null when unknown.
+	RecipientEmail *string `json:"recipient_email"`
+
+	// SeatLabel Sector / row / seat, null for general admission.
+	SeatLabel *string `json:"seat_label"`
+
+	// Status Ticket status (active, cancelled, ...).
+	Status string `json:"status"`
+
+	// SystemTicketId The ticket's number as the buyer sees it.
+	SystemTicketId int64 `json:"system_ticket_id"`
+
+	// TierName Name of the ticket category.
+	TierName *string `json:"tier_name"`
 }
 
 // OrderPaymentSummary The payment intent the order card speaks about: a succeeded one if
@@ -13079,6 +13800,24 @@ type OrderRefundOptions struct {
 	Tickets []OrderRefundTicketOption `json:"tickets"`
 }
 
+// OrderRefundProblemQueue The refunds and the letters an organizer has to look at.
+type OrderRefundProblemQueue struct {
+	// Count refunds_total plus letters_total, the nav badge.
+	Count int `json:"count"`
+
+	// Letters Up to 50 orders with an undelivered letter, newest problem first.
+	Letters []UndeliveredLetter `json:"letters"`
+
+	// LettersTotal How many letters are listed (at most 50).
+	LettersTotal int `json:"letters_total"`
+
+	// Refunds Up to 50 refunds, newest first.
+	Refunds []OrderRefundQueueItem `json:"refunds"`
+
+	// RefundsTotal How many refunds need attention in all.
+	RefundsTotal int `json:"refunds_total"`
+}
+
 // OrderRefundQueue One page of the organization's refunds, newest first.
 type OrderRefundQueue struct {
 	// HasMore True when another page follows.
@@ -13233,13 +13972,19 @@ type OrderSearchRequest struct {
 	// Q One search value (barcode, order number, e-mail, phone or name), classified like the GET `q`.
 	Q *string `json:"q,omitempty"`
 
+	// SessionFrom Only orders whose session starts at or after this RFC3339 timestamp.
+	SessionFrom *time.Time `json:"session_from,omitempty"`
+
 	// SessionId Only orders of this session of the organization.
 	SessionId *openapi_types.UUID `json:"session_id,omitempty"`
+
+	// SessionTo Only orders whose session starts at or before this RFC3339 timestamp.
+	SessionTo *time.Time `json:"session_to,omitempty"`
 
 	// Status Order lifecycle status filter.
 	Status *string `json:"status,omitempty"`
 
-	// Tab Status group `recent` (default), `paid` or `unpaid`.
+	// Tab Status group `recent` (default), `paid`, `unpaid` or `refunds` (partially_refunded and refunded).
 	Tab *string `json:"tab,omitempty"`
 
 	// To Only orders created at or before this RFC3339 timestamp.
@@ -13297,6 +14042,11 @@ type OrderSummary struct {
 
 	// Id UUIDv7 primary key of the order row.
 	Id openapi_types.UUID `json:"id"`
+
+	// IsTest True when the order was created in a test sales channel. Set once
+	// at creation from the channel and never changed. Such orders are
+	// left out of the sales summaries.
+	IsTest *bool `json:"is_test,omitempty"`
 
 	// OrgId Owning organization.
 	OrgId openapi_types.UUID `json:"org_id"`
@@ -13467,6 +14217,10 @@ type OrgCityResponse struct {
 // OrgMeResponse The caller's access inside one organization, returned by
 // GET /v1/organizations/{org_id}/me. Every list is sorted and never null.
 type OrgMeResponse struct {
+	// Branding The organization's theme, so the event center can paint itself
+	// without a second request. Empty object = platform palette.
+	Branding *OrganizationBranding `json:"branding,omitempty"`
+
 	// CallerType `user` for a person signed in with a JWT, `api_key` for an
 	// organization API key.
 	CallerType string `json:"caller_type"`
@@ -13581,6 +14335,148 @@ type OrgModuleShopState struct {
 	ShopDomain *string `json:"shop_domain"`
 }
 
+// OrgSummary The sales summary of an organization for a date range.
+type OrgSummary struct {
+	// Sessions Sessions with sales, invitations or refunds in the range, oldest first.
+	Sessions []OrgSummarySession `json:"sessions"`
+
+	// TestOrders Paid orders of every session read that came through a test sales
+	// channel. They are in none of the figures.
+	TestOrders int64 `json:"test_orders"`
+
+	// Totals The cards added up per currency, sorted by currency.
+	Totals []OrgSummaryTotal `json:"totals"`
+
+	// Truncated True when more than 500 sessions matched and only the oldest were read.
+	Truncated bool `json:"truncated"`
+}
+
+// OrgSummaryBreakdownItem The units sold at one price in one category with one promo code.
+type OrgSummaryBreakdownItem struct {
+	// Discount Discount given on those units, in minor units.
+	Discount int64 `json:"discount"`
+
+	// PromoCode Promo code on the order, null for units sold without one.
+	PromoCode *string `json:"promo_code"`
+
+	// Revenue What the buyers paid for those units after discount and service charge, in minor units.
+	Revenue int64 `json:"revenue"`
+
+	// Tickets Units in the group.
+	Tickets int64 `json:"tickets"`
+
+	// TierId The category.
+	TierId openapi_types.UUID `json:"tier_id"`
+
+	// TierName Name of the category.
+	TierName string `json:"tier_name"`
+
+	// UnitPrice Price the unit was sold at, before discount and service charge, in minor units.
+	UnitPrice int64 `json:"unit_price"`
+}
+
+// OrgSummaryCard One session in one currency, money in minor units.
+type OrgSummaryCard struct {
+	// ActiveTickets Valid tickets of every kind.
+	ActiveTickets int64 `json:"active_tickets"`
+
+	// Breakdown Price x category rows, by category, price and promo code.
+	Breakdown []OrgSummaryBreakdownItem `json:"breakdown"`
+
+	// Cashback Succeeded "Refer a friend" cashback paid to referrers.
+	Cashback int64 `json:"cashback"`
+
+	// Complimentary Invitations.
+	Complimentary int64 `json:"complimentary"`
+
+	// Currency ISO 4217 code.
+	Currency string `json:"currency"`
+
+	// Net Revenue minus refunded minus cashback.
+	Net int64 `json:"net"`
+
+	// Orders Orders paid at some point.
+	Orders int64 `json:"orders"`
+
+	// Promos Promo codes the paid orders used, with order and redemption counts.
+	Promos []SummaryPromoItem `json:"promos"`
+
+	// Refunded Succeeded refunds to buyers, both settlements (provider and external).
+	Refunded int64 `json:"refunded"`
+
+	// RefundedTickets Sold tickets cancelled with money returned.
+	RefundedTickets int64 `json:"refunded_tickets"`
+
+	// Revenue Sum of `orders.total` of the orders paid at some point.
+	Revenue int64 `json:"revenue"`
+
+	// Sold Tickets that were not invitations, whatever became of them since.
+	Sold int64 `json:"sold"`
+}
+
+// OrgSummarySession A session with its cards, one per currency.
+type OrgSummarySession struct {
+	// Cards One card per currency, sorted by currency.
+	Cards []OrgSummaryCard `json:"cards"`
+
+	// EventId Its event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// EventName Name of the event.
+	EventName string `json:"event_name"`
+
+	// Id The session.
+	Id openapi_types.UUID `json:"id"`
+
+	// StartAt Start of the session, UTC.
+	StartAt time.Time `json:"start_at"`
+
+	// Status Session status.
+	Status string `json:"status"`
+
+	// TestOrders Paid orders of this session that came through a test sales channel.
+	TestOrders int64 `json:"test_orders"`
+
+	// VenueName Name of the venue, null when it has none.
+	VenueName *string `json:"venue_name"`
+
+	// VenueTimezone IANA zone of the venue, null when it has none.
+	VenueTimezone *string `json:"venue_timezone"`
+}
+
+// OrgSummaryTotal The cards of one currency added up, money in minor units.
+type OrgSummaryTotal struct {
+	// ActiveTickets Valid tickets of every kind.
+	ActiveTickets int64 `json:"active_tickets"`
+
+	// Cashback Succeeded "Refer a friend" cashback.
+	Cashback int64 `json:"cashback"`
+
+	// Complimentary Invitations.
+	Complimentary int64 `json:"complimentary"`
+
+	// Currency ISO 4217 code.
+	Currency string `json:"currency"`
+
+	// Net Revenue minus refunded minus cashback.
+	Net int64 `json:"net"`
+
+	// Orders Orders paid at some point.
+	Orders int64 `json:"orders"`
+
+	// Refunded Succeeded refunds to buyers, both settlements.
+	Refunded int64 `json:"refunded"`
+
+	// RefundedTickets Sold tickets cancelled with money returned.
+	RefundedTickets int64 `json:"refunded_tickets"`
+
+	// Revenue Revenue of the orders paid at some point.
+	Revenue int64 `json:"revenue"`
+
+	// Sold Tickets that were not invitations.
+	Sold int64 `json:"sold"`
+}
+
 // OrgWhiteLabelList The organization's white label periods and the price list's monthly price.
 type OrgWhiteLabelList struct {
 	// Currency Currency of the organization's billing account, empty when it cannot be read.
@@ -13635,12 +14531,49 @@ type OrgWhiteLabelPeriod struct {
 	Status string `json:"status"`
 }
 
+// OrganizationBranding An organization's theme (migration 0203, spec 62 §12.1). Every key is
+// optional; an absent key falls back to the platform palette
+// (arenasoldout.com: primary #001489, ink #0B1020, bg #F6F7FB, font
+// Onest). The event center writes the tokens into its CSS; the ticket
+// PDF and the ticket letters take their accent colour from `primary`.
+// Colours are `#rrggbb` or `rgba(r, g, b, a)`; anything else, and any
+// other key, is refused with 400 `org.invalid_branding`.
+type OrganizationBranding struct {
+	// Accent Second brand colour for highlights.
+	Accent *string `json:"accent,omitempty"`
+
+	// Bg Page background colour.
+	Bg *string `json:"bg,omitempty"`
+
+	// Font Interface font, one of `Assistant`, `Onest`, `Golos Text`
+	// (a plain string so the generated enum constants of other
+	// schemas are not renamed).
+	Font *string `json:"font,omitempty"`
+
+	// Ink Main text colour on the page background.
+	Ink *string `json:"ink,omitempty"`
+
+	// OnPrimary Text and icon colour drawn on `primary`.
+	OnPrimary *string `json:"on_primary,omitempty"`
+
+	// OnPrimaryMuted Secondary text colour drawn on `primary`.
+	OnPrimaryMuted *string `json:"on_primary_muted,omitempty"`
+
+	// Primary Main brand colour (buttons, the active tab, the PDF and letter accent).
+	Primary *string `json:"primary,omitempty"`
+}
+
 // OrganizationItem A single active organization (primary tenant boundary).
 // Includes legal & contact attributes added in migration
 // 0049_organizations_legal_fields (Wave O / feature #253). All
 // legal & contact attributes are nullable to preserve backward
 // compatibility with organizations created before that wave.
 type OrganizationItem struct {
+	// Branding The organization's theme. Answered by GET and PATCH
+	// /v1/organizations/{id} only; absent or empty means the
+	// platform palette.
+	Branding *OrganizationBranding `json:"branding,omitempty"`
+
 	// ContactEmail Public operations / billing contact email.
 	ContactEmail *openapi_types.Email `json:"contact_email"`
 
@@ -15144,6 +16077,40 @@ type PublicBuyerInfo struct {
 	Phone *string `json:"phone"`
 }
 
+// PublicCheckoutBuyerContext Browser identifiers for server-side conversions. Every string is at most
+// 256 characters (`page_url` 2048, `tracking_consent_text_version` 64) with
+// no control characters; a longer value is dropped, not truncated.
+type PublicCheckoutBuyerContext struct {
+	// Fbc Value of the `_fbc` cookie.
+	Fbc *string `json:"fbc,omitempty"`
+
+	// Fbclid Meta click id from the landing URL.
+	Fbclid *string `json:"fbclid,omitempty"`
+
+	// Fbp Value of the `_fbp` cookie.
+	Fbp *string `json:"fbp,omitempty"`
+
+	// GaClientId GA4 client id (the `_ga` cookie value after `GA1.1.`).
+	GaClientId *string `json:"ga_client_id,omitempty"`
+
+	// Gclid Google click id from the landing URL.
+	Gclid *string `json:"gclid,omitempty"`
+
+	// PageUrl The page the checkout started on, sent to Meta as event_source_url.
+	PageUrl *string `json:"page_url,omitempty"`
+
+	// TrackingConsent The buyer's cookie-banner answer (analytics and advertising
+	// together). Stored on the checkout (spec 62 П-20), not in the
+	// context; `PATCH /v1/public/checkout/{checkout_token}/consent`
+	// changes it later. A yes counts only together with
+	// `tracking_consent_text_version`.
+	TrackingConsent *bool `json:"tracking_consent,omitempty"`
+
+	// TrackingConsentTextVersion Version of the banner text the answer was given to. Required for a
+	// yes; a no without it is stored with the version `unstated`.
+	TrackingConsentTextVersion *string `json:"tracking_consent_text_version,omitempty"`
+}
+
 // PublicCheckoutConsent The buyer's answer to the checkout consent checkbox (P2).
 type PublicCheckoutConsent struct {
 	// Accepted True when the buyer ticked the checkbox.
@@ -15270,6 +16237,17 @@ type PublicFeedCheckoutStartRequest struct {
 	// mark them `required`.
 	Buyer *PublicBuyerInfo `json:"buyer,omitempty"`
 
+	// BuyerContext The browser's tracking context (spec 62 sections 8.1 and 8.3),
+	// optional. Kept beside the order for the organization's server-side
+	// Meta CAPI and GA4 conversions; the server adds the client IP and
+	// User-Agent itself. A malformed or oversized object is ignored, never
+	// an error. Its `tracking_consent` and `tracking_consent_text_version`
+	// are NOT kept in the context: they are stored on the checkout (the
+	// same place `PATCH /v1/public/checkout/{checkout_token}/consent`
+	// updates) and read from there at send time. Without an explicit yes
+	// stored at send time no conversion leaves the platform.
+	BuyerContext *PublicCheckoutBuyerContext `json:"buyer_context,omitempty"`
+
 	// Consent The buyer's tick on "I accept the sale terms (seller: <legal
 	// name>) and the privacy policy" (P2). Required (with
 	// `accepted: true`) when the feed session's `consent.required` is
@@ -15279,6 +16257,16 @@ type PublicFeedCheckoutStartRequest struct {
 	// evidence, never answered on a public route). Sent to a channel
 	// that does not ask for it, it is ignored and nothing is stored.
 	Consent *PublicCheckoutConsent `json:"consent,omitempty"`
+
+	// ExpectedTotal Optional. The cart total, in minor units, that the selling site
+	// showed the buyer (after discounts and the service fee). When
+	// present and different from the total arena computes, the request
+	// is refused with 409 `checkout.price_changed` and
+	// `details: {expected_total, actual_total, currency}` before
+	// anything is held; a free (0) cart is compared too. The refusal is
+	// never stored for the `Idempotency-Key`: repeat with the new total
+	// (normally under a new key).
+	ExpectedTotal *int64 `json:"expected_total,omitempty"`
 
 	// GaItems GA items for GA or hybrid sessions.
 	GaItems *[]PublicGAItem `json:"ga_items,omitempty"`
@@ -15340,6 +16328,20 @@ type PublicFeedCheckoutStartRequest struct {
 
 	// TierId Deprecated: use ga_items instead.
 	TierId *openapi_types.UUID `json:"tier_id,omitempty"`
+
+	// TrackingConsent Deprecated alias of `buyer_context.tracking_consent` +
+	// `tracking_consent_text_version`; both write the same stored
+	// consent on the checkout. When both are sent and this object is
+	// readable, it wins (it carries the time of the choice).
+	// The buyer's answer to the site's cookie banner (spec 62 §8.1,
+	// П-20), optional. Stored on the checkout; a conversion sender
+	// (GA4 Measurement Protocol, Meta CAPI) reads it from the order at
+	// send time and sends nothing unless it is an explicit yes. An
+	// unreadable object is dropped, never a reason to refuse the
+	// purchase. A later change goes through
+	// `PATCH /v1/public/checkout/{checkout_token}/consent`.
+	// Deprecated:
+	TrackingConsent *TrackingConsent `json:"tracking_consent,omitempty"`
 }
 
 // PublicFeedCheckoutStartResponse defines model for PublicFeedCheckoutStartResponse.
@@ -15366,11 +16368,18 @@ type PublicFeedCheckoutStartResponse struct {
 	// For a paid cart this is the payment deadline: it is moved to
 	// `WIDGET_PAYMENT_WINDOW_SECONDS + WIDGET_PAYMENT_GRACE_SECONDS`
 	// from now, so the provider's hosted session always stops accepting
-	// payment BEFORE arena releases the seats.
+	// payment BEFORE arena releases the seats. The window is the sales
+	// channel's own when it has one (`payment_window_seconds`, spec 62
+	// П-3).
 	ExpiresAt time.Time `json:"expires_at"`
 
 	// MarketingDiscountApplied True when the cart's discount is the reward for the marketing consent tick.
 	MarketingDiscountApplied *bool `json:"marketing_discount_applied,omitempty"`
+
+	// PaymentExpiresAt When the provider's page stops taking the payment (RFC 3339 UTC):
+	// the channel's payment window from now. This is what a site counts
+	// down to; `expires_at` is a grace later. Present for a paid cart.
+	PaymentExpiresAt *time.Time `json:"payment_expires_at,omitempty"`
 
 	// Pricing Itemized result of running the deterministic pricing pipeline
 	// (`ComputePricing`, feature #129). Every monetary field is
@@ -15394,6 +16403,36 @@ type PublicFeedCheckoutStartResponse struct {
 	// which case the caller should simply show the order status for the
 	// returned `checkout_token`.
 	RedirectUrl string `json:"redirect_url"`
+}
+
+// PublicFeedRemovedEvent An event that left a public feed token's list (spec 62 §6.1, item P-6).
+// One item per event. An `unpublished` or `deleted` event carries only
+// `id`, `status` and `removed_at`: `name`, `slug`, `display_number` and
+// `last_session_at` are null for it.
+type PublicFeedRemovedEvent struct {
+	// DisplayNumber The event's display number; null for an unpublished or deleted event.
+	DisplayNumber *int64 `json:"display_number"`
+
+	// Id The event id the builder knows the page by.
+	Id openapi_types.UUID `json:"id"`
+
+	// LastSessionAt End of the event's last session, RFC 3339 UTC; null without sessions, or for an unpublished or deleted event.
+	LastSessionAt *time.Time `json:"last_session_at"`
+
+	// Name The event's name; null for an unpublished or deleted event.
+	Name *string `json:"name"`
+
+	// RemovedAt When the event left the list, RFC 3339 UTC.
+	RemovedAt time.Time `json:"removed_at"`
+
+	// Slug The event's page address; null when none was assigned, or for an unpublished or deleted event.
+	Slug *string `json:"slug"`
+
+	// Status Why the event left the list: `unpublished` (the publication to
+	// this token was deleted; a draft merely attached to the token was
+	// never on the list and is not reported), `cancelled`, `archived`
+	// or `deleted` (soft- or hard-deleted).
+	Status string `json:"status"`
 }
 
 // PublicGAItem defines model for PublicGAItem.
@@ -16185,6 +17224,246 @@ type RegisterWebhookSubscriberResponse struct {
 	SubscriberId openapi_types.UUID `json:"subscriber_id"`
 }
 
+// ReissueEntry One reissue of the order.
+type ReissueEntry struct {
+	// ActorId UUID of the person who made the reissue.
+	ActorId *string `json:"actor_id"`
+
+	// ActorType `user` or `superadmin`.
+	ActorType string `json:"actor_type"`
+
+	// AppliedAt When the letter left and the order moved to the new address.
+	AppliedAt *time.Time `json:"applied_at"`
+
+	// CreatedAt When the reissue was made.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUID of the reissue.
+	Id openapi_types.UUID `json:"id"`
+
+	// LetterFailedAt When the relay last refused the letter.
+	LetterFailedAt *time.Time `json:"letter_failed_at"`
+
+	// NewEmail The address the new tickets went to.
+	NewEmail string `json:"new_email"`
+
+	// Note The operator's note.
+	Note string `json:"note"`
+
+	// OldCodeScannedAt The first entry with a replaced code before the reissue.
+	OldCodeScannedAt *time.Time `json:"old_code_scanned_at"`
+
+	// OldEmail The order's address before the reissue.
+	OldEmail string `json:"old_email"`
+
+	// ProviderEmailState What happened to the address at the payment provider: `queued`, `updated`, `failed`, `manual` (the provider cannot be told, the organizer may resend its document) or `not_applicable`.
+	ProviderEmailState *string `json:"provider_email_state"`
+
+	// Reason The reason the operator stated.
+	Reason string `json:"reason"`
+
+	// State `pending`, `applied` or `send_failed`.
+	State string `json:"state"`
+
+	// Tickets The replaced tickets.
+	Tickets []ReissuePair `json:"tickets"`
+
+	// Via The client the reissue came from.
+	Via *string `json:"via"`
+}
+
+// ReissueHistory The reissues of an order.
+type ReissueHistory struct {
+	// Provider The order's payment provider, absent without a payment.
+	Provider *ReissueProvider `json:"provider,omitempty"`
+
+	// Reissues Newest first.
+	Reissues []ReissueEntry `json:"reissues"`
+}
+
+// ReissueOldCodeAttempt A scan of a replaced ticket's code after the reissue.
+type ReissueOldCodeAttempt struct {
+	// At When the code was scanned.
+	At time.Time `json:"at"`
+
+	// Gate The entrance or scanner name, when the scanner sent one.
+	Gate *string `json:"gate,omitempty"`
+
+	// Result What the scanner answered, admitted or denied.
+	Result string `json:"result"`
+
+	// Source The scanner, arena_scanner or macs.
+	Source string `json:"source"`
+}
+
+// ReissueOptions The check screen of a ticket reissue.
+type ReissueOptions struct {
+	// Blocked The error code a reissue would answer now, null when it may run.
+	Blocked *string `json:"blocked"`
+
+	// BuyerName The buyer's name, to compare with the person asking.
+	BuyerName string `json:"buyer_name"`
+
+	// BuyerPhone The buyer's phone, to compare with the person asking.
+	BuyerPhone string `json:"buyer_phone"`
+
+	// OrderEmail The order's current buyer e-mail.
+	OrderEmail string `json:"order_email"`
+
+	// OrderId UUID of the order.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// OrderNumber The buyer-facing order number.
+	OrderNumber int64 `json:"order_number"`
+
+	// OrderStatus The order status.
+	OrderStatus string `json:"order_status"`
+
+	// PendingReissue A reissue that has not been applied, when there is one.
+	PendingReissue *ReissuePending `json:"pending_reissue,omitempty"`
+
+	// Provider The payment provider, absent for an order without a payment.
+	Provider *ReissueProvider `json:"provider,omitempty"`
+
+	// Route `arena`, or `seller_site` while a live selling site writes the order's letters.
+	Route string `json:"route"`
+
+	// Tickets Every ticket of the order.
+	Tickets []ReissueTicketOption `json:"tickets"`
+
+	// VenueTimezone The IANA time zone of the event's venue, to print scanned_at in; empty when unknown.
+	VenueTimezone *string `json:"venue_timezone,omitempty"`
+}
+
+// ReissuePair One replaced ticket.
+type ReissuePair struct {
+	// Category The category of both tickets.
+	Category string `json:"category"`
+
+	// NewNumber The new ticket's number.
+	NewNumber int64 `json:"new_number"`
+
+	// NewTicketId UUID of the new ticket.
+	NewTicketId openapi_types.UUID `json:"new_ticket_id"`
+
+	// OldCodeAttempt The first try to enter with the closed ticket's code after the reissue, or null when nobody tried.
+	OldCodeAttempt *ReissueOldCodeAttempt `json:"old_code_attempt"`
+
+	// OldCodeScannedAt When the closed ticket's code was used at the door before the reissue.
+	OldCodeScannedAt *time.Time `json:"old_code_scanned_at"`
+
+	// OldNumber The closed ticket's number.
+	OldNumber int64 `json:"old_number"`
+
+	// OldTicketId UUID of the closed ticket.
+	OldTicketId openapi_types.UUID `json:"old_ticket_id"`
+
+	// OrganizerToldAt When the organization was told about the old code (an entry before the reissue or a try after it) through its sales chat or, without a chat, an e-mail to the owners. Null while nothing was told.
+	OrganizerToldAt *time.Time `json:"organizer_told_at"`
+
+	// Seat Sector, row and seat of both tickets.
+	Seat string `json:"seat"`
+}
+
+// ReissuePending A reissue of the order that has not been applied yet.
+type ReissuePending struct {
+	// CreatedAt When the reissue was made.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUID of the reissue.
+	Id openapi_types.UUID `json:"id"`
+
+	// NewEmail The address the new tickets go to.
+	NewEmail string `json:"new_email"`
+
+	// State `pending` or `send_failed`.
+	State string `json:"state"`
+}
+
+// ReissueProvider The payment provider of the order.
+type ReissueProvider struct {
+	// EmailUpdatable True when arena moves the provider's receipt address after the reissue. Otherwise the provider keeps the earlier address and the organizer may resend its document by hand.
+	EmailUpdatable bool `json:"email_updatable"`
+
+	// Name The provider's registry name.
+	Name string `json:"name"`
+
+	// Title The provider's human name.
+	Title string `json:"title"`
+}
+
+// ReissueResendResponse The letter of a reissue was queued again.
+type ReissueResendResponse struct {
+	// Letter `queued`.
+	Letter string `json:"letter"`
+
+	// ReissueId UUID of the reissue.
+	ReissueId openapi_types.UUID `json:"reissue_id"`
+
+	// State `pending`.
+	State string `json:"state"`
+}
+
+// ReissueTicketOption One ticket of the order on the check screen.
+type ReissueTicketOption struct {
+	// Category The ticket category name.
+	Category string `json:"category"`
+
+	// Number The buyer-facing ticket number.
+	Number int64 `json:"number"`
+
+	// Reason Why the ticket is not replaced. `not_active` is skipped; `review_hold` and `refund_in_progress` block the whole reissue.
+	Reason *string `json:"reason,omitempty"`
+
+	// Reissuable True when the ticket will be replaced.
+	Reissuable bool `json:"reissuable"`
+
+	// ScannedAt When the ticket's code was first used at the door. The reissue still runs.
+	ScannedAt *time.Time `json:"scanned_at"`
+
+	// Seat Sector, row and seat, empty for general admission.
+	Seat string `json:"seat"`
+
+	// Status The ticket status.
+	Status string `json:"status"`
+
+	// TicketId UUID of the ticket.
+	TicketId openapi_types.UUID `json:"ticket_id"`
+}
+
+// ReissueTicketsRequest A ticket reissue.
+type ReissueTicketsRequest struct {
+	// Email The buyer's real address. It may equal the current one, then only the barcodes change.
+	Email string `json:"email"`
+
+	// Note The operator's note, at most 500 characters. Kept in the journal, never sent to the buyer.
+	Note *string `json:"note,omitempty"`
+
+	// Reason `sent_to_wrong_address`, `forwarded_to_stranger` or `other`.
+	Reason string `json:"reason"`
+}
+
+// ReissueTicketsResponse The result of a reissue.
+type ReissueTicketsResponse struct {
+	// Letter `queued`.
+	Letter string `json:"letter"`
+
+	// RecipientMasked The new address with most characters hidden.
+	RecipientMasked string `json:"recipient_masked"`
+
+	// ReissueId UUID of the reissue.
+	ReissueId openapi_types.UUID `json:"reissue_id"`
+
+	// Replayed True when this answers an earlier request with the same Idempotency-Key.
+	Replayed bool `json:"replayed"`
+
+	// State `pending` until the relay accepts the letter, then `applied`.
+	State string `json:"state"`
+
+	// Tickets The replaced tickets.
+	Tickets []ReissuePair `json:"tickets"`
+}
+
 // RepriceOrgModuleRequest Changes the monthly price of a module from a day on.
 type RepriceOrgModuleRequest struct {
 	// Currency Currency of the new price; absent with a price means the organization's billing currency.
@@ -16456,7 +17735,8 @@ type SalesFunnelPage struct {
 // A7). Name the event EITHER with `feed_token` and `event_id` (the widget)
 // OR with `page` (a page Arena hosts); sending both, or neither, is not
 // counted. The surface follows the addressing: `feed_token` is the
-// `widget` surface only, `page` is `hosted_page` or `tickets_page`. A body
+// `widget` surface, `page` is `hosted_page` or `tickets_page`; the
+// `external_site` surface (a customer's own site) may use either. A body
 // that disagrees with itself is not counted (the answer is still 204).
 // Unknown fields are ignored.
 type SalesFunnelRequest struct {
@@ -16481,8 +17761,10 @@ type SalesFunnelRequest struct {
 
 	// Surface Where the visitor was: `widget` (the embedded widget on a seller's
 	// own site), `hosted_page` (the hosted event page) or `tickets_page`
-	// (the promoter page that lists events). `widget` goes with
-	// `feed_token`, the other two with `page`. Any other value, or one that
+	// (the promoter page that lists events) or `external_site` (a
+	// customer's own site on its own domain). `widget` goes with
+	// `feed_token`, `hosted_page` and `tickets_page` with `page`,
+	// `external_site` with either. Any other value, or one that
 	// does not fit the addressing, is not counted.
 	Surface string `json:"surface"`
 
@@ -17087,6 +18369,9 @@ type SeatBatch struct {
 	// Changes The seats the batch changed.
 	Changes []SeatBatchChange `json:"changes"`
 
+	// CreatedTiers The categories the batch created from `new_tiers`, in request order; an empty array when it created none. Only in the answer of an apply or a revert (a revert creates none); the stored batch does not keep it, the audit event carries `created_tier_ids`.
+	CreatedTiers *[]SeatBatchCreatedTier `json:"created_tiers,omitempty"`
+
 	// Id UUID of the batch.
 	Id openapi_types.UUID `json:"id"`
 
@@ -17127,16 +18412,37 @@ type SeatBatchChange struct {
 	To SeatBatchSeatState `json:"to"`
 }
 
-// SeatBatchChangeRequest What one seat should become; at least one of tier_id and status.
+// SeatBatchChangeRequest What one seat should become; at least one of tier_id, new_tier_key and status.
 type SeatBatchChangeRequest struct {
+	// NewTierKey The `key` of an entry of `new_tiers` to put the seat in, instead of tier_id (both set is 400 `seat_batch.invalid_change`; an unknown key is 400 `seat_batch.unknown_new_tier_key`).
+	NewTierKey *string `json:"new_tier_key,omitempty"`
+
 	// SeatKey The seat's key.
 	SeatKey string `json:"seat_key"`
 
 	// Status `available` or `unavailable`.
 	Status *string `json:"status,omitempty"`
 
-	// TierId The category to put the seat in, a live category of this session.
+	// TierId The category to put the seat in, a live category of this session. Not together with new_tier_key.
 	TierId *openapi_types.UUID `json:"tier_id,omitempty"`
+}
+
+// SeatBatchCreatedTier A category the batch created.
+type SeatBatchCreatedTier struct {
+	// Color Colour of the category, lower-case `#rrggbb`, null for none.
+	Color *string `json:"color"`
+
+	// Key The key the request gave the category.
+	Key string `json:"key"`
+
+	// Name Name of the category, trimmed.
+	Name string `json:"name"`
+
+	// PriceAmount Price in minor units.
+	PriceAmount int64 `json:"price_amount"`
+
+	// TierId UUID of the created category.
+	TierId openapi_types.UUID `json:"tier_id"`
 }
 
 // SeatBatchList One page of a session's batches.
@@ -17151,6 +18457,24 @@ type SeatBatchList struct {
 	Total int64 `json:"total"`
 }
 
+// SeatBatchNewTier A category the batch creates, in the session's currency; pricing mode `free` for price 0, `fixed` otherwise.
+type SeatBatchNewTier struct {
+	// Color Colour of the category, `#rrggbb` (`seat_batch.invalid_new_tier_color`); null or empty for none.
+	Color *string `json:"color"`
+
+	// Key The client's id of the category, `[A-Za-z0-9_-]{1,40}`, unique in the request (`seat_batch.invalid_new_tier`, `seat_batch.duplicate_new_tier_key`).
+	Key string `json:"key"`
+
+	// Name Name of the category, 1 to 100 characters after trimming (`seat_batch.invalid_new_tier_name`); must differ, ignoring case, from the other new tiers (`seat_batch.duplicate_new_tier_name`) and from every live category of the session (409 `seat_batch.tier_name_taken`).
+	Name string `json:"name"`
+
+	// PriceAmount Price in minor units, 0 to 1 000 000 000 (`seat_batch.invalid_new_tier_price`).
+	PriceAmount int64 `json:"price_amount"`
+
+	// SortOrder Display order of the category; absent places it after the live categories, in request order.
+	SortOrder *int32 `json:"sort_order,omitempty"`
+}
+
 // SeatBatchRequest One batch of seat changes (task S1c).
 type SeatBatchRequest struct {
 	// Changes The seats to change, at most 10 000. A seat_key may appear twice only with the same target.
@@ -17159,8 +18483,13 @@ type SeatBatchRequest struct {
 	// Kind `paint` (tier_id only), `close` (status unavailable only), `open` (status available only) or `apply_layout` (either or both).
 	Kind string `json:"kind"`
 
-	// NewTiers Categories to create inside the batch. Not supported yet; a non-empty list answers 422 `seat_batch.new_tiers_unsupported`.
-	NewTiers *[]map[string]interface{} `json:"new_tiers,omitempty"`
+	// NewTiers Categories to create inside the batch, in the same transaction as
+	// the seat changes (kinds `paint` and `apply_layout` only, else 400
+	// `seat_batch.new_tiers_not_allowed`). A change names one by its
+	// `key` in `new_tier_key`; every new tier must be named by at least
+	// one change. Live plus new categories may not exceed 15. Needs the
+	// `tier.create` permission in the organization as well.
+	NewTiers *[]SeatBatchNewTier `json:"new_tiers,omitempty"`
 }
 
 // SeatBatchSeatState A seat's category and status before or after a batch.
@@ -17455,6 +18784,14 @@ type SeatLayoutMetrics struct {
 
 	// HeldSeats Seats in a hold.
 	HeldSeats int `json:"held_seats"`
+
+	// RealisticRevenueMinor The estimate if not every seat sells: sold seats in full at their
+	// price, every open free seat at its slot's price times the slot's
+	// sell-through rate, a held seat at its price times the rate of the
+	// slot price level nearest to it. Slots are ranked among the distinct
+	// price levels: the dearest sells 0.90, the cheapest 0.60, linear by
+	// rank between; a single price level sells 0.75. Rounded half up.
+	RealisticRevenueMinor int64 `json:"realistic_revenue_minor"`
 
 	// RevenueEstimateMinor Sold plus held plus remaining.
 	RevenueEstimateMinor int64 `json:"revenue_estimate_minor"`
@@ -17836,8 +19173,10 @@ type SeatingPlan struct {
 	// VenueId UUIDv7 of the venue the plan is attached to.
 	VenueId openapi_types.UUID `json:"venue_id"`
 
-	// Visibility Share scope. Defaults to private on create; move to shared_read
-	// or public_template to enable cross-org read / fork.
+	// Visibility Share scope. Defaults to private on create. shared_read lets other
+	// organizations read the plan; public_template also lets them fork
+	// it. operator_verified marks a venue template and is set only by
+	// POST /v1/admin/seating-plans/{plan_id}/verify.
 	Visibility SeatingPlanVisibility `json:"visibility"`
 }
 
@@ -17850,8 +19189,10 @@ type SeatingPlanPlanType string
 // session bindings (existing bindings are unaffected).
 type SeatingPlanStatus string
 
-// SeatingPlanVisibility Share scope. Defaults to private on create; move to shared_read
-// or public_template to enable cross-org read / fork.
+// SeatingPlanVisibility Share scope. Defaults to private on create. shared_read lets other
+// organizations read the plan; public_template also lets them fork
+// it. operator_verified marks a venue template and is set only by
+// POST /v1/admin/seating-plans/{plan_id}/verify.
 type SeatingPlanVisibility string
 
 // SeatingPlanAnnotations The allocator annotations stored with a seating plan (task S1d). They
@@ -17898,6 +19239,40 @@ type SeatingPlanValidationIssue struct {
 
 	// Element Offending SVG element identifier (id, label, or synthetic descriptor).
 	Element *string `json:"element,omitempty"`
+}
+
+// SeatingPlanVerification A seating plan after POST /v1/admin/seating-plans/{plan_id}/verify or
+// /needs-fix (spec 64 section 3.4, migration 0216).
+type SeatingPlanVerification struct {
+	// Changed False when a repeated verify found the plan already verified and changed nothing
+	Changed bool `json:"changed"`
+
+	// OwnerOrgId Organization that owns the plan
+	OwnerOrgId openapi_types.UUID `json:"owner_org_id"`
+
+	// PlanId Id of the plan
+	PlanId openapi_types.UUID `json:"plan_id"`
+
+	// Status draft, active or archived
+	Status string `json:"status"`
+
+	// VenueId Venue of the plan
+	VenueId openapi_types.UUID `json:"venue_id"`
+
+	// VenueReviewStatus review_status of the venue, verified once a plan of it is verified
+	VenueReviewStatus string `json:"venue_review_status"`
+
+	// VerificationNote The superadmin's note of needs-fix, null after verify
+	VerificationNote *string `json:"verification_note"`
+
+	// VerificationState verified or needs_fix
+	VerificationState string `json:"verification_state"`
+
+	// VerifiedAt When the plan was verified, null unless verified
+	VerifiedAt *time.Time `json:"verified_at"`
+
+	// Visibility operator_verified after verify; private after needs-fix of a template
+	Visibility string `json:"visibility"`
 }
 
 // SeatingPlanVersion Immutable-once-bound snapshot of a seating plan's canonical geometry.
@@ -18551,7 +19926,7 @@ type SessionPlaceCounts struct {
 	// Sold Places sold, including the ones sold upstream.
 	Sold int64 `json:"sold"`
 
-	// SoldUpstream The part of sold that was sold in the system the session was imported from. No ticket, order or money stands behind it here.
+	// SoldUpstream The part of sold that was sold in the system the session was imported from. No ticket, order or money stands behind it here, unless the ticket was later filed as a legacy_import order.
 	SoldUpstream int64 `json:"sold_upstream"`
 
 	// Total Every place counted here, whatever its status.
@@ -18762,7 +20137,7 @@ type SessionSummary struct {
 		// Orders Number of orders in the group.
 		Orders int64 `json:"orders"`
 
-		// Source Where the order came from (bil24_gateway, public_feed, checkout_api, complimentary).
+		// Source Where the order came from (bil24_gateway, public_feed, checkout_api, complimentary, legacy_import = sold in Bil24 before the platform).
 		Source string `json:"source"`
 
 		// Status Order status.
@@ -18864,6 +20239,12 @@ type SessionSummary struct {
 	// session summary, never on the event summary. An empty list when
 	// the session has no paid orders.
 	Sources []SessionSummarySource `json:"sources"`
+
+	// TestOrders Paid orders that came through a test sales channel
+	// (`is_test`). They are left out of orders, money, refunds, promo
+	// codes, invitations and the revenue of the categories above; their
+	// tickets still occupy places.
+	TestOrders *int64 `json:"test_orders,omitempty"`
 
 	// Tickets Tickets of the session by status.
 	Tickets struct {
@@ -20208,6 +21589,72 @@ type ShopVariantsReplaceRequest struct {
 	Variants []ShopVariantInput `json:"variants"`
 }
 
+// SiteContactRequest A message from a static site's contact or private-event form.
+type SiteContactRequest struct {
+	// Consent Must be true; the sender agrees that the message is passed to the organizer.
+	Consent bool `json:"consent"`
+
+	// Email Sender's e-mail; the organizer's reply goes there (Reply-To).
+	Email string `json:"email"`
+
+	// LastName Sender's last name, up to 100 characters; optional.
+	LastName *string `json:"last_name,omitempty"`
+
+	// Locale Page language of the sender.
+	Locale *string `json:"locale,omitempty"`
+
+	// Message The message, 10-2000 characters. Optional for the `contact` topic, required for `private_event`.
+	Message *string `json:"message,omitempty"`
+
+	// Name Sender's first name, 1-100 characters.
+	Name string `json:"name"`
+
+	// Phone Sender's phone, 5-30 characters of digits, spaces and + ( ) - . ; optional.
+	Phone *string `json:"phone,omitempty"`
+
+	// Topic `contact` (default) or `private_event`. It is also the Turnstile
+	// widget action of the form and picks the recipients.
+	Topic *string `json:"topic,omitempty"`
+
+	// TurnstileToken Cloudflare Turnstile response token, solved with the action equal to `topic`.
+	TurnstileToken *string `json:"turnstile_token,omitempty"`
+}
+
+// SiteMarketingSubscriptionAccepted The subscription was accepted.
+type SiteMarketingSubscriptionAccepted struct {
+	// Status Always "check_email".
+	Status string `json:"status"`
+}
+
+// SiteMarketingSubscriptionRequest A subscription to an organization's mailings from a static site's form.
+type SiteMarketingSubscriptionRequest struct {
+	// Consent Must be true; the person ticked the box next to the consent text.
+	Consent bool `json:"consent"`
+
+	// Email The address to subscribe.
+	Email string `json:"email"`
+
+	// Locale Language of the confirmation letter; the organization's language when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// Name Subscriber's name, up to 100 characters; optional.
+	Name *string `json:"name,omitempty"`
+
+	// PageUrl The site page the form was on; the confirmation sends the person back there. Dropped unless it lies on one of the channel's site origins.
+	PageUrl *string `json:"page_url,omitempty"`
+
+	// Phone Subscriber's phone, 5-30 characters of digits, spaces and + ( ) - . ; optional.
+	Phone *string `json:"phone,omitempty"`
+
+	// TextVersion Version of the consent text the form showed, 3-64 characters of
+	// letters, digits and `. _ : -`. Stored with the grant and the
+	// confirmation as evidence of what was agreed to.
+	TextVersion string `json:"text_version"`
+
+	// TurnstileToken Cloudflare Turnstile response token, solved with the action `club`.
+	TurnstileToken *string `json:"turnstile_token,omitempty"`
+}
+
 // SmartPriceNow Where an active preset stands at the moment of the read.
 type SmartPriceNow struct {
 	// NextAt When the next price starts (by_days, last_days).
@@ -20805,7 +22252,7 @@ type SummaryOrdersItem struct {
 	// Orders Number of orders in the group.
 	Orders int64 `json:"orders"`
 
-	// Source Where the orders came from (bil24_gateway, public_feed, checkout_api, complimentary).
+	// Source Where the orders came from (bil24_gateway, public_feed, checkout_api, complimentary, legacy_import = sold in Bil24 before the platform).
 	Source string `json:"source"`
 
 	// Status Order status.
@@ -20900,6 +22347,45 @@ type SummaryTierItem struct {
 
 	// PriceAmount Current list price in minor units.
 	PriceAmount int64 `json:"price_amount"`
+}
+
+// TelegramConnectAccount One Telegram account linked to the caller.
+type TelegramConnectAccount struct {
+	// LinkedAt When the account was last linked (a connect link or an invitation renews it). The page compares it with the time its link was made.
+	LinkedAt time.Time `json:"linked_at"`
+
+	// TelegramUsername The account's Telegram username without `@`, null when it has none.
+	TelegramUsername *string `json:"telegram_username"`
+}
+
+// TelegramConnectCode A one-time "Connect Telegram" link (F-007).
+type TelegramConnectCode struct {
+	// ExpiresAt When the link stops working (15 minutes after it was issued).
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// QrPng The link as a 320x320 PNG QR code, base64 (standard alphabet, padded), for a person who reads the page on a computer. Null when the picture could not be drawn.
+	QrPng *string `json:"qr_png"`
+
+	// StartParam The `/start` payload of the link (`con_<code>`).
+	StartParam string `json:"start_param"`
+
+	// Url `https://t.me/<bot>?start=con_<code>`: a button and a QR code on the web page.
+	Url string `json:"url"`
+}
+
+// TelegramConnectStatus Whether the signed-in person's account is linked to the event-center Telegram bot (F-007).
+type TelegramConnectStatus struct {
+	// Accounts The linked Telegram accounts, newest first, at most 5.
+	Accounts []TelegramConnectAccount `json:"accounts"`
+
+	// Available True when this server knows the bot and can build a "Connect Telegram" link.
+	Available bool `json:"available"`
+
+	// BotUsername The bot's Telegram username without `@`, null when not configured.
+	BotUsername *string `json:"bot_username"`
+
+	// Linked True when at least one Telegram account is linked to the caller's account.
+	Linked bool `json:"linked"`
 }
 
 // TextFormatKind Which text is formatted. It picks the tags the model may add and the
@@ -21264,6 +22750,20 @@ type TicketTierItem struct {
 	// for `pricing_mode = free`; must be > 0 for `pricing_mode = fixed`.
 	PriceAmount int64 `json:"price_amount"`
 
+	// PriceStep Public feed only. Present on a category that sells in steps by
+	// tickets sold (a chain whose next category is dearer): how many
+	// tickets are left at this price and where the sale goes next.
+	PriceStep *struct {
+		// NextPrice The price of the next step in minor units.
+		NextPrice *int64 `json:"next_price,omitempty"`
+
+		// NextTierId The id of the next category in the chain, where the sale goes after this step; null when unknown.
+		NextTierId *openapi_types.UUID `json:"next_tier_id"`
+
+		// RemainingAtPrice How many tickets are left at the current price, null when unknown.
+		RemainingAtPrice *int `json:"remaining_at_price"`
+	} `json:"price_step,omitempty"`
+
 	// PricingMode Pricing model for the tier. Drives validation of `price_amount`
 	// and the optional `pwyw_min` / `pwyw_max` bounds.
 	PricingMode TicketTierItemPricingMode `json:"pricing_mode"`
@@ -21384,6 +22884,26 @@ type TierPriceWindowInput struct {
 	ValidTo *time.Time `json:"valid_to"`
 }
 
+// TrackingConsent The cookie (tracking) consent of a purchase (spec 62 §8.1): one
+// choice for analytics and advertising together. Not stated reads as
+// no.
+type TrackingConsent struct {
+	// At When the buyer chose, RFC 3339, as the site recorded it. Omitted
+	// or in the future: the server's time. An older choice never
+	// replaces a newer stored one.
+	At *time.Time `json:"at,omitempty"`
+
+	// Categories Reserved for a future banner with separate categories; stored,
+	// not read today.
+	Categories *map[string]interface{} `json:"categories,omitempty"`
+
+	// Granted The buyer allowed tracking (analytics and advertising).
+	Granted bool `json:"granted"`
+
+	// Version The version of the banner text the buyer answered.
+	Version string `json:"version"`
+}
+
 // TransitionPaymentIntentRequest Request body for `POST /v1/payment-intents/{id}/transition`.
 // Drives the payment intent state machine forward. Transitioning
 // to `requires_action` REQUIRES `sca_redirect_url`
@@ -21417,6 +22937,36 @@ type TransitionPaymentIntentRequest struct {
 
 // TransitionPaymentIntentRequestState Target state.
 type TransitionPaymentIntentRequestState string
+
+// UndeliveredLetter An order whose buyer most likely has no letter.
+type UndeliveredLetter struct {
+	// EventName Name of the event of the order.
+	EventName string `json:"event_name"`
+
+	// Kind `ticket` for the order's ticket letters, else the kind of the letter (change, cancel, refund, ...).
+	Kind string `json:"kind"`
+
+	// OrderId UUID of the order.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// OrderNumber The order's number (`orders.system_id`).
+	OrderNumber int64 `json:"order_number"`
+
+	// Problem `failed` (refused or bounced) or `stuck` (no delivery was ever reported, or the job never ran).
+	Problem string `json:"problem"`
+
+	// Reason The failure reason, e-mail addresses removed and cut to 200 characters; empty when none is known.
+	Reason string `json:"reason"`
+
+	// Recipient Address the letter went or goes to.
+	Recipient string `json:"recipient"`
+
+	// Since When the problem began.
+	Since time.Time `json:"since"`
+
+	// Tickets How many tickets' letters are affected (0 for a letter that is not a ticket letter).
+	Tickets int `json:"tickets"`
+}
 
 // UpdateBankAccountRequest Request body for PATCH /v1/organizations/{org_id}/bank-accounts/{id}.
 // Omitted fields are left unchanged. Sending `is_primary: true`
@@ -21459,10 +23009,21 @@ type UpdateBankAccountRequest struct {
 // (features #121/#236). Every field is optional and independently
 // applied: an omitted field leaves the stored column unchanged.
 type UpdateChannelRequest struct {
+	// CollectName Require the buyer name at checkout. Omit to leave it unchanged.
+	CollectName *bool `json:"collect_name,omitempty"`
+
+	// CollectPhone Require the buyer phone at checkout. Omit to leave it unchanged.
+	CollectPhone *bool `json:"collect_phone,omitempty"`
+
 	// FeePercent New platform fee percentage as a decimal string. Omitting
 	// the key OR sending JSON `null` both leave the stored value
 	// unchanged; only a non-null string value is applied.
 	FeePercent *string `json:"fee_percent"`
+
+	// IsTest Turn the test flag of the channel on or off. Omit to leave it
+	// unchanged. Orders already created keep the flag they were born
+	// with: it never changes on an order.
+	IsTest *bool `json:"is_test,omitempty"`
 
 	// Name New channel label. Omit (or send an empty string) to leave
 	// the stored name unchanged.
@@ -21478,6 +23039,14 @@ type UpdateChannelRequest struct {
 	// repeating the mode the channel already has, or moving back to
 	// `direct_merchant`, is allowed to any caller of the channel.
 	PaymentMode *UpdateChannelRequestPaymentMode `json:"payment_mode,omitempty"`
+
+	// PaymentWindowSeconds The channel's own payment window in seconds (spec 62 П-3).
+	// Tri-state like `reservation_ttl_override`: omit the key to keep
+	// the stored value, send `null` to go back to the deployment
+	// default, send 120 to 86400 to set it. Out of range: 400
+	// `channel.invalid_payment_window`. Orders already started keep
+	// the deadline they were given.
+	PaymentWindowSeconds *int32 `json:"payment_window_seconds"`
 
 	// Provider New payment provider. Omit (or send an empty string) to
 	// leave unchanged. Same values and rule as on create: a
@@ -21525,6 +23094,25 @@ type UpdateChannelRequestPaymentMode string
 // registered payment module, otherwise 400
 // `channel.invalid_config`.
 type UpdateChannelRequestProvider string
+
+// UpdateConversionSettingsRequest Every key is optional, at least one is required. An absent key keeps the
+// stored value; an empty string or null clears it.
+type UpdateConversionSettingsRequest struct {
+	// Ga4ApiSecret Measurement Protocol API secret, 8-512 characters. Write-only.
+	Ga4ApiSecret *string `json:"ga4_api_secret"`
+
+	// Ga4MeasurementId GA4 measurement id, G- followed by capital letters and digits.
+	Ga4MeasurementId *string `json:"ga4_measurement_id"`
+
+	// MetaCapiToken Conversions API access token, 8-512 characters. Write-only.
+	MetaCapiToken *string `json:"meta_capi_token"`
+
+	// MetaPixelId Numeric Meta pixel id (422 `conversions.invalid_field` otherwise).
+	MetaPixelId *string `json:"meta_pixel_id"`
+
+	// MetaTestEventCode Meta test event code, up to 64 letters, digits, - or _.
+	MetaTestEventCode *string `json:"meta_test_event_code"`
+}
 
 // UpdateEventPartnerLinkRequest Body of PATCH .../partner-links/{link_id}. At least one member is required; an absent member keeps its stored value.
 type UpdateEventPartnerLinkRequest struct {
@@ -21698,6 +23286,14 @@ type UpdateOperatorNetworkRequest struct {
 // the JSON Schema `if`/`then` clause below and enforced by the
 // server on PATCH.
 type UpdateOrganizationRequest struct {
+	// Branding Replaces the organization's whole theme (see
+	// OrganizationBranding for the keys and values); `null` or `{}`
+	// returns to the platform palette, an omitted member keeps it.
+	// Accepted by PATCH /v1/organizations/{id} only (permission
+	// `org.update`, the owner). An unknown key or an invalid value
+	// answers 400 `org.invalid_branding`.
+	Branding *map[string]string `json:"branding"`
+
 	// ContactEmail New public contact email (empty string clears). Validated as email when non-empty.
 	ContactEmail *string `json:"contact_email,omitempty"`
 
@@ -22289,6 +23885,141 @@ type ValidatePromoCodeResponse struct {
 // ValidatePromoCodeResponseValid Always `true` on a 200 response.
 type ValidatePromoCodeResponseValid bool
 
+// VenueCreatedCity The city of a venue created with `country_iso2` and `city_name`.
+type VenueCreatedCity struct {
+	// CountryIso2 ISO 3166-1 alpha-2 code of the city's country.
+	CountryIso2 string `json:"country_iso2"`
+
+	// Id UUID of the city, found by name or created.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name of the city in the request language, else English.
+	Name string `json:"name"`
+}
+
+// VenueCreatedCountry A country row the venue request created from the embedded world table.
+type VenueCreatedCountry struct {
+	// Currency ISO 4217 currency stored on the new row.
+	Currency string `json:"currency"`
+
+	// Id UUID of the new reference country.
+	Id openapi_types.UUID `json:"id"`
+
+	// Iso2 ISO 3166-1 alpha-2 code.
+	Iso2 string `json:"iso2"`
+
+	// Name Name in the request language, Russian for `ru` and English for any other.
+	Name string `json:"name"`
+
+	// Region Region of the new row, one of europe, middle_east, asia, africa, north_america, latin_america, oceania.
+	Region string `json:"region"`
+}
+
+// VenueDirectoryCity A city of the requested country with venues in the organization's scope.
+type VenueDirectoryCity struct {
+	// CountryIso2 ISO 3166-1 alpha-2 code of the city's country.
+	CountryIso2 string `json:"country_iso2"`
+
+	// Id UUID of the city.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name in the request language, else English, else the slug.
+	Name string `json:"name"`
+
+	// OwnVenues Of those, the organization's own venues.
+	OwnVenues int64 `json:"own_venues"`
+
+	// Venues Venues in scope in this city.
+	Venues int64 `json:"venues"`
+}
+
+// VenueDirectoryCountry A country with venues in the organization's scope.
+type VenueDirectoryCountry struct {
+	// CountryId UUID of the reference country, null when only a venue's address names it.
+	CountryId *openapi_types.UUID `json:"country_id"`
+
+	// Iso2 ISO 3166-1 alpha-2 code.
+	Iso2 string `json:"iso2"`
+
+	// Name Name in the request language, else English, else the code.
+	Name string `json:"name"`
+
+	// OwnVenues Of those, the organization's own venues.
+	OwnVenues int64 `json:"own_venues"`
+
+	// Region One of europe, middle_east, asia, africa, north_america, latin_america, oceania, or other for a country the world table does not know.
+	Region string `json:"region"`
+
+	// Venues Venues in scope in this country.
+	Venues int64 `json:"venues"`
+}
+
+// VenueDirectoryResponse Response of GET /v1/organizations/{org_id}/venue-directory.
+type VenueDirectoryResponse struct {
+	// Cities The cities of `country` with venues in scope; empty without `country`.
+	Cities []VenueDirectoryCity `json:"cities"`
+
+	// Countries Every country with at least one venue in scope, never filtered.
+	Countries []VenueDirectoryCountry `json:"countries"`
+
+	// QuickPick Up to 8 ISO codes, no duplicates: the countries of the organization's own venues (most venues first), the organization's own country, then reference countries where organizers work.
+	QuickPick []string `json:"quick_pick"`
+
+	// Total Count of the filtered venues before `limit`; 0 without a filter.
+	Total int64 `json:"total"`
+
+	// Venues The filtered venues, own first, then by name; empty without a filter.
+	Venues []VenueDirectoryVenue `json:"venues"`
+}
+
+// VenueDirectoryVenue A venue of the directory. It never carries the venue's contacts.
+type VenueDirectoryVenue struct {
+	// Address Free-form address of the venue, null when unset.
+	Address *string `json:"address"`
+
+	// AddressLine1 Street address line 1, null when unset.
+	AddressLine1 *string `json:"address_line1"`
+
+	// CapacityDefault Default capacity, null when unset.
+	CapacityDefault *int `json:"capacity_default"`
+
+	// CityId UUID of the venue's city, null when it has none.
+	CityId *openapi_types.UUID `json:"city_id"`
+
+	// CityName Name of the venue's city in the request language, null without a city.
+	CityName *string `json:"city_name"`
+
+	// CountryIso2 Country of the venue (its city's country, else its address country), null when unknown.
+	CountryIso2 *string `json:"country_iso2"`
+
+	// GeoLat WGS-84 latitude, null when unknown.
+	GeoLat *float64 `json:"geo_lat"`
+
+	// GeoLng WGS-84 longitude, null when unknown.
+	GeoLng *float64 `json:"geo_lng"`
+
+	// HasOwnPlan True when the organization has an active seating plan with a current version at the venue.
+	HasOwnPlan bool `json:"has_own_plan"`
+
+	// HasPlan True when `has_own_plan` is true or the venue has a verified seating plan template the organization may copy (GET .../venues/{venue_id}/plan-templates).
+	HasPlan bool `json:"has_plan"`
+
+	// Id UUID of the venue.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name of the venue.
+	Name string `json:"name"`
+
+	// Own True when the venue belongs to the path organization.
+	Own bool `json:"own"`
+
+	// ReviewStatus verified or unverified (migration 0182). Another organization's venue is always verified here.
+	ReviewStatus string `json:"review_status"`
+
+	// Timezone IANA time zone of the venue.
+	Timezone *string `json:"timezone"`
+}
+
 // VenueItem A single active venue (physical event location owned by one organization).
 // Any authenticated org may read venue data, but only the owning org may
 // create, update, or soft-delete a venue.
@@ -22399,6 +24130,290 @@ type VenueItem struct {
 // retained for historical references (past events,
 // reports). Defaults to `active` when not set on create.
 type VenueItemStatus string
+
+// VenuePlanApproveRequest Approve a draft of a hall plan intake.
+type VenuePlanApproveRequest struct {
+	// Draft Number of the draft to approve; it must be the current draft.
+	Draft int `json:"draft"`
+
+	// Name Name of the new seating plan, 1 to 200 characters (default the venue name).
+	Name *string `json:"name,omitempty"`
+}
+
+// VenuePlanCorrection An answer set or a text correction of the organizer (administrators' card only).
+type VenuePlanCorrection struct {
+	// CreatedAt When it was sent.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Draft Number of the draft it was made on.
+	Draft *int `json:"draft"`
+
+	// Id Id of the correction.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind organizer_text, operator_edit or answer.
+	Kind string `json:"kind"`
+
+	// Status pending, applied or rejected.
+	Status string `json:"status"`
+
+	// Text The organizer's text, null for answers.
+	Text *string `json:"text"`
+}
+
+// VenuePlanDraft The current draft of a hall plan intake.
+type VenuePlanDraft struct {
+	// Author Who made the draft (generator, organizer_answers, organizer_text, operator, operator_svg, source_svg).
+	Author string `json:"author"`
+
+	// CreatedAt When the draft was made.
+	CreatedAt time.Time `json:"created_at"`
+
+	// N Number of the draft inside the intake (1, 2, ...).
+	N int `json:"n"`
+
+	// Note The administrator's note on the draft, null when none.
+	Note *string `json:"note"`
+
+	// Questions The questions of this draft.
+	Questions []VenuePlanQuestion `json:"questions"`
+
+	// Summary What the draft holds.
+	Summary VenuePlanDraftSummary `json:"summary"`
+
+	// SvgPath Path of the route that streams the draft SVG (needs the same authorization as the card).
+	SvgPath string `json:"svg_path"`
+}
+
+// VenuePlanDraftHistoryItem One draft in the history of an intake.
+type VenuePlanDraftHistoryItem struct {
+	// Author Who made the draft.
+	Author string `json:"author"`
+
+	// CreatedAt When the draft was made.
+	CreatedAt time.Time `json:"created_at"`
+
+	// N Number of the draft.
+	N int `json:"n"`
+}
+
+// VenuePlanDraftSummary What a draft of a hall plan holds, read from its SVG when the draft was made.
+type VenuePlanDraftSummary struct {
+	// PlanType The plan type the geometry fits (assigned_seats, general_admission or mixed).
+	PlanType string `json:"plan_type"`
+
+	// Rows Number of rows over every section.
+	Rows int `json:"rows"`
+
+	// Seats Number of seats of the draft.
+	Seats int `json:"seats"`
+
+	// Sections Number of sections.
+	Sections int `json:"sections"`
+
+	// Warnings Codes of the importer's warnings (for example legend_missing).
+	Warnings []string `json:"warnings"`
+}
+
+// VenuePlanIntake A hall plan intake (spec 64): the files an organization sent for a
+// venue, its state and its current draft. The administrators' card also
+// carries org_name, operator_id, operator_claimed_at and corrections.
+type VenuePlanIntake struct {
+	// Channel Where the intake was sent from (telegram_bot or event_center_web).
+	Channel string `json:"channel"`
+
+	// ClosedAt When the intake reached a final state.
+	ClosedAt *time.Time `json:"closed_at"`
+
+	// Corrections The organizer's answers and text corrections (administrators' card only).
+	Corrections *[]VenuePlanCorrection `json:"corrections,omitempty"`
+
+	// CreatedAt When the intake was sent.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CurrentDraft Number of the current draft, null before the first draft.
+	CurrentDraft *int `json:"current_draft"`
+
+	// Draft The current draft, null before the first draft.
+	Draft *VenuePlanDraft `json:"draft"`
+
+	// Drafts Every draft, oldest first.
+	Drafts []VenuePlanDraftHistoryItem `json:"drafts"`
+
+	// EscalationReason Why the intake went to an administrator, null when it did not.
+	EscalationReason *string `json:"escalation_reason"`
+
+	// EscalationText The organizer's text when they called an administrator.
+	EscalationText *string `json:"escalation_text"`
+
+	// Id Id of the intake.
+	Id openapi_types.UUID `json:"id"`
+
+	// OperatorClaimed True while an administrator works on the intake.
+	OperatorClaimed bool `json:"operator_claimed"`
+
+	// OperatorClaimedAt When the administrator took it (administrators' card only).
+	OperatorClaimedAt *time.Time `json:"operator_claimed_at"`
+
+	// OperatorId The administrator who took the intake (administrators' card only).
+	OperatorId *openapi_types.UUID `json:"operator_id"`
+
+	// OrgId Organization that sent the intake.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Name of the organization (administrators' card only).
+	OrgName *string `json:"org_name,omitempty"`
+
+	// PlanId The seating plan made from the approved draft.
+	PlanId *openapi_types.UUID `json:"plan_id"`
+
+	// PlanVersion Version number of that plan (1).
+	PlanVersion *int `json:"plan_version"`
+
+	// RejectReason Why the administrator could not build the plan.
+	RejectReason *string `json:"reject_reason"`
+
+	// ReturnNote The administrator's note when the draft was returned to the organizer.
+	ReturnNote *string `json:"return_note"`
+
+	// ReviewRounds Number of drafts made so far.
+	ReviewRounds int `json:"review_rounds"`
+
+	// Sources The files of the intake, in the order they were sent.
+	Sources []VenuePlanIntakeSource `json:"sources"`
+
+	// State received, generating, review, operator, approved, rejected or cancelled.
+	State string `json:"state"`
+
+	// UpdatedAt When the intake last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// VenueId Venue the plan is for.
+	VenueId openapi_types.UUID `json:"venue_id"`
+
+	// VenueName Name of the venue.
+	VenueName string `json:"venue_name"`
+}
+
+// VenuePlanIntakeEnvelope One hall plan intake card.
+type VenuePlanIntakeEnvelope struct {
+	// Intake The intake card.
+	Intake VenuePlanIntake `json:"intake"`
+}
+
+// VenuePlanIntakeList A list of hall plan intakes, newest first.
+type VenuePlanIntakeList struct {
+	// Intakes The intakes.
+	Intakes []VenuePlanIntakeListItem `json:"intakes"`
+}
+
+// VenuePlanIntakeListItem A hall plan intake in a list. The administrators' list adds org_name, venue_city, operator_id and operator_claimed_at.
+type VenuePlanIntakeListItem struct {
+	// Channel Where it was sent from.
+	Channel string `json:"channel"`
+
+	// CreatedAt When it was sent.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CurrentDraft Number of the current draft.
+	CurrentDraft *int `json:"current_draft"`
+
+	// EscalationReason Why it went to an administrator.
+	EscalationReason *string `json:"escalation_reason"`
+
+	// Id Id of the intake.
+	Id openapi_types.UUID `json:"id"`
+
+	// OperatorClaimed True while an administrator works on it.
+	OperatorClaimed bool `json:"operator_claimed"`
+
+	// OperatorClaimedAt When the administrator took it (administrators' list only).
+	OperatorClaimedAt *time.Time `json:"operator_claimed_at"`
+
+	// OperatorId The administrator who took it (administrators' list only).
+	OperatorId *openapi_types.UUID `json:"operator_id"`
+
+	// OrgId Organization that sent it.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Name of the organization (administrators' list only).
+	OrgName *string `json:"org_name,omitempty"`
+
+	// PlanId The plan made from it, once approved.
+	PlanId *openapi_types.UUID `json:"plan_id"`
+
+	// State State of the intake.
+	State string `json:"state"`
+
+	// UpdatedAt When it last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// VenueCity City of the venue (administrators' list only).
+	VenueCity *string `json:"venue_city"`
+
+	// VenueId Venue the plan is for.
+	VenueId openapi_types.UUID `json:"venue_id"`
+
+	// VenueName Name of the venue.
+	VenueName string `json:"venue_name"`
+}
+
+// VenuePlanIntakeSource A file sent with a hall plan intake. It has no public link; it is downloaded through the intake routes only.
+type VenuePlanIntakeSource struct {
+	// ByteSize Size of the stored file in bytes (a JPEG without its metadata).
+	ByteSize int64 `json:"byte_size"`
+
+	// DownloadPath Path of the route that downloads the file as an attachment.
+	DownloadPath string `json:"download_path"`
+
+	// FileName The file name as sent, without folders.
+	FileName string `json:"file_name"`
+
+	// Height Height of a picture in pixels, else null.
+	Height *int `json:"height"`
+
+	// Id Id of the file.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Format decided from the content (pdf, xlsx, xls, csv, jpeg, png, webp, heic, tiff, bmp, gif, svg).
+	Kind string `json:"kind"`
+
+	// NeedsConversion True for HEIC and old Excel files, which are converted later.
+	NeedsConversion bool `json:"needs_conversion"`
+
+	// Pages Number of pages of a PDF when it could be counted, else null.
+	Pages *int `json:"pages"`
+
+	// PngCopyPath Path of the PNG copy of a WEBP, TIFF, BMP or GIF picture, else null.
+	PngCopyPath *string `json:"png_copy_path"`
+
+	// Width Width of a picture in pixels, else null.
+	Width *int `json:"width"`
+}
+
+// VenuePlanQuestion A question of a draft to the organizer (written by the generator, wave 2).
+type VenuePlanQuestion struct {
+	// Answer The organizer's answer, null while the question is open.
+	Answer interface{} `json:"answer"`
+
+	// AnsweredAt When the question was answered, null while it is open.
+	AnsweredAt *time.Time `json:"answered_at"`
+
+	// Id Id of the question; the answers route names it as question_id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Type of the question (numbering, row_count, unavailable_seats, sections, stage, row_label).
+	Kind string `json:"kind"`
+
+	// Options The answers offered.
+	Options []interface{} `json:"options"`
+
+	// Region The part of the picture to show with the question, null when none.
+	Region *map[string]interface{} `json:"region"`
+
+	// Target What the question is about (section, row, seat keys).
+	Target map[string]interface{} `json:"target"`
+}
 
 // WebhookSubscriberListResponse Non-paginated list envelope returned by
 // `GET /v1/webhooks/subscribers`. Backed by
@@ -22927,7 +24942,7 @@ type PostV1AdminOrgModuleRepriceParams struct {
 
 // SuperadminListOrganizationsParams defines parameters for SuperadminListOrganizations.
 type SuperadminListOrganizationsParams struct {
-	// Q Case-insensitive substring search across organization name and slug.
+	// Q Case-insensitive substring search across the name, legal name, slug, number, id, country, locale, tax and registration numbers, contact e-mail and phone, site, city and sender e-mail of the organization.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
 	// Limit Maximum number of rows to return.
@@ -22997,6 +25012,96 @@ type CreateAdminOrgSalesChatCodeParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// ListAdminVenuePlanIntakesParams defines parameters for ListAdminVenuePlanIntakes.
+type ListAdminVenuePlanIntakesParams struct {
+	// State Only intakes in this state.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// OrgId Only intakes of this organization.
+	OrgId *openapi_types.UUID `form:"org_id,omitempty" json:"org_id,omitempty"`
+
+	// Unclaimed true for the intakes no administrator has taken.
+	Unclaimed *bool `form:"unclaimed,omitempty" json:"unclaimed,omitempty"`
+
+	// Limit At most this many intakes, 1 to 200 (default 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ApproveAdminVenuePlanIntakeParams defines parameters for ApproveAdminVenuePlanIntake.
+type ApproveAdminVenuePlanIntakeParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// ClaimAdminVenuePlanIntakeJSONBody defines parameters for ClaimAdminVenuePlanIntake.
+type ClaimAdminVenuePlanIntakeJSONBody struct {
+	// Force true takes the intake over from another administrator.
+	Force *bool `json:"force,omitempty"`
+}
+
+// ClaimAdminVenuePlanIntakeParams defines parameters for ClaimAdminVenuePlanIntake.
+type ClaimAdminVenuePlanIntakeParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// CreateAdminVenuePlanIntakeDraftJSONBody defines parameters for CreateAdminVenuePlanIntakeDraft.
+type CreateAdminVenuePlanIntakeDraftJSONBody struct {
+	// Note A note on the draft, up to 2000 characters.
+	Note *string `json:"note,omitempty"`
+
+	// Svg The SVG document as text.
+	Svg string `json:"svg"`
+}
+
+// CreateAdminVenuePlanIntakeDraftMultipartBody defines parameters for CreateAdminVenuePlanIntakeDraft.
+type CreateAdminVenuePlanIntakeDraftMultipartBody struct {
+	// Note A note on the draft, up to 2000 characters.
+	Note *string `json:"note,omitempty"`
+
+	// Svg The SVG file.
+	Svg openapi_types.File `json:"svg"`
+}
+
+// CreateAdminVenuePlanIntakeDraftParams defines parameters for CreateAdminVenuePlanIntakeDraft.
+type CreateAdminVenuePlanIntakeDraftParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// RejectAdminVenuePlanIntakeJSONBody defines parameters for RejectAdminVenuePlanIntake.
+type RejectAdminVenuePlanIntakeJSONBody struct {
+	// Reason Why the plan cannot be built, shown to the organizer, 1 to 1000 characters.
+	Reason string `json:"reason"`
+}
+
+// RejectAdminVenuePlanIntakeParams defines parameters for RejectAdminVenuePlanIntake.
+type RejectAdminVenuePlanIntakeParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// ReturnAdminVenuePlanIntakeJSONBody defines parameters for ReturnAdminVenuePlanIntake.
+type ReturnAdminVenuePlanIntakeJSONBody struct {
+	// Note What the organizer should know, up to 2000 characters.
+	Note *string `json:"note,omitempty"`
+}
+
+// ReturnAdminVenuePlanIntakeParams defines parameters for ReturnAdminVenuePlanIntake.
+type ReturnAdminVenuePlanIntakeParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// DownloadAdminVenuePlanIntakeSourceParams defines parameters for DownloadAdminVenuePlanIntakeSource.
+type DownloadAdminVenuePlanIntakeSourceParams struct {
+	// Format png for the PNG copy; leave out for the file as sent.
+	Format *string `form:"format,omitempty" json:"format,omitempty"`
+
+	// XAdminReason Human-readable business reason for reading the file. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // SuperadminListRefundsParams defines parameters for SuperadminListRefunds.
 type SuperadminListRefundsParams struct {
 	// Limit Maximum number of rows to return.
@@ -23020,6 +25125,57 @@ type DeleteAdminSalesChatParams struct {
 
 // PatchAdminSalesChatParams defines parameters for PatchAdminSalesChat.
 type PatchAdminSalesChatParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// ListV1AdminSeatingPlansParams defines parameters for ListV1AdminSeatingPlans.
+type ListV1AdminSeatingPlansParams struct {
+	// VerificationState none (never sent for verification), unverified, verified or
+	// needs_fix. Without it the list holds every state.
+	VerificationState *string `form:"verification_state,omitempty" json:"verification_state,omitempty"`
+
+	// OrgId Only the plans of this organization. Without it the list holds every organization.
+	OrgId *openapi_types.UUID `form:"org_id,omitempty" json:"org_id,omitempty"`
+
+	// Country Only the plans at venues in this country, a 2-letter ISO 3166-1
+	// code. The country of a venue is the country of its city, else the
+	// country of its address.
+	Country *string `form:"country,omitempty" json:"country,omitempty"`
+
+	// CityId Only the plans at venues in this city
+	CityId *openapi_types.UUID `form:"city_id,omitempty" json:"city_id,omitempty"`
+
+	// Q A part of the venue name, any letter case, at most 100 characters
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Lang Language of the city names, for example en or ru. locale is the same. Else Accept-Language, else English.
+	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+
+	// Locale The same as lang
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+
+	// Limit Page size, 1 to 200 (default 50)
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of plans to skip, 0 to 1000000 (default 0)
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// PostV1AdminSeatingPlansPlanIdNeedsFixJSONBody defines parameters for PostV1AdminSeatingPlansPlanIdNeedsFix.
+type PostV1AdminSeatingPlansPlanIdNeedsFixJSONBody struct {
+	// Note What must be fixed, 1 to 1000 characters after trimming
+	Note string `json:"note"`
+}
+
+// PostV1AdminSeatingPlansPlanIdNeedsFixParams defines parameters for PostV1AdminSeatingPlansPlanIdNeedsFix.
+type PostV1AdminSeatingPlansPlanIdNeedsFixParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminSeatingPlansPlanIdVerifyParams defines parameters for PostV1AdminSeatingPlansPlanIdVerify.
+type PostV1AdminSeatingPlansPlanIdVerifyParams struct {
 	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
 	XAdminReason string `json:"X-Admin-Reason"`
 }
@@ -23296,6 +25452,15 @@ type GetV1GeoCountriesParams struct {
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
 }
 
+// GetV1GeoWorldCountriesParams defines parameters for GetV1GeoWorldCountries.
+type GetV1GeoWorldCountriesParams struct {
+	// Lang Language of `name`. `ru` gives Russian names, any other language English ones. Overrides Accept-Language.
+	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+
+	// Locale Alias of `lang`, read only when `lang` is absent.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
 // PostMACSScanEventsParams defines parameters for PostMACSScanEvents.
 type PostMACSScanEventsParams struct {
 	// XMACSSubscriberId Id of the MACS subscriber (GET /v1/organizations/{org_id}/macs-webhook answers it).
@@ -23565,6 +25730,12 @@ type ListComplimentaryIssuancesParams struct {
 	SessionId *openapi_types.UUID `form:"session_id,omitempty" json:"session_id,omitempty"`
 }
 
+// PostV1OrganizationsOrgIdComplimentaryIdReissueTicketsParams defines parameters for PostV1OrganizationsOrgIdComplimentaryIdReissueTickets.
+type PostV1OrganizationsOrgIdComplimentaryIdReissueTicketsParams struct {
+	// IdempotencyKey The operation's key, at most 200 characters. A repeat with the same key answers the first result.
+	IdempotencyKey string `json:"Idempotency-Key"`
+}
+
 // GetV1OrganizationsOrgIdCustomersParams defines parameters for GetV1OrganizationsOrgIdCustomers.
 type GetV1OrganizationsOrgIdCustomersParams struct {
 	// Q Search text (exact identity match or ILIKE substring on display_name), max 200 chars.
@@ -23616,6 +25787,21 @@ type GetV1OrganizationsOrgIdEventsEventIdFunnelParams struct {
 
 	// SessionId Limit the answer to one session of the event.
 	SessionId *openapi_types.UUID `form:"session_id,omitempty" json:"session_id,omitempty"`
+}
+
+// GetV1OrganizationsOrgIdEventsEventIdGuestListXlsxParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdGuestListXlsx.
+type GetV1OrganizationsOrgIdEventsEventIdGuestListXlsxParams struct {
+	// Locale Header and sheet-name language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// CheckEventMapPointParams defines parameters for CheckEventMapPoint.
+type CheckEventMapPointParams struct {
+	// Latitude Latitude in degrees, -90 to 90.
+	Latitude float64 `form:"latitude" json:"latitude"`
+
+	// Longitude Longitude in degrees, -180 to 180.
+	Longitude float64 `form:"longitude" json:"longitude"`
 }
 
 // GetV1OrganizationsOrgIdEventsEventIdPageStatsParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdPageStats.
@@ -23725,6 +25911,21 @@ type UpdateEventArtistJSONBody struct {
 	SortOrder *int32 `json:"sort_order,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdExportsAccountingXlsxParams defines parameters for GetV1OrganizationsOrgIdExportsAccountingXlsx.
+type GetV1OrganizationsOrgIdExportsAccountingXlsxParams struct {
+	// From First day included, `YYYY-MM-DD` (UTC), or an RFC 3339 time.
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day included, `YYYY-MM-DD` (UTC); with an RFC 3339 time the bound is exclusive.
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+
+	// EventId Only the sessions of this event.
+	EventId *openapi_types.UUID `form:"event_id,omitempty" json:"event_id,omitempty"`
+
+	// Locale Header and sheet-name language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
 // CreateExternalAllocationJSONBody defines parameters for CreateExternalAllocation.
 type CreateExternalAllocationJSONBody struct {
 	PartnerId openapi_types.UUID `json:"partner_id"`
@@ -23813,7 +26014,8 @@ type GetV1OrganizationsOrgIdOrdersParams struct {
 	// both sides), on a 9+ digit suffix of them (a national number
 	// typed without its country code) and on the customer's phone
 	// identities; anything else is the pg_trgm similarity over
-	// buyer_name / buyer_email / buyer_phone. A bare number is ALSO
+	// buyer_name / buyer_email / buyer_phone, OR a part of the event
+	// name (case-insensitive, EC-V3). A bare number is ALSO
 	// tried as a phone, so a national number typed without + still
 	// finds its order.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
@@ -23825,7 +26027,9 @@ type GetV1OrganizationsOrgIdOrdersParams struct {
 	// manual_review (no confirmed payment behind the order;
 	// manual_review is a payment that could not complete the checkout
 	// and waits for an operator). Every `orders.status` belongs to
-	// exactly one of the two groups. Any other value is 400
+	// exactly one of the two groups. `refunds` is partially_refunded
+	// and refunded only (a narrower view inside `paid`, the web
+	// event center's Refunds tab). Any other value is 400
 	// `orders.invalid_tab`. Combines with `status` (AND).
 	Tab *string `form:"tab,omitempty" json:"tab,omitempty"`
 
@@ -23847,6 +26051,12 @@ type GetV1OrganizationsOrgIdOrdersParams struct {
 	// To Only orders created at or before this RFC3339 timestamp.
 	To *time.Time `form:"to,omitempty" json:"to,omitempty"`
 
+	// SessionFrom Only orders whose session starts at or after this RFC3339 timestamp (EC-V3).
+	SessionFrom *time.Time `form:"session_from,omitempty" json:"session_from,omitempty"`
+
+	// SessionTo Only orders whose session starts at or before this RFC3339 timestamp (EC-V3).
+	SessionTo *time.Time `form:"session_to,omitempty" json:"session_to,omitempty"`
+
 	// Limit Page size, 1-200 (default 50).
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 
@@ -23864,6 +26074,60 @@ type PostV1OrganizationsOrgIdOrdersIdCancelJSONBody struct {
 type PostV1OrganizationsOrgIdOrdersOrderIdRefundsParams struct {
 	// IdempotencyKey Client-chosen key of 1 to 255 characters that identifies this operation.
 	IdempotencyKey string `json:"Idempotency-Key"`
+}
+
+// PostV1OrganizationsOrgIdOrdersOrderIdReissueTicketsParams defines parameters for PostV1OrganizationsOrgIdOrdersOrderIdReissueTickets.
+type PostV1OrganizationsOrgIdOrdersOrderIdReissueTicketsParams struct {
+	// IdempotencyKey The operation's key, at most 200 characters. A repeat with the same key answers the first result.
+	IdempotencyKey string `json:"Idempotency-Key"`
+}
+
+// ListVenuePlanIntakesParams defines parameters for ListVenuePlanIntakes.
+type ListVenuePlanIntakesParams struct {
+	// State Only intakes in this state.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// VenueId Only intakes of this venue.
+	VenueId *openapi_types.UUID `form:"venue_id,omitempty" json:"venue_id,omitempty"`
+
+	// Limit At most this many intakes, 1 to 200 (default 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// AnswerVenuePlanIntakeJSONBody defines parameters for AnswerVenuePlanIntake.
+type AnswerVenuePlanIntakeJSONBody struct {
+	// Answers 1 to 50 answers.
+	Answers []struct {
+		// Answer The answer, one of the question's options or a value.
+		Answer interface{} `json:"answer"`
+
+		// QuestionId Id of a question of that draft.
+		QuestionId openapi_types.UUID `json:"question_id"`
+	} `json:"answers"`
+
+	// Draft Number of the draft the answers are for; it must be the current draft.
+	Draft int `json:"draft"`
+}
+
+// CorrectVenuePlanIntakeTextJSONBody defines parameters for CorrectVenuePlanIntakeText.
+type CorrectVenuePlanIntakeTextJSONBody struct {
+	// Draft Number of the draft the text is about; it must be the current draft.
+	Draft int `json:"draft"`
+
+	// Text What to fix, 1 to 2000 characters.
+	Text string `json:"text"`
+}
+
+// EscalateVenuePlanIntakeJSONBody defines parameters for EscalateVenuePlanIntake.
+type EscalateVenuePlanIntakeJSONBody struct {
+	// Text What the administrator should know, up to 1000 characters.
+	Text *string `json:"text,omitempty"`
+}
+
+// DownloadVenuePlanIntakeSourceParams defines parameters for DownloadVenuePlanIntakeSource.
+type DownloadVenuePlanIntakeSourceParams struct {
+	// Format png for the PNG copy; leave out for the file as sent.
+	Format *string `form:"format,omitempty" json:"format,omitempty"`
 }
 
 // ListOrgPromoCodeAttemptsParams defines parameters for ListOrgPromoCodeAttempts.
@@ -24163,6 +26427,18 @@ type GetV1OrganizationsOrgIdShopReferralRewardsParams struct {
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdSummaryParams defines parameters for GetV1OrganizationsOrgIdSummary.
+type GetV1OrganizationsOrgIdSummaryParams struct {
+	// From First day included, `YYYY-MM-DD` (UTC), or an RFC 3339 time. Sessions starting earlier are left out.
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day included, `YYYY-MM-DD` (UTC); with an RFC 3339 time the bound is exclusive. Sessions starting later are left out.
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+
+	// EventId Only the sessions of this event. An event of another organization simply has no sessions here.
+	EventId *openapi_types.UUID `form:"event_id,omitempty" json:"event_id,omitempty"`
+}
+
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear.
 type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody struct {
 	// ConfirmUnattributed The unattributed amount (minor units) the operator was shown. Required when that amount is above zero.
@@ -24187,6 +26463,51 @@ type PatchV1OrganizationsOrgIdTicketsTicketIdVipJSONBody struct {
 	Vip bool `json:"vip"`
 }
 
+// GetV1OrganizationsOrgIdVenueDirectoryParams defines parameters for GetV1OrganizationsOrgIdVenueDirectory.
+type GetV1OrganizationsOrgIdVenueDirectoryParams struct {
+	// Country Two-letter ISO 3166-1 code; narrows `venues` and fills `cities`.
+	Country *string `form:"country,omitempty" json:"country,omitempty"`
+
+	// CityId Only venues in this city (UUID from `cities` or GET /v1/geo/cities).
+	CityId *openapi_types.UUID `form:"city_id,omitempty" json:"city_id,omitempty"`
+
+	// Q A part of the venue name, any letter case, at most 100 characters.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Limit Most venues to return, 1 to 200 (default 100). `total` is the count before the limit.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Lang Language of country and city names. Overrides Accept-Language.
+	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+
+	// Locale Alias of `lang`, read only when `lang` is absent.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// PostV1OrganizationsOrgIdVenuesParams defines parameters for PostV1OrganizationsOrgIdVenues.
+type PostV1OrganizationsOrgIdVenuesParams struct {
+	// Lang Language of the `city.name` and `created_country.name` in the answer, and of the name of a new city. Overrides Accept-Language.
+	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+
+	// Locale Alias of `lang`, read only when `lang` is absent.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// CreateVenuePlanIntakeMultipartBody defines parameters for CreateVenuePlanIntake.
+type CreateVenuePlanIntakeMultipartBody struct {
+	// Channel Where the intake is sent from, telegram_bot or event_center_web (default).
+	Channel *string `json:"channel,omitempty"`
+
+	// Files The files of the plan, 1 to 10, 80 MB together.
+	Files []openapi_types.File `json:"files"`
+}
+
+// CreateVenuePlanIntakeParams defines parameters for CreateVenuePlanIntake.
+type CreateVenuePlanIntakeParams struct {
+	// IdempotencyKey Optional key (up to 200 characters); the same key in the same organization returns the same intake.
+	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
+}
+
 // CreatePaymentIntentParams defines parameters for CreatePaymentIntent.
 type CreatePaymentIntentParams struct {
 	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
@@ -24207,6 +26528,15 @@ type GetPublicTicketPdfParams struct {
 	Src *string `form:"src,omitempty" json:"src,omitempty"`
 }
 
+// StartPublicFeedCheckoutParams defines parameters for StartPublicFeedCheckout.
+type StartPublicFeedCheckoutParams struct {
+	// IdempotencyKey Optional client-generated key, one per payment attempt (at most
+	// 255 bytes). The same key and body replay the stored answer; the
+	// same key with another body is 409. Scoped to the feed token, kept
+	// 24 hours.
+	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
+}
+
 // ListPublicFeedEventsParams defines parameters for ListPublicFeedEvents.
 type ListPublicFeedEventsParams struct {
 	// CityId Optional filter by publication city scope.
@@ -24223,6 +26553,33 @@ type ListPublicFeedEventsParams struct {
 
 	// Offset Pagination offset.
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// IncludeRemoved With `true` the answer also carries `removed_events`: every event
+	// that left this feed token's list within the last 30 days, with a
+	// terminal status and the removal time. It is how a site builder
+	// tells "removed" from "the answer is incomplete". The `events`
+	// list and its pagination are not affected.
+	IncludeRemoved *bool `form:"include_removed,omitempty" json:"include_removed,omitempty"`
+}
+
+// CreateSiteMarketingSubscriptionParams defines parameters for CreateSiteMarketingSubscription.
+type CreateSiteMarketingSubscriptionParams struct {
+	// IdempotencyKey Optional client-generated key, one per submission (at most 255
+	// bytes). The same key and body replay the first answer without
+	// sending anything again (a Turnstile token is single-use, so a
+	// retry is not verified a second time); the same key with another
+	// body is 409. Scoped to the route and the feed token, kept 24 hours.
+	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
+}
+
+// SendSiteOrganizerContactParams defines parameters for SendSiteOrganizerContact.
+type SendSiteOrganizerContactParams struct {
+	// IdempotencyKey Optional client-generated key, one per submission (at most 255
+	// bytes). The same key and body replay the first answer without
+	// sending anything again (a Turnstile token is single-use, so a
+	// retry is not verified a second time); the same key with another
+	// body is 409. Scoped to the route and the feed token, kept 24 hours.
+	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
 }
 
 // GetPublicMarketingConfirmPageParams defines parameters for GetPublicMarketingConfirmPage.
@@ -24247,6 +26604,27 @@ type GetPublicMarketingWithdrawPageParams struct {
 type PostPublicMarketingWithdrawParams struct {
 	// Token The withdraw-only token of the subscription.
 	Token string `form:"token" json:"token"`
+}
+
+// ListPublicMyTicketsOrdersParams defines parameters for ListPublicMyTicketsOrders.
+type ListPublicMyTicketsOrdersParams struct {
+	// Page 1-based page number, default 1.
+	Page *int `form:"page,omitempty" json:"page,omitempty"`
+
+	// Authorization `Bearer <session token>` from the exchange.
+	Authorization string `json:"Authorization"`
+}
+
+// GetPublicMyTicketsPdfParams defines parameters for GetPublicMyTicketsPdf.
+type GetPublicMyTicketsPdfParams struct {
+	// Authorization `Bearer <session token>` from the exchange.
+	Authorization string `json:"Authorization"`
+}
+
+// RevokePublicMyTicketsSessionParams defines parameters for RevokePublicMyTicketsSession.
+type RevokePublicMyTicketsSessionParams struct {
+	// Authorization `Bearer <session token>` from the exchange.
+	Authorization string `json:"Authorization"`
 }
 
 // GetPublicTermsParams defines parameters for GetPublicTerms.
@@ -24564,11 +26942,32 @@ type PostV1AdminOrganizationModuleShopJSONRequestBody = ConnectShopModuleRequest
 // CreateAdminOrgSalesChatCodeJSONRequestBody defines body for CreateAdminOrgSalesChatCode for application/json ContentType.
 type CreateAdminOrgSalesChatCodeJSONRequestBody = SalesChatConnectCodeRequest
 
+// ApproveAdminVenuePlanIntakeJSONRequestBody defines body for ApproveAdminVenuePlanIntake for application/json ContentType.
+type ApproveAdminVenuePlanIntakeJSONRequestBody = VenuePlanApproveRequest
+
+// ClaimAdminVenuePlanIntakeJSONRequestBody defines body for ClaimAdminVenuePlanIntake for application/json ContentType.
+type ClaimAdminVenuePlanIntakeJSONRequestBody ClaimAdminVenuePlanIntakeJSONBody
+
+// CreateAdminVenuePlanIntakeDraftJSONRequestBody defines body for CreateAdminVenuePlanIntakeDraft for application/json ContentType.
+type CreateAdminVenuePlanIntakeDraftJSONRequestBody CreateAdminVenuePlanIntakeDraftJSONBody
+
+// CreateAdminVenuePlanIntakeDraftMultipartRequestBody defines body for CreateAdminVenuePlanIntakeDraft for multipart/form-data ContentType.
+type CreateAdminVenuePlanIntakeDraftMultipartRequestBody CreateAdminVenuePlanIntakeDraftMultipartBody
+
+// RejectAdminVenuePlanIntakeJSONRequestBody defines body for RejectAdminVenuePlanIntake for application/json ContentType.
+type RejectAdminVenuePlanIntakeJSONRequestBody RejectAdminVenuePlanIntakeJSONBody
+
+// ReturnAdminVenuePlanIntakeJSONRequestBody defines body for ReturnAdminVenuePlanIntake for application/json ContentType.
+type ReturnAdminVenuePlanIntakeJSONRequestBody ReturnAdminVenuePlanIntakeJSONBody
+
 // CreateAdminOperatorSalesChatCodeJSONRequestBody defines body for CreateAdminOperatorSalesChatCode for application/json ContentType.
 type CreateAdminOperatorSalesChatCodeJSONRequestBody = SalesChatConnectCodeRequest
 
 // PatchAdminSalesChatJSONRequestBody defines body for PatchAdminSalesChat for application/json ContentType.
 type PatchAdminSalesChatJSONRequestBody = SalesChatPatchRequest
+
+// PostV1AdminSeatingPlansPlanIdNeedsFixJSONRequestBody defines body for PostV1AdminSeatingPlansPlanIdNeedsFix for application/json ContentType.
+type PostV1AdminSeatingPlansPlanIdNeedsFixJSONRequestBody PostV1AdminSeatingPlansPlanIdNeedsFixJSONBody
 
 // PostV1AdminUsersJSONRequestBody defines body for PostV1AdminUsers for application/json ContentType.
 type PostV1AdminUsersJSONRequestBody = AdminCreateUserRequest
@@ -24674,6 +27073,12 @@ type PostBotShopDeliveryCardJSONRequestBody = BotShopDeliveryCardRequest
 
 // PostBotShopDeliveryStepJSONRequestBody defines body for PostBotShopDeliveryStep for application/json ContentType.
 type PostBotShopDeliveryStepJSONRequestBody = BotShopDeliveryStepRequest
+
+// AcceptBotTelegramConnectJSONRequestBody defines body for AcceptBotTelegramConnect for application/json ContentType.
+type AcceptBotTelegramConnectJSONRequestBody = BotTelegramConnectRequest
+
+// PreviewBotTelegramConnectJSONRequestBody defines body for PreviewBotTelegramConnect for application/json ContentType.
+type PreviewBotTelegramConnectJSONRequestBody = BotTelegramConnectRequest
 
 // CreateBotWebLoginCodeJSONRequestBody defines body for CreateBotWebLoginCode for application/json ContentType.
 type CreateBotWebLoginCodeJSONRequestBody = BotWebLoginCodeRequest
@@ -24785,6 +27190,12 @@ type CreateOrgCityJSONRequestBody = CreateOrgCityRequest
 
 // CreateComplimentaryIssuanceJSONRequestBody defines body for CreateComplimentaryIssuance for application/json ContentType.
 type CreateComplimentaryIssuanceJSONRequestBody = ComplimentaryCreateRequest
+
+// PostV1OrganizationsOrgIdComplimentaryIdReissueTicketsJSONRequestBody defines body for PostV1OrganizationsOrgIdComplimentaryIdReissueTickets for application/json ContentType.
+type PostV1OrganizationsOrgIdComplimentaryIdReissueTicketsJSONRequestBody = ReissueTicketsRequest
+
+// UpdateConversionSettingsJSONRequestBody defines body for UpdateConversionSettings for application/json ContentType.
+type UpdateConversionSettingsJSONRequestBody = UpdateConversionSettingsRequest
 
 // PutV1OrganizationsOrgIdDisputeSettingsJSONRequestBody defines body for PutV1OrganizationsOrgIdDisputeSettings for application/json ContentType.
 type PutV1OrganizationsOrgIdDisputeSettingsJSONRequestBody = DisputeSettingsRequest
@@ -24912,6 +27323,9 @@ type UpdateExternalAllocationJSONRequestBody UpdateExternalAllocationJSONBody
 // PutOrganizationGrowthSettingsJSONRequestBody defines body for PutOrganizationGrowthSettings for application/json ContentType.
 type PutOrganizationGrowthSettingsJSONRequestBody = GrowthSettingsUpdate
 
+// PutV1OrganizationsOrgIdGuestListSettingsJSONRequestBody defines body for PutV1OrganizationsOrgIdGuestListSettings for application/json ContentType.
+type PutV1OrganizationsOrgIdGuestListSettingsJSONRequestBody = GuestListSettingsRequest
+
 // PutV1OrganizationsOrgIdGuestListSubscriptionJSONRequestBody defines body for PutV1OrganizationsOrgIdGuestListSubscription for application/json ContentType.
 type PutV1OrganizationsOrgIdGuestListSubscriptionJSONRequestBody = GuestListSubscriptionRequest
 
@@ -24942,8 +27356,14 @@ type PostV1OrganizationsOrgIdOrdersSearchJSONRequestBody = OrderSearchRequest
 // PostV1OrganizationsOrgIdOrdersIdCancelJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersIdCancel for application/json ContentType.
 type PostV1OrganizationsOrgIdOrdersIdCancelJSONRequestBody PostV1OrganizationsOrgIdOrdersIdCancelJSONBody
 
+// PostV1OrganizationsOrgIdOrdersOrderIdExternalRefundJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersOrderIdExternalRefund for application/json ContentType.
+type PostV1OrganizationsOrgIdOrdersOrderIdExternalRefundJSONRequestBody = ExternalRefundRequest
+
 // PostV1OrganizationsOrgIdOrdersOrderIdRefundsJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersOrderIdRefunds for application/json ContentType.
 type PostV1OrganizationsOrgIdOrdersOrderIdRefundsJSONRequestBody = CreateOrderRefundsRequest
+
+// PostV1OrganizationsOrgIdOrdersOrderIdReissueTicketsJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersOrderIdReissueTickets for application/json ContentType.
+type PostV1OrganizationsOrgIdOrdersOrderIdReissueTicketsJSONRequestBody = ReissueTicketsRequest
 
 // PostV1OrganizationsOrgIdOrdersOrderIdResendTicketsJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersOrderIdResendTickets for application/json ContentType.
 type PostV1OrganizationsOrgIdOrdersOrderIdResendTicketsJSONRequestBody = OrderResendTicketsRequest
@@ -24953,6 +27373,18 @@ type CreatePaymentProviderConfigJSONRequestBody = CreatePaymentProviderConfigReq
 
 // UpdatePaymentProviderConfigJSONRequestBody defines body for UpdatePaymentProviderConfig for application/json ContentType.
 type UpdatePaymentProviderConfigJSONRequestBody = UpdatePaymentProviderConfigRequest
+
+// AnswerVenuePlanIntakeJSONRequestBody defines body for AnswerVenuePlanIntake for application/json ContentType.
+type AnswerVenuePlanIntakeJSONRequestBody AnswerVenuePlanIntakeJSONBody
+
+// ApproveVenuePlanIntakeJSONRequestBody defines body for ApproveVenuePlanIntake for application/json ContentType.
+type ApproveVenuePlanIntakeJSONRequestBody = VenuePlanApproveRequest
+
+// CorrectVenuePlanIntakeTextJSONRequestBody defines body for CorrectVenuePlanIntakeText for application/json ContentType.
+type CorrectVenuePlanIntakeTextJSONRequestBody CorrectVenuePlanIntakeTextJSONBody
+
+// EscalateVenuePlanIntakeJSONRequestBody defines body for EscalateVenuePlanIntake for application/json ContentType.
+type EscalateVenuePlanIntakeJSONRequestBody EscalateVenuePlanIntakeJSONBody
 
 // CreatePromoCodeJSONRequestBody defines body for CreatePromoCode for application/json ContentType.
 type CreatePromoCodeJSONRequestBody = CreatePromoCodeRequest
@@ -25074,6 +27506,9 @@ type PostV1OrganizationsOrgIdVenuesJSONRequestBody = CreateVenueRequest
 // PatchV1OrganizationsOrgIdVenuesIdJSONRequestBody defines body for PatchV1OrganizationsOrgIdVenuesId for application/json ContentType.
 type PatchV1OrganizationsOrgIdVenuesIdJSONRequestBody = UpdateVenueRequest
 
+// CreateVenuePlanIntakeMultipartRequestBody defines body for CreateVenuePlanIntake for multipart/form-data ContentType.
+type CreateVenuePlanIntakeMultipartRequestBody CreateVenuePlanIntakeMultipartBody
+
 // CreatePaymentIntentJSONRequestBody defines body for CreatePaymentIntent for application/json ContentType.
 type CreatePaymentIntentJSONRequestBody = CreatePaymentIntentRequest
 
@@ -25086,6 +27521,9 @@ type PaymentIntentWebhookForConfigJSONRequestBody = PaymentIntentWebhookRequest
 // TransitionPaymentIntentJSONRequestBody defines body for TransitionPaymentIntent for application/json ContentType.
 type TransitionPaymentIntentJSONRequestBody = TransitionPaymentIntentRequest
 
+// UpdatePublicCheckoutTrackingConsentJSONRequestBody defines body for UpdatePublicCheckoutTrackingConsent for application/json ContentType.
+type UpdatePublicCheckoutTrackingConsentJSONRequestBody = TrackingConsent
+
 // QuotePublicFeedCheckoutJSONRequestBody defines body for QuotePublicFeedCheckout for application/json ContentType.
 type QuotePublicFeedCheckoutJSONRequestBody = PublicFeedCheckoutQuoteRequest
 
@@ -25095,11 +27533,23 @@ type StartPublicFeedCheckoutJSONRequestBody = PublicFeedCheckoutStartRequest
 // PostPublicFeedFunnelEventsJSONRequestBody defines body for PostPublicFeedFunnelEvents for application/json ContentType.
 type PostPublicFeedFunnelEventsJSONRequestBody = WidgetFunnelEventsBatch
 
+// CreateSiteMarketingSubscriptionJSONRequestBody defines body for CreateSiteMarketingSubscription for application/json ContentType.
+type CreateSiteMarketingSubscriptionJSONRequestBody = SiteMarketingSubscriptionRequest
+
+// RequestPublicMyTicketsLinkJSONRequestBody defines body for RequestPublicMyTicketsLink for application/json ContentType.
+type RequestPublicMyTicketsLinkJSONRequestBody = MyTicketsLinkRequest
+
+// SendSiteOrganizerContactJSONRequestBody defines body for SendSiteOrganizerContact for application/json ContentType.
+type SendSiteOrganizerContactJSONRequestBody = SiteContactRequest
+
 // CreatePublicSaleSubscriptionJSONRequestBody defines body for CreatePublicSaleSubscription for application/json ContentType.
 type CreatePublicSaleSubscriptionJSONRequestBody = PublicSaleSubscriptionRequest
 
 // PostPublicFunnelJSONRequestBody defines body for PostPublicFunnel for application/json ContentType.
 type PostPublicFunnelJSONRequestBody = SalesFunnelRequest
+
+// ExchangePublicMyTicketsLinkJSONRequestBody defines body for ExchangePublicMyTicketsLink for application/json ContentType.
+type ExchangePublicMyTicketsLinkJSONRequestBody = MyTicketsExchangeRequest
 
 // SendOrganizerContactJSONRequestBody defines body for SendOrganizerContact for application/json ContentType.
 type SendOrganizerContactJSONRequestBody = OrganizerContactRequest

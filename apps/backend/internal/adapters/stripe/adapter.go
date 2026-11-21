@@ -286,6 +286,29 @@ func declinedError(err error) error {
 	return &payments.RefundDeclinedError{Code: code, Message: e.Message, NeedsReview: e.Code == stripeAlreadyRefunded}
 }
 
+// stripeEmailInvalid is Stripe's code for an e-mail address it does not
+// accept (customer_email or payment_intent_data[receipt_email]).
+const stripeEmailInvalid = "email_invalid"
+
+// checkoutRefusedError turns a definitive Stripe refusal of a Checkout
+// Session into the provider-neutral payments.HostedCheckoutRefusedError; any
+// other error is returned as is.
+func checkoutRefusedError(err error) error {
+	var e *apiError
+	if !errors.As(err, &e) || !e.definitive() {
+		return err
+	}
+	code := e.Code
+	if code == "" {
+		code = e.Type
+	}
+	refused := &payments.HostedCheckoutRefusedError{Code: code, Message: e.Message}
+	if e.Code == stripeEmailInvalid {
+		refused.Reason = payments.HostedCheckoutRefusalInvalidEmail
+	}
+	return refused
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PaymentProvider implementation
 // ─────────────────────────────────────────────────────────────────────────────
@@ -431,7 +454,7 @@ func (a *Adapter) CreateCheckoutSession(ctx context.Context, req payments.Create
 	endpoint := a.cfg.BaseURL + "/checkout/sessions"
 	rawBody, _, err := a.doRequest(ctx, http.MethodPost, endpoint, form, req.IdempotencyKey)
 	if err != nil {
-		return nil, fmt.Errorf("stripe: CreateCheckoutSession: %w", err)
+		return nil, fmt.Errorf("stripe: CreateCheckoutSession: %w", checkoutRefusedError(err))
 	}
 
 	var cs stripeCheckoutSession

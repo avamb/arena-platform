@@ -66,6 +66,11 @@ type publicFeedEventResponse struct {
 	OrgID         string  `json:"org_id"`
 	Name          string  `json:"name"`
 	Description   *string `json:"description"`
+	// Slug is the event's public page address (null until one is assigned),
+	// AgeRating and ShortDescription are the organizer's catalog fields (P-5).
+	Slug             *string `json:"slug"`
+	AgeRating        *string `json:"age_rating"`
+	ShortDescription *string `json:"short_description"`
 	// DescriptionHTML and DescriptionText are the safe HTML and the plain text of
 	// Description, read with the event's format flag (spec 44, RT-03a). nil when
 	// there is no description. Description itself stays the raw stored value.
@@ -107,17 +112,20 @@ func (h *Handler) mediaFileURL(ctx context.Context, id uuid.UUID) string {
 
 func (h *Handler) publicFeedEventFromRow(ctx context.Context, e gen.EventRow) publicFeedEventResponse {
 	resp := publicFeedEventResponse{
-		ID:            e.ID.String(),
-		DisplayNumber: e.DisplayNumber,
-		OrgID:         e.OrgID.String(),
-		Name:          e.Name,
-		Description:   e.Description,
-		Status:        e.Status,
-		VenueNames:    []string{},
-		Visibility:    e.Visibility,
-		ImageURL:      e.ImageURL,
-		CreatedAt:     e.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt:     e.UpdatedAt.UTC().Format(time.RFC3339),
+		ID:               e.ID.String(),
+		DisplayNumber:    e.DisplayNumber,
+		OrgID:            e.OrgID.String(),
+		Name:             e.Name,
+		Description:      e.Description,
+		Slug:             e.Slug,
+		AgeRating:        e.AgeRating,
+		ShortDescription: e.ShortDescription,
+		Status:           e.Status,
+		VenueNames:       []string{},
+		Visibility:       e.Visibility,
+		ImageURL:         e.ImageURL,
+		CreatedAt:        e.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:        e.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	if e.PosterMediaID != nil {
 		mid := e.PosterMediaID.String()
@@ -254,6 +262,21 @@ func publicFeedTierAvailable(t gen.TicketTierRow, stats map[uuid.UUID]gaquota.St
 	return &n
 }
 
+// withoutPlacelessTiers drops the categories listed in placeless (see
+// gen.ListPlacelessPlanTierIDsBySessions), keeping the order of the rest.
+func withoutPlacelessTiers(tiers []gen.TicketTierRow, placeless map[uuid.UUID]bool) []gen.TicketTierRow {
+	if len(placeless) == 0 {
+		return tiers
+	}
+	out := make([]gen.TicketTierRow, 0, len(tiers))
+	for _, t := range tiers {
+		if !placeless[t.ID] {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // BuyerFieldItem describes a single buyer-form field that the widget should
 // render.  Emitted as buyer_fields:[{key,required,enabled}] in the session
 // payload so the widget can build the checkout form from the API response
@@ -294,6 +317,12 @@ type publicFeedSessionResponse struct {
 	// checkout (channelPricingRules). The widget shows it as a cart line so
 	// the buyer sees the total before the payment page does.
 	ServiceFeePercent string `json:"service_fee_percent"`
+	// PaymentWindowSeconds is how long the buyer has on the payment page of
+	// this channel (spec 62 П-3): the channel's own window, or the
+	// deployment's, never below a provider's floor. 0 when no window is
+	// configured. checkout/start answers the exact deadline
+	// (payment_expires_at).
+	PaymentWindowSeconds int64 `json:"payment_window_seconds"`
 	// PromoCodesAvailable is true when the organization has at least one promo
 	// code that is active, inside its date window and not used up. The widget
 	// shows its promo field only then. It says nothing about which code, nor
@@ -514,6 +543,7 @@ type publicFeedPagination struct {
 //	city_id    — filter by publication city (UUID, optional)
 //	date_from  — filter events starting at or after this time (RFC3339, optional)
 //	date_to    — filter events ending at or before this time (RFC3339, optional)
+//	include_removed — "true" adds removed_events (see public_feed_removed.go)
 //	page       — 1-indexed page number (default 1)
 //	per_page   — results per page, 1-100 (default 20)
 //
@@ -676,8 +706,7 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 		totalPages = 1
 	}
 
-	w.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=30")
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+	body := map[string]any{
 		"events": events,
 		"pagination": publicFeedPagination{
 			Page:       page,
@@ -685,7 +714,23 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 			Total:      int(total),
 			TotalPages: totalPages,
 		},
-	})
+	}
+	// include_removed=true: the explicit "unpublished / deleted" marker for a
+	// site builder (spec 62 item P-6). Opt-in so the list widgets read stays
+	// exactly as it was.
+	if q.Get("include_removed") == "true" {
+		removed, rmErr := h.loadRemovedFeedEvents(ctx, feedToken, time.Now().UTC())
+		if rmErr != nil {
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"feed.list_failed", "We could not load the events. Try again in a minute.", r,
+			))
+			return
+		}
+		body["removed_events"] = removed
+	}
+
+	w.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=30")
+	httputil.WriteJSON(w, http.StatusOK, body)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -782,6 +827,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	// (feature #321 WID-0d). Non-fatal: defaults to email-only on error.
 	defaultBuyerFields := buildBuyerFields(false, false)
 	serviceFeePercent := "0.00"
+	paymentWindow := h.paymentWindow
 	promoCodesAvailable := false
 	consentRequired, consentLegalName := false, ""
 	if h.publicFeedQueries != nil {
@@ -791,6 +837,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 			if strings.TrimSpace(flags.FeePercent) != "" {
 				serviceFeePercent = flags.FeePercent
 			}
+			paymentWindow = EffectivePaymentWindow(h.paymentWindow, flags.PaymentWindowSeconds, providerPageFloor(flags.Provider))
 			promoCodesAvailable = flags.PromoCodesAvailable
 			consentRequired, consentLegalName = consentFromFlags(flags)
 		} else if !errors.Is(flagsErr, pgx.ErrNoRows) {
@@ -860,6 +907,21 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 					)
 				}
 			}
+			// Categories of a plan-bound session that own no place yet (an
+			// extra price category before the organizer paints seats into it)
+			// are not offered: the buyer has nothing to take and the hold gate
+			// refuses them. One read for every session of the event. Non-fatal:
+			// a failure offers them as before and the hold still refuses.
+			var placelessTiers map[uuid.UUID]bool
+			if h.tierQueries != nil {
+				var placelessErr error
+				if placelessTiers, placelessErr = h.tierQueries.ListPlacelessPlanTierIDsBySessions(ctx, sessionIDs); placelessErr != nil {
+					h.logger.Error("public_feed: categories without places failed",
+						slog.String("event_id", eventID.String()),
+						slog.String("error", placelessErr.Error()),
+					)
+				}
+			}
 			for _, sess := range sessions {
 				// The same status rule the hold gate applies, and the
 				// organizer's sales state the gate also refuses on.
@@ -872,6 +934,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 					}
 				}
 				sessResp.ServiceFeePercent = serviceFeePercent
+				sessResp.PaymentWindowSeconds = windowSeconds(paymentWindow)
 				sessResp.PromoCodesAvailable = promoCodesAvailable
 				sessResp.ShowWithdrawalNotice = showWithdrawalNotice
 				sessResp.WhiteLabel = whiteLabel
@@ -913,6 +976,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 						)
 						// Non-fatal: return the session without tiers.
 					} else {
+						tiers = withoutPlacelessTiers(tiers, placelessTiers)
 						// AB-48: effective prices via the ONE resolver
 						// (non-fatal: a window lookup failure shows base).
 						effPrices, effErr := priceresolve.ForTiers(ctx, h.tierQueries, tiers, time.Now().UTC())

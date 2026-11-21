@@ -75,10 +75,10 @@ export const UUID_RE =
 
 export function validateOrgID(orgID: string): string | null {
   if (orgID.trim() === "") {
-    return "Organization ID is required";
+    return "Enter the organization ID.";
   }
   if (!UUID_RE.test(orgID.trim())) {
-    return "Organization ID must be a UUID";
+    return "The organization ID must be a UUID.";
   }
   return null;
 }
@@ -89,7 +89,7 @@ export function validateOrgID(orgID: string): string | null {
  */
 export function validateCustomerQuery(q: string): string | null {
   if (q.trim().length > 200) {
-    return "Search must be at most 200 characters";
+    return "The search can have 200 characters or less.";
   }
   return null;
 }
@@ -188,12 +188,10 @@ function CustomersModule() {
       <header style={headerStyle}>
         <div>
           <h1 id="customers-heading" style={headingStyle}>
-            Customers
+            Buyers
           </h1>
           <p style={subheadingStyle}>
-            Org-scoped customer directory. Strong identities (email, phone,
-            telegram) are masked by the backend unless verified — this UI
-            renders whatever the API returns without additional masking.
+            Buyer directory for one organization. The backend hides strong identities (e-mail, phone, Telegram) unless they are verified. This page shows the API data and hides nothing more.
           </p>
         </div>
         <div style={refreshWrapStyle}>
@@ -204,7 +202,7 @@ function CustomersModule() {
             disabled={!orgReady || query.isFetching}
             data-testid="customers-refresh"
           >
-            {query.isFetching ? "Refreshing…" : "Refresh"}
+            {query.isFetching ? "Reloading" : "Reload"}
           </button>
         </div>
       </header>
@@ -244,7 +242,7 @@ function CustomersModule() {
           </div>
         ) : (
           <div style={fieldHintStyle}>
-            Paste an organization UUID, or pick one from the list above.
+            Paste an organization UUID, or select one from the list above.
           </div>
         )}
       </div>
@@ -262,7 +260,7 @@ function CustomersModule() {
               onChange={(e) => setQInput(e.target.value)}
               style={inputStyle}
               maxLength={201}
-              placeholder="Name, email, phone…"
+              placeholder="Name, e-mail, phone"
               data-testid="customers-search-input"
             />
             <button
@@ -288,7 +286,7 @@ function CustomersModule() {
         </>
       ) : (
         <div style={statusBoxStyle} role="status" data-testid="customers-org-required">
-          Select or paste an organization to load its customers.
+          Select or paste an organization to load its buyers.
         </div>
       )}
     </section>
@@ -309,7 +307,7 @@ function CustomersBody({ query, rows, orgID }: BodyProps) {
   if (query.isPending) {
     return (
       <div style={statusBoxStyle} role="status" aria-live="polite">
-        Loading customers…
+        Loading buyers
       </div>
     );
   }
@@ -321,12 +319,12 @@ function CustomersBody({ query, rows, orgID }: BodyProps) {
   if (rows.length === 0) {
     return (
       <div style={statusBoxStyle} role="status" data-testid="customers-empty">
-        No customers found for this organization and search.
+        No buyers found for this organization and search.
       </div>
     );
   }
   return (
-    <div style={tableWrapStyle} role="region" aria-label="Customers">
+    <div style={tableWrapStyle} role="region" aria-label="Buyers">
       <table style={tableStyle} data-testid="customers-table">
         <thead>
           <tr>
@@ -377,10 +375,10 @@ function CustomersErrorState({
   ) {
     return (
       <div style={errorBoxStyle} role="alert" data-testid="customers-forbidden">
-        <strong>Forbidden.</strong>
+        <strong>Access denied.</strong>
         <p style={errorParaStyle}>
-          Your account is missing <code style={monoStyle}>customer.read</code>.
-          Ask a platform administrator to grant the permission.
+          Your account does not have <code style={monoStyle}>customer.read</code>.
+          Tell a platform administrator to give you this permission.
         </p>
       </div>
     );
@@ -389,17 +387,17 @@ function CustomersErrorState({
     return (
       <div style={errorBoxStyle} role="status" data-testid="customers-session-expired">
         <strong>Session expired.</strong>
-        <p style={errorParaStyle}>Sign in again to reload customers.</p>
+        <p style={errorParaStyle}>Sign in again to reload the buyers.</p>
       </div>
     );
   }
   return (
     <div style={errorBoxStyle} role="alert" data-testid="customers-error">
-      <strong>Failed to load customers.</strong>
+      <strong>We did not load the buyers.</strong>
       <div style={errorCodeStyle}>{error?.code ?? "unknown.error"}</div>
       {error?.message ? <div style={errorParaStyle}>{error.message}</div> : null}
       <button type="button" style={errorRetryStyle} onClick={onRetry}>
-        Retry
+                Try again
       </button>
     </div>
   );
@@ -434,7 +432,7 @@ export function mapServerError(err: ApiError): ServerFieldErrors {
       return out;
     case "permissions.denied":
       out.form =
-        "Your account is missing the required permission. Ask a platform administrator.";
+        "Your account does not have the necessary permission. Tell a platform administrator.";
       return out;
     default:
       out.form = `${err.message} (${err.code})`;

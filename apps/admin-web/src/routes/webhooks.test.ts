@@ -51,7 +51,7 @@ describe("Webhook subscribers UI helpers", () => {
       code: "conflict",
       message: "callback_url already registered",
     });
-    expect(mapCreateServerError(conflict).callbackUrl).toMatch(/already exists/);
+    expect(mapCreateServerError(conflict).callbackUrl).toMatch(/callback URL exists/);
 
     const denied = new ApiError(403, {
       code: "permissions.denied",
@@ -69,7 +69,7 @@ describe("Webhook subscribers UI helpers", () => {
       code: "service_unavailable",
       message: "service not available",
     });
-    expect(mapCreateServerError(unavail).form).toMatch(/Retry shortly/);
+    expect(mapCreateServerError(unavail).form).toMatch(/try again in a short time/);
 
     const unknown = new ApiError(500, {
       code: "internal_error",

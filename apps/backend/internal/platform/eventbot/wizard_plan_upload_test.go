@@ -86,7 +86,7 @@ func TestWizardPlanUpload_SentPlanLeadsThePlanQuestion(t *testing.T) {
 	r.press("venue:akr", stSPlanAsk)
 	r.press("plan:upload", stSPlanFile)
 	// a typed text is no plan
-	if note := r.text("hello", stSPlanFile); !strings.Contains(note, "SVG") {
+	if note := r.text("hello", stSPlanFile); !strings.Contains(note, "PDF") {
 		t.Fatalf("note = %q", note)
 	}
 	// the bot stored the plan, so the venue lists it from now on
@@ -132,14 +132,12 @@ func TestWizardPlanUpload_AnotherPlanFromTheList(t *testing.T) {
 	found := false
 	for _, row := range screen.Buttons {
 		for _, b := range row {
-			found = found || b.Data == "plan:upload"
+			found = found || b.Data == "pi:up:akr"
 		}
 	}
 	if !found {
 		t.Fatalf("no upload button: %v", screen.Buttons)
 	}
-	r.press("plan:upload", stSPlanFile)
-	r.press("plan:skip", stSCapacity)
 }
 
 // A venue made in the wizard has no plan either: the places were asked already,
@@ -183,4 +181,93 @@ func TestWizardPlanUpload_NotOfferedWithoutTheAbilityOrTheAnswer(t *testing.T) {
 	r = newWizardRun(t, failingPlanRefs{uploadRefs{newFakeRefs()}})
 	seatedToVenue(r)
 	r.press("venue:akr", stSCapacity)
+}
+
+// A draft that waits for an intake shows the waiting screen with a way to go on
+// without a plan and, once the plan is in review, to check it; "without a plan"
+// forgets the intake.
+func TestWizardPlanUpload_WaitingScreenOffersTheWaysOn(t *testing.T) {
+	r := uploadRun(t, newFakeRefs())
+	seatedToVenue(r)
+	r.press("venue:akr", stSPlanAsk)
+	r.press("plan:upload", stSPlanFile)
+	r.d.PlanIntakeID = "11111111-1111-1111-1111-111111111111"
+	r.d.PlanIntakeState = "review"
+	screen, err := r.w.Render(context.Background(), r.ws, r.d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, row := range screen.Buttons {
+		for _, b := range row {
+			if len(b.Data) > 61 {
+				t.Errorf("callback %q does not fit 64 bytes with its prefix", b.Data)
+			}
+			got[b.Data] = true
+		}
+	}
+	if got["pi:again:"+r.d.PlanIntakeID] {
+		t.Errorf("the waiting screen offers no new files: %v", screen.Buttons)
+	}
+	for _, want := range []string{"pi:rv:" + r.d.PlanIntakeID, "plan:skip"} {
+		if !got[want] {
+			t.Errorf("no button %q in %v", want, screen.Buttons)
+		}
+	}
+	r.press("plan:skip", stSCapacity)
+	if r.d.PlanIntakeID != "" {
+		t.Fatalf("intake id = %q after going on without a plan", r.d.PlanIntakeID)
+	}
+}
+
+// The plan an approved intake made is remembered, so the saved event can offer
+// "Split seats by price" for its dates.
+func TestWizardPlanUpload_ApprovedPlanIsRemembered(t *testing.T) {
+	refs := newFakeRefs()
+	r := uploadRun(t, refs)
+	seatedToVenue(r)
+	r.press("venue:akr", stSPlanAsk)
+	r.press("plan:upload", stSPlanFile)
+	r.d.PlanIntakeID = "11111111-1111-1111-1111-111111111111"
+	refs.plans = map[string][]PlanRef{"akr": {uploadedPlan()}}
+	r.step(WizInput{Plan: &PlanUploaded{Plan: uploadedPlan()}}, stSPlan)
+	if r.d.PlanIntakeID != "" || len(r.d.IntakePlans) != 1 || r.d.IntakePlans[0] != uploadedPlan().VersionID {
+		t.Fatalf("intake id %q, plans %v", r.d.PlanIntakeID, r.d.IntakePlans)
+	}
+}
+
+// Before the plan is in review the waiting screen has no "Check the plan".
+func TestWizardPlanUpload_WaitingScreenChecksOnlyInReview(t *testing.T) {
+	r := uploadRun(t, newFakeRefs())
+	seatedToVenue(r)
+	r.press("venue:akr", stSPlanAsk)
+	r.press("plan:upload", stSPlanFile)
+	r.d.PlanIntakeID = "11111111-1111-1111-1111-111111111111"
+	r.d.PlanIntakeState = "generating"
+	screen, err := r.w.Render(context.Background(), r.ws, r.d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range screen.Buttons {
+		for _, b := range row {
+			if strings.HasPrefix(b.Data, "pi:") {
+				t.Errorf("unexpected button %q", b.Data)
+			}
+		}
+	}
+}
+
+// A plan an approved request made joins the plan question of a venue that
+// already had plans.
+func TestWizardPlanUpload_ApprovedPlanJoinsTheExistingList(t *testing.T) {
+	refs := newFakeRefs()
+	refs.plans = map[string][]PlanRef{"akr": {akropolisPlan()}}
+	r := uploadRun(t, refs)
+	seatedToVenue(r)
+	r.press("venue:akr", stSPlan)
+	refs.plans = map[string][]PlanRef{"akr": {akropolisPlan(), uploadedPlan()}}
+	r.step(WizInput{Plan: &PlanUploaded{Plan: uploadedPlan(), Report: "REPORT"}}, stSPlan)
+	if got := r.d.Scratch.Plans; len(got) != 2 || got[0].VersionID != uploadedPlan().VersionID {
+		t.Fatalf("plans = %+v", got)
+	}
 }

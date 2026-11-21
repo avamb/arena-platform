@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { ApiError } from '../api.js';
 import {
   ERROR_I18N,
+  INVALID_EMAIL_CODE,
   buyerErrorText,
   getErrorStrings,
+  invalidEmailMessage,
   isPaymentErrorCode,
   paymentErrorMessage,
 } from './errorI18n.js';
@@ -95,5 +97,34 @@ describe('no raw HTTP text reaches the buyer', () => {
     expect(buyerErrorText(err, 'ru', 'Не удалось загрузить статус заказа.')).toBe(
       'Не удалось загрузить статус заказа.',
     );
+  });
+});
+
+describe('a refused e-mail address (F-BR-03)', () => {
+  it('has the text in every language of the file', () => {
+    expect(Object.keys(ERROR_I18N).sort()).toEqual([...LOCALES].sort());
+    for (const l of LOCALES) {
+      const text = ERROR_I18N[l]?.invalid_email;
+      expect(text, l).toBeTruthy();
+      expect(text, l).toContain('anna@example.com');
+      expect(text, l).not.toBe(ERROR_I18N[l]?.payment_unavailable);
+    }
+  });
+
+  it('is not a payment-outage code', () => {
+    expect(INVALID_EMAIL_CODE).toBe('checkout.invalid_email');
+    expect(isPaymentErrorCode(INVALID_EMAIL_CODE)).toBe(false);
+    expect(paymentErrorMessage(INVALID_EMAIL_CODE, 'en')).toBeNull();
+  });
+
+  it('asks the buyer to correct the address, in their language', () => {
+    const err = apiError(400, INVALID_EMAIL_CODE, 'Check the e-mail address.');
+    for (const l of LOCALES) {
+      const text = buyerErrorText(err, l, 'Checkout failed. Please try again.');
+      expect(text, l).toBe(ERROR_I18N[l]!.invalid_email);
+      expect(text, l).not.toMatch(RAW);
+    }
+    expect(buyerErrorText(err, 'pt-BR')).toBe(ERROR_I18N.en!.invalid_email);
+    expect(invalidEmailMessage('checkout.payment_start_failed', 'en')).toBeNull();
   });
 });

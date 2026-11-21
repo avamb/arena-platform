@@ -126,6 +126,9 @@ func (s *Service) ResendEmail(ctx context.Context, orgID, id uuid.UUID, kind str
 		if err != nil {
 			return err
 		}
+		if o.Source == OrderSourceShopify {
+			return ErrOrderHistoric
+		}
 		if strings.TrimSpace(o.BuyerEmail) == "" {
 			return newErr(http.StatusConflict, "shop.order_no_buyer_email", "this order has no buyer e-mail address to write to")
 		}

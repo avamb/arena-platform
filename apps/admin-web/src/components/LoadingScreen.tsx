@@ -10,7 +10,7 @@ interface LoadingScreenProps {
  * Deliberately minimal -- no marketing copy, no illustrations. The admin
  * shell is an operational tool: communicate state, then get out of the way.
  */
-export function LoadingScreen({ label = "Loading admin workspace…" }: LoadingScreenProps) {
+export function LoadingScreen({ label = "Wait. The page is loading." }: LoadingScreenProps) {
   return (
     <div role="status" aria-live="polite" style={containerStyle}>
       <span style={spinnerStyle} aria-hidden="true" />

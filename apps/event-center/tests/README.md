@@ -32,6 +32,15 @@ test loops over the three roles (see `events-three-roles.spec.ts`) and:
 A screen decides by `useOrgAccess(orgId).can(permission)`, never by the role
 and never by `/v1/me` (AGENTS.md, A1).
 
+## The event card has five collapsible sections
+
+The event card keeps its blocks in five sections (Link for buyers, Sales and orders, Edit, Promotion, More) and
+opens only the first one by default. A block of a closed section is not even in the page. So the harness opens
+ALL sections before the page loads: `mockApi(page)` and `signInAs(page, person)` write the remembered state
+(`tests/smoke/eventSections.ts`), and a spec that needs a block just finds it. A spec of the sections themselves
+passes `{ sections: "default" }` to get the real defaults (see the section tests of `event-edit.mock.spec.ts` and
+`live/events-three-roles.spec.ts`). `openSection(page, id)` opens one section by its heading button.
+
 ## Run the live twin tests locally
 
 The harness needs a **migrated database of its own**. Never point it at the

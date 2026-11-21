@@ -47,13 +47,13 @@ export function SupportErrorState({
         role="status"
         data-testid={`${testIdPrefix}-reason-required`}
       >
-        <strong>Audit reason required.</strong>
+        <strong>An audit reason is necessary.</strong>
         <p style={errorParaStyle}>
-          Cross-tenant reads require an <code>X-Admin-Reason</code>. Submit
-          a reason in the prompt at the top of the screen and then retry.
+          A read across organizations needs an <code>X-Admin-Reason</code>.
+          Enter the cause in the box at the top of the screen. Then select Try again.
         </p>
         <button type="button" style={errorRetryStyle} onClick={onRetry}>
-          Retry
+          Try again
         </button>
       </div>
     );
@@ -68,10 +68,10 @@ export function SupportErrorState({
         role="alert"
         data-testid={`${testIdPrefix}-forbidden`}
       >
-        <strong>Forbidden.</strong>
+        <strong>Access denied.</strong>
         <p style={errorParaStyle}>
-          Your account is missing <code>superadmin.read</code>. Ask a
-          platform administrator to grant the permission.
+          Your account does not have <code>superadmin.read</code>. Tell a
+          platform administrator to give you this permission.
         </p>
       </div>
     );
@@ -83,8 +83,8 @@ export function SupportErrorState({
         role="status"
         data-testid={`${testIdPrefix}-session-expired`}
       >
-        <strong>Session expired.</strong>
-        <p style={errorParaStyle}>Sign in again to reload the data.</p>
+        <strong>Your session ended.</strong>
+        <p style={errorParaStyle}>Sign in again. Then reload the data.</p>
       </div>
     );
   }
@@ -93,11 +93,11 @@ export function SupportErrorState({
   const message = error?.message ?? "";
   return (
     <div style={errorBoxStyle} role="alert" data-testid={`${testIdPrefix}-error`}>
-      <strong>Failed to load.</strong>
+      <strong>We did not load the data.</strong>
       <div style={errorCodeStyle}>{code}</div>
       {message !== "" ? <div style={errorParaStyle}>{message}</div> : null}
       <button type="button" style={errorRetryStyle} onClick={onRetry}>
-        Retry
+        Try again
       </button>
     </div>
   );

@@ -14,6 +14,8 @@
  * `complimentary.revoke` (the old annul reuses `complimentary.issue`), and the
  * pickers need event, session and category reads.
  */
+import { HelpPopover } from "@/components/HelpPopover";
+import { ScreenHelp } from "@/components/ScreenHelp";
 import { EarlierInvitations } from "@/components/EarlierInvitations";
 import { InviteForm } from "@/components/InviteForm";
 import { OrgInvitationList } from "@/components/staffInvitations/OrgInvitationList";
@@ -41,11 +43,17 @@ export function InvitationsScreen() {
   }
   return (
     <article aria-labelledby="invitations-title">
-      <h1 id="invitations-title">{t("invitations.title")}</h1>
+      <div className="screen-head">
+        <h1 id="invitations-title">
+          {t("invitations.title")}
+          <HelpPopover textKey="help.invitations" testId="help-invitations" />
+        </h1>
+        <ScreenHelp screenId="invitations" />
+      </div>
       <p className="muted">{t("invitations.intro")}</p>
       {canIssue && canPick && <InviteForm orgId={orgId} />}
       <OrgInvitationList orgId={orgId} canIssue={canIssue} canRevoke={canRevoke} canFilter={canFilter} />
-      <EarlierInvitations orgId={orgId} canIssue={canIssue} />
+      <EarlierInvitations orgId={orgId} canIssue={canIssue} canReissue={access.can("ticket.update")} />
     </article>
   );
 }

@@ -114,6 +114,7 @@ func run(args []string) error {
 	refundOp := fs.String("refund-op", "", "8-1 twin helper: reset, inspect or scan (see refund_fixture.go)")
 	seatsOp := fs.String("seats-op", "", "S2b twin helper: reset, inspect or sell (see seats_fixture.go)")
 	seatsKey := fs.String("seats-key", "", "the seat --seats-op sell marks sold")
+	reissueOp := fs.String("reissue-op", "", "spec 63 R-3 twin helper: new, site or inspect (see reissue_fixture.go)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -137,6 +138,9 @@ func run(args []string) error {
 	}
 	if *refundOp != "" {
 		return runRefundOp(*refundOp)
+	}
+	if *reissueOp != "" {
+		return runReissueOp(*reissueOp, *cancelOrder)
 	}
 	if *orgDataOp != "" {
 		return runOrgDataOp(*orgDataOp)

@@ -523,3 +523,17 @@ func TestFixtureExists(t *testing.T) {
 		t.Fatalf("fixture does not contain PriceCategory group")
 	}
 }
+
+// TestImportSVG_GAPolygonRefusesNonFinitePoints: NaN, Inf and absurd
+// coordinates are refused like a malformed number.
+func TestImportSVG_GAPolygonRefusesNonFinitePoints(t *testing.T) {
+	t.Parallel()
+	for _, pts := range []string{"NaN,0 10,0 10,10", "-1e308,0 1e308,0 0,1", "Inf,0 10,0 10,10", "0,0 1e8,0 0,1"} {
+		inner := priceCategoryFragment() +
+			`<polygon inkscape:label="#GA Pit" points="` + pts + `" style="fill:#ff0000"><title>25</title></polygon>`
+		_, _, errs := ImportSVG([]byte(wrapSVG(`viewBox="0 0 100 100"`, inner)))
+		if len(errs) == 0 {
+			t.Errorf("points %q must be refused", pts)
+		}
+	}
+}

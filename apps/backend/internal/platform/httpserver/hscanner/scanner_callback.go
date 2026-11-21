@@ -262,6 +262,11 @@ func (h *Handler) processScannerScan(ctx context.Context, orgID uuid.UUID, in sc
 		// internal/testing-only; the actual gate at the physical door is MACS.
 		switch resolved.TicketStatus {
 		case "cancelled", "revoked", "transferred":
+			if resolved.TicketStatus == "transferred" {
+				// A replaced ticket (spec 63 section 4.8): no scan row, but
+				// the organizer is told about the try.
+				h.recordOldCode(ctx, resolved.TicketID, scannedAt, in.Result, in.Gate)
+			}
 			res.Error = "scanner.ticket_not_admissible: ticket is " + resolved.TicketStatus
 			return res
 		}

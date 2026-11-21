@@ -35,10 +35,10 @@ export function Forbidden({
   return (
     <section aria-labelledby="forbidden-heading" style={containerStyle}>
       <h1 id="forbidden-heading" style={headingStyle}>
-        403 — Access denied
+        403. Access denied
       </h1>
       <p style={subStyle} data-testid="forbidden-route">
-        You do not have permission to view <code style={codeStyle}>{route}</code>.
+        You have no permission to open <code style={codeStyle}>{route}</code>.
       </p>
       <dl style={dlStyle}>
         <dt style={dtStyle}>Surface</dt>
@@ -49,7 +49,7 @@ export function Forbidden({
         </dd>
         <dt style={dtStyle}>Active scope</dt>
         <dd style={ddStyle}>{activeScopeLabel ?? "none"}</dd>
-        <dt style={dtStyle}>Permissions you currently hold</dt>
+        <dt style={dtStyle}>Your permissions</dt>
         <dd style={ddStyle}>
           {heldPermissions.size === 0 ? (
             <span>(none)</span>
@@ -65,13 +65,12 @@ export function Forbidden({
         </dd>
       </dl>
       <p style={subStyle}>
-        If you believe this is incorrect, ask a platform_superadmin to grant the
-        missing permission, then sign out and back in to refresh your
-        authorization context.
+        If you think this is wrong, ask a platform_superadmin to give you the
+        missing permission. Then sign out and sign in again.
       </p>
       <p style={subStyle}>
         <Link to="/" style={linkStyle}>
-          ← Back to workspace
+          ← Go back to workspace
         </Link>
       </p>
     </section>

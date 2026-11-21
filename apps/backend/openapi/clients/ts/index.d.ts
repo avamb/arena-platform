@@ -1226,6 +1226,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/getting-started": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return which first steps of an organization are done
+         * @description Returns the four first steps of an organization and whether each is
+         *     done, in a fixed order: `org_data`, `payments`, `event`,
+         *     `sales_link`. A step is listed only when the caller holds its
+         *     permission IN this organization, by the same per-organization
+         *     checker the route gates use: `org_data` needs `org.update`,
+         *     `payments` needs `payment_config.read`, `event` needs
+         *     `import.bil24_session` (the event wizard's import), `sales_link`
+         *     needs `sales_link.manage`.
+         *
+         *     The server decides every flag from the organization's data:
+         *     `org_data` is done when the seller data is complete (the rule of
+         *     GET .../seller-profile: no organization field is missing and every
+         *     sales page is shown or hidden by the operator); `payments` when an
+         *     active payment configuration was accepted by the provider; `event`
+         *     when the organization has an event (a draft counts); `sales_link`
+         *     when it has a sales link. `complete` is true when every listed step
+         *     is done, also when no step is listed. Read-only.
+         *
+         *     Who may call it: a user with an active membership in the
+         *     organization, an organization API key of that organization, and a
+         *     platform superadmin. Anyone else gets 403 `org.access_denied`.
+         */
+        get: operations["getV1OrganizationsOrgIdGettingStarted"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/password-reset/request": {
         parameters: {
             query?: never;
@@ -1364,7 +1404,10 @@ export interface paths {
          *     it may fill the zone in without asking: Spain (Europe/Madrid,
          *     Atlantic/Canary, Africa/Ceuta) and Portugal (Europe/Lisbon,
          *     Atlantic/Madeira, Atlantic/Azores) have several, the Czech Republic
-         *     one. No authentication required.
+         *     one. Works for every country of `GET /v1/geo/world-countries`, also
+         *     one the platform reference does not have yet; a territory without a
+         *     city in the data (Antarctica, Tokelau, ...) answers a short fixed
+         *     list. No authentication required.
          */
         get: operations["getV1GeoCountryTimezones"];
         put?: never;
@@ -1386,9 +1429,40 @@ export interface paths {
          * Get the currency of a country
          * @description Returns the ISO 4217 currency stored on the platform's country row
          *     (the base of the session currency chain). A country the platform has
-         *     no row for is 404. No authentication required.
+         *     no row for yet answers the currency of the embedded world table (the
+         *     one its row gets when a venue adds the country); a code the world
+         *     table does not know either is 404. No authentication required.
          */
         get: operations["getV1GeoCountryCurrency"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/geo/world-countries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every ISO 3166-1 country with its region
+         * @description Returns the whole ISO 3166-1 list embedded in the server, each
+         *     country in exactly one of seven regions (Armenia, Georgia, Cyprus and
+         *     Russia are `europe`, Kazakhstan `asia`, Turkey and Israel
+         *     `middle_east`), sorted by `name`. `in_reference` tells whether the
+         *     platform reference (`GET /v1/geo/countries`) has the country, and
+         *     `has_organizers` whether an organization is registered in it: a
+         *     client puts those countries on top as a quick pick. A country outside
+         *     the reference is added by `POST /v1/organizations/{org_id}/venues`
+         *     with `country_iso2` and `city_name`, or by the approval of an
+         *     organizer application. No authentication required.
+         */
+        get: operations["getV1GeoWorldCountries"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1913,6 +1987,116 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/telegram-connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether the signed-in person has a Telegram account connected to the bot
+         * @description "Connect Telegram" of the web event center (acceptance run 2026-11-09,
+         *     F-007). Answers whether the caller's own account is linked to the
+         *     event-center Telegram bot and whether this server can build a link
+         *     at all (`available`, false while `EVENTS_TELEGRAM_BOT_USERNAME` is
+         *     unset). Only a signed-in person with a membership in the path
+         *     organization: an organization API key is 403
+         *     `telegram_connect.user_only`, anyone else 403 `org.access_denied`.
+         */
+        get: operations["getTelegramConnectStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/telegram-connect-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A one-time link that connects the caller's Telegram to the bot in this organization
+         * @description "Connect Telegram" (F-007). Returns `https://t.me/<bot>?start=con_<code>`
+         *     for the signed-in person: it works once and for 15 minutes, and a new
+         *     link takes back the person's earlier unused ones. The bot first asks
+         *     "Connect this Telegram to <organization>?" and links the account only
+         *     after that press (`POST /v1/bot/telegram-connect/accept`), then opens
+         *     this organization's menu. No body. Only a signed-in person with a
+         *     membership in the path organization: an organization API key is 403
+         *     `telegram_connect.user_only`, anyone else 403 `org.access_denied`.
+         *     While `EVENTS_TELEGRAM_BOT_USERNAME` is unset the route answers 503
+         *     `telegram_connect.not_configured`. The issue is audited
+         *     (`v1.telegram_connect.code_issue`).
+         */
+        post: operations["createTelegramConnectCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/telegram-connect/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What a "Connect Telegram" link would connect, without using it
+         * @description Called by the bot PROCESS with `Authorization: Bearer
+         *     <BOT_SERVICE_TOKEN>` when a person opens `t.me/<bot>?start=con_<code>`
+         *     (F-007). Answers the organization and the masked e-mail of the account
+         *     the link belongs to, and what the Telegram account is to that person
+         *     (`state`). Uses nothing. An unknown, used, replaced or expired code,
+         *     and a code whose person left the organization or was deactivated,
+         *     answer the same 404 `bot.connect_code_invalid`.
+         */
+        post: operations["previewBotTelegramConnect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/telegram-connect/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Connect a Telegram account through a "Connect Telegram" link
+         * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN` after the person
+         *     pressed "Connect" on the confirmation screen (F-007). Uses the code
+         *     once, links the Telegram account to the code's person (the same
+         *     `bot_telegram_links` row an accepted bot invitation writes) and makes
+         *     the link's organization the current one. A Telegram account already
+         *     linked to the same person is simply switched to that organization
+         *     (`already_linked: true`). A Telegram account linked to ANOTHER person
+         *     is 409 `bot.telegram_already_linked` and the code stays usable.
+         *     Audited as `v1.telegram_connect.accept`.
+         */
+        post: operations["acceptBotTelegramConnect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/bot/web-login-notices/claim": {
         parameters: {
             query?: never;
@@ -1930,6 +2114,31 @@ export interface paths {
          *     once. The bot tells the person and offers "Sign out everywhere".
          */
         post: operations["claimBotWebLoginNotices"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/venue-plan-notices/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Messages about hall plan intakes that the bot must send
+         * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN`. Returns up to 50
+         *     notices (draft ready, returned, rejected, approved; spec 64) that were
+         *     not told yet, oldest first, and marks them claimed, so each one is
+         *     handed out once. Each notice carries the live Telegram chats of the
+         *     person who sent the intake. A notice whose person has no live bot link
+         *     is still claimed and comes with an empty list of chats.
+         */
+        post: operations["claimBotVenuePlanNotices"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2872,7 +3081,7 @@ export interface paths {
         };
         /**
          * Cross-tenant list of all organizations (superadmin)
-         * @description Cross-tenant list of organizations (superadmin), with name/slug search and offset pagination. Requires the `superadmin.read` permission.
+         * @description Cross-tenant list of organizations (superadmin), with a search over all main attributes and offset pagination. Requires the `superadmin.read` permission.
          */
         get: operations["superadminListOrganizations"];
         put?: never;
@@ -3069,6 +3278,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/venue-directory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Venues the organization may use, by country and city
+         * @description The venue picker of spec 64 section 2.1.1. The scope is the
+         *     organization's own venues that are not archived plus the verified
+         *     active venues of other organizations; contacts are never returned.
+         *     `countries` lists every country with a venue in scope (a venue's
+         *     country is its city's country, else its address country) and is never
+         *     filtered. `cities` lists the cities of `country` that have venues in
+         *     scope (empty without `country`). `venues` is filtered by `country`,
+         *     `city_id` and `q`, own venues first, then by name; without any of the
+         *     three filters it is empty and `total` is 0. Requires JWT or an
+         *     organization API key with "venue.read" in the path organization, the
+         *     same check as shared-venues.
+         */
+        get: operations["getV1OrganizationsOrgIdVenueDirectory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/venues/{id}/review": {
         parameters: {
             query?: never;
@@ -3111,6 +3350,18 @@ export interface paths {
          *     owning organization. Requires JWT authentication and the
          *     "venue.create" permission. Returns 409 if a venue with the same
          *     name already exists (active) inside the org.
+         *
+         *     The city is named EITHER by `city_id` OR by `country_iso2` with
+         *     `city_name` (spec 64 section 2.1.1). With the second group the city
+         *     is found or created, a country the platform reference does not have
+         *     is created from the embedded world table, the venue is inserted and
+         *     the administrators' notifications ("venue created" and, for a new
+         *     country, "new country") are queued, all in one transaction: a
+         *     refused venue leaves no country or city behind. The answer then also
+         *     carries `city` and, when a country row was created,
+         *     `created_country`. Take the `timezone` choices from
+         *     `GET /v1/geo/countries/{iso2}/timezones` and the currency default
+         *     from `GET /v1/geo/world-countries`.
          */
         post: operations["postV1OrganizationsOrgIdVenues"];
         delete?: never;
@@ -3218,13 +3469,135 @@ export interface paths {
         put?: never;
         /**
          * Fork a seating plan into a different owning organization
-         * @description Guardrail #13. Forks a shared / public seating plan into a target
-         *     owner_org_id. The current version geometry (if any) is duplicated
-         *     into the new plan as version 1 in the same transaction. Forking a
-         *     plan the target org already owns returns 409 seating_plan.fork_own_plan.
+         * @description Guardrail #13. Copies a seating plan of another organization into a
+         *     target owner_org_id. The source must be active and open for copying:
+         *     a venue template that a platform superadmin verified
+         *     (operator_verified with verification_state verified) or a plan its
+         *     owner opened (public_template). Any other source (private,
+         *     shared_read, draft, archived, operator_verified without a verified
+         *     state) answers 404 seating_plan.not_found. A venue_id in the body
+         *     must be the target organization's own venue or a verified venue,
+         *     otherwise 404 venue.not_found. The current version geometry (if any) is
+         *     duplicated into the new plan as version 1 in the same transaction, so
+         *     later versions, category names and annotations of the copy never
+         *     change the source. The copy is private and never sent for
+         *     verification; a copy of a verified template with a current version
+         *     is created active, any other copy as a draft. Forking a plan the
+         *     target org already owns returns 409 seating_plan.fork_own_plan.
          *     Requires JWT authentication and the seating_plan.fork permission.
          */
         post: operations["forkSeatingPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/venues/{venue_id}/plan-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the verified seating plan templates of a venue
+         * @description Returns the venue templates an organization may copy with
+         *     POST /v1/seating-plans/{id}/fork: the active seating plans of the venue
+         *     that a platform superadmin verified (visibility operator_verified and
+         *     verification_state verified) and that have a current version. The venue must be the organization's own
+         *     or a venue of another organization that the platform verified
+         *     (migration 0182); any other venue answers 404 venue.not_found.
+         *     Requires JWT, the seating_plan.read permission and membership of the
+         *     path organization.
+         */
+        get: operations["listV1OrganizationsOrgIdVenuesVenueIdPlanTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/seating-plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - list seating plans with filters and counts
+         * @description The platform superadmin's list of seating plans (spec 64 section
+         *     3.4) in one request: one page of plans, newest first, the total and
+         *     the count per verification state. Each plan has the names of its
+         *     organization, venue, city and country and the capacity of its
+         *     current version. Without verification_state the list holds plans of
+         *     every state, also plans that were never sent for verification
+         *     (state null, filter value none). Archived and deleted plans and the
+         *     plans of archived or deleted venues are never listed or counted.
+         *     Draft plans are listed. Requires JWT, the seating_plan.verify
+         *     permission and a platform superadmin. org_id is a filter, it gives
+         *     no access.
+         */
+        get: operations["listV1AdminSeatingPlans"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/seating-plans/{plan_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - verify a seating plan and make it the template of its venue
+         * @description Verifies an active seating plan whose current version passes the
+         *     geometry rules of its plan type. In one transaction the plan gets
+         *     verification_state verified and visibility operator_verified (the
+         *     template of its venue, which other organizations may copy), its venue
+         *     gets review_status verified if it has not yet, and an audit row
+         *     v1.seating_plan.verify is written. A plan never sent for verification
+         *     (state null) is verified the same way. Verifying a verified template
+         *     again changes nothing and answers 200 with changed false. Requires
+         *     JWT, the seating_plan.verify permission, a platform superadmin and
+         *     X-Admin-Reason. No request body.
+         */
+        post: operations["postV1AdminSeatingPlansPlanIdVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/seating-plans/{plan_id}/needs-fix": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - send a seating plan back for a fix
+         * @description Sets verification_state needs_fix and stores the note. A plan that
+         *     was a venue template (operator_verified) becomes private, so no
+         *     organization can copy it any more; copies made before keep working.
+         *     The venue keeps its review_status. Writes an audit row
+         *     v1.seating_plan.needs_fix. Requires JWT, the seating_plan.verify
+         *     permission, a platform superadmin and X-Admin-Reason.
+         */
+        post: operations["postV1AdminSeatingPlansPlanIdNeedsFix"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3256,7 +3629,14 @@ export interface paths {
          *     including per-element details. The plan's current_version_id is
          *     atomically bumped to the newly-created version in the same
          *     transaction. Requires JWT authentication and the
-         *     seating_plan.update.own permission.
+         *     seating_plan.update.own permission. A plan that a platform
+         *     superadmin verified (`visibility` `operator_verified`) is a template
+         *     and must not change without a new verification: when the OWNER
+         *     organization posts a version to it, the plan goes back to
+         *     `visibility` `private` and `verification_state` `unverified` in the
+         *     same transaction. A platform superadmin who posts the version with
+         *     `X-Admin-Reason` keeps the template verified (the superadmin's fix
+         *     comes out as a new version).
          */
         post: operations["createSeatingPlanVersion"];
         delete?: never;
@@ -4132,6 +4512,32 @@ export interface paths {
         patch: operations["updateEventPartnerLink"];
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/{event_id}/map-point/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check a map point against the event's city
+         * @description Advisory only, stores nothing. Compares the point with the cities of the
+         *     event's venues and answers a remark when it is farther from the venue city
+         *     than is usual for a city of that size, or nearer to another city of the
+         *     country. With no venue city in the geo data it answers `checked: false` and
+         *     no warnings. Latitude must be between -90 and 90 and longitude between -180
+         *     and 180 (400 `event.invalid_map_point`).
+         *     Requires `event.read` and membership of the organization.
+         */
+        get: operations["checkEventMapPoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/events/{event_id}/map-point": {
         parameters: {
             query?: never;
@@ -4599,6 +5005,38 @@ export interface paths {
          *     organization. Another organization's promoter id answers 404.
          */
         patch: operations["updatePromoter"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/conversion-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the organization's server-side conversion settings
+         * @description Meta pixel id and GA4 measurement id with flags for the two write-only
+         *     secrets (spec 62 section 8.3). Requires `org.update` (the owner); an
+         *     organization API key is refused.
+         */
+        get: operations["getConversionSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set the organization's server-side conversion credentials
+         * @description After an order is paid, the platform sends Purchase to Meta Conversions
+         *     API and purchase to GA4 Measurement Protocol with these credentials, only
+         *     for a buyer whose `buyer_context.tracking_consent` is true. Absent keys
+         *     keep the stored value; an empty string or null clears. Requires
+         *     `org.update` (the owner); an organization API key is refused. Audited as
+         *     `v1.organization.conversion_settings_update` with the names of the
+         *     changed keys, never the values.
+         */
+        patch: operations["updateConversionSettings"];
         trace?: never;
     };
     "/v1/organizations/{org_id}/seller-profile": {
@@ -6546,7 +6984,7 @@ export interface paths {
         };
         /**
          * Download an offline-validation barcode snapshot
-         * @description Returns a paginated snapshot of all non-revoked barcodes for the
+         * @description Returns a paginated snapshot of the barcodes of the
          *     tickets in a session (feature #144,
          *     `apps/backend/internal/platform/httpserver/hscanner/
          *     scanner_snapshot.go` HandleScannerSnapshot). Offline scanners
@@ -6554,6 +6992,11 @@ export interface paths {
          *     network connectivity, then poll with the `since` cursor for
          *     delta updates (store `last_updated_at` from each response and
          *     pass it as `since` on the next request).
+         *
+         *     The full snapshot (no `since`) leaves revoked codes out. A delta
+         *     lists a code revoked since the cursor with `status: revoked`, so
+         *     the device drops it from its cache (a cancelled, refunded or
+         *     replaced ticket).
          *
          *     Rate limited per client IP (600 req/min) and per session
          *     (300 req/min); excess requests return 429 `scanner.rate_limited`.
@@ -6800,6 +7243,410 @@ export interface paths {
          *     `apps/backend/internal/platform/httpserver/publications.go`.
          */
         delete: operations["unpublishEvent"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/venues/{venue_id}/plan-intakes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send the files of a hall plan (spec 64)
+         * @description Starts a hall plan intake for a venue of the organization, or for a
+         *     verified venue of another organization. The files are checked by
+         *     their content: PDF (20 MB, 20 pages), XLSX (10 MB, 200 MB unpacked),
+         *     old XLS (10 MB), CSV (5 MB), JPEG, PNG, WEBP, HEIC, TIFF, BMP, GIF
+         *     (20 MB, 40 megapixels) and SVG (3 MB); 1 to 10 files, 80 MB together.
+         *     A JPEG is stored without its EXIF and XMP metadata (the orientation is
+         *     kept). WEBP, TIFF, BMP and GIF also get a PNG copy; HEIC and XLS are
+         *     stored with needs_conversion. A source SVG that imports cleanly
+         *     becomes draft 1 and the intake starts in review; any other intake
+         *     goes to a platform administrator at once (state operator, reason
+         *     no_generator). A repeated Idempotency-Key of the organization
+         *     answers 200 with the same intake and stores nothing. Requires JWT,
+         *     seating_plan.create and membership; an API key is refused.
+         */
+        post: operations["createVenuePlanIntake"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/plan-intakes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the hall plan intakes of an organization
+         * @description The organization's intakes, newest first, filtered by state and venue. Requires JWT, seating_plan.read and membership; an API key is refused.
+         */
+        get: operations["listVenuePlanIntakes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/plan-intakes/{intake_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a hall plan intake
+         * @description The intake card with its files, current draft, questions and draft history. Another organization's intake is 404. Requires JWT, seating_plan.read and membership; an API key is refused.
+         */
+        get: operations["getVenuePlanIntake"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/plan-intakes/{intake_id}/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a file of a hall plan intake
+         * @description Streams the file as an attachment with Content-Security-Policy sandbox, nosniff and no caching. format=png streams the PNG copy of a WEBP, TIFF, BMP or GIF picture. Requires JWT, seating_plan.read and membership; an API key is refused.
+         */
+        get: operations["downloadVenuePlanIntakeSource"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/plan-intakes/{intake_id}/drafts/{n}/svg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the SVG of a draft
+         * @description Streams the SVG of draft n with Content-Security-Policy sandbox, nosniff and no caching. Requires JWT, seating_plan.read and membership; an API key is refused.
+         */
+        get: operations["getVenuePlanIntakeDraftSvg"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/plan-intakes/{intake_id}/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer the questions of a draft
+         * @description Stores the answers to questions of the current draft and sends the intake to an administrator (state operator, reason answers) while no renderer is connected. The intake must be in review. Requires JWT, seating_plan.create and membership; an API key is refused.
+         */
+        post: operations["answerVenuePlanIntake"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/plan-intakes/{intake_id}/corrections-text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tell in words what to fix in a draft
+         * @description Stores the text (1 to 2000 characters) as a pending correction of the current draft and sends the intake to an administrator (state operator, reason organizer_text) while no text interpreter is connected. The intake must be in review. Requires JWT, seating_plan.create and membership; an API key is refused.
+         */
+        post: operations["correctVenuePlanIntakeText"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/plan-intakes/{intake_id}/escalate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Call a platform administrator
+         * @description Sends the intake to an administrator (state operator, reason organizer_request) with an optional text of up to 1000 characters. Requires JWT, seating_plan.create and membership; an API key is refused.
+         */
+        post: operations["escalateVenuePlanIntake"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/plan-intakes/{intake_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a hall plan intake
+         * @description Closes an open intake as cancelled. Requires JWT, seating_plan.create and membership; an API key is refused.
+         */
+        post: operations["cancelVenuePlanIntake"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/plan-intakes/{intake_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve the current draft as the hall plan
+         * @description The intake must be in review and draft must be the current one. The
+         *     stored SVG is imported again; in one transaction a seating plan is
+         *     made (status active, visibility private, verification_state
+         *     unverified, named after the venue unless name is given) with
+         *     version 1, and the intake is approved. Requires JWT,
+         *     seating_plan.create (the owner and the manager; an agent does not
+         *     hold it) and membership; an API key is refused.
+         */
+        post: operations["approveVenuePlanIntake"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/plan-intakes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - the hall plan intake queue
+         * @description Every organization's intakes, newest first, with the organization, the venue and its city. Requires JWT, venue_plan_intake.curate and a platform superadmin.
+         */
+        get: operations["listAdminVenuePlanIntakes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/plan-intakes/{intake_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - read a hall plan intake
+         * @description The intake card with the organization's name, the operator and the organizer's corrections. Requires JWT, venue_plan_intake.curate and a platform superadmin.
+         */
+        get: operations["getAdminVenuePlanIntake"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/plan-intakes/{intake_id}/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - download a file of a hall plan intake
+         * @description Streams the file as an attachment with Content-Security-Policy sandbox, nosniff and no caching; format=png streams the PNG copy. Every download writes the audit event v1.venue_plan_intake.source_download with the reason, the file id and its sha256. Requires JWT, venue_plan_intake.curate, a platform superadmin and X-Admin-Reason.
+         */
+        get: operations["downloadAdminVenuePlanIntakeSource"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/plan-intakes/{intake_id}/drafts/{n}/svg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - read the SVG of a draft
+         * @description Streams the SVG of draft n with Content-Security-Policy sandbox, nosniff and no caching. Requires JWT, venue_plan_intake.curate and a platform superadmin.
+         */
+        get: operations["getAdminVenuePlanIntakeDraftSvg"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/plan-intakes/{intake_id}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - take a hall plan intake
+         * @description Makes the caller the operator of an open intake. Another administrator's intake answers 409 unless force is true. Requires JWT, venue_plan_intake.curate, a platform superadmin and X-Admin-Reason.
+         */
+        post: operations["claimAdminVenuePlanIntake"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/plan-intakes/{intake_id}/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - upload a hand-drawn SVG draft
+         * @description The SVG (up to 3 MB) is imported and validated for the plan type its
+         *     geometry fits BEFORE anything is stored; a refused SVG answers 422
+         *     with the list of errors. The draft (author operator_svg) becomes the
+         *     current draft; the intake stays with the administrator until return.
+         *     The intake must be in operator and taken by the caller with claim.
+         *     Requires JWT, venue_plan_intake.curate, a platform superadmin and
+         *     X-Admin-Reason.
+         */
+        post: operations["createAdminVenuePlanIntakeDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/plan-intakes/{intake_id}/return": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - return the draft to the organizer
+         * @description Moves the intake from operator to review with an optional note (up to 2000 characters) and leaves a notice for the organizer. The intake needs a current draft and must be taken by the caller with claim. Requires JWT, venue_plan_intake.curate, a platform superadmin and X-Admin-Reason.
+         */
+        post: operations["returnAdminVenuePlanIntake"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/plan-intakes/{intake_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - approve the current draft as the hall plan
+         * @description Same as the organization's approve, from review or operator, and leaves an approved notice for the organizer. The intake must be taken by the caller with claim. Requires JWT, venue_plan_intake.curate, a platform superadmin and X-Admin-Reason.
+         */
+        post: operations["approveAdminVenuePlanIntake"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/plan-intakes/{intake_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - close an intake the plan cannot be built from
+         * @description Moves the intake from operator to rejected with the reason (1 to 1000 characters) the organizer will read, and leaves a rejected notice. The intake must be taken by the caller with claim. Requires JWT, venue_plan_intake.curate, a platform superadmin and X-Admin-Reason.
+         */
+        post: operations["rejectAdminVenuePlanIntake"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -7283,6 +8130,11 @@ export interface paths {
          *         top of the ticket prices at checkout; the widget shows it as
          *         a cart line so the buyer sees the total before the payment
          *         page does.
+         *       * `payment_window_seconds` — how long the buyer has on this
+         *         channel's payment page, in seconds (spec 62 П-3): the channel's
+         *         own window or the deployment's, never below a provider's floor;
+         *         0 when no window is configured. `checkout/start` answers the
+         *         exact deadline as `payment_expires_at`.
          *       * `promo_codes_available` — true when the organization has at
          *         least one promo code that is active, inside its date window
          *         and not used up. The widget shows its promo field only then.
@@ -7590,6 +8442,26 @@ export interface paths {
          *     Response includes checkout_token (opaque high-entropy token, NOT UUID)
          *     and expires_at so the widget can display a countdown and later recover
          *     the order via WID-0b.
+         *
+         *     An optional `Idempotency-Key` header makes a retry safe. The key is
+         *     checked after the rate limit and before anything that takes a hold:
+         *     the same key with the same body answers the stored 201 again — the
+         *     same checkout and the same `redirect_url` — with the header
+         *     `Idempotent-Replay: true`, even when the hold has since been consumed
+         *     by that first request; the same key with another body is 409
+         *     `idempotency.body_mismatch`. Keys are scoped to the feed token and
+         *     kept for 24 hours; only a 2xx answer is stored, so a failed attempt
+         *     may be retried with the same key. A request without the header runs
+         *     as before.
+         *
+         *     For a provider that files the payment under arena's own reference
+         *     (AllPay: `order_id` is the checkout session id) the payment attempt
+         *     is recorded before the provider is called. When the provider's
+         *     answer is lost, the `checkout.payment_recover` worker job asks the
+         *     provider by the same reference: a paid order is completed exactly as
+         *     its webhook would complete it, an unpaid one gets its payment page
+         *     asked for again and offered as `payment_url` by
+         *     `GET /v1/public/checkout/{checkout_token}`.
          */
         post: operations["startPublicFeedCheckout"];
         delete?: never;
@@ -7724,6 +8596,117 @@ export interface paths {
          *     address.
          */
         post: operations["createPublicSaleSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/feeds/{feed_token}/my-tickets/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * E-mail a buyer a one-time link to their tickets
+         * @description "My tickets by link" for a static organizer site (spec 62 section 7).
+         *     The buyer types an address; when it has paid ticket orders of the
+         *     organization that owns the feed token's channel, a letter with a
+         *     one-time link is queued. The route is addressed by the FEED TOKEN, so it
+         *     works for a channel without a hosted page. The answer is always `202`:
+         *     a known address, an unknown address and a request swallowed by the
+         *     limits look the same, so the route cannot be used to learn who has
+         *     bought. The link works for 30 minutes and is spent only by
+         *     `POST /v1/public/my-tickets/session`, never by opening the page. Limits:
+         *     3 letters an hour per address, 10 an hour per client address, and the
+         *     feed-token and per-IP buckets. `page_url` is used only when its origin is
+         *     on the return-URL allow-list. When the channel lists site origins
+         *     (`settings.site.origins`) the request also needs a `turnstile_token`
+         *     (action `my_tickets`), checked by the same guard as the site forms;
+         *     any other channel is not gated by a captcha. No JWT is required.
+         */
+        post: operations["requestPublicMyTicketsLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/my-tickets/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange the e-mailed token for a 4-hour session
+         * @description The page opened from the letter shows a button; its press calls this
+         *     route with the token from the link. The exchange is atomic: the token is
+         *     spent by the first call, a second (or concurrent) call, an expired or an
+         *     unknown token answers `410`. The answer carries a bearer token, valid for
+         *     4 hours, to send as `Authorization: Bearer ...` to the other my-tickets
+         *     routes; keep it in `sessionStorage`, not in a cookie. No JWT is required.
+         */
+        post: operations["exchangePublicMyTicketsLink"];
+        /**
+         * Log out of "my tickets"
+         * @description Revokes the bearer session on the server. Send the session token as
+         *     `Authorization: Bearer ...`. No JWT is required.
+         */
+        delete: operations["revokePublicMyTicketsSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/my-tickets/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The ticket orders of the session's address
+         * @description Ticket orders of the session's organization whose buyer e-mail equals the
+         *     address that received the link (shop orders and other addresses are not
+         *     included), newest session first, 20 a page. Send the session token as
+         *     `Authorization: Bearer ...`. No JWT is required.
+         */
+        get: operations["listPublicMyTicketsOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/my-tickets/orders/{order_id}/tickets/{ticket_id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * PDF of one ticket of the session's own order
+         * @description Returns the ticket PDF only when the order belongs to the session's
+         *     organization and address; a foreign organization, order or ticket
+         *     answers the same `404`. Send the session token as
+         *     `Authorization: Bearer ...` (fetch it with a script and show the blob,
+         *     a plain link cannot carry the header). No JWT is required.
+         */
+        get: operations["getPublicMyTicketsPdf"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -7991,6 +8974,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/feeds/{feed_token}/organizer-contact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a message from a static site's form to the organizer
+         * @description The contact form of a static site that sells through a feed token
+         *     (spec 62 section 10.2). It extends the hosted page's form: the site is
+         *     addressed by its feed token, the message carries a `topic`
+         *     (`contact` or `private_event`), a `last_name` and a `phone`, and the
+         *     letter goes to the addresses configured for the topic in the channel's
+         *     settings (`settings.contact_form.recipients.<topic>`, a list of
+         *     addresses; a topic without addresses falls back to the channel's
+         *     public e-mail, the organization's contact e-mail, then its owner). One
+         *     letter per address, Reply-To is the sender; the organization's sales
+         *     Telegram chat gets a copy when its switch is on. The message is stored
+         *     and delivered by a worker job that retries; an address already mailed
+         *     is never mailed twice. A failed send keeps its error on the stored
+         *     message, is logged with ids only, and a job that runs out of retries is
+         *     reported to the operator as a dead letter, so nothing is lost silently.
+         *
+         *     The server verifies the Cloudflare Turnstile token itself: its
+         *     `action` must equal the `topic` and its `hostname` must be one of the
+         *     site origins of the channel (`settings.site.origins`). A channel that
+         *     lists no site origin has no site forms (404). Limits: 5 messages an
+         *     hour per IP (shared with the hosted page's form) and 30 an hour per
+         *     channel, a 16 KiB body. No JWT. The answer never carries an address.
+         */
+        post: operations["sendSiteOrganizerContact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/feeds/{feed_token}/marketing-subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Subscribe an address to the organization's mailings without a purchase
+         * @description The subscription form of a static site (spec 62 section 10.2, П-10),
+         *     for example the club of friends. Double opt-in: the request stores a
+         *     pending subscription of the address to the organization (one row per
+         *     organization and address), journals the grant with the `text_version`
+         *     and a timestamp, and queues a confirmation letter in the same
+         *     transaction. The letter's link opens the platform's confirmation page
+         *     (`GET /v1/public/marketing/confirm?token=`, a button, so a mail
+         *     scanner's click never confirms); pressing it confirms the address, records the confirmation in
+         *     the journal and sends the person back to `page_url` with
+         *     `arena_marketing=confirmed`. Every marketing letter carries the
+         *     withdraw link (`/v1/public/marketing/withdraw?token=`). A withdrawn
+         *     address that subscribes again is asked to confirm again.
+         *
+         *     The answer is always 202 for a well-formed request, whether the address
+         *     is new, pending, confirmed or withdrawn, and the same address asking
+         *     again within an hour is absorbed (no new letter) with the same answer.
+         *     The server verifies the Turnstile token itself: action `club`, hostname
+         *     one of the channel's site origins (`settings.site.origins`). Limits: 10
+         *     subscriptions an hour per IP (429), 3 an hour per address (absorbed).
+         *     No JWT.
+         */
+        post: operations["createSiteMarketingSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/checkout/{checkout_token}/referral": {
         parameters: {
             query?: never;
@@ -8057,6 +9119,70 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/v1/public/checkout/{checkout_token}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The buyer cancels an unpaid order
+         * @description Spec 62 §5.4 п. 3 (П-2). The buyer pressed "Back" on the payment
+         *     provider's page, or the site's cancel button: an order that is not
+         *     paid is closed and its places go back on sale at once.
+         *
+         *     Before anything is written, every open payment attempt of the
+         *     checkout is read back from the provider (AllPay `paymentstatus`):
+         *
+         *     * paid: the order is completed as paid and the answer is `paid`;
+         *     * still processing: 409 `checkout.payment_in_progress`, nothing is
+         *       cancelled;
+         *     * unpaid, unknown, or no answer from the provider: the order is
+         *       cancelled. A payment the provider confirms later is refunded in
+         *       full (`late_payment: refund_requested` on the order status);
+         *     * a provider whose payment cannot be read back (Stripe) whose page
+         *       was handed out: 409 `checkout.payment_in_progress`; its page
+         *       expires by itself.
+         *
+         *     Idempotent: a repeat answers `cancelled: true` again and writes
+         *     nothing. No JWT: the `checkout_token` is the credential.
+         */
+        post: operations["cancelPublicCheckout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/checkout/{checkout_token}/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update the tracking consent of an unfinished order
+         * @description Spec 62 §8.1 (П-20). The buyer changed their answer in the site's
+         *     cookie banner while the order is open in the tab. The consent is
+         *     stored on the checkout; a conversion sender reads it from the order
+         *     at send time, so a refusal given before the send stops the
+         *     conversion (one already sent is not recalled). A choice older than
+         *     the stored one is kept out (`applied: false`). No JWT: the
+         *     `checkout_token` is the credential.
+         */
+        patch: operations["updatePublicCheckoutTrackingConsent"];
         trace?: never;
     };
     "/v1/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf": {
@@ -9809,6 +10935,87 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sales summary of the whole organization
+         * @description The accountant's view of an organization (EC-V1): one card per session
+         *     and currency for the sessions that START in the range, with what was
+         *     sold, invited, refunded and earned, and under each card the "price x
+         *     category" breakdown with the promo codes used. It is the
+         *     organization-wide counterpart of `GET .../sessions/{session_id}/summary`
+         *     and reads the same figures: revenue is `orders.total` of the orders
+         *     paid at some point (paid, partially refunded, refunded), refunded the
+         *     SUCCEEDED refunds of both settlements (arena's own provider and money a
+         *     selling site returned itself), net revenue minus refunded minus the
+         *     "Refer a friend" cashback, all in minor units.
+         *
+         *     `sold` counts the tickets that were not invitations, whatever became of
+         *     them since; `complimentary` the invitations; `refunded_tickets` those of
+         *     the sold ones cancelled with money returned; `active_tickets` the valid
+         *     tickets of every kind. Orders from a test sales channel are in none of
+         *     the figures and are counted apart in `test_orders`. A session with
+         *     nothing sold, invited or refunded has no entry. At most 500 sessions
+         *     are read, oldest first; `truncated` says when more matched. Read-only
+         *     and free of buyer data. Requires the `order.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/exports/accounting.xlsx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Accounting workbook of the organization
+         * @description The Excel file for the accountant (EC-V2): three sheets over the
+         *     sessions that start in the range.
+         *
+         *     1. "By sessions" (`По сеансам`): one row per session and currency with
+         *        the figures of `GET .../summary` (orders, sold, invitations,
+         *        refunded and active tickets, revenue, refunded, net).
+         *     2. "By prices" (`По ценам`): one row per session, category, price and
+         *        promo code with the tickets, the discount and the revenue.
+         *     3. "Tickets" (`Билеты`): one row per ticket with its number, order
+         *        number, buyer name, e-mail and phone, category, price paid, status,
+         *        invitation flag, refund amount, refund settlement (`provider` or
+         *        `external`) and the refund reference (the provider's id, or the
+         *        reason a selling site gave for an external refund).
+         *
+         *     Orders from a test sales channel are left out of every sheet; the
+         *     ticket sheet keeps the `Test` column of the CSV exports, which is
+         *     therefore always `no`. Money is in major units with two decimals.
+         *     Headers and tab names follow `locale` (`en`, `ru`, `es`); values stay
+         *     as the API spells them. Same csvexport rules and 50 000-ticket cap as
+         *     the sales file. The file names buyers and their contacts: a person
+         *     downloads it, an organization API key is refused. Every download is
+         *     audited (`v1.org.accounting_export.download`).
+         *
+         *     Requires `order.read` AND `session.read`.
+         */
+        get: operations["getV1OrganizationsOrgIdExportsAccountingXlsx"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/sessions/{session_id}/seat-layout/algorithms": {
         parameters: {
             query?: never;
@@ -10586,15 +11793,28 @@ export interface paths {
          *     leading zero, not even in rows added later. The entry time is text
          *     on the venue's clock. `guest-list.csv` serves the same rows as a CSV.
          *
-         *     One row per ACTIVE ticket of the session (cancelled, revoked and
-         *     transferred tickets are left out), sorted by the guest's name:
-         *     guest (the name on the ticket, else the buyer's), category, seat,
-         *     ticket number, barcode, VIP (`yes` / `no`), entered (`yes` / `no`),
-         *     entry time (venue's zone), order number, e-mail, phone and
-         *     invitation (`yes` / `no`). Same csvexport rules, locale selection and
-         *     50 000-row cap as the sales file. The same file is sent automatically
-         *     to the members who turned the guest list on
-         *     (`PUT .../guest-list-subscription`).
+         *     One row per ticket of the session, EVERY status (so the organizer can
+         *     filter), sorted by the guest's last name. Columns: last name, first
+         *     name, phone, e-mail, category, row, seat, ticket status, status
+         *     reason, barcode, order number, then sector, ticket number, VIP
+         *     (`yes` / `no`), entry time (venue's zone) and invitation (`yes` /
+         *     `no`). The platform stores ONE free-text name (the ticket's holder
+         *     name, else the buyer's), so it is split at its LAST space: the last
+         *     word is the last name, the rest the first name; a single word is a
+         *     last name. The barcode is always a text cell.
+         *
+         *     Ticket status follows the scanner system MACS (`holderStatus`),
+         *     printed as words plus the code: `Valid (0)` not yet entered, `Checked
+         *     in (1)`, `Refunded / cancelled (3)`. Checked in is an admitted scan or
+         *     `used_at`. `Checked out (2)` is not derived, because the platform
+         *     stores no scan direction. Status 3 carries a reason: refunded, cancelled, session
+         *     cancelled, or replaced (the ticket was reissued, and the reason is the
+         *     one the organizer chose: a wrong e-mail address, a stranger who got the
+         *     ticket, or just "replaced"). Labels follow `locale` (`en`, `ru`, `es`). Same
+         *     csvexport rules and 50 000-row cap as the sales file. The same file
+         *     is built fresh when it is sent automatically to the members who
+         *     turned the guest list on (`PUT .../guest-list-subscription`) and to
+         *     the whole team before every session (`PUT .../guest-list-settings`).
          *
          *     Requires `order.read` AND `session.read`; a session of another
          *     organization is a 404.
@@ -10622,21 +11842,75 @@ export interface paths {
          *     workbook: Excel opens a CSV with the list separator of its regional
          *     settings, and with English settings every row lands in column A.
          *
-         *     One row per ACTIVE ticket of the session (cancelled, revoked and
-         *     transferred tickets are left out), sorted by the guest's name:
-         *     guest (the name on the ticket, else the buyer's), category, seat,
-         *     ticket number, barcode, VIP (`yes` / `no`), entered (`yes` / `no`),
-         *     entry time (venue's zone), order number, e-mail, phone and
-         *     invitation (`yes` / `no`). Same csvexport rules, locale selection and
-         *     50 000-row cap as the sales file. The same file is sent automatically
-         *     to the members who turned the guest list on
-         *     (`PUT .../guest-list-subscription`).
+         *     One row per ticket of the session, every status, with the same
+         *     columns, status mapping and name split as `guest-list.xlsx`, whose
+         *     description is authoritative.
          *
          *     Requires `order.read` AND `session.read`; a session of another
          *     organization is a 404.
          */
         get: operations["getV1OrganizationsOrgIdSessionsSessionIdGuestListCsv"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/guest-list.xlsx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Guest list of every session of an event as an Excel workbook
+         * @description The session guest list (`GET .../sessions/{session_id}/guest-list.xlsx`)
+         *     for the whole event: one sheet with the tickets of all its sessions,
+         *     every status, sessions in time order, guests by last name inside a
+         *     session. A `Session` column comes first with the session's date and
+         *     time on its own venue's clock; the other columns, the status
+         *     mapping, the text barcode cell and the locale rules are the session
+         *     file's. The file name is `guests_<event>_<YYYY-MM-DD of the request>.xlsx`.
+         *
+         *     Requires `order.read` AND `session.read`; an organization API key is
+         *     refused (403 `guest_list.api_key_forbidden`); an event of another
+         *     organization is a 404.
+         */
+        get: operations["getV1OrganizationsOrgIdEventsEventIdGuestListXlsx"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/guest-list-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether the organization sends the team guest list automatically
+         * @description The organization's switch (on by default). While it is on, the job
+         *     `guest_list.team_send` sends the CURRENT guest list of every session
+         *     24 hours and 3 hours before its start: by e-mail to every active
+         *     owner and manager of the organization, and as a document to the
+         *     organization's own sales Telegram groups. Requires `org.read`.
+         */
+        get: operations["getV1OrganizationsOrgIdGuestListSettings"];
+        /**
+         * Turn the team guest list on or off for the organization
+         * @description Turns the organization's automatic team guest list on or off. A
+         *     repeat of the current value changes nothing. Requires `org.update`
+         *     (the owner).
+         */
+        put: operations["putV1OrganizationsOrgIdGuestListSettings"];
         post?: never;
         delete?: never;
         options?: never;
@@ -10987,11 +12261,23 @@ export interface paths {
          *     and reverted. A sold or held seat is frozen: it is listed in
          *     `skipped` with a reason and the batch still applies the rest. A
          *     General Admission place opens and closes but never changes category
-         *     (`ga_unit`). `new_tiers` (creating a category inside the batch) is not
-         *     supported yet and answers 422 `seat_batch.new_tiers_unsupported`.
+         *     (`ga_unit`).
+         *
+         *     `new_tiers` creates price categories in the same transaction, right
+         *     after the session row lock and before the seats are locked; changes
+         *     name them by `new_tier_key`. If anything in the batch fails, no
+         *     category is left behind. A sold or held seat named with a new
+         *     category keeps its own and is listed in `skipped`. The answer lists
+         *     the categories in `created_tiers`. Reverting such a batch puts the
+         *     seats back and KEEPS the created categories, which may then hold no
+         *     seat.
+         *
          *     Requires the `session.seats.manage` permission in the
-         *     organization. Audited as `v1.session.seat_batch.apply` with
-         *     `batch_id`.
+         *     organization; a batch with `new_tiers` also requires `tier.create`
+         *     there (the permission of the create-category route; an organization
+         *     API key needs both scopes). Audited as
+         *     `v1.session.seat_batch.apply` with `batch_id` and
+         *     `created_tier_ids`.
          */
         post: operations["postV1OrganizationsOrgIdSessionsSessionIdSeatBatches"];
         delete?: never;
@@ -11041,7 +12327,9 @@ export interface paths {
          *     `reverted_at` and `reverted_by_batch_id`. A batch is reverted at most
          *     once and a revert is never reverted. A revert that would put back no
          *     seat at all is refused with 409 `seat_batch.nothing_to_revert` and
-         *     writes nothing. Requires the
+         *     writes nothing. Categories the original batch created (`new_tiers`)
+         *     are kept: the revert puts the seats back only, so such a category
+         *     may be left without seats. Requires the
          *     `session.seats.manage` permission in the organization.
          *     Audited as `v1.session.seat_batch.revert` with `batch_id`.
          */
@@ -11125,6 +12413,247 @@ export interface paths {
          *     `ticket.update` permission.
          */
         post: operations["postV1OrganizationsOrgIdOrdersOrderIdResendTickets"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/orders/{order_id}/reissue-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check whether an order's tickets can be replaced
+         * @description The check screen of a ticket reissue (spec 63): the order's address,
+         *     buyer name and phone for comparison, every ticket with whether it can be
+         *     replaced and when its code was already used at the door, the reason a
+         *     reissue would be refused now (`blocked`), an earlier reissue that has
+         *     not been sent, and the payment provider with whether arena can move the
+         *     provider's receipt address. Nothing is written. Requires `ticket.update`;
+         *     an organization API key is refused.
+         */
+        get: operations["getV1OrganizationsOrgIdOrdersOrderIdReissueOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/orders/{order_id}/reissue-tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace every ticket of an order sent to a wrong address
+         * @description Replaces every active ticket of a paid order (spec 63, variant B). In one
+         *     transaction each old ticket becomes `transferred` with the reason
+         *     `reissued` and stops admitting (its barcodes and credentials are
+         *     revoked), and a new ticket takes the same seat in the same order with a
+         *     new number and a new EAN-13 barcode. Money and places do not change. The
+         *     purchase token changes, so the links of the first letter stop working.
+         *     One letter with the new tickets is queued to `email`; the order's buyer
+         *     e-mail and customer move to that address only after the mail relay
+         *     accepted the letter. MACS hears the old numbers as refunded and the new
+         *     tickets as paid. Nothing is sent to the earlier address. A code already
+         *     used at the door does not stop the reissue. An `Idempotency-Key` header
+         *     is required: a repeat answers the first result (`replayed` true) and
+         *     writes nothing. Requires `ticket.update`; an organization API key is
+         *     refused; a platform superadmin sends `X-Admin-Reason`.
+         */
+        post: operations["postV1OrganizationsOrgIdOrdersOrderIdReissueTickets"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/orders/{order_id}/reissues/{reissue_id}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send the letter of a ticket reissue again
+         * @description Queues the letter of a reissue that has not been applied (its letter was
+         *     refused or is still waiting) again: the same new tickets, the same
+         *     address, no new barcode. An applied reissue answers 409
+         *     `reissue.already_applied`. Requires `ticket.update`.
+         */
+        post: operations["postV1OrganizationsOrgIdOrdersOrderIdReissuesReissueIdResend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/orders/{order_id}/reissues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the ticket reissues of an order
+         * @description Every reissue of the order, newest first, with both addresses (the
+         *     journal is the evidence of where an old barcode went), the reason, the
+         *     operator's note, the replaced numbers, the letter state and what happened
+         *     to the address at the payment provider. Requires `order.read`; an
+         *     organization API key is refused.
+         */
+        get: operations["getV1OrganizationsOrgIdOrdersOrderIdReissues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/complimentary/{id}/reissue-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check whether an invitation's tickets can be replaced
+         * @description The check screen of a ticket reissue for an invitation issued before
+         *     invitations became orders (spec 63, stage R-5): the guest's address,
+         *     every ticket with whether it can be replaced and when its code was
+         *     used at the door, and the reason a reissue would be refused now.
+         *     Nothing is written. Requires `ticket.update`; an organization API key
+         *     is refused.
+         */
+        get: operations["getV1OrganizationsOrgIdComplimentaryIdReissueOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/complimentary/{id}/reissue-tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace every ticket of an invitation sent to a wrong address
+         * @description The invitation twin of `POST .../orders/{order_id}/reissue-tickets`
+         *     (spec 63, stage R-5): every active ticket of an issued invitation is
+         *     closed as `transferred` and replaced by a new ticket of the same
+         *     invitation, seat and category with a new number and barcode. One
+         *     invitation letter is queued to `email`; the invitation's recipient
+         *     moves to it only after the mail relay accepted the letter. Nothing is
+         *     sent to the earlier address. `Idempotency-Key` is required, a repeat
+         *     answers the first result. Requires `ticket.update`; an organization API
+         *     key is refused.
+         */
+        post: operations["postV1OrganizationsOrgIdComplimentaryIdReissueTickets"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/complimentary/{id}/reissues/{reissue_id}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send the letter of an invitation reissue again
+         * @description Queues the letter of an invitation reissue that has not been applied
+         *     again: the same new tickets, the same address, no new barcode. An
+         *     applied reissue answers 409 `reissue.already_applied`. Requires
+         *     `ticket.update`.
+         */
+        post: operations["postV1OrganizationsOrgIdComplimentaryIdReissuesReissueIdResend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/complimentary/{id}/reissues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the ticket reissues of an invitation
+         * @description Every reissue of the invitation, newest first, with both addresses,
+         *     the reason, the note and the replaced numbers. `provider` is always
+         *     null: an invitation has no payment. Requires `order.read`; an
+         *     organization API key is refused.
+         */
+        get: operations["getV1OrganizationsOrgIdComplimentaryIdReissues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/orders/{order_id}/external-refund": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a refund made outside the platform
+         * @description Records money the organizer already returned to the buyer in the payment
+         *     provider's own cabinet (spec 62 section 14.6, the orders of the
+         *     WordPress era). Arena moves no money. In ONE transaction every named
+         *     ticket is cancelled (its place goes back on sale, its barcodes stop
+         *     admitting) and a refund with `settlement` `external` is booked for it
+         *     with the FINAL amount returned for that ticket; the order becomes
+         *     `partially_refunded`, or `refunded` once no ticket is left active. The
+         *     cancellation is announced through the outbox like any ticket
+         *     cancellation (the sites and MACS hear `ticket.refunded`). The call does
+         *     not e-mail the buyer. The rule is one final refund per ticket: a ticket
+         *     that already has an external refund answers 409
+         *     `order.external_refund_exists` with the amount recorded in `details`,
+         *     and a ticket cannot be refunded twice. The amount of a ticket may not
+         *     exceed what the buyer paid for it. A ticket already scanned at the gate
+         *     is refused like in the ticket cancellation route. Any refusal rolls the
+         *     whole call back. Requires the `refund.create` permission; the web asks
+         *     for the password again.
+         */
+        post: operations["postV1OrganizationsOrgIdOrdersOrderIdExternalRefund"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11267,6 +12796,37 @@ export interface paths {
          *     event's orders. Requires the `refund.read` permission.
          */
         get: operations["getV1OrganizationsOrgIdRefunds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/refunds/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Failed refunds and undelivered buyer letters
+         * @description Everything the organizer has to look at in one answer (EC-V5, spec 62
+         *     section 12.2): `refunds` are failed refunds nobody retried, refunds
+         *     parked for review (`manual_review`) and refunds the provider accepted
+         *     but did not settle within 30 minutes; `letters` are orders whose buyer
+         *     most likely has no letter (a ticket letter that failed, is stuck, or
+         *     bounced; a change, cancellation or refund letter that failed and was
+         *     not followed by a newer one). Test orders are left out and so are
+         *     letters older than 60 days. Each list holds at most 50 rows; `count`
+         *     is the number the nav badge shows. A refund is retried with
+         *     `POST .../refunds/{refund_id}/retry`, a letter is sent again with
+         *     `POST .../orders/{order_id}/resend-tickets`. Requires the
+         *     `refund.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdRefundsQueue"];
         put?: never;
         post?: never;
         delete?: never;
@@ -13322,6 +14882,288 @@ export interface components {
                 };
             };
         };
+        /** @description What a draft of a hall plan holds, read from its SVG when the draft was made. */
+        VenuePlanDraftSummary: {
+            /** @description Number of seats of the draft. */
+            seats: number;
+            /** @description Number of rows over every section. */
+            rows: number;
+            /** @description Number of sections. */
+            sections: number;
+            /** @description The plan type the geometry fits (assigned_seats, general_admission or mixed). */
+            plan_type: string;
+            /** @description Codes of the importer's warnings (for example legend_missing). */
+            warnings: string[];
+        };
+        /** @description A question of a draft to the organizer (written by the generator, wave 2). */
+        VenuePlanQuestion: {
+            /**
+             * Format: uuid
+             * @description Id of the question; the answers route names it as question_id.
+             */
+            id: string;
+            /** @description Type of the question (numbering, row_count, unavailable_seats, sections, stage, row_label). */
+            kind: string;
+            /** @description What the question is about (section, row, seat keys). */
+            target: {
+                [key: string]: unknown;
+            };
+            /** @description The part of the picture to show with the question, null when none. */
+            region: {
+                [key: string]: unknown;
+            } | null;
+            /** @description The answers offered. */
+            options: unknown[];
+            /** @description The organizer's answer, null while the question is open. */
+            answer: unknown;
+            /**
+             * Format: date-time
+             * @description When the question was answered, null while it is open.
+             */
+            answered_at: string | null;
+        };
+        /** @description The current draft of a hall plan intake. */
+        VenuePlanDraft: {
+            /** @description Number of the draft inside the intake (1, 2, ...). */
+            n: number;
+            /** @description Who made the draft (generator, organizer_answers, organizer_text, operator, operator_svg, source_svg). */
+            author: string;
+            /** @description The administrator's note on the draft, null when none. */
+            note: string | null;
+            /** @description What the draft holds. */
+            summary: components["schemas"]["VenuePlanDraftSummary"];
+            /** @description Path of the route that streams the draft SVG (needs the same authorization as the card). */
+            svg_path: string;
+            /** @description The questions of this draft. */
+            questions: components["schemas"]["VenuePlanQuestion"][];
+            /**
+             * Format: date-time
+             * @description When the draft was made.
+             */
+            created_at: string;
+        };
+        /** @description One draft in the history of an intake. */
+        VenuePlanDraftHistoryItem: {
+            /** @description Number of the draft. */
+            n: number;
+            /** @description Who made the draft. */
+            author: string;
+            /**
+             * Format: date-time
+             * @description When the draft was made.
+             */
+            created_at: string;
+        };
+        /** @description A file sent with a hall plan intake. It has no public link; it is downloaded through the intake routes only. */
+        VenuePlanIntakeSource: {
+            /**
+             * Format: uuid
+             * @description Id of the file.
+             */
+            id: string;
+            /** @description Format decided from the content (pdf, xlsx, xls, csv, jpeg, png, webp, heic, tiff, bmp, gif, svg). */
+            kind: string;
+            /** @description The file name as sent, without folders. */
+            file_name: string;
+            /**
+             * Format: int64
+             * @description Size of the stored file in bytes (a JPEG without its metadata).
+             */
+            byte_size: number;
+            /** @description Number of pages of a PDF when it could be counted, else null. */
+            pages: number | null;
+            /** @description Width of a picture in pixels, else null. */
+            width: number | null;
+            /** @description Height of a picture in pixels, else null. */
+            height: number | null;
+            /** @description True for HEIC and old Excel files, which are converted later. */
+            needs_conversion: boolean;
+            /** @description Path of the route that downloads the file as an attachment. */
+            download_path: string;
+            /** @description Path of the PNG copy of a WEBP, TIFF, BMP or GIF picture, else null. */
+            png_copy_path: string | null;
+        };
+        /** @description An answer set or a text correction of the organizer (administrators' card only). */
+        VenuePlanCorrection: {
+            /**
+             * Format: uuid
+             * @description Id of the correction.
+             */
+            id: string;
+            /** @description organizer_text, operator_edit or answer. */
+            kind: string;
+            /** @description Number of the draft it was made on. */
+            draft: number | null;
+            /** @description The organizer's text, null for answers. */
+            text: string | null;
+            /** @description pending, applied or rejected. */
+            status: string;
+            /**
+             * Format: date-time
+             * @description When it was sent.
+             */
+            created_at: string;
+        };
+        /**
+         * @description A hall plan intake (spec 64): the files an organization sent for a
+         *     venue, its state and its current draft. The administrators' card also
+         *     carries org_name, operator_id, operator_claimed_at and corrections.
+         */
+        VenuePlanIntake: {
+            /**
+             * Format: uuid
+             * @description Id of the intake.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Organization that sent the intake.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Venue the plan is for.
+             */
+            venue_id: string;
+            /** @description Name of the venue. */
+            venue_name: string;
+            /** @description received, generating, review, operator, approved, rejected or cancelled. */
+            state: string;
+            /** @description Where the intake was sent from (telegram_bot or event_center_web). */
+            channel: string;
+            /** @description Why the intake went to an administrator, null when it did not. */
+            escalation_reason: string | null;
+            /** @description The organizer's text when they called an administrator. */
+            escalation_text: string | null;
+            /** @description The administrator's note when the draft was returned to the organizer. */
+            return_note: string | null;
+            /** @description Why the administrator could not build the plan. */
+            reject_reason: string | null;
+            /** @description True while an administrator works on the intake. */
+            operator_claimed: boolean;
+            /** @description Number of the current draft, null before the first draft. */
+            current_draft: number | null;
+            /**
+             * Format: uuid
+             * @description The seating plan made from the approved draft.
+             */
+            plan_id: string | null;
+            /** @description Version number of that plan (1). */
+            plan_version: number | null;
+            /**
+             * Format: date-time
+             * @description When the intake was sent.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the intake last changed.
+             */
+            updated_at: string;
+            /**
+             * Format: date-time
+             * @description When the intake reached a final state.
+             */
+            closed_at: string | null;
+            /** @description The files of the intake, in the order they were sent. */
+            sources: components["schemas"]["VenuePlanIntakeSource"][];
+            /** @description The current draft, null before the first draft. */
+            draft: components["schemas"]["VenuePlanDraft"] | null;
+            /** @description Every draft, oldest first. */
+            drafts: components["schemas"]["VenuePlanDraftHistoryItem"][];
+            /** @description Number of drafts made so far. */
+            review_rounds: number;
+            /** @description Name of the organization (administrators' card only). */
+            org_name?: string;
+            /**
+             * Format: uuid
+             * @description The administrator who took the intake (administrators' card only).
+             */
+            operator_id?: string | null;
+            /**
+             * Format: date-time
+             * @description When the administrator took it (administrators' card only).
+             */
+            operator_claimed_at?: string | null;
+            /** @description The organizer's answers and text corrections (administrators' card only). */
+            corrections?: components["schemas"]["VenuePlanCorrection"][];
+        };
+        /** @description A hall plan intake in a list. The administrators' list adds org_name, venue_city, operator_id and operator_claimed_at. */
+        VenuePlanIntakeListItem: {
+            /**
+             * Format: uuid
+             * @description Id of the intake.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Organization that sent it.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Venue the plan is for.
+             */
+            venue_id: string;
+            /** @description Name of the venue. */
+            venue_name: string;
+            /** @description State of the intake. */
+            state: string;
+            /** @description Where it was sent from. */
+            channel: string;
+            /** @description Why it went to an administrator. */
+            escalation_reason: string | null;
+            /** @description True while an administrator works on it. */
+            operator_claimed: boolean;
+            /** @description Number of the current draft. */
+            current_draft: number | null;
+            /**
+             * Format: uuid
+             * @description The plan made from it, once approved.
+             */
+            plan_id: string | null;
+            /**
+             * Format: date-time
+             * @description When it was sent.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When it last changed.
+             */
+            updated_at: string;
+            /** @description Name of the organization (administrators' list only). */
+            org_name?: string;
+            /** @description City of the venue (administrators' list only). */
+            venue_city?: string | null;
+            /**
+             * Format: uuid
+             * @description The administrator who took it (administrators' list only).
+             */
+            operator_id?: string | null;
+            /**
+             * Format: date-time
+             * @description When the administrator took it (administrators' list only).
+             */
+            operator_claimed_at?: string | null;
+        };
+        /** @description One hall plan intake card. */
+        VenuePlanIntakeEnvelope: {
+            /** @description The intake card. */
+            intake: components["schemas"]["VenuePlanIntake"];
+        };
+        /** @description Approve a draft of a hall plan intake. */
+        VenuePlanApproveRequest: {
+            /** @description Number of the draft to approve; it must be the current draft. */
+            draft: number;
+            /** @description Name of the new seating plan, 1 to 200 characters (default the venue name). */
+            name?: string;
+        };
+        /** @description A list of hall plan intakes, newest first. */
+        VenuePlanIntakeList: {
+            /** @description The intakes. */
+            intakes: components["schemas"]["VenuePlanIntakeListItem"][];
+        };
         /** @description One ticket price printed on a poster. */
         PosterFactsCategory: {
             /** @description Category name as printed (for example "Stalls"); empty when the poster gives only a price. */
@@ -14034,6 +15876,37 @@ export interface components {
              */
             platform_staff?: boolean;
         };
+        /** @description The answer of GET /v1/organizations/{org_id}/getting-started. */
+        GettingStartedResponse: {
+            /** @description The first steps of the organization the caller may do. */
+            getting_started: components["schemas"]["GettingStarted"];
+        };
+        /**
+         * @description The first steps of an organization that the caller may do, and
+         *     whether all of them are done.
+         */
+        GettingStarted: {
+            /** @description True when every listed step is done. An empty list is complete. */
+            complete: boolean;
+            /**
+             * @description The steps the caller holds the permission for in this
+             *     organization, always in the order org_data, payments, event,
+             *     sales_link. Never null.
+             */
+            steps: components["schemas"]["GettingStartedStep"][];
+        };
+        /** @description One first step of an organization. */
+        GettingStartedStep: {
+            /**
+             * @description The step: `org_data` (seller data complete), `payments` (a
+             *     payment provider connected and accepted), `event` (an event
+             *     created, a draft counts), `sales_link` (a sales link created).
+             * @enum {string}
+             */
+            key: "org_data" | "payments" | "event" | "sales_link";
+            /** @description True when the organization's data shows the step is done. */
+            done: boolean;
+        };
         /**
          * @description The caller's access inside one organization, returned by
          *     GET /v1/organizations/{org_id}/me. Every list is sorted and never null.
@@ -14098,6 +15971,11 @@ export interface components {
              *     organization routes then require the X-Admin-Reason header.
              */
             platform_superadmin: boolean;
+            /**
+             * @description The organization's theme, so the event center can paint itself
+             *     without a second request. Empty object = platform palette.
+             */
+            branding?: components["schemas"]["OrganizationBranding"];
         };
         MeUser: {
             /** @description Actor ID from the JWT (typically a UUID) */
@@ -14566,6 +16444,90 @@ export interface components {
              */
             expires_at: string;
         };
+        /** @description Whether the signed-in person's account is linked to the event-center Telegram bot (F-007). */
+        TelegramConnectStatus: {
+            /** @description True when this server knows the bot and can build a "Connect Telegram" link. */
+            available: boolean;
+            /** @description The bot's Telegram username without `@`, null when not configured. */
+            bot_username: string | null;
+            /** @description True when at least one Telegram account is linked to the caller's account. */
+            linked: boolean;
+            /** @description The linked Telegram accounts, newest first, at most 5. */
+            accounts: components["schemas"]["TelegramConnectAccount"][];
+        };
+        /** @description One Telegram account linked to the caller. */
+        TelegramConnectAccount: {
+            /** @description The account's Telegram username without `@`, null when it has none. */
+            telegram_username: string | null;
+            /**
+             * Format: date-time
+             * @description When the account was last linked (a connect link or an invitation renews it). The page compares it with the time its link was made.
+             */
+            linked_at: string;
+        };
+        /** @description A one-time "Connect Telegram" link (F-007). */
+        TelegramConnectCode: {
+            /** @description `https://t.me/<bot>?start=con_<code>`: a button and a QR code on the web page. */
+            url: string;
+            /** @description The `/start` payload of the link (`con_<code>`). */
+            start_param: string;
+            /**
+             * Format: date-time
+             * @description When the link stops working (15 minutes after it was issued).
+             */
+            expires_at: string;
+            /** @description The link as a 320x320 PNG QR code, base64 (standard alphabet, padded), for a person who reads the page on a computer. Null when the picture could not be drawn. */
+            qr_png: string | null;
+        };
+        /** @description A "Connect Telegram" code the bot received in `/start con_<code>`, and the Telegram account that opened it. */
+        BotTelegramConnectRequest: {
+            /** @description The code, with or without the `con_` prefix. */
+            code: string;
+            /**
+             * Format: int64
+             * @description The Telegram account that opened the link.
+             */
+            telegram_user_id: number;
+            /** @description Its Telegram username, stored with the link (accept only). */
+            telegram_username?: string;
+            /** @description The language of the Telegram client, stored with the link (accept only; en, ru or es, else en). */
+            locale?: string;
+        };
+        /** @description The facts of the bot's "Connect this Telegram to <organization>?" screen. */
+        BotTelegramConnectPreview: {
+            /**
+             * Format: uuid
+             * @description The organization the bot opens after the link.
+             */
+            org_id: string;
+            /** @description Its name. */
+            org_name: string;
+            /** @description The e-mail of the account the link belongs to, masked (`a•••@example.com`). */
+            email_masked: string;
+            /** @description What the Telegram account is to that person: `new` (not linked), `same_user` (already linked to them; the link only switches the organization) or `other_user` (linked to someone else; accept answers 409). */
+            state: string;
+        };
+        /** @description The Telegram account is linked. */
+        BotTelegramConnectAcceptResponse: {
+            /**
+             * Format: uuid
+             * @description The organization that is now current in the bot.
+             */
+            org_id: string;
+            /** @description Its name. */
+            org_name: string;
+            /**
+             * Format: uuid
+             * @description The person the account is linked to.
+             */
+            user_id: string;
+            /** @description The person's role there in the bot's words: `owner` or `manager` (empty when unknown). */
+            role: string;
+            /** @description The language stored with the link. */
+            locale: string;
+            /** @description True when the account was already linked to this person (only the organization changed). */
+            already_linked: boolean;
+        };
         /** @description A sign-in to the web through a bot link that the bot must report. */
         BotWebLoginNotice: {
             /**
@@ -14583,6 +16545,57 @@ export interface components {
         BotWebLoginNoticesResponse: {
             /** @description Sign-ins not reported yet; each is handed out once. */
             notices: components["schemas"]["BotWebLoginNotice"][];
+        };
+        /** @description A message about a hall plan intake that the bot must send to the person who sent the intake. */
+        BotVenuePlanNotice: {
+            /**
+             * Format: uuid
+             * @description Id of the notice.
+             */
+            id: string;
+            /**
+             * @description What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan), `approved` (an administrator saved the plan) or `escalated` (arena could not build a draft, an administrator builds the plan now).
+             * @enum {string}
+             */
+            kind: "draft_ready" | "returned" | "rejected" | "approved" | "escalated";
+            /**
+             * Format: uuid
+             * @description Id of the intake the notice is about.
+             */
+            intake_id: string;
+            /**
+             * Format: uuid
+             * @description Id of the organization that owns the intake.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Id of the venue the intake is for.
+             */
+            venue_id: string;
+            /** @description Name of the venue, for the text of the message. */
+            venue_name: string;
+            /**
+             * Format: int32
+             * @description Number of the current draft, or null when the intake has no draft.
+             */
+            current_draft: number | null;
+            /** @description True for a `returned` notice when the current draft was uploaded by an administrator (author `operator` or `operator_svg`) at or after the moment the administrator took the intake; false when the administrator returned the intake without a new draft and for every other kind of notice. */
+            draft_changed: boolean;
+            /** @description The administrator's note or reason for the organizer, or null when there is none. */
+            note: string | null;
+            /** @description Live Telegram chats of the person who sent the intake. The list is empty when that person has no live bot link; the notice is then claimed and never comes again. */
+            telegram_user_ids: number[];
+            /**
+             * Format: date-time
+             * @description When the notice was made.
+             */
+            created_at: string;
+        };
+        /** @description Answer of POST /v1/bot/venue-plan-notices/claim. */
+        BotVenuePlanNoticesResponse: {
+            /** @description Notices not told yet, oldest first; each is handed out once. */
+            notices: components["schemas"]["BotVenuePlanNotice"][];
         };
         /** @description A staff invitation issued from Telegram whose PDF the bot must send into the issuer's chat. It carries no e-mail or phone of the guest. */
         BotInvitationPdfNotice: {
@@ -14638,6 +16651,16 @@ export interface components {
         GuestListSubscriptionRequest: {
             /** @description True turns the automatic guest list on, false turns it off. */
             enabled: boolean;
+        };
+        /** @description The organization's switch for the automatic team guest list. */
+        GuestListSettings: {
+            /** @description True (the default) when the current guest list of every session is sent to the owners, managers and the organization's sales Telegram groups 24 h and 3 h before the start. */
+            auto_send: boolean;
+        };
+        /** @description Body of PUT .../guest-list-settings. */
+        GuestListSettingsRequest: {
+            /** @description True turns the automatic team guest list on, false turns it off. */
+            auto_send: boolean;
         };
         /** @description One automatic guest list the bot has to send. */
         BotGuestListDelivery: {
@@ -15301,6 +17324,54 @@ export interface components {
             role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator" | "org_admin";
         };
         /**
+         * @description An organization's theme (migration 0203, spec 62 §12.1). Every key is
+         *     optional; an absent key falls back to the platform palette
+         *     (arenasoldout.com: primary #001489, ink #0B1020, bg #F6F7FB, font
+         *     Onest). The event center writes the tokens into its CSS; the ticket
+         *     PDF and the ticket letters take their accent colour from `primary`.
+         *     Colours are `#rrggbb` or `rgba(r, g, b, a)`; anything else, and any
+         *     other key, is refused with 400 `org.invalid_branding`.
+         */
+        OrganizationBranding: {
+            /**
+             * @description Main brand colour (buttons, the active tab, the PDF and letter accent).
+             * @example #822121
+             */
+            primary?: string;
+            /**
+             * @description Text and icon colour drawn on `primary`.
+             * @example #ffffff
+             */
+            on_primary?: string;
+            /**
+             * @description Secondary text colour drawn on `primary`.
+             * @example rgba(255, 255, 255, .72)
+             */
+            on_primary_muted?: string;
+            /**
+             * @description Main text colour on the page background.
+             * @example #2c2c2c
+             */
+            ink?: string;
+            /**
+             * @description Second brand colour for highlights.
+             * @example #d9a441
+             */
+            accent?: string;
+            /**
+             * @description Page background colour.
+             * @example #f0e6dc
+             */
+            bg?: string;
+            /**
+             * @description Interface font, one of `Assistant`, `Onest`, `Golos Text`
+             *     (a plain string so the generated enum constants of other
+             *     schemas are not renamed).
+             * @example Assistant
+             */
+            font?: string;
+        };
+        /**
          * @description A single active organization (primary tenant boundary).
          *     Includes legal & contact attributes added in migration
          *     0049_organizations_legal_fields (Wave O / feature #253). All
@@ -15422,6 +17493,12 @@ export interface components {
              * @example https://acme.example
              */
             website_url?: string | null;
+            /**
+             * @description The organization's theme. Answered by GET and PATCH
+             *     /v1/organizations/{id} only; absent or empty means the
+             *     platform palette.
+             */
+            branding?: components["schemas"]["OrganizationBranding"];
             /**
              * Format: uuid
              * @description Optional forward reference to a media row that ships in
@@ -15649,6 +17726,17 @@ export interface components {
             contact_phone?: string;
             /** @description New public marketing / info URL (empty string clears). Validated as URI when non-empty. */
             website_url?: string;
+            /**
+             * @description Replaces the organization's whole theme (see
+             *     OrganizationBranding for the keys and values); `null` or `{}`
+             *     returns to the platform palette, an omitted member keeps it.
+             *     Accepted by PATCH /v1/organizations/{id} only (permission
+             *     `org.update`, the owner). An unknown key or an invalid value
+             *     answers 400 `org.invalid_branding`.
+             */
+            branding?: {
+                [key: string]: string;
+            } | null;
             /**
              * Format: uuid
              * @description New media-row FK (forward reference, Wave G). `null`
@@ -16278,8 +18366,10 @@ export interface components {
              */
             plan_type: "assigned_seats" | "general_admission" | "tables" | "mixed";
             /**
-             * @description Share scope. Defaults to private on create; move to shared_read
-             *     or public_template to enable cross-org read / fork.
+             * @description Share scope. Defaults to private on create. shared_read lets other
+             *     organizations read the plan; public_template also lets them fork
+             *     it. operator_verified marks a venue template and is set only by
+             *     POST /v1/admin/seating-plans/{plan_id}/verify.
              * @enum {string}
              */
             visibility: "private" | "shared_read" | "public_template" | "operator_verified";
@@ -16322,6 +18412,44 @@ export interface components {
              * @description RFC 3339 UTC timestamp of last mutation.
              */
             updated_at: string;
+        };
+        /**
+         * @description A seating plan after POST /v1/admin/seating-plans/{plan_id}/verify or
+         *     /needs-fix (spec 64 section 3.4, migration 0216).
+         */
+        SeatingPlanVerification: {
+            /**
+             * Format: uuid
+             * @description Id of the plan
+             */
+            plan_id: string;
+            /**
+             * Format: uuid
+             * @description Venue of the plan
+             */
+            venue_id: string;
+            /**
+             * Format: uuid
+             * @description Organization that owns the plan
+             */
+            owner_org_id: string;
+            /** @description draft, active or archived */
+            status: string;
+            /** @description operator_verified after verify; private after needs-fix of a template */
+            visibility: string;
+            /** @description verified or needs_fix */
+            verification_state: string;
+            /** @description The superadmin's note of needs-fix, null after verify */
+            verification_note: string | null;
+            /**
+             * Format: date-time
+             * @description When the plan was verified, null unless verified
+             */
+            verified_at: string | null;
+            /** @description review_status of the venue, verified once a plan of it is verified */
+            venue_review_status: string;
+            /** @description False when a repeated verify found the plan already verified and changed nothing */
+            changed: boolean;
         };
         /**
          * @description Immutable-once-bound snapshot of a seating plan's canonical geometry.
@@ -16654,6 +18782,321 @@ export interface components {
              * @description When the one-time address stops being valid (24 hours after the request). Null for the order's own address.
              */
             expires_at: string | null;
+        };
+        /** @description The payment provider of the order. */
+        ReissueProvider: {
+            /** @description The provider's registry name. */
+            name: string;
+            /** @description The provider's human name. */
+            title: string;
+            /** @description True when arena moves the provider's receipt address after the reissue. Otherwise the provider keeps the earlier address and the organizer may resend its document by hand. */
+            email_updatable: boolean;
+        };
+        /** @description One ticket of the order on the check screen. */
+        ReissueTicketOption: {
+            /**
+             * Format: uuid
+             * @description UUID of the ticket.
+             */
+            ticket_id: string;
+            /**
+             * Format: int64
+             * @description The buyer-facing ticket number.
+             */
+            number: number;
+            /** @description Sector, row and seat, empty for general admission. */
+            seat: string;
+            /** @description The ticket category name. */
+            category: string;
+            /** @description The ticket status. */
+            status: string;
+            /** @description True when the ticket will be replaced. */
+            reissuable: boolean;
+            /** @description Why the ticket is not replaced. `not_active` is skipped; `review_hold` and `refund_in_progress` block the whole reissue. */
+            reason?: string;
+            /**
+             * Format: date-time
+             * @description When the ticket's code was first used at the door. The reissue still runs.
+             */
+            scanned_at?: string | null;
+        };
+        /** @description A reissue of the order that has not been applied yet. */
+        ReissuePending: {
+            /**
+             * Format: uuid
+             * @description UUID of the reissue.
+             */
+            id: string;
+            /** @description `pending` or `send_failed`. */
+            state: string;
+            /** @description The address the new tickets go to. */
+            new_email: string;
+            /**
+             * Format: date-time
+             * @description When the reissue was made.
+             */
+            created_at: string;
+        };
+        /** @description The check screen of a ticket reissue. */
+        ReissueOptions: {
+            /** @description `arena`, or `seller_site` while a live selling site writes the order's letters. */
+            route: string;
+            /**
+             * Format: uuid
+             * @description UUID of the order.
+             */
+            order_id: string;
+            /**
+             * Format: int64
+             * @description The buyer-facing order number.
+             */
+            order_number: number;
+            /** @description The order status. */
+            order_status: string;
+            /** @description The order's current buyer e-mail. */
+            order_email: string;
+            /** @description The buyer's name, to compare with the person asking. */
+            buyer_name: string;
+            /** @description The buyer's phone, to compare with the person asking. */
+            buyer_phone: string;
+            /** @description The IANA time zone of the event's venue, to print scanned_at in; empty when unknown. */
+            venue_timezone?: string;
+            /** @description Every ticket of the order. */
+            tickets: components["schemas"]["ReissueTicketOption"][];
+            /** @description The error code a reissue would answer now, null when it may run. */
+            blocked?: string | null;
+            /** @description A reissue that has not been applied, when there is one. */
+            pending_reissue?: components["schemas"]["ReissuePending"];
+            /** @description The payment provider, absent for an order without a payment. */
+            provider?: components["schemas"]["ReissueProvider"];
+        };
+        /** @description The check screen of a reissue for an invitation without an order. */
+        InvitationReissueOptions: {
+            /**
+             * Format: uuid
+             * @description UUID of the invitation (complimentary issuance).
+             */
+            invitation_id: string;
+            /** @description The invitation status; only `issued` can be replaced. */
+            invitation_status: string;
+            /** @description The guest's current address. */
+            guest_email: string;
+            /** @description The IANA time zone of the event's venue, to print scanned_at in; empty when unknown. */
+            venue_timezone?: string;
+            /** @description Every ticket of the invitation. */
+            tickets: components["schemas"]["ReissueTicketOption"][];
+            /** @description The error code a reissue would answer now, null when it may run. */
+            blocked?: string | null;
+            /** @description A reissue that has not been applied, when there is one. */
+            pending_reissue?: components["schemas"]["ReissuePending"];
+        };
+        /** @description A ticket reissue. */
+        ReissueTicketsRequest: {
+            /** @description The buyer's real address. It may equal the current one, then only the barcodes change. */
+            email: string;
+            /** @description `sent_to_wrong_address`, `forwarded_to_stranger` or `other`. */
+            reason: string;
+            /** @description The operator's note, at most 500 characters. Kept in the journal, never sent to the buyer. */
+            note?: string;
+        };
+        /** @description One replaced ticket. */
+        ReissuePair: {
+            /**
+             * Format: uuid
+             * @description UUID of the closed ticket.
+             */
+            old_ticket_id: string;
+            /**
+             * Format: int64
+             * @description The closed ticket's number.
+             */
+            old_number: number;
+            /**
+             * Format: uuid
+             * @description UUID of the new ticket.
+             */
+            new_ticket_id: string;
+            /**
+             * Format: int64
+             * @description The new ticket's number.
+             */
+            new_number: number;
+            /** @description Sector, row and seat of both tickets. */
+            seat: string;
+            /** @description The category of both tickets. */
+            category: string;
+            /**
+             * Format: date-time
+             * @description When the closed ticket's code was used at the door before the reissue.
+             */
+            old_code_scanned_at?: string | null;
+            /** @description The first try to enter with the closed ticket's code after the reissue, or null when nobody tried. */
+            old_code_attempt?: components["schemas"]["ReissueOldCodeAttempt"] | null;
+            /**
+             * Format: date-time
+             * @description When the organization was told about the old code (an entry before the reissue or a try after it) through its sales chat or, without a chat, an e-mail to the owners. Null while nothing was told.
+             */
+            organizer_told_at?: string | null;
+        };
+        /** @description A scan of a replaced ticket's code after the reissue. */
+        ReissueOldCodeAttempt: {
+            /**
+             * Format: date-time
+             * @description When the code was scanned.
+             */
+            at: string;
+            /** @description The scanner, arena_scanner or macs. */
+            source: string;
+            /** @description What the scanner answered, admitted or denied. */
+            result: string;
+            /** @description The entrance or scanner name, when the scanner sent one. */
+            gate?: string;
+        };
+        /** @description The result of a reissue. */
+        ReissueTicketsResponse: {
+            /**
+             * Format: uuid
+             * @description UUID of the reissue.
+             */
+            reissue_id: string;
+            /** @description `pending` until the relay accepts the letter, then `applied`. */
+            state: string;
+            /** @description True when this answers an earlier request with the same Idempotency-Key. */
+            replayed: boolean;
+            /** @description The new address with most characters hidden. */
+            recipient_masked: string;
+            /** @description The replaced tickets. */
+            tickets: components["schemas"]["ReissuePair"][];
+            /** @description `queued`. */
+            letter: string;
+        };
+        /** @description The letter of a reissue was queued again. */
+        ReissueResendResponse: {
+            /**
+             * Format: uuid
+             * @description UUID of the reissue.
+             */
+            reissue_id: string;
+            /** @description `pending`. */
+            state: string;
+            /** @description `queued`. */
+            letter: string;
+        };
+        /** @description One reissue of the order. */
+        ReissueEntry: {
+            /**
+             * Format: uuid
+             * @description UUID of the reissue.
+             */
+            id: string;
+            /** @description `pending`, `applied` or `send_failed`. */
+            state: string;
+            /** @description The order's address before the reissue. */
+            old_email: string;
+            /** @description The address the new tickets went to. */
+            new_email: string;
+            /** @description The reason the operator stated. */
+            reason: string;
+            /** @description The operator's note. */
+            note: string;
+            /**
+             * Format: date-time
+             * @description The first entry with a replaced code before the reissue.
+             */
+            old_code_scanned_at?: string | null;
+            /**
+             * Format: date-time
+             * @description When the letter left and the order moved to the new address.
+             */
+            applied_at?: string | null;
+            /**
+             * Format: date-time
+             * @description When the relay last refused the letter.
+             */
+            letter_failed_at?: string | null;
+            /** @description What happened to the address at the payment provider: `queued`, `updated`, `failed`, `manual` (the provider cannot be told, the organizer may resend its document) or `not_applicable`. */
+            provider_email_state?: string | null;
+            /** @description `user` or `superadmin`. */
+            actor_type: string;
+            /** @description UUID of the person who made the reissue. */
+            actor_id?: string | null;
+            /** @description The client the reissue came from. */
+            via?: string | null;
+            /**
+             * Format: date-time
+             * @description When the reissue was made.
+             */
+            created_at: string;
+            /** @description The replaced tickets. */
+            tickets: components["schemas"]["ReissuePair"][];
+        };
+        /** @description The reissues of an order. */
+        ReissueHistory: {
+            /** @description Newest first. */
+            reissues: components["schemas"]["ReissueEntry"][];
+            /** @description The order's payment provider, absent without a payment. */
+            provider?: components["schemas"]["ReissueProvider"];
+        };
+        /** @description One ticket of an external refund. */
+        ExternalRefundItem: {
+            /**
+             * Format: uuid
+             * @description UUID of an active ticket of the order.
+             */
+            ticket_id: string;
+            /**
+             * Format: int64
+             * @description The FINAL amount returned for this ticket, in minor units. Positive, at most the price paid for the ticket.
+             */
+            amount_minor: number;
+            /** @description The refund number of the provider's cabinet (AllPay), kept for reconciliation. Up to 120 characters; may repeat across tickets. */
+            provider_refund_ref?: string;
+        };
+        /** @description Body of the external-refund route. */
+        ExternalRefundRequest: {
+            /** @description The tickets to refund, 1 to 200, each at most once. */
+            items: components["schemas"]["ExternalRefundItem"][];
+        };
+        /** @description One recorded external refund. */
+        ExternalRefundResultItem: {
+            /**
+             * Format: uuid
+             * @description UUID of the cancelled ticket.
+             */
+            ticket_id: string;
+            /**
+             * Format: uuid
+             * @description UUID of the refunds row (settlement external).
+             */
+            refund_id: string;
+            /**
+             * Format: int64
+             * @description The final amount recorded for the ticket, in minor units.
+             */
+            amount_minor: number;
+            /** @description ISO 4217 currency of the order. */
+            currency: string;
+            /** @description The provider refund number as given; empty when none was given. */
+            provider_refund_ref: string;
+        };
+        /** @description What the external refund recorded. */
+        ExternalRefundResponse: {
+            /**
+             * Format: uuid
+             * @description UUID of the order.
+             */
+            order_id: string;
+            /** @description The order status after the call, `partially_refunded` or `refunded`. */
+            order_status: string;
+            /**
+             * Format: int64
+             * @description The sum recorded by this call, in minor units.
+             */
+            total_minor: number;
+            /** @description ISO 4217 currency of the order. */
+            currency: string;
+            /** @description One entry per refunded ticket, in request order. */
+            items: components["schemas"]["ExternalRefundResultItem"][];
         };
         /** @description One refund row of an order, as the organizer's refund API reports it. */
         OrderRefundItem: {
@@ -17066,18 +19509,65 @@ export interface components {
             kind: string;
             /** @description The seats to change, at most 10 000. A seat_key may appear twice only with the same target. */
             changes: components["schemas"]["SeatBatchChangeRequest"][];
-            /** @description Categories to create inside the batch. Not supported yet; a non-empty list answers 422 `seat_batch.new_tiers_unsupported`. */
-            new_tiers?: Record<string, never>[];
+            /**
+             * @description Categories to create inside the batch, in the same transaction as
+             *     the seat changes (kinds `paint` and `apply_layout` only, else 400
+             *     `seat_batch.new_tiers_not_allowed`). A change names one by its
+             *     `key` in `new_tier_key`; every new tier must be named by at least
+             *     one change. Live plus new categories may not exceed 15. Needs the
+             *     `tier.create` permission in the organization as well.
+             */
+            new_tiers?: components["schemas"]["SeatBatchNewTier"][];
         };
-        /** @description What one seat should become; at least one of tier_id and status. */
+        /** @description A category the batch creates, in the session's currency; pricing mode `free` for price 0, `fixed` otherwise. */
+        SeatBatchNewTier: {
+            /** @description The client's id of the category, `[A-Za-z0-9_-]{1,40}`, unique in the request (`seat_batch.invalid_new_tier`, `seat_batch.duplicate_new_tier_key`). */
+            key: string;
+            /** @description Name of the category, 1 to 100 characters after trimming (`seat_batch.invalid_new_tier_name`); must differ, ignoring case, from the other new tiers (`seat_batch.duplicate_new_tier_name`) and from every live category of the session (409 `seat_batch.tier_name_taken`). */
+            name: string;
+            /**
+             * Format: int64
+             * @description Price in minor units, 0 to 1 000 000 000 (`seat_batch.invalid_new_tier_price`).
+             */
+            price_amount: number;
+            /** @description Colour of the category, `#rrggbb` (`seat_batch.invalid_new_tier_color`); null or empty for none. */
+            color?: string | null;
+            /**
+             * Format: int32
+             * @description Display order of the category; absent places it after the live categories, in request order.
+             */
+            sort_order?: number;
+        };
+        /** @description A category the batch created. */
+        SeatBatchCreatedTier: {
+            /** @description The key the request gave the category. */
+            key: string;
+            /**
+             * Format: uuid
+             * @description UUID of the created category.
+             */
+            tier_id: string;
+            /** @description Name of the category, trimmed. */
+            name: string;
+            /**
+             * Format: int64
+             * @description Price in minor units.
+             */
+            price_amount: number;
+            /** @description Colour of the category, lower-case `#rrggbb`, null for none. */
+            color: string | null;
+        };
+        /** @description What one seat should become; at least one of tier_id, new_tier_key and status. */
         SeatBatchChangeRequest: {
             /** @description The seat's key. */
             seat_key: string;
             /**
              * Format: uuid
-             * @description The category to put the seat in, a live category of this session.
+             * @description The category to put the seat in, a live category of this session. Not together with new_tier_key.
              */
             tier_id?: string;
+            /** @description The `key` of an entry of `new_tiers` to put the seat in, instead of tier_id (both set is 400 `seat_batch.invalid_change`; an unknown key is 400 `seat_batch.unknown_new_tier_key`). */
+            new_tier_key?: string;
             /** @description `available` or `unavailable`. */
             status?: string;
         };
@@ -17161,6 +19651,8 @@ export interface components {
             skipped: components["schemas"]["SeatBatchSkipped"][];
             /** @description Seats that already were in the requested state. Only in the answer of an apply or a revert. */
             unchanged_seat_keys?: string[];
+            /** @description The categories the batch created from `new_tiers`, in request order; an empty array when it created none. Only in the answer of an apply or a revert (a revert creates none); the stored batch does not keep it, the audit event carries `created_tier_ids`. */
+            created_tiers?: components["schemas"]["SeatBatchCreatedTier"][];
         };
         /** @description One row of the batch list; the per-seat arrays are only in SeatBatch. */
         SeatBatchSummary: {
@@ -17321,6 +19813,49 @@ export interface components {
             total: number;
             /** @description True when another page follows. */
             has_more: boolean;
+        };
+        /** @description An order whose buyer most likely has no letter. */
+        UndeliveredLetter: {
+            /**
+             * Format: uuid
+             * @description UUID of the order.
+             */
+            order_id: string;
+            /**
+             * Format: int64
+             * @description The order's number (`orders.system_id`).
+             */
+            order_number: number;
+            /** @description Name of the event of the order. */
+            event_name: string;
+            /** @description `ticket` for the order's ticket letters, else the kind of the letter (change, cancel, refund, ...). */
+            kind: string;
+            /** @description `failed` (refused or bounced) or `stuck` (no delivery was ever reported, or the job never ran). */
+            problem: string;
+            /** @description How many tickets' letters are affected (0 for a letter that is not a ticket letter). */
+            tickets: number;
+            /** @description Address the letter went or goes to. */
+            recipient: string;
+            /** @description The failure reason, e-mail addresses removed and cut to 200 characters; empty when none is known. */
+            reason: string;
+            /**
+             * Format: date-time
+             * @description When the problem began.
+             */
+            since: string;
+        };
+        /** @description The refunds and the letters an organizer has to look at. */
+        OrderRefundProblemQueue: {
+            /** @description Up to 50 refunds, newest first. */
+            refunds: components["schemas"]["OrderRefundQueueItem"][];
+            /** @description Up to 50 orders with an undelivered letter, newest problem first. */
+            letters: components["schemas"]["UndeliveredLetter"][];
+            /** @description How many refunds need attention in all. */
+            refunds_total: number;
+            /** @description How many letters are listed (at most 50). */
+            letters_total: number;
+            /** @description refunds_total plus letters_total, the nav badge. */
+            count: number;
         };
         /** @description One step of a refund's life, read from the audit trail. */
         OrderRefundHistoryEntry: {
@@ -17704,6 +20239,12 @@ export interface components {
             /** @description Charge rate applied, in basis points. */
             charge_percent_bp: number;
             /**
+             * @description True when the order was created in a test sales channel. Set once
+             *     at creation from the channel and never changed. Such orders are
+             *     left out of the sales summaries.
+             */
+            is_test?: boolean;
+            /**
              * Format: uuid
              * @description Promo code applied to this order, if any.
              */
@@ -17752,7 +20293,7 @@ export interface components {
         OrderSearchRequest: {
             /** @description One search value (barcode, order number, e-mail, phone or name), classified like the GET `q`. */
             q?: string;
-            /** @description Status group `recent` (default), `paid` or `unpaid`. */
+            /** @description Status group `recent` (default), `paid`, `unpaid` or `refunds` (partially_refunded and refunded). */
             tab?: string;
             /** @description Order lifecycle status filter. */
             status?: string;
@@ -17776,10 +20317,52 @@ export interface components {
              * @description Only orders created at or before this RFC3339 timestamp.
              */
             to?: string;
+            /**
+             * Format: date-time
+             * @description Only orders whose session starts at or after this RFC3339 timestamp.
+             */
+            session_from?: string;
+            /**
+             * Format: date-time
+             * @description Only orders whose session starts at or before this RFC3339 timestamp.
+             */
+            session_to?: string;
             /** @description Page size, 1-200 (default 50). */
             limit?: number;
             /** @description Pagination offset (default 0). */
             offset?: number;
+        };
+        /**
+         * @description A ticket of an order as the expanded list card shows it (EC-V3): its
+         *     number, status, category, seat, the price paid for it and the state of
+         *     its letter.
+         */
+        OrderListTicket: {
+            /**
+             * Format: uuid
+             * @description UUID of the ticket.
+             */
+            id: string;
+            /**
+             * Format: int64
+             * @description The ticket's number as the buyer sees it.
+             */
+            system_ticket_id: number;
+            /** @description Ticket status (active, cancelled, ...). */
+            status: string;
+            /** @description Name of the ticket category. */
+            tier_name: string | null;
+            /** @description Sector / row / seat, null for general admission. */
+            seat_label: string | null;
+            /**
+             * Format: int64
+             * @description What the buyer paid for this unit, in minor currency units.
+             */
+            price: number;
+            /** @description State of the ticket's letter. pending or processing while a letter job waits to go out; otherwise the mail provider's status of the last letter that carried the ticket (sending, sent, delayed, delivered, opened, failed), which also covers a letter the selling site sent; otherwise the job's status (sent, failed, skipped, disabled); none when there is neither. */
+            delivery_status: string;
+            /** @description Address the ticket's letter went or goes to, null when unknown. */
+            recipient_email: string | null;
         };
         /**
          * @description One row of the org-scoped order list (EC-04): the order plus the
@@ -17813,6 +20396,8 @@ export interface components {
              *     without opening every order.
              */
             delivery_state?: string;
+            /** @description The order's issued tickets in line order, for the expanded card of the list (EC-V3). */
+            tickets?: components["schemas"]["OrderListTicket"][];
         };
         /** @description One line item of an order (feature */
         OrderItemSummary: {
@@ -18356,7 +20941,7 @@ export interface components {
             sold: number;
             /**
              * Format: int64
-             * @description The part of sold that was sold in the system the session was imported from. No ticket, order or money stands behind it here.
+             * @description The part of sold that was sold in the system the session was imported from. No ticket, order or money stands behind it here, unless the ticket was later filed as a legacy_import order.
              */
             sold_upstream: number;
             /**
@@ -18554,6 +21139,16 @@ export interface components {
              * @description Sold plus held plus remaining.
              */
             revenue_estimate_minor: number;
+            /**
+             * Format: int64
+             * @description The estimate if not every seat sells: sold seats in full at their
+             *     price, every open free seat at its slot's price times the slot's
+             *     sell-through rate, a held seat at its price times the rate of the
+             *     slot price level nearest to it. Slots are ranked among the distinct
+             *     price levels: the dearest sells 0.90, the cheapest 0.60, linear by
+             *     rank between; a single price level sells 0.75. Rounded half up.
+             */
+            realistic_revenue_minor: number;
             /** @description The estimate per proposed category. */
             by_slot: components["schemas"]["SeatLayoutSlotMetrics"][];
         };
@@ -19029,7 +21624,7 @@ export interface components {
             orders: {
                 /** @description Order status. */
                 status: string;
-                /** @description Where the order came from (bil24_gateway, public_feed, checkout_api, complimentary). */
+                /** @description Where the order came from (bil24_gateway, public_feed, checkout_api, complimentary, legacy_import = sold in Bil24 before the platform). */
                 source: string;
                 /** @description ISO 4217 currency. */
                 currency: string;
@@ -19124,6 +21719,14 @@ export interface components {
             entered: components["schemas"]["SummaryEntered"];
             /** @description Invitations of the session, whichever way they were issued. */
             complimentary: components["schemas"]["SummaryComplimentary"];
+            /**
+             * Format: int64
+             * @description Paid orders that came through a test sales channel
+             *     (`is_test`). They are left out of orders, money, refunds, promo
+             *     codes, invitations and the revenue of the categories above; their
+             *     tickets still occupy places.
+             */
+            test_orders?: number;
             /**
              * @description The paid orders of the session (paid, partially refunded or
              *     refunded) grouped by where the buyer came from (spec 43): first
@@ -19325,7 +21928,7 @@ export interface components {
         SummaryOrdersItem: {
             /** @description Order status. */
             status: string;
-            /** @description Where the orders came from (bil24_gateway, public_feed, checkout_api, complimentary). */
+            /** @description Where the orders came from (bil24_gateway, public_feed, checkout_api, complimentary, legacy_import = sold in Bil24 before the platform). */
             source: string;
             /** @description ISO 4217 currency. */
             currency: string;
@@ -19507,6 +22110,14 @@ export interface components {
             promos: components["schemas"]["SummaryPromoItem"][];
             /** @description Invitations of the session. */
             complimentary: components["schemas"]["SummaryComplimentary"];
+            /**
+             * Format: int64
+             * @description Paid orders that came through a test sales channel
+             *     (`is_test`). They are left out of orders, money, refunds, promo
+             *     codes, invitations and the revenue of the categories above; their
+             *     tickets still occupy places.
+             */
+            test_orders?: number;
         };
         /**
          * @description The session summary over every session of an event (EC-06): the same
@@ -19569,6 +22180,14 @@ export interface components {
             promos: components["schemas"]["SummaryPromoItem"][];
             /** @description Invitations over every session. */
             complimentary: components["schemas"]["SummaryComplimentary"];
+            /**
+             * Format: int64
+             * @description Paid orders that came through a test sales channel
+             *     (`is_test`). They are left out of orders, money, refunds, promo
+             *     codes, invitations and the revenue of the categories above; their
+             *     tickets still occupy places.
+             */
+            test_orders?: number;
             /** @description Every non-deleted session of the event in start order, each with its own figures. */
             sessions: components["schemas"]["EventSummarySession"][];
         };
@@ -19631,6 +22250,14 @@ export interface components {
             promos: components["schemas"]["SummaryPromoItem"][];
             /** @description Invitations over every session. */
             complimentary: components["schemas"]["SummaryComplimentary"];
+            /**
+             * Format: int64
+             * @description Paid orders that came through a test sales channel
+             *     (`is_test`). They are left out of orders, money, refunds, promo
+             *     codes, invitations and the revenue of the categories above; their
+             *     tickets still occupy places.
+             */
+            test_orders?: number;
         };
         /** @description The sales figures of the requested events, one entry per event found. */
         EventSalesSummaryList: {
@@ -19640,6 +22267,190 @@ export interface components {
              *     deleted event or an unknown id has no entry.
              */
             items: components["schemas"]["EventSalesSummary"][];
+        };
+        /** @description The units sold at one price in one category with one promo code. */
+        OrgSummaryBreakdownItem: {
+            /**
+             * Format: uuid
+             * @description The category.
+             */
+            tier_id: string;
+            /** @description Name of the category. */
+            tier_name: string;
+            /**
+             * Format: int64
+             * @description Price the unit was sold at, before discount and service charge, in minor units.
+             */
+            unit_price: number;
+            /** @description Promo code on the order, null for units sold without one. */
+            promo_code: string | null;
+            /**
+             * Format: int64
+             * @description Units in the group.
+             */
+            tickets: number;
+            /**
+             * Format: int64
+             * @description Discount given on those units, in minor units.
+             */
+            discount: number;
+            /**
+             * Format: int64
+             * @description What the buyers paid for those units after discount and service charge, in minor units.
+             */
+            revenue: number;
+        };
+        /** @description One session in one currency, money in minor units. */
+        OrgSummaryCard: {
+            /** @description ISO 4217 code. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Orders paid at some point.
+             */
+            orders: number;
+            /**
+             * Format: int64
+             * @description Tickets that were not invitations, whatever became of them since.
+             */
+            sold: number;
+            /**
+             * Format: int64
+             * @description Invitations.
+             */
+            complimentary: number;
+            /**
+             * Format: int64
+             * @description Sold tickets cancelled with money returned.
+             */
+            refunded_tickets: number;
+            /**
+             * Format: int64
+             * @description Valid tickets of every kind.
+             */
+            active_tickets: number;
+            /**
+             * Format: int64
+             * @description Sum of `orders.total` of the orders paid at some point.
+             */
+            revenue: number;
+            /**
+             * Format: int64
+             * @description Succeeded refunds to buyers, both settlements (provider and external).
+             */
+            refunded: number;
+            /**
+             * Format: int64
+             * @description Succeeded "Refer a friend" cashback paid to referrers.
+             */
+            cashback: number;
+            /**
+             * Format: int64
+             * @description Revenue minus refunded minus cashback.
+             */
+            net: number;
+            /** @description Price x category rows, by category, price and promo code. */
+            breakdown: components["schemas"]["OrgSummaryBreakdownItem"][];
+            /** @description Promo codes the paid orders used, with order and redemption counts. */
+            promos: components["schemas"]["SummaryPromoItem"][];
+        };
+        /** @description A session with its cards, one per currency. */
+        OrgSummarySession: {
+            /**
+             * Format: uuid
+             * @description The session.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Its event.
+             */
+            event_id: string;
+            /** @description Name of the event. */
+            event_name: string;
+            /**
+             * Format: date-time
+             * @description Start of the session, UTC.
+             */
+            start_at: string;
+            /** @description Session status. */
+            status: string;
+            /** @description Name of the venue, null when it has none. */
+            venue_name: string | null;
+            /** @description IANA zone of the venue, null when it has none. */
+            venue_timezone: string | null;
+            /**
+             * Format: int64
+             * @description Paid orders of this session that came through a test sales channel.
+             */
+            test_orders: number;
+            /** @description One card per currency, sorted by currency. */
+            cards: components["schemas"]["OrgSummaryCard"][];
+        };
+        /** @description The cards of one currency added up, money in minor units. */
+        OrgSummaryTotal: {
+            /** @description ISO 4217 code. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Orders paid at some point.
+             */
+            orders: number;
+            /**
+             * Format: int64
+             * @description Tickets that were not invitations.
+             */
+            sold: number;
+            /**
+             * Format: int64
+             * @description Invitations.
+             */
+            complimentary: number;
+            /**
+             * Format: int64
+             * @description Sold tickets cancelled with money returned.
+             */
+            refunded_tickets: number;
+            /**
+             * Format: int64
+             * @description Valid tickets of every kind.
+             */
+            active_tickets: number;
+            /**
+             * Format: int64
+             * @description Revenue of the orders paid at some point.
+             */
+            revenue: number;
+            /**
+             * Format: int64
+             * @description Succeeded refunds to buyers, both settlements.
+             */
+            refunded: number;
+            /**
+             * Format: int64
+             * @description Succeeded "Refer a friend" cashback.
+             */
+            cashback: number;
+            /**
+             * Format: int64
+             * @description Revenue minus refunded minus cashback.
+             */
+            net: number;
+        };
+        /** @description The sales summary of an organization for a date range. */
+        OrgSummary: {
+            /** @description Sessions with sales, invitations or refunds in the range, oldest first. */
+            sessions: components["schemas"]["OrgSummarySession"][];
+            /** @description The cards added up per currency, sorted by currency. */
+            totals: components["schemas"]["OrgSummaryTotal"][];
+            /**
+             * Format: int64
+             * @description Paid orders of every session read that came through a test sales
+             *     channel. They are in none of the figures.
+             */
+            test_orders: number;
+            /** @description True when more than 500 sessions matched and only the oldest were read. */
+            truncated: boolean;
         };
         /**
          * @description A single active venue (physical event location owned by one organization).
@@ -19812,10 +22623,36 @@ export interface components {
             name: string;
             /**
              * Format: uuid
-             * @description Optional UUID of a row in the geo.cities reference table.
+             * @description Optional UUID of a row in the geo.cities reference table. Send
+             *     either `city_id` or `country_iso2` with `city_name`; both groups
+             *     together are 400 `venue.city_conflict`.
              * @example 01929d0e-0e47-7000-8000-000000000101
              */
             city_id?: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code of the country of the venue's city, sent
+             *     with `city_name` instead of `city_id`. Any country of
+             *     `GET /v1/geo/world-countries`: a country the platform reference
+             *     does not have is created from the world table (iso3, slug,
+             *     currency, region, English and Russian names) in the venue's
+             *     transaction, and the platform administrators are told. An
+             *     organization API key may use a reference country but never
+             *     creates one (403 `venue.country_create_forbidden`), and never
+             *     creates a city by name (403 `venue.city_create_forbidden`). A code the
+             *     world table does not know is 400 `venue.unknown_country`. When
+             *     `country` is not sent, the venue's `country` takes this code.
+             * @example MY
+             */
+            country_iso2?: string;
+            /**
+             * @description Name of the venue's city inside `country_iso2`, sent with it
+             *     instead of `city_id`. The city is found by name (any locale, case
+             *     and spacing ignored) or created, with the rules of
+             *     `POST /v1/organizations/{org_id}/cities`, in the venue's
+             *     transaction.
+             * @example Kuala Lumpur
+             */
+            city_name?: string;
             /**
              * @description Optional free-form street address. Deprecated in favour
              *     of the structured address fields below — accepted for
@@ -19894,6 +22731,202 @@ export interface components {
              * @example 1200
              */
             capacity_default?: number | null;
+        };
+        /** @description The city of a venue created with `country_iso2` and `city_name`. */
+        VenueCreatedCity: {
+            /**
+             * Format: uuid
+             * @description UUID of the city, found by name or created.
+             */
+            id: string;
+            /**
+             * @description Name of the city in the request language, else English.
+             * @example Kuala Lumpur
+             */
+            name: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code of the city's country.
+             * @example MY
+             */
+            country_iso2: string;
+        };
+        /** @description A country row the venue request created from the embedded world table. */
+        VenueCreatedCountry: {
+            /**
+             * Format: uuid
+             * @description UUID of the new reference country.
+             */
+            id: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code.
+             * @example MY
+             */
+            iso2: string;
+            /**
+             * @description Name in the request language, Russian for `ru` and English for any other.
+             * @example Malaysia
+             */
+            name: string;
+            /**
+             * @description ISO 4217 currency stored on the new row.
+             * @example MYR
+             */
+            currency: string;
+            /**
+             * @description Region of the new row, one of europe, middle_east, asia, africa, north_america, latin_america, oceania.
+             * @example asia
+             */
+            region: string;
+        };
+        /** @description A country with venues in the organization's scope. */
+        VenueDirectoryCountry: {
+            /**
+             * @description ISO 3166-1 alpha-2 code.
+             * @example ES
+             */
+            iso2: string;
+            /**
+             * Format: uuid
+             * @description UUID of the reference country, null when only a venue's address names it.
+             */
+            country_id: string | null;
+            /**
+             * @description Name in the request language, else English, else the code.
+             * @example Испания
+             */
+            name: string;
+            /**
+             * @description One of europe, middle_east, asia, africa, north_america, latin_america, oceania, or other for a country the world table does not know.
+             * @example europe
+             */
+            region: string;
+            /**
+             * Format: int64
+             * @description Venues in scope in this country.
+             * @example 14
+             */
+            venues: number;
+            /**
+             * Format: int64
+             * @description Of those, the organization's own venues.
+             * @example 3
+             */
+            own_venues: number;
+        };
+        /** @description A city of the requested country with venues in the organization's scope. */
+        VenueDirectoryCity: {
+            /**
+             * Format: uuid
+             * @description UUID of the city.
+             */
+            id: string;
+            /**
+             * @description Name in the request language, else English, else the slug.
+             * @example Мадрид
+             */
+            name: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code of the city's country.
+             * @example ES
+             */
+            country_iso2: string;
+            /**
+             * Format: int64
+             * @description Venues in scope in this city.
+             * @example 5
+             */
+            venues: number;
+            /**
+             * Format: int64
+             * @description Of those, the organization's own venues.
+             * @example 1
+             */
+            own_venues: number;
+        };
+        /** @description A venue of the directory. It never carries the venue's contacts. */
+        VenueDirectoryVenue: {
+            /**
+             * Format: uuid
+             * @description UUID of the venue.
+             */
+            id: string;
+            /**
+             * @description Name of the venue.
+             * @example Teatro Real
+             */
+            name: string;
+            /**
+             * Format: uuid
+             * @description UUID of the venue's city, null when it has none.
+             */
+            city_id: string | null;
+            /**
+             * @description Name of the venue's city in the request language, null without a city.
+             * @example Мадрид
+             */
+            city_name: string | null;
+            /**
+             * @description Country of the venue (its city's country, else its address country), null when unknown.
+             * @example ES
+             */
+            country_iso2: string | null;
+            /** @description Free-form address of the venue, null when unset. */
+            address: string | null;
+            /**
+             * @description Street address line 1, null when unset.
+             * @example Plaza de Isabel II
+             */
+            address_line1: string | null;
+            /**
+             * Format: double
+             * @description WGS-84 latitude, null when unknown.
+             * @example 40.4184
+             */
+            geo_lat: number | null;
+            /**
+             * Format: double
+             * @description WGS-84 longitude, null when unknown.
+             * @example -3.7109
+             */
+            geo_lng: number | null;
+            /**
+             * @description IANA time zone of the venue.
+             * @example Europe/Madrid
+             */
+            timezone: string | null;
+            /**
+             * @description Default capacity, null when unset.
+             * @example 1700
+             */
+            capacity_default: number | null;
+            /** @description True when the venue belongs to the path organization. */
+            own: boolean;
+            /**
+             * @description verified or unverified (migration 0182). Another organization's venue is always verified here.
+             * @example verified
+             */
+            review_status: string;
+            /** @description True when `has_own_plan` is true or the venue has a verified seating plan template the organization may copy (GET .../venues/{venue_id}/plan-templates). */
+            has_plan: boolean;
+            /** @description True when the organization has an active seating plan with a current version at the venue. */
+            has_own_plan: boolean;
+        };
+        /** @description Response of GET /v1/organizations/{org_id}/venue-directory. */
+        VenueDirectoryResponse: {
+            /** @description Up to 8 ISO codes, no duplicates: the countries of the organization's own venues (most venues first), the organization's own country, then reference countries where organizers work. */
+            quick_pick: string[];
+            /** @description Every country with at least one venue in scope, never filtered. */
+            countries: components["schemas"]["VenueDirectoryCountry"][];
+            /** @description The cities of `country` with venues in scope; empty without `country`. */
+            cities: components["schemas"]["VenueDirectoryCity"][];
+            /** @description The filtered venues, own first, then by name; empty without a filter. */
+            venues: components["schemas"]["VenueDirectoryVenue"][];
+            /**
+             * Format: int64
+             * @description Count of the filtered venues before `limit`; 0 without a filter.
+             * @example 5
+             */
+            total: number;
         };
         /**
          * @description Request body for PATCH /v1/organizations/{org_id}/venues/{id}.
@@ -20378,10 +23411,59 @@ export interface components {
         /** @description Response of GET /v1/geo/countries/{iso2}/currency. */
         GeoCountryCurrencyResponse: {
             /**
-             * @description ISO 4217 currency of the country, as stored on the platform's country row.
+             * @description ISO 4217 currency of the country, as stored on the platform's country row, else the one of the embedded world table.
              * @example EUR
              */
             currency: string;
+        };
+        /** @description One ISO 3166-1 country of the embedded world table. */
+        GeoWorldCountryItem: {
+            /**
+             * @description ISO 3166-1 alpha-2 code.
+             * @example MY
+             */
+            iso2: string;
+            /**
+             * @description ISO 3166-1 alpha-3 code.
+             * @example MYS
+             */
+            iso3: string;
+            /**
+             * @description Name in the request language, Russian for `ru` and English for any other.
+             * @example Малайзия
+             */
+            name: string;
+            /**
+             * @description English name, whatever the request language.
+             * @example Malaysia
+             */
+            name_en: string;
+            /**
+             * @description ISO 4217 national currency, the currency a reference row of this country gets.
+             * @example MYR
+             */
+            currency: string;
+            /**
+             * @description One of europe, middle_east, asia, africa, north_america, latin_america, oceania.
+             * @example asia
+             */
+            region: string;
+            /** @description True when the platform reference (`GET /v1/geo/countries`) has the country. */
+            in_reference: boolean;
+            /**
+             * Format: uuid
+             * @description UUID of the reference country when `in_reference` is true, else null.
+             */
+            country_id: string | null;
+            /** @description True when at least one organization is registered in this country. The quick pick of a form is the countries with organizers. */
+            has_organizers: boolean;
+        };
+        /** @description Response of GET /v1/geo/world-countries. */
+        GeoWorldCountriesResponse: {
+            /** @description The seven regions in display order: europe, middle_east, asia, africa, north_america, latin_america, oceania. The client names them with its own texts. */
+            regions: string[];
+            /** @description Every ISO 3166-1 country, sorted by `name`. */
+            countries: components["schemas"]["GeoWorldCountryItem"][];
         };
         GeoCountryResponse: {
             /**
@@ -20847,8 +23929,15 @@ export interface components {
              */
             poster_media_id?: string | null;
             /**
-             * @description URL-safe marketing slug for the event page (AB-45c, migration 0051).
-             *     Set via PATCH with the tri-state field: absent=keep, null=clear, value=set.
+             * @description The event's public page address (AB-45c, migration 0051):
+             *     `<tickets origin>/<page>/<slug>`. Latin letters, digits and single
+             *     hyphens, 1-120 characters, unique per organization. Set via PATCH
+             *     with the tri-state field: absent=keep, null=clear, value=set; a
+             *     typed value is lower-cased, a malformed one is 400
+             *     `event.invalid_slug`, a taken one 409 `event.duplicate_slug`. An
+             *     event without a slug gets one when it is published. The public
+             *     feed returns it as well (null while there is none); the same goes
+             *     for `age_rating` and `short_description`.
              * @example summer-festival-2026
              */
             slug?: string | null;
@@ -21111,13 +24200,23 @@ export interface components {
             /** @description Name of the linked promoter; null when the organization itself is the promoter. */
             promoter_name: string | null;
         };
-        /** @description Body of POST /v1/organizations/{org_id}/cities. */
+        /** @description Body of POST /v1/organizations/{org_id}/cities. Name the country by `country_id` or by `country_iso2`. */
         CreateOrgCityRequest: {
             /**
              * Format: uuid
-             * @description The existing country the city belongs to.
+             * @description The existing country the city belongs to. Wins over `country_iso2` when both are sent.
              */
-            country_id: string;
+            country_id?: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code of the country, instead of `country_id`.
+             *     The country must already be in the platform reference: a country
+             *     outside it is 409 `city.country_not_in_reference`, because a new
+             *     country comes only with a venue (POST
+             *     /v1/organizations/{org_id}/venues with `country_iso2` and
+             *     `city_name`).
+             * @example ES
+             */
+            country_iso2?: string;
             /**
              * @description Display name of the city, in `locale`.
              * @example Guardamar del Segura
@@ -21392,6 +24491,96 @@ export interface components {
              * @example es
              */
             locale?: string;
+        };
+        /** @description A message from a static site's contact or private-event form. */
+        SiteContactRequest: {
+            /**
+             * @description `contact` (default) or `private_event`. It is also the Turnstile
+             *     widget action of the form and picks the recipients.
+             * @example private_event
+             */
+            topic?: string;
+            /**
+             * @description Sender's first name, 1-100 characters.
+             * @example Anna
+             */
+            name: string;
+            /**
+             * @description Sender's last name, up to 100 characters; optional.
+             * @example Cohen
+             */
+            last_name?: string;
+            /**
+             * @description Sender's e-mail; the organizer's reply goes there (Reply-To).
+             * @example anna@example.com
+             */
+            email: string;
+            /**
+             * @description Sender's phone, 5-30 characters of digits, spaces and + ( ) - . ; optional.
+             * @example +972 50 123 4567
+             */
+            phone?: string;
+            /**
+             * @description The message, 10-2000 characters. Optional for the `contact` topic, required for `private_event`.
+             * @example We would like to book the hall for 30 guests.
+             */
+            message?: string;
+            /** @description Must be true; the sender agrees that the message is passed to the organizer. */
+            consent: boolean;
+            /** @description Cloudflare Turnstile response token, solved with the action equal to `topic`. */
+            turnstile_token?: string;
+            /**
+             * @description Page language of the sender.
+             * @example he
+             */
+            locale?: string;
+        };
+        /** @description A subscription to an organization's mailings from a static site's form. */
+        SiteMarketingSubscriptionRequest: {
+            /**
+             * @description The address to subscribe.
+             * @example anna@example.com
+             */
+            email: string;
+            /**
+             * @description Subscriber's name, up to 100 characters; optional.
+             * @example Anna
+             */
+            name?: string;
+            /**
+             * @description Subscriber's phone, 5-30 characters of digits, spaces and + ( ) - . ; optional.
+             * @example +972 50 123 4567
+             */
+            phone?: string;
+            /**
+             * @description Language of the confirmation letter; the organization's language when absent.
+             * @example he
+             */
+            locale?: string;
+            /** @description Must be true; the person ticked the box next to the consent text. */
+            consent: boolean;
+            /**
+             * @description Version of the consent text the form showed, 3-64 characters of
+             *     letters, digits and `. _ : -`. Stored with the grant and the
+             *     confirmation as evidence of what was agreed to.
+             * @example club-2026-11-06
+             */
+            text_version: string;
+            /**
+             * @description The site page the form was on; the confirmation sends the person back there. Dropped unless it lies on one of the channel's site origins.
+             * @example https://vinoandco.events/club/
+             */
+            page_url?: string;
+            /** @description Cloudflare Turnstile response token, solved with the action `club`. */
+            turnstile_token?: string;
+        };
+        /** @description The subscription was accepted. */
+        SiteMarketingSubscriptionAccepted: {
+            /**
+             * @description Always "check_email".
+             * @example check_email
+             */
+            status: string;
         };
         /** @description The message is stored and queued for delivery. */
         OrganizerContactAccepted: {
@@ -22305,7 +25494,8 @@ export interface components {
          *     A7). Name the event EITHER with `feed_token` and `event_id` (the widget)
          *     OR with `page` (a page Arena hosts); sending both, or neither, is not
          *     counted. The surface follows the addressing: `feed_token` is the
-         *     `widget` surface only, `page` is `hosted_page` or `tickets_page`. A body
+         *     `widget` surface, `page` is `hosted_page` or `tickets_page`; the
+         *     `external_site` surface (a customer's own site) may use either. A body
          *     that disagrees with itself is not counted (the answer is still 204).
          *     Unknown fields are ignored.
          */
@@ -22336,8 +25526,10 @@ export interface components {
             /**
              * @description Where the visitor was: `widget` (the embedded widget on a seller's
              *     own site), `hosted_page` (the hosted event page) or `tickets_page`
-             *     (the promoter page that lists events). `widget` goes with
-             *     `feed_token`, the other two with `page`. Any other value, or one that
+             *     (the promoter page that lists events) or `external_site` (a
+             *     customer's own site on its own domain). `widget` goes with
+             *     `feed_token`, `hosted_page` and `tickets_page` with `page`,
+             *     `external_site` with either. Any other value, or one that
              *     does not fit the addressing, is not counted.
              * @example widget
              */
@@ -24004,6 +27196,76 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * @description Advisory remark that a map point looks wrong for the event's city. It never
+         *     blocks a save; the point is stored either way. The distance is measured from
+         *     the city centre. The usual distance is max(15 km, 4 times a radius estimated
+         *     from the city's population), at most 60 km.
+         */
+        MapPointWarning: {
+            /** @description `venue.point_far_from_city` when the point is beyond the usual distance, `venue.point_nearer_other_city` when it is within it but outside the city's own radius and another city is closer. */
+            code: string;
+            /** @description English text for the organizer, naming the cities and the distances. */
+            message: string;
+            /** @description The event's venue city the point was compared with (ASCII name). */
+            city: string;
+            /**
+             * Format: double
+             * @description Distance from the point to that city's centre, in kilometres, one decimal.
+             */
+            distance_km: number;
+            /**
+             * Format: double
+             * @description The usual distance for a city of this size, in kilometres, one decimal.
+             */
+            threshold_km: number;
+            /** @description A city of the same country that is nearer to the point than the venue city centre is, or null. */
+            nearer_city: string | null;
+            /**
+             * Format: double
+             * @description Distance from the point to `nearer_city`, in kilometres, or null.
+             */
+            nearer_distance_km: number | null;
+        };
+        /** @description Advisory verdict on a map point against the cities of the event's venues. */
+        MapPointCheck: {
+            /** @description False when none of the venue cities is in the geo data (or the event has no venue city), so nothing could be said. */
+            checked: boolean;
+            /** @description Empty when the point looks right or could not be checked; at most one remark otherwise. */
+            warnings: components["schemas"]["MapPointWarning"][];
+        };
+        /** @description The map point as stored by PUT, with the advisory warnings. The point is stored whatever the warnings say. */
+        EventMapPointSaved: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the event.
+             */
+            event_id: string;
+            /**
+             * Format: double
+             * @description Latitude in degrees, -90 to 90, six decimals kept.
+             */
+            latitude: number;
+            /**
+             * Format: double
+             * @description Longitude in degrees, -180 to 180, six decimals kept.
+             */
+            longitude: number;
+            /** @description Optional text shown with the point, up to 200 characters. */
+            label: string | null;
+            /**
+             * Format: date-time
+             * @description When the point was first set.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the point was last changed.
+             */
+            updated_at: string;
+            /** @description Advisory remarks on the point, see MapPointWarning. Empty when nothing looks wrong. */
+            warnings: components["schemas"]["MapPointWarning"][];
+        };
         /** @description Body of PUT .../events/{event_id}/map-point; replaces the point as a whole. */
         SetEventMapPointRequest: {
             /**
@@ -24505,6 +27767,25 @@ export interface components {
              *     <date>"); null if unknown. Filled where `current_price` is.
              */
             next_price_change_at?: string | null;
+            /**
+             * @description Public feed only. Present on a category that sells in steps by
+             *     tickets sold (a chain whose next category is dearer): how many
+             *     tickets are left at this price and where the sale goes next.
+             */
+            price_step?: {
+                /** @description How many tickets are left at the current price, null when unknown. */
+                remaining_at_price?: number | null;
+                /**
+                 * Format: int64
+                 * @description The price of the next step in minor units.
+                 */
+                next_price?: number;
+                /**
+                 * Format: uuid
+                 * @description The id of the next category in the chain, where the sale goes after this step; null when unknown.
+                 */
+                next_tier_id?: string | null;
+            };
             /**
              * @description Whether the category is open for sale. A closed category
              *     (false) accepts no NEW holds; places already held or sold are
@@ -27003,6 +30284,74 @@ export interface components {
             quantity?: number | null;
         };
         /**
+         * @description An event that left a public feed token's list (spec 62 §6.1, item P-6).
+         *     One item per event. An `unpublished` or `deleted` event carries only
+         *     `id`, `status` and `removed_at`: `name`, `slug`, `display_number` and
+         *     `last_session_at` are null for it.
+         */
+        PublicFeedRemovedEvent: {
+            /**
+             * Format: uuid
+             * @description The event id the builder knows the page by.
+             */
+            id: string;
+            /**
+             * Format: int64
+             * @description The event's display number; null for an unpublished or deleted event.
+             */
+            display_number?: number | null;
+            /** @description The event's name; null for an unpublished or deleted event. */
+            name?: string | null;
+            /** @description The event's page address; null when none was assigned, or for an unpublished or deleted event. */
+            slug?: string | null;
+            /**
+             * @description Why the event left the list: `unpublished` (the publication to
+             *     this token was deleted; a draft merely attached to the token was
+             *     never on the list and is not reported), `cancelled`, `archived`
+             *     or `deleted` (soft- or hard-deleted).
+             */
+            status: string;
+            /**
+             * Format: date-time
+             * @description When the event left the list, RFC 3339 UTC.
+             */
+            removed_at: string;
+            /**
+             * Format: date-time
+             * @description End of the event's last session, RFC 3339 UTC; null without sessions, or for an unpublished or deleted event.
+             */
+            last_session_at?: string | null;
+        };
+        /**
+         * @description The event block of the anonymous order status
+         *     (`GET /v1/public/checkout/{checkout_token}`).
+         */
+        CheckoutStatusEvent: {
+            /**
+             * Format: uuid
+             * @description The event the order is for.
+             */
+            event_id: string;
+            /**
+             * Format: uuid
+             * @description The session the order is for.
+             */
+            session_id: string;
+            /** @description The event's name. */
+            name: string;
+            /** @description The event's public page address; null until one is assigned. */
+            slug?: string | null;
+            /**
+             * Format: date-time
+             * @description Session start, RFC 3339 UTC.
+             */
+            start_at: string;
+            /** @description The session venue's name. */
+            venue_name?: string | null;
+            /** @description IANA time zone of the venue to render `start_at` in; null when unknown. */
+            timezone?: string | null;
+        };
+        /**
          * @description A single issued ticket included in the anonymous order-status response
          *     when the checkout has reached the `paid` state (feature #319 WID-0b).
          */
@@ -27024,8 +30373,10 @@ export interface components {
              */
             human_code?: string | null;
             /**
-             * @description Path to download the PDF e-ticket:
-             *     `GET /v1/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf`.
+             * @description ABSOLUTE URL to download the PDF e-ticket:
+             *     `GET {api public origin}/v1/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf`.
+             *     Deployments without a configured public origin answer the
+             *     host-relative path instead.
              */
             pdf_url?: string | null;
         };
@@ -27105,6 +30456,119 @@ export interface components {
              *     its origin is on the return-URL allow-list; the letters link to it.
              */
             page_url?: string;
+        };
+        /** @description Body of `POST /v1/public/feeds/{feed_token}/my-tickets/link`. */
+        MyTicketsLinkRequest: {
+            /** @description The address that placed the orders. */
+            email: string;
+            /** @description Language of the letter (a short tag such as `ru`); the organization's language when omitted. */
+            locale?: string;
+            /**
+             * @description The site page the letter links to (it receives the token in the URL
+             *     fragment, `#t=<token>`, never in the query). Used only
+             *     when its origin is one of the feed token's own channel site origins
+             *     (`settings.site.origins`); otherwise the letter links the tickets
+             *     site's `/my-tickets` page.
+             */
+            page_url?: string;
+            /**
+             * @description Cloudflare Turnstile token solved with the action `my_tickets` on
+             *     one of the channel's site origins (`settings.site.origins`).
+             *     Required when the channel lists site origins (a static site such
+             *     as Vino&Co), ignored for any other channel.
+             */
+            turnstile_token?: string;
+        };
+        /** @description Body of `POST /v1/public/my-tickets/session`. */
+        MyTicketsExchangeRequest: {
+            /** @description The one-time token from the e-mailed link (fragment `#t=`; links mailed before the switch carry it as the query parameter `t`). */
+            token: string;
+        };
+        /** @description A "my tickets" session. */
+        MyTicketsSession: {
+            /** @description Bearer token for the other my-tickets routes. Shown once. */
+            session_token: string;
+            /**
+             * Format: date-time
+             * @description When the session ends, RFC 3339 UTC (4 hours after the exchange).
+             */
+            expires_at: string;
+        };
+        /** @description One ticket of a listed order. */
+        MyTicketsTicket: {
+            /**
+             * Format: uuid
+             * @description The ticket.
+             */
+            ticket_id: string;
+            /** @description The ticket's status (`active`, `cancelled`, ...). */
+            status: string;
+            /** @description Sector of an assigned seat. */
+            sector?: string | null;
+            /** @description Row of an assigned seat. */
+            row?: string | null;
+            /** @description Seat number. */
+            number?: string | null;
+            /** @description Name of the ticket category. */
+            tier_name?: string | null;
+            /** @description The human-readable fallback code in display form. */
+            human_code?: string | null;
+            /** @description Absolute URL of the PDF; needs the session's bearer token. */
+            pdf_url: string;
+        };
+        /** @description One listed order. */
+        MyTicketsOrder: {
+            /**
+             * Format: uuid
+             * @description The order.
+             */
+            order_id: string;
+            /**
+             * Format: int64
+             * @description The number printed on the ticket e-mail and PDF.
+             */
+            order_number: number;
+            /** @description The public order status, `paid`, `refunded` or `cancelled` (same words as the order status route). */
+            status: string;
+            /**
+             * Format: int64
+             * @description Order total in the smallest currency unit.
+             */
+            total: number;
+            /** @description ISO 4217 currency code. */
+            currency: string;
+            /**
+             * Format: date-time
+             * @description When the order was paid; absent for an invitation.
+             */
+            paid_at?: string;
+            /**
+             * Format: date-time
+             * @description When the order was created.
+             */
+            created_at: string;
+            /** @description True when the session's date was cancelled. */
+            session_cancelled: boolean;
+            /** @description What the order is for. */
+            event: components["schemas"]["CheckoutStatusEvent"];
+            /** @description The order's tickets. */
+            tickets: components["schemas"]["MyTicketsTicket"][];
+        };
+        /** @description One page of the session's orders. */
+        MyTicketsOrdersPage: {
+            /** @description The orders of this page, newest session first. */
+            orders: components["schemas"]["MyTicketsOrder"][];
+            /** @description Paging of the list. */
+            pagination: {
+                /** @description This page, 1-based. */
+                page: number;
+                /** @description Orders per page (20). */
+                per_page: number;
+                /** @description All matching orders. */
+                total: number;
+                /** @description Number of pages, at least 1. */
+                total_pages: number;
+            };
         };
         /** @description The request was saved. */
         PublicSaleSubscriptionAccepted: {
@@ -27205,6 +30669,18 @@ export interface components {
              */
             attribution?: components["schemas"]["CheckoutAttribution"];
             /**
+             * @description The browser's tracking context (spec 62 sections 8.1 and 8.3),
+             *     optional. Kept beside the order for the organization's server-side
+             *     Meta CAPI and GA4 conversions; the server adds the client IP and
+             *     User-Agent itself. A malformed or oversized object is ignored, never
+             *     an error. Its `tracking_consent` and `tracking_consent_text_version`
+             *     are NOT kept in the context: they are stored on the checkout (the
+             *     same place `PATCH /v1/public/checkout/{checkout_token}/consent`
+             *     updates) and read from there at send time. Without an explicit yes
+             *     stored at send time no conversion leaves the platform.
+             */
+            buyer_context?: components["schemas"]["PublicCheckoutBuyerContext"];
+            /**
              * @description The buyer's tick on the organizer's mailings (spec 51-1),
              *     optional. Recorded only when the feed session's
              *     `marketing_optin.enabled` is true (consent journal, double
@@ -27213,6 +30689,165 @@ export interface components {
              *     organizer's reward code (see `PublicMarketingConsent`).
              */
             marketing_consent?: components["schemas"]["PublicMarketingConsent"];
+            /**
+             * Format: int64
+             * @description Optional. The cart total, in minor units, that the selling site
+             *     showed the buyer (after discounts and the service fee). When
+             *     present and different from the total arena computes, the request
+             *     is refused with 409 `checkout.price_changed` and
+             *     `details: {expected_total, actual_total, currency}` before
+             *     anything is held; a free (0) cart is compared too. The refusal is
+             *     never stored for the `Idempotency-Key`: repeat with the new total
+             *     (normally under a new key).
+             */
+            expected_total?: number;
+            /**
+             * @deprecated
+             * @description Deprecated alias of `buyer_context.tracking_consent` +
+             *     `tracking_consent_text_version`; both write the same stored
+             *     consent on the checkout. When both are sent and this object is
+             *     readable, it wins (it carries the time of the choice).
+             *     The buyer's answer to the site's cookie banner (spec 62 §8.1,
+             *     П-20), optional. Stored on the checkout; a conversion sender
+             *     (GA4 Measurement Protocol, Meta CAPI) reads it from the order at
+             *     send time and sends nothing unless it is an explicit yes. An
+             *     unreadable object is dropped, never a reason to refuse the
+             *     purchase. A later change goes through
+             *     `PATCH /v1/public/checkout/{checkout_token}/consent`.
+             */
+            tracking_consent?: components["schemas"]["TrackingConsent"];
+        };
+        /**
+         * @description The cookie (tracking) consent of a purchase (spec 62 §8.1): one
+         *     choice for analytics and advertising together. Not stated reads as
+         *     no.
+         */
+        TrackingConsent: {
+            /** @description The buyer allowed tracking (analytics and advertising). */
+            granted: boolean;
+            /** @description The version of the banner text the buyer answered. */
+            version: string;
+            /**
+             * Format: date-time
+             * @description When the buyer chose, RFC 3339, as the site recorded it. Omitted
+             *     or in the future: the server's time. An older choice never
+             *     replaces a newer stored one.
+             */
+            at?: string;
+            /**
+             * @description Reserved for a future banner with separate categories; stored,
+             *     not read today.
+             */
+            categories?: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description Response of `PATCH /v1/public/checkout/{checkout_token}/consent`. */
+        CheckoutTrackingConsentResponse: {
+            /** @description The checkout token, echoed. */
+            checkout_token: string;
+            /**
+             * @description False when a newer choice was already stored; `tracking_consent`
+             *     then shows the stored one.
+             */
+            applied: boolean;
+            /** @description The consent the order carries now. */
+            tracking_consent: {
+                /** @description The buyer allowed tracking. */
+                granted: boolean;
+                /** @description The banner text version. */
+                version: string;
+                /**
+                 * Format: date-time
+                 * @description When the buyer chose.
+                 */
+                at?: string | null;
+            };
+        };
+        /** @description Response of `POST /v1/public/checkout/{checkout_token}/cancel`. */
+        CheckoutCancelResponse: {
+            /** @description The checkout token, echoed. */
+            checkout_token: string;
+            /**
+             * @description The public status the order has now, as
+             *     `GET /v1/public/checkout/{checkout_token}` reports it:
+             *     `cancelled` (this call or an earlier one cancelled it), `paid`
+             *     (the payment came first: show "thank you"), `expired` (the
+             *     window had already closed), `needs_help` (an operator holds the
+             *     order) or `refunded`.
+             */
+            status: string;
+            /** @description True when the order is cancelled (now or by an earlier call). */
+            cancelled: boolean;
+        };
+        /**
+         * @description Browser identifiers for server-side conversions. Every string is at most
+         *     256 characters (`page_url` 2048, `tracking_consent_text_version` 64) with
+         *     no control characters; a longer value is dropped, not truncated.
+         */
+        PublicCheckoutBuyerContext: {
+            /** @description Meta click id from the landing URL. */
+            fbclid?: string;
+            /** @description Google click id from the landing URL. */
+            gclid?: string;
+            /** @description Value of the `_fbp` cookie. */
+            fbp?: string;
+            /** @description Value of the `_fbc` cookie. */
+            fbc?: string;
+            /** @description GA4 client id (the `_ga` cookie value after `GA1.1.`). */
+            ga_client_id?: string;
+            /** @description The page the checkout started on, sent to Meta as event_source_url. */
+            page_url?: string;
+            /**
+             * @description The buyer's cookie-banner answer (analytics and advertising
+             *     together). Stored on the checkout (spec 62 П-20), not in the
+             *     context; `PATCH /v1/public/checkout/{checkout_token}/consent`
+             *     changes it later. A yes counts only together with
+             *     `tracking_consent_text_version`.
+             */
+            tracking_consent?: boolean;
+            /**
+             * @description Version of the banner text the answer was given to. Required for a
+             *     yes; a no without it is stored with the version `unstated`.
+             */
+            tracking_consent_text_version?: string;
+        };
+        /**
+         * @description An organization's server-side conversion credentials. The two secrets
+         *     are write-only: only whether one is set is reported.
+         */
+        ConversionSettings: {
+            /** @description Meta pixel id, empty when not set. */
+            meta_pixel_id: string;
+            /** @description A Conversions API access token is stored. */
+            meta_capi_token_set: boolean;
+            /** @description Meta test event code used for orders of a test channel, empty when not set. */
+            meta_test_event_code: string;
+            /** @description GA4 measurement id (G-XXXXXXXXXX), empty when not set. */
+            ga4_measurement_id: string;
+            /** @description A Measurement Protocol API secret is stored. */
+            ga4_api_secret_set: boolean;
+        };
+        /** @description Envelope of the conversion-settings routes. */
+        ConversionSettingsEnvelope: {
+            /** @description The settings as stored after the call. */
+            conversion_settings: components["schemas"]["ConversionSettings"];
+        };
+        /**
+         * @description Every key is optional, at least one is required. An absent key keeps the
+         *     stored value; an empty string or null clears it.
+         */
+        UpdateConversionSettingsRequest: {
+            /** @description Numeric Meta pixel id (422 `conversions.invalid_field` otherwise). */
+            meta_pixel_id?: string | null;
+            /** @description Conversions API access token, 8-512 characters. Write-only. */
+            meta_capi_token?: string | null;
+            /** @description Meta test event code, up to 64 letters, digits, - or _. */
+            meta_test_event_code?: string | null;
+            /** @description GA4 measurement id, G- followed by capital letters and digits. */
+            ga4_measurement_id?: string | null;
+            /** @description Measurement Protocol API secret, 8-512 characters. Write-only. */
+            ga4_api_secret?: string | null;
         };
         /**
          * @description The buyer's answer to the marketing consent tick (spec 51-1). When
@@ -27681,9 +31316,18 @@ export interface components {
              *     For a paid cart this is the payment deadline: it is moved to
              *     `WIDGET_PAYMENT_WINDOW_SECONDS + WIDGET_PAYMENT_GRACE_SECONDS`
              *     from now, so the provider's hosted session always stops accepting
-             *     payment BEFORE arena releases the seats.
+             *     payment BEFORE arena releases the seats. The window is the sales
+             *     channel's own when it has one (`payment_window_seconds`, spec 62
+             *     П-3).
              */
             expires_at: string;
+            /**
+             * Format: date-time
+             * @description When the provider's page stops taking the payment (RFC 3339 UTC):
+             *     the channel's payment window from now. This is what a site counts
+             *     down to; `expires_at` is a grace later. Present for a paid cart.
+             */
+            payment_expires_at?: string;
             /** @description True when the cart's discount is the reward for the marketing consent tick. */
             marketing_discount_applied?: boolean;
         };
@@ -27809,14 +31453,24 @@ export interface components {
          */
         CheckoutStatusResponse: {
             /**
-             * @description Public order status derived from the checkout_session.state:
-             *     - `pending`: created | pricing_confirmed | payment_started | manual_review
-             *     - `paid`: completed
+             * @description Public order status, derived from the checkout_session.state and
+             *     refined by the order the session produced:
+             *     - `pending`: created | pricing_confirmed | payment_started
+             *     - `paid`: completed (also a partially refunded order)
              *     - `expired`: expired
              *     - `failed`: abandoned
+             *     - `needs_help`: manual_review - an operator has to look at the
+             *       order; the page should say "we are checking your order" and
+             *       show the organizer's contact, not a spinner (it used to be
+             *       reported as `pending`)
+             *     - `refunded`: the order was fully refunded
+             *     - `cancelled`: the order was cancelled — by the buyer
+             *       (`POST .../cancel`, spec 62 П-2) or an operator
+             *     Only `pending` is transient; the other statuses are final for a
+             *     polling client.
              * @enum {string}
              */
-            status: "pending" | "paid" | "expired" | "failed";
+            status: "pending" | "paid" | "expired" | "failed" | "needs_help" | "refunded" | "cancelled";
             /** @description The opaque token identifying this checkout (echoed from path). */
             checkout_token: string;
             /**
@@ -27851,6 +31505,21 @@ export interface components {
             /** @description ISO 4217 three-letter currency code; null until pricing_confirmed. */
             currency?: string | null;
             /**
+             * Format: date-time
+             * @description When the provider's page stops taking the payment (the sales
+             *     channel's payment window, spec 62 П-3): `expires_at` minus the
+             *     payment grace. Only while the order is `pending`.
+             */
+            payment_expires_at?: string;
+            /**
+             * @description Set when a payment arrived after the order stopped waiting for it
+             *     (spec 62 П-15): `refund_requested` (the full amount goes back to
+             *     the buyer's card), `operator_review` (the organizer returns it)
+             *     or `reacquired` (the places were taken again and the order is
+             *     paid). Omitted otherwise.
+             */
+            late_payment?: string;
+            /**
              * @description The provider-hosted payment page for this order, present only
              *     while the order is still `pending` and its hold has not expired.
              *
@@ -27861,6 +31530,13 @@ export interface components {
              *     passed.
              */
             payment_url?: string;
+            /**
+             * @description What the order is for: event name and slug, the session start
+             *     (UTC) and the venue with its IANA time zone, so a static page can
+             *     render the order without a second call. Omitted when the session
+             *     cannot be resolved.
+             */
+            event?: components["schemas"]["CheckoutStatusEvent"];
             /** @description Cart items held at the time of the request. */
             items: components["schemas"]["CheckoutStatusItem"][];
             /** @description Issued tickets; non-empty only when status is `paid`. */
@@ -29629,6 +33305,28 @@ export interface components {
                 [key: string]: unknown;
             };
             /**
+             * @description True for a test sales channel. Every order created in it is
+             *     marked `is_test` and is left out of the sales figures. Payments
+             *     still go through the live provider.
+             */
+            is_test?: boolean;
+            /** @description Buyer name is required at checkout for this channel (widget and hosted page). */
+            collect_name?: boolean;
+            /** @description Buyer phone is required at checkout for this channel (widget and hosted page). */
+            collect_phone?: boolean;
+            /**
+             * Format: int32
+             * @description The channel's own payment window in seconds (spec 62 П-3): how
+             *     long the buyer has on the provider's payment page. `null` means
+             *     the deployment default (`WIDGET_PAYMENT_WINDOW_SECONDS`). A
+             *     provider with a floor of its own (Stripe refuses a Checkout
+             *     Session that expires sooner than 30 minutes) never gets less than
+             *     the deployment default; a longer value is honoured. The hold,
+             *     order and checkout expire this window plus the payment grace
+             *     after `checkout/start`.
+             */
+            payment_window_seconds?: number | null;
+            /**
              * Format: date-time
              * @description ISO-8601 timestamp when the channel was created.
              */
@@ -29700,6 +33398,23 @@ export interface components {
             settings?: {
                 [key: string]: unknown;
             };
+            /**
+             * @description Create the channel as a test channel (default false). Orders
+             *     created in it carry `is_test` from then on.
+             */
+            is_test?: boolean;
+            /** @description Require the buyer name at checkout (default false). */
+            collect_name?: boolean;
+            /** @description Require the buyer phone at checkout (default false). */
+            collect_phone?: boolean;
+            /**
+             * Format: int32
+             * @description The channel's own payment window in seconds, 120 to 86400 (spec
+             *     62 П-3; 1200 = 20 minutes for an AllPay site). Omit or `null` for
+             *     the deployment default. Out of range: 400
+             *     `channel.invalid_payment_window`.
+             */
+            payment_window_seconds?: number | null;
         };
         /**
          * @description Body for `PATCH /v1/organizations/{org_id}/channels/{id}`
@@ -29768,6 +33483,26 @@ export interface components {
             settings?: {
                 [key: string]: unknown;
             };
+            /**
+             * @description Turn the test flag of the channel on or off. Omit to leave it
+             *     unchanged. Orders already created keep the flag they were born
+             *     with: it never changes on an order.
+             */
+            is_test?: boolean;
+            /** @description Require the buyer name at checkout. Omit to leave it unchanged. */
+            collect_name?: boolean;
+            /** @description Require the buyer phone at checkout. Omit to leave it unchanged. */
+            collect_phone?: boolean;
+            /**
+             * Format: int32
+             * @description The channel's own payment window in seconds (spec 62 П-3).
+             *     Tri-state like `reservation_ttl_override`: omit the key to keep
+             *     the stored value, send `null` to go back to the deployment
+             *     default, send 120 to 86400 to set it. Out of range: 400
+             *     `channel.invalid_payment_window`. Orders already started keep
+             *     the deadline they were given.
+             */
+            payment_window_seconds?: number | null;
         };
         /**
          * @description Read-shape of the Bil24-compat gateway credential (feature #473,
@@ -38195,7 +41930,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Rate limit exceeded — too many login attempts for this IP+email */
+            /** @description Rate limit exceeded — too many login attempts for this IP+email (`auth.rate_limited`, with `Retry-After` in seconds). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -38246,7 +41981,12 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Refresh token invalid, expired, or revoked */
+            /**
+             * @description Refresh token invalid, expired, or revoked (`auth.invalid_refresh_token`,
+             *     `auth.refresh_token_expired`). A token that was already exchanged for a
+             *     new one ends every session of the account (`auth.session_compromised`);
+             *     a token ended by sign-out or by such a sweep is only refused.
+             */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -38395,7 +42135,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Too many wrong passwords (`auth.rate_limited`). */
+            /** @description Too many wrong passwords (`auth.rate_limited`, with `Retry-After` in seconds). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -38455,7 +42195,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Too many attempts from this address (`auth.rate_limited`). */
+            /** @description Too many attempts from this address (`auth.rate_limited`, with `Retry-After` in seconds). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -38524,7 +42264,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Too many attempts from this address (`auth.rate_limited`). */
+            /** @description Too many attempts from this address (`auth.rate_limited`, with `Retry-After` in seconds). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -39261,6 +43001,90 @@ export interface operations {
             };
         };
     };
+    getV1OrganizationsOrgIdGettingStarted: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization the caller asks about. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The first steps of the organization the caller may do. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GettingStartedResponse"];
+                };
+            };
+            /** @description org_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The caller is not a member of this organization, or the API key
+             *     belongs to another organization (`org.access_denied`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization does not exist or was archived (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The membership or permission lookup failed
+             *     (`org.membership_check_failed`), or the organization's data could
+             *     not be read (`getting_started.lookup_failed`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The permission checker is not wired (`dependency.org_access_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     postV1AuthPasswordResetRequest: {
         parameters: {
             query?: never;
@@ -39590,8 +43414,57 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The platform has no such country (`geo.country_not_found`). */
+            /** @description Neither the platform nor the world table has such a country (`geo.country_not_found`). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Geo queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1GeoWorldCountries: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Language of `name`. `ru` gives Russian names, any other language English ones. Overrides Accept-Language.
+                 * @example ru
+                 */
+                lang?: string;
+                /**
+                 * @description Alias of `lang`, read only when `lang` is absent.
+                 * @example ru
+                 */
+                locale?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The world countries and the region order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoWorldCountriesResponse"];
+                };
+            };
+            /** @description The platform reference could not be read (`geo.list_countries_failed`). */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -41599,6 +45472,253 @@ export interface operations {
             };
         };
     };
+    getTelegramConnectStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization the caller works in. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's Telegram connection. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramConnectStatus"];
+                };
+            };
+            /** @description org_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description An API key (`telegram_connect.user_only`) or no membership in the organization (`org.access_denied`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createTelegramConnectCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization the bot opens after the link. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramConnectCode"];
+                };
+            };
+            /** @description org_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description An API key (`telegram_connect.user_only`) or no membership in the organization (`org.access_denied`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The bot is not configured on this server (`telegram_connect.not_configured`), or database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    previewBotTelegramConnect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotTelegramConnectRequest"];
+            };
+        };
+        responses: {
+            /** @description The confirmation screen's facts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotTelegramConnectPreview"];
+                };
+            };
+            /** @description Invalid body, code or telegram_user_id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or wrong service token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The link cannot be used (`bot.connect_code_invalid`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    acceptBotTelegramConnect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotTelegramConnectRequest"];
+            };
+        };
+        responses: {
+            /** @description The account is linked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotTelegramConnectAcceptResponse"];
+                };
+            };
+            /** @description Invalid body, code or telegram_user_id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or wrong service token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The link cannot be used (`bot.connect_code_invalid`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description This Telegram account is linked to another person (`bot.telegram_already_linked`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     claimBotWebLoginNotices: {
         parameters: {
             query?: never;
@@ -41615,6 +45735,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BotWebLoginNoticesResponse"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    claimBotVenuePlanNotices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The notices to send */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotVenuePlanNoticesResponse"];
                 };
             };
             /** @description Missing or wrong service token */
@@ -45243,7 +49401,7 @@ export interface operations {
     superadminListOrganizations: {
         parameters: {
             query?: {
-                /** @description Case-insensitive substring search across organization name and slug. */
+                /** @description Case-insensitive substring search across the name, legal name, slug, number, id, country, locale, tax and registration numbers, contact e-mail and phone, site, city and sender e-mail of the organization. */
                 q?: string;
                 /** @description Maximum number of rows to return. */
                 limit?: number;
@@ -46164,6 +50322,96 @@ export interface operations {
             };
         };
     };
+    getV1OrganizationsOrgIdVenueDirectory: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Two-letter ISO 3166-1 code; narrows `venues` and fills `cities`.
+                 * @example ES
+                 */
+                country?: string;
+                /** @description Only venues in this city (UUID from `cities` or GET /v1/geo/cities). */
+                city_id?: string;
+                /**
+                 * @description A part of the venue name, any letter case, at most 100 characters.
+                 * @example teatro
+                 */
+                q?: string;
+                /** @description Most venues to return, 1 to 200 (default 100). `total` is the count before the limit. */
+                limit?: number;
+                /**
+                 * @description Language of country and city names. Overrides Accept-Language.
+                 * @example ru
+                 */
+                lang?: string;
+                /** @description Alias of `lang`, read only when `lang` is absent. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization that looks for a venue */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The directory */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenueDirectoryResponse"];
+                };
+            };
+            /** @description A parameter is not valid: org_id, `venue.invalid_country`, `venue.invalid_city_id`, `venue.invalid_query` or `venue.invalid_limit` */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller is not a member of the organization or lacks venue.read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     patchV1AdminVenuesIdReview: {
         parameters: {
             query?: never;
@@ -46352,7 +50600,12 @@ export interface operations {
     };
     postV1OrganizationsOrgIdVenues: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Language of the `city.name` and `created_country.name` in the answer, and of the name of a new city. Overrides Accept-Language. */
+                lang?: string;
+                /** @description Alias of `lang`, read only when `lang` is absent. */
+                locale?: string;
+            };
             header?: never;
             path: {
                 /** @description UUIDv7 of the owning organization */
@@ -46373,11 +50626,23 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** @description The created venue. */
                         venue: components["schemas"]["VenueItem"];
+                        /** @description The venue's city, present only when the request named it by `country_iso2` and `city_name`. */
+                        city?: components["schemas"]["VenueCreatedCity"];
+                        /** @description The country row this request created from the world table, present only when one was created. */
+                        created_country?: components["schemas"]["VenueCreatedCountry"];
                     };
                 };
             };
-            /** @description Body missing/invalid, name empty, or city_id malformed */
+            /**
+             * @description Body missing/invalid, name empty, or city_id malformed. Also
+             *     `venue.city_conflict` (both `city_id` and `country_iso2` /
+             *     `city_name`), `venue.country_required` (`city_name` without
+             *     `country_iso2`), `venue.city_name_required` (`country_iso2`
+             *     without `city_name`) and `venue.unknown_country` (a code the world
+             *     table does not know).
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -46395,7 +50660,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold the required permission (venue.create) */
+            /** @description Actor does not hold the required permission (venue.create), or an organization API key would create a country (`venue.country_create_forbidden`) or a city (`venue.city_create_forbidden`) */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -46764,7 +51029,12 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold the required permission (seating_plan.create) */
+            /**
+             * @description Actor does not hold the required permission (seating_plan.create),
+             *     owner_org_id is not an organization of the caller, or
+             *     seating_plan.verify_required: visibility operator_verified is set
+             *     only by POST /v1/admin/seating-plans/{plan_id}/verify
+             */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -46920,7 +51190,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold the required permission (seating_plan.update.own) */
+            /**
+             * @description Actor does not hold the required permission (seating_plan.update.own),
+             *     or seating_plan.verify_required: visibility operator_verified is set
+             *     only by POST /v1/admin/seating-plans/{plan_id}/verify
+             */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -46931,6 +51205,19 @@ export interface operations {
             };
             /** @description Seating plan not found or belongs to another org */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description seating_plan.template_visibility_locked: a verified venue template
+             *     (operator_verified) changes its visibility only back to private,
+             *     which also sets its verification_state to unverified
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -47012,7 +51299,12 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Source seating plan not found */
+            /**
+             * @description seating_plan.not_found: the source plan does not exist, or it
+             *     belongs to another organization and is not an active verified
+             *     template or public_template plan. venue.not_found: venue_id is
+             *     neither the target organization's own venue nor a verified venue
+             */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -47040,6 +51332,507 @@ export interface operations {
                 };
             };
             /** @description Database pool or seating queries unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listV1OrganizationsOrgIdVenuesVenueIdPlanTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization that looks for a template */
+                org_id: string;
+                /** @description UUIDv7 of the venue whose templates are listed */
+                venue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Verified templates of the venue, by name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Zero or more verified templates of the venue */
+                        plan_templates: {
+                            /**
+                             * Format: uuid
+                             * @description Id of the template plan; the id to fork
+                             */
+                            plan_id: string;
+                            /** @description Name of the plan */
+                            name: string;
+                            /** @description assigned_seats, general_admission, tables or mixed */
+                            plan_type: string;
+                            /**
+                             * Format: uuid
+                             * @description Venue of the plan
+                             */
+                            venue_id: string;
+                            /**
+                             * Format: uuid
+                             * @description Current version of the plan; a fork copies it
+                             */
+                            current_version_id: string;
+                            /** @description Number of the current version */
+                            version_number?: number | null;
+                            /** @description Seats of the current version */
+                            capacity_seated?: number | null;
+                            /** @description Standing places of the current version */
+                            capacity_standing?: number | null;
+                            /**
+                             * Format: date-time
+                             * @description When a platform superadmin verified the plan
+                             */
+                            verified_at?: string | null;
+                            /** @description True when the path organization owns the plan (it need not fork it) */
+                            own: boolean;
+                        }[];
+                    };
+                };
+            };
+            /** @description org_id or venue_id is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller is not a member of the organization or lacks seating_plan.read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description venue.not_found - no such venue, or a venue of another organization that is not verified */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listV1AdminSeatingPlans: {
+        parameters: {
+            query?: {
+                /**
+                 * @description none (never sent for verification), unverified, verified or
+                 *     needs_fix. Without it the list holds every state.
+                 */
+                verification_state?: string;
+                /** @description Only the plans of this organization. Without it the list holds every organization. */
+                org_id?: string;
+                /**
+                 * @description Only the plans at venues in this country, a 2-letter ISO 3166-1
+                 *     code. The country of a venue is the country of its city, else the
+                 *     country of its address.
+                 */
+                country?: string;
+                /** @description Only the plans at venues in this city */
+                city_id?: string;
+                /** @description A part of the venue name, any letter case, at most 100 characters */
+                q?: string;
+                /** @description Language of the city names, for example en or ru. locale is the same. Else Accept-Language, else English. */
+                lang?: string;
+                /** @description The same as lang */
+                locale?: string;
+                /** @description Page size, 1 to 200 (default 50) */
+                limit?: number;
+                /** @description Number of plans to skip, 0 to 1000000 (default 0) */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of plans, the total and the counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /**
+                         * Format: int64
+                         * @description Number of plans that match all filters
+                         */
+                        total: number;
+                        /** @description Page size of this answer */
+                        limit: number;
+                        /** @description Number of plans skipped before this page */
+                        offset: number;
+                        /**
+                         * @description Number of plans in each verification state. The counts
+                         *     use all filters except verification_state.
+                         */
+                        counts: {
+                            /**
+                             * Format: int64
+                             * @description Plans that were never sent for verification
+                             */
+                            none: number;
+                            /**
+                             * Format: int64
+                             * @description Plans that wait for verification
+                             */
+                            unverified: number;
+                            /**
+                             * Format: int64
+                             * @description Plans sent back with a note
+                             */
+                            needs_fix: number;
+                            /**
+                             * Format: int64
+                             * @description Verified plans
+                             */
+                            verified: number;
+                        };
+                        /** @description One page of plans, newest first */
+                        seating_plans: {
+                            /**
+                             * Format: uuid
+                             * @description Id of the plan
+                             */
+                            plan_id: string;
+                            /** @description Name of the plan */
+                            name: string;
+                            /** @description assigned_seats, general_admission, tables or mixed */
+                            plan_type: string;
+                            /** @description private, shared_read, public_template or operator_verified */
+                            visibility: string;
+                            /** @description draft, active or archived */
+                            status: string;
+                            /** @description unverified, verified or needs_fix */
+                            verification_state?: string | null;
+                            /** @description The superadmin's note of needs_fix */
+                            verification_note?: string | null;
+                            /**
+                             * Format: uuid
+                             * @description Organization that owns the plan
+                             */
+                            owner_org_id: string;
+                            /** @description Name of that organization */
+                            owner_org_name: string;
+                            /**
+                             * Format: uuid
+                             * @description Venue of the plan
+                             */
+                            venue_id: string;
+                            /** @description Name of the venue */
+                            venue_name: string;
+                            /**
+                             * Format: uuid
+                             * @description City of the venue, null when the venue has none
+                             */
+                            city_id?: string | null;
+                            /** @description Name of the city in the language of the request, else in English */
+                            city_name?: string | null;
+                            /** @description Country of the venue, a 2-letter ISO 3166-1 code. It is the country of the city, else the country of the address. */
+                            country_iso2?: string | null;
+                            /**
+                             * Format: uuid
+                             * @description Current version, null when the plan has none
+                             */
+                            current_version_id?: string | null;
+                            /** @description Number of the current version, null when the plan has none */
+                            version_number?: number | null;
+                            /** @description Seats of the current version, 0 when the plan has no version */
+                            capacity_seated: number;
+                            /** @description Standing places of the current version, 0 when the plan has no version */
+                            capacity_standing: number;
+                            /**
+                             * Format: date-time
+                             * @description When the plan was created
+                             */
+                            created_at: string;
+                            /**
+                             * Format: date-time
+                             * @description When the plan was last changed
+                             */
+                            updated_at: string;
+                            /**
+                             * Format: date-time
+                             * @description When the plan was verified, null unless verified
+                             */
+                            verified_at?: string | null;
+                        }[];
+                    };
+                };
+            };
+            /**
+             * @description seating_plan.invalid_verification_state, seating_plan.invalid_org_id,
+             *     seating_plan.invalid_country, seating_plan.invalid_city_id,
+             *     seating_plan.invalid_query, seating_plan.invalid_limit or
+             *     seating_plan.invalid_offset
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.verify or is not a platform superadmin (seating_plan.verify_superadmin_only) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminSeatingPlansPlanIdVerify: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the seating plan */
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The plan after verification */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatingPlanVerification"];
+                };
+            };
+            /** @description Missing X-Admin-Reason (superadmin.missing_reason) or plan_id is not a UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.verify or is not a platform superadmin (seating_plan.verify_superadmin_only) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description seating_plan.not_found - no such plan, or it is deleted */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description seating_plan.not_active (the plan is a draft or archived) or seating_plan.no_current_version */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description seating_plan.geometry_invalid - the current version fails the geometry rules of the plan type; details.errors lists them */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminSeatingPlansPlanIdNeedsFix: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the seating plan */
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description What must be fixed, 1 to 1000 characters after trimming */
+                    note: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The plan after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatingPlanVerification"];
+                };
+            };
+            /** @description Missing X-Admin-Reason (superadmin.missing_reason), seating_plan.invalid_body or seating_plan.invalid_note */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.verify or is not a platform superadmin (seating_plan.verify_superadmin_only) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description seating_plan.not_found - no such plan, or it is deleted */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -49885,7 +54678,8 @@ export interface operations {
              * @description Body invalid. Possible error codes:
              *     `event.invalid_body`, `event.empty_body`, `event.invalid_json`,
              *     `event.invalid_visibility`, `event.invalid_description_format`,
-             *     `event.invalid_email_note_format`.
+             *     `event.invalid_email_note_format`, `event.invalid_slug` (the typed
+             *     `slug` is not 1-120 characters of Latin letters, digits and single hyphens).
              */
             400: {
                 headers: {
@@ -49918,6 +54712,18 @@ export interface operations {
              *     different organization (owner gate resolves to 404).
              */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `event.duplicate_slug`: another active event of the organization
+             *     already uses the typed `slug` (compared case-insensitively).
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -50476,6 +55282,90 @@ export interface operations {
             };
         };
     };
+    checkEventMapPoint: {
+        parameters: {
+            query: {
+                /** @description Latitude in degrees, -90 to 90. */
+                latitude: number;
+                /** @description Longitude in degrees, -180 to 180. */
+                longitude: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The verdict. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapPointCheck"];
+                };
+            };
+            /** @description Missing or invalid coordinates (`event.invalid_map_point`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getEventMapPoint: {
         parameters: {
             query?: never;
@@ -50564,13 +55454,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The map point as stored. */
+            /** @description The map point as stored, with advisory `warnings` (never an error). */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EventMapPoint"];
+                    "application/json": components["schemas"]["EventMapPointSaved"];
                 };
             };
             /** @description Invalid body or coordinates (`event.invalid_body`, `event.invalid_map_point`). */
@@ -52657,6 +57547,146 @@ export interface operations {
             };
         };
     };
+    getConversionSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversionSettingsEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an API key (`conversions.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such organization (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateConversionSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateConversionSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved; the settings as stored now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversionSettingsEnvelope"];
+                };
+            };
+            /** @description Invalid body (`conversions.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an API key (`conversions.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such organization (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A value has the wrong format (`conversions.invalid_field`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getSellerProfile: {
         parameters: {
             query?: never;
@@ -52988,7 +58018,7 @@ export interface operations {
                     "application/json": components["schemas"]["OrgCityResponse"];
                 };
             };
-            /** @description Invalid body, country_id or blank name. */
+            /** @description Invalid body, no country, a malformed country_id or country_iso2, or a blank name. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -53008,6 +58038,15 @@ export interface operations {
             };
             /** @description Caller lacks `city.create` or is not a member of the organization. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The `country_iso2` country is not in the platform reference yet (`city.country_not_in_reference`). Add the venue with `country_iso2` and `city_name` instead. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -60814,6 +65853,1813 @@ export interface operations {
             };
         };
     };
+    createVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional key (up to 200 characters); the same key in the same organization returns the same intake. */
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+                /** @description Id of the venue (the organization's own, or a verified shared venue). */
+                venue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** @description The files of the plan, 1 to 10, 80 MB together. */
+                    files: string[];
+                    /** @description Where the intake is sent from, telegram_bot or event_center_web (default). */
+                    channel?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The intake made earlier with the same Idempotency-Key. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description The intake was created. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description Not multipart, no files, more than 10 files, an empty file, a bad channel or Idempotency-Key. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.create or is not a member, or is an API key (venue_plan_intake.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The venue is unknown, or another organization's venue that is not verified (venue.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Idempotency-Key was used for another venue (venue_plan_intake.idempotency_key_reused). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A file is over the limit of its format, the files are over 80 MB together, or an XLSX unpacks to more than 200 MB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A file is none of the accepted formats (venue_plan_intake.unsupported_format). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A PDF with more than 20 pages, a picture over 40 megapixels, or a picture that cannot be read. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listVenuePlanIntakes: {
+        parameters: {
+            query?: {
+                /** @description Only intakes in this state. */
+                state?: string;
+                /** @description Only intakes of this venue. */
+                venue_id?: string;
+                /** @description At most this many intakes, 1 to 200 (default 50). */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The intakes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeList"];
+                };
+            };
+            /** @description A filter is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.read or is not a member, or is an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The intake card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.read or is not a member, or is an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found in this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    downloadVenuePlanIntakeSource: {
+        parameters: {
+            query?: {
+                /** @description png for the PNG copy; leave out for the file as sent. */
+                format?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+                /** @description Id of the intake. */
+                intake_id: string;
+                /** @description Id of the file. */
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description format is not png. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.read or is not a member, or is an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake, file or PNG copy not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getVenuePlanIntakeDraftSvg: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+                /** @description Id of the intake. */
+                intake_id: string;
+                /** @description Number of the draft. */
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The draft SVG. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/svg+xml": string;
+                };
+            };
+            /** @description n is not a draft number. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.read or is not a member, or is an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake or draft not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    answerVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Number of the draft the answers are for; it must be the current draft. */
+                    draft: number;
+                    /** @description 1 to 50 answers. */
+                    answers: {
+                        /**
+                         * Format: uuid
+                         * @description Id of a question of that draft.
+                         */
+                        question_id: string;
+                        /** @description The answer, one of the question's options or a value. */
+                        answer: unknown;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description The intake after the answers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description The body is not valid JSON of this shape. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.create or is not a member, or is an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found in this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is not in review (venue_plan_intake.wrong_state) or draft is not the current one (venue_plan_intake.draft_stale). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No answers, too many, or a question that is not of this draft. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    correctVenuePlanIntakeText: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Number of the draft the text is about; it must be the current draft. */
+                    draft: number;
+                    /** @description What to fix, 1 to 2000 characters. */
+                    text: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The intake after the correction. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description The body is not valid JSON of this shape. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.create or is not a member, or is an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found in this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is not in review, or draft is not the current one. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The text is empty or longer than 2000 characters. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    escalateVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description What the administrator should know, up to 1000 characters. */
+                    text?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The intake, now with an administrator. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description The body is not valid JSON of this shape. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.create or is not a member, or is an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found in this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is already with an administrator or closed (venue_plan_intake.wrong_state). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The text is longer than 1000 characters. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cancelVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cancelled intake. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description The body is not empty and not a JSON object. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.create or is not a member, or is an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found in this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is already closed (venue_plan_intake.wrong_state). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    approveVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VenuePlanApproveRequest"];
+            };
+        };
+        responses: {
+            /** @description The approved intake with plan_id and plan_version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description The body is not valid JSON of this shape. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.create or is not a member, or is an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found in this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is not in review, or draft is not the current one. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The name is not valid, or the stored SVG fails geometry validation (venue_plan_intake.draft_validation_failed, details.errors). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listAdminVenuePlanIntakes: {
+        parameters: {
+            query?: {
+                /** @description Only intakes in this state. */
+                state?: string;
+                /** @description Only intakes of this organization. */
+                org_id?: string;
+                /** @description true for the intakes no administrator has taken. */
+                unclaimed?: boolean;
+                /** @description At most this many intakes, 1 to 200 (default 50). */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The intakes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeList"];
+                };
+            };
+            /** @description A filter is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks venue_plan_intake.curate or is not a platform superadmin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getAdminVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The intake card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks venue_plan_intake.curate or is not a platform superadmin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    downloadAdminVenuePlanIntakeSource: {
+        parameters: {
+            query?: {
+                /** @description png for the PNG copy; leave out for the file as sent. */
+                format?: string;
+            };
+            header: {
+                /** @description Human-readable business reason for reading the file. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the intake. */
+                intake_id: string;
+                /** @description Id of the file. */
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Missing X-Admin-Reason, or format is not png. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks venue_plan_intake.curate or is not a platform superadmin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake, file or PNG copy not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getAdminVenuePlanIntakeDraftSvg: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the intake. */
+                intake_id: string;
+                /** @description Number of the draft. */
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The draft SVG. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/svg+xml": string;
+                };
+            };
+            /** @description n is not a draft number. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks venue_plan_intake.curate or is not a platform superadmin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake or draft not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    claimAdminVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description true takes the intake over from another administrator. */
+                    force?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description The intake, now taken by the caller. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks venue_plan_intake.curate or is not a platform superadmin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is closed, or another administrator holds it (venue_plan_intake.claimed_by_other). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createAdminVenuePlanIntakeDraft: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description The SVG file.
+                     */
+                    svg: string;
+                    /** @description A note on the draft, up to 2000 characters. */
+                    note?: string;
+                };
+                "application/json": {
+                    /** @description The SVG document as text. */
+                    svg: string;
+                    /** @description A note on the draft, up to 2000 characters. */
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The intake with the new current draft. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or no svg in the body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks venue_plan_intake.curate or is not a platform superadmin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is not in operator, nobody has taken it (venue_plan_intake.not_claimed), or another administrator holds it (venue_plan_intake.claimed_by_other). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The SVG is larger than 3 MB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The file is not an SVG document. */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The SVG fails geometry validation (venue_plan_intake.draft_validation_failed, details.errors with code, element and detail), or the note is too long. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    returnAdminVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description What the organizer should know, up to 2000 characters. */
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The intake, now in review. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks venue_plan_intake.curate or is not a platform superadmin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is not in operator, has no draft, nobody has taken it (venue_plan_intake.not_claimed), or another administrator holds it (venue_plan_intake.claimed_by_other). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The note is longer than 2000 characters. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    approveAdminVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VenuePlanApproveRequest"];
+            };
+        };
+        responses: {
+            /** @description The approved intake with plan_id and plan_version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of this shape. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks venue_plan_intake.curate or is not a platform superadmin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is not in review or operator, draft is not the current one, nobody has taken it (venue_plan_intake.not_claimed), or another administrator holds it (venue_plan_intake.claimed_by_other). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The name is not valid, or the stored SVG fails geometry validation. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    rejectAdminVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the plan cannot be built, shown to the organizer, 1 to 1000 characters. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The rejected intake. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of this shape. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks venue_plan_intake.curate or is not a platform superadmin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is not in operator, nobody has taken it (venue_plan_intake.not_claimed), or another administrator holds it (venue_plan_intake.claimed_by_other). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The reason is empty or longer than 1000 characters. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     postV1Media: {
         parameters: {
             query?: never;
@@ -61340,7 +68186,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Streaming response carrying the stored bytes, or the resized copy when `w` asked for one (then `Content-Type` and `Content-Length` are the copy's). */
+            /** @description Streaming response carrying the stored bytes, or the resized copy when `w` asked for one (then `Content-Type` and `Content-Length` are the copy's). Every answer carries `X-Content-Type-Options` nosniff and a sandbox `Content-Security-Policy`; any type other than a PNG, JPEG, GIF, WebP, AVIF or SVG picture also carries `Content-Disposition` attachment. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -61804,6 +68650,14 @@ export interface operations {
                 limit?: number;
                 /** @description Pagination offset. */
                 offset?: number;
+                /**
+                 * @description With `true` the answer also carries `removed_events`: every event
+                 *     that left this feed token's list within the last 30 days, with a
+                 *     terminal status and the removal time. It is how a site builder
+                 *     tells "removed" from "the answer is incomplete". The `events`
+                 *     list and its pagination are not affected.
+                 */
+                include_removed?: boolean;
             };
             header?: never;
             path: {
@@ -61822,6 +68676,12 @@ export interface operations {
                 content: {
                     "application/json": {
                         events: components["schemas"]["EventItem"][];
+                        /**
+                         * @description Only with `include_removed=true`. Events that left this
+                         *     feed token's list within the last 30 days, newest
+                         *     removal first (at most 500).
+                         */
+                        removed_events?: components["schemas"]["PublicFeedRemovedEvent"][];
                         /** @description Total count of matching events (for pagination). */
                         total: number;
                         limit: number;
@@ -62271,7 +69131,16 @@ export interface operations {
     startPublicFeedCheckout: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Optional client-generated key, one per payment attempt (at most
+                 *     255 bytes). The same key and body replay the stored answer; the
+                 *     same key with another body is 409. Scoped to the feed token, kept
+                 *     24 hours.
+                 * @example 550e8400-e29b-41d4-a716-446655440000
+                 */
+                "Idempotency-Key"?: string;
+            };
             path: {
                 /** @description Public feed token that scopes the available sessions. */
                 feed_token: string;
@@ -62284,7 +69153,11 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Checkout started. */
+            /**
+             * @description Checkout started, or — with `Idempotent-Replay: true` — the stored
+             *     answer of an earlier request with the same `Idempotency-Key` and
+             *     body.
+             */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -62298,7 +69171,17 @@ export interface operations {
              *     ticket lines or 100 seats), `checkout.invalid_qty` (a line over 50
              *     tickets), or `checkout.invalid_return_url` when the supplied
              *     `return_url` is not on the allowed-origin list and no
-             *     `PUBLIC_TICKETS_BASE_URL` fallback is configured.
+             *     `PUBLIC_TICKETS_BASE_URL` fallback is configured, or
+             *     `idempotency.key_too_long` for an `Idempotency-Key` over 255
+             *     bytes.
+             *
+             *     `checkout.invalid_email` (`details.field` is `holder_email`) when
+             *     the buyer's e-mail address is malformed: spaces, no domain, a
+             *     domain without a dot, or a top-level domain that is not letters
+             *     only (an IDN `xn--` one is accepted). It is refused before any
+             *     hold or order is written. The same code is answered when the
+             *     payment provider refuses the address after the hold was taken;
+             *     the hold is then released and the order cancelled at once.
              */
             400: {
                 headers: {
@@ -62324,7 +69207,12 @@ export interface operations {
              *     session's sales end (`tier.not_on_sale`), or a session that was
              *     cancelled (`session.cancelled`) or that the organizer set to
              *     "coming soon" (`session.sales_not_started`) or "sold out"
-             *     (`session.sold_out`, both with `details.sales_state`).
+             *     (`session.sold_out`, both with `details.sales_state`), or
+             *     `idempotency.body_mismatch` when the `Idempotency-Key` was already
+             *     used with a different body (also while that first request is
+             *     still running), or `checkout.price_changed` when `expected_total`
+             *     differs from the computed total (`details.expected_total`,
+             *     `details.actual_total`, `details.currency`; nothing was held).
              */
             409: {
                 headers: {
@@ -62382,7 +69270,9 @@ export interface operations {
              *     fields, consent) could not be read, or
              *     `checkout.payment_start_failed` — the payment provider refused to
              *     create the hosted checkout page. Nothing was charged and no
-             *     redirect URL exists; the hold expires on its own.
+             *     redirect URL exists. When the provider refused for good (it
+             *     answered and created nothing) the hold is released and the order
+             *     cancelled at once; otherwise the hold expires on its own.
              *
              *     `checkout.payment_start_failed` is answered with 503 rather than
              *     502 on purpose: this endpoint is public and fronted by Cloudflare,
@@ -62678,7 +69568,338 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `dependency.database_unavailable` - the service is not wired. */
+            /** @description `dependency.database_unavailable` - the service is not wired; `subscription.failed` - a transient failure, retry. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    requestPublicMyTicketsLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Public feed token of the site's channel. */
+                feed_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MyTicketsLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted. A letter is on its way if the address has orders. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicSaleSubscriptionAccepted"];
+                };
+            };
+            /** @description `my_tickets.invalid_json` or `my_tickets.invalid_email`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `my_tickets.captcha_failed` - the channel lists site origins and the Turnstile token is missing or wrong. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `feed.token_not_found` - the feed token is unknown or revoked. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `feed.rate_limited` - too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry; `my_tickets.captcha_not_configured` or `my_tickets.captcha_unavailable` - the anti-robot check cannot run now. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    exchangePublicMyTicketsLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MyTicketsExchangeRequest"];
+            };
+        };
+        responses: {
+            /** @description The session. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyTicketsSession"];
+                };
+            };
+            /** @description `my_tickets.invalid_json`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `my_tickets.link_invalid` - the link was used, has expired or is unknown. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `my_tickets.rate_limited` - too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    revokePublicMyTicketsSession: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description `Bearer <session token>` from the exchange. */
+                Authorization: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session is revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `my_tickets.session_invalid` - unknown, expired or already revoked session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `my_tickets.rate_limited` - too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listPublicMyTicketsOrders: {
+        parameters: {
+            query?: {
+                /** @description 1-based page number, default 1. */
+                page?: number;
+            };
+            header: {
+                /** @description `Bearer <session token>` from the exchange. */
+                Authorization: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of orders. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyTicketsOrdersPage"];
+                };
+            };
+            /** @description `my_tickets.invalid_page`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `my_tickets.session_invalid` - unknown, expired or revoked session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `my_tickets.rate_limited` - too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicMyTicketsPdf: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description `Bearer <session token>` from the exchange. */
+                Authorization: string;
+            };
+            path: {
+                /** @description The order, as listed by `GET /v1/public/my-tickets/orders`. */
+                order_id: string;
+                /** @description The ticket of that order. */
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description PDF bytes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description `my_tickets.invalid_id`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `my_tickets.session_invalid` - unknown, expired or revoked session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `my_tickets.ticket_not_found` - not the session's ticket, or
+             *     `checkout.pdf_not_found` - the PDF is not generated yet.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `checkout.ticket_not_valid` - the ticket no longer admits
+             *     (cancelled, refunded or replaced), or its stored PDF was revoked.
+             *     The PDF is not handed out.
+             */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `my_tickets.rate_limited` - too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -63293,8 +70514,8 @@ export interface operations {
                 };
             };
             /**
-             * @description Internal server error while retrieving the checkout session or
-             *     reservation (`checkout.lookup_failed`, `checkout.reservation_failed`).
+             * @description Internal server error while retrieving the reservation
+             *     (`checkout.reservation_failed`).
              */
             500: {
                 headers: {
@@ -63304,7 +70525,10 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Database unavailable (`dependency.database_unavailable`). */
+            /**
+             * @description Database unavailable (`dependency.database_unavailable`) or the
+             *     checkout could not be read (`checkout.lookup_failed`); retry.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -63385,8 +70609,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The message could not be stored (`contact.send_failed`). */
-            500: {
+            /** @description Database unavailable, the message could not be stored (`contact.send_failed`, retry), or the captcha is not configured or cannot be checked. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -63394,7 +70618,187 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Database unavailable, or the captcha is not configured or cannot be checked. */
+        };
+    };
+    sendSiteOrganizerContact: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Optional client-generated key, one per submission (at most 255
+                 *     bytes). The same key and body replay the first answer without
+                 *     sending anything again (a Turnstile token is single-use, so a
+                 *     retry is not verified a second time); the same key with another
+                 *     body is 409. Scoped to the route and the feed token, kept 24 hours.
+                 */
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                /** @description The site channel's feed token. */
+                feed_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SiteContactRequest"];
+            };
+        };
+        responses: {
+            /** @description Stored and queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizerContactAccepted"];
+                };
+            };
+            /** @description Invalid topic, name, last name, e-mail, phone, message, missing consent or a malformed body (`contact.invalid_*`, `contact.consent_required`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The captcha was not passed, or was solved for another action or host (`contact.captcha_failed`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The token is unknown, or the site has no contact form or nobody to receive it (`contact.not_available`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Idempotency-Key was used with another body. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is larger than 16 KiB (`contact.too_large`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many messages from this IP or to this channel (`contact.rate_limited`, Retry-After). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable, the message could not be stored (`contact.send_failed`, retry), or the captcha is not configured or cannot be checked (`contact.captcha_not_configured`, `contact.captcha_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createSiteMarketingSubscription: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Optional client-generated key, one per submission (at most 255
+                 *     bytes). The same key and body replay the first answer without
+                 *     sending anything again (a Turnstile token is single-use, so a
+                 *     retry is not verified a second time); the same key with another
+                 *     body is 409. Scoped to the route and the feed token, kept 24 hours.
+                 */
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                /** @description The site channel's feed token. */
+                feed_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SiteMarketingSubscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted. A confirmation letter is on its way unless the address had already confirmed. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteMarketingSubscriptionAccepted"];
+                };
+            };
+            /** @description Invalid e-mail, name, phone, text version, missing consent or a malformed body (`subscription.invalid_*`, `subscription.consent_required`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The captcha was not passed, or was solved for another action or host (`subscription.captcha_failed`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The token is unknown or the site has no subscription form (`subscription.not_available`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Idempotency-Key was used with another body. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many subscriptions from this IP (`subscription.rate_limited`, Retry-After). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable, the subscription could not be stored (`subscription.failed`, retry), or the captcha is not configured or cannot be checked (`subscription.captcha_not_configured`, `subscription.captcha_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -63542,9 +70946,8 @@ export interface operations {
                 };
             };
             /**
-             * @description Internal server error (`checkout.lookup_failed`,
-             *     `reservation.insert_failed`, `checkout.update_failed`,
-             *     `checkout.confirm_failed`).
+             * @description Internal server error (`reservation.insert_failed`,
+             *     `checkout.update_failed`, `checkout.confirm_failed`).
              */
             500: {
                 headers: {
@@ -63554,7 +70957,145 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Database unavailable (`dependency.database_unavailable`). */
+            /**
+             * @description Database unavailable (`dependency.database_unavailable`) or the
+             *     checkout could not be read (`checkout.lookup_failed`); retry.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cancelPublicCheckout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque checkout token from `checkout/start`. */
+                checkout_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The order's status after the call (`cancelled`, `paid`,
+             *     `expired`, `needs_help`, `refunded`).
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutCancelResponse"];
+                };
+            };
+            /** @description No checkout for this token (`checkout.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description A payment may still land (`checkout.payment_in_progress`); show
+             *     the order status and ask again later.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded (`checkout.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database unavailable (`dependency.database_unavailable`), the
+             *     checkout could not be read (`checkout.lookup_failed`) or the
+             *     cancel could not be written (`checkout.cancel_failed`); retry.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updatePublicCheckoutTrackingConsent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque checkout token from `checkout/start`. */
+                checkout_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrackingConsent"];
+            };
+        };
+        responses: {
+            /** @description The consent the order carries now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutTrackingConsentResponse"];
+                };
+            };
+            /** @description The body is not a consent (`checkout.invalid_consent`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No checkout for this token (`checkout.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded (`checkout.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database unavailable (`dependency.database_unavailable`,
+             *     `checkout.lookup_failed`, `checkout.consent_failed`); retry.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -63617,6 +71158,19 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /**
+             * @description `checkout.ticket_not_valid` - the ticket no longer admits
+             *     (cancelled, refunded or replaced), or its stored PDF was revoked.
+             *     The PDF is not handed out.
+             */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Rate limit exceeded (`checkout.rate_limited`). */
             429: {
                 headers: {
@@ -63627,9 +71181,8 @@ export interface operations {
                 };
             };
             /**
-             * @description Internal server error (`checkout.lookup_failed`,
-             *     `checkout.tickets_failed`, `checkout.credential_failed`,
-             *     `checkout.credential_malformed`).
+             * @description Internal server error (`checkout.tickets_failed`,
+             *     `checkout.credential_failed`, `checkout.credential_malformed`).
              */
             500: {
                 headers: {
@@ -63639,7 +71192,10 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Database unavailable (`dependency.database_unavailable`). */
+            /**
+             * @description Database unavailable (`dependency.database_unavailable`) or the
+             *     checkout could not be read (`checkout.lookup_failed`); retry.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -69157,7 +76713,8 @@ export interface operations {
                  *     both sides), on a 9+ digit suffix of them (a national number
                  *     typed without its country code) and on the customer's phone
                  *     identities; anything else is the pg_trgm similarity over
-                 *     buyer_name / buyer_email / buyer_phone. A bare number is ALSO
+                 *     buyer_name / buyer_email / buyer_phone, OR a part of the event
+                 *     name (case-insensitive, EC-V3). A bare number is ALSO
                  *     tried as a phone, so a national number typed without + still
                  *     finds its order.
                  */
@@ -69170,7 +76727,9 @@ export interface operations {
                  *     manual_review (no confirmed payment behind the order;
                  *     manual_review is a payment that could not complete the checkout
                  *     and waits for an operator). Every `orders.status` belongs to
-                 *     exactly one of the two groups. Any other value is 400
+                 *     exactly one of the two groups. `refunds` is partially_refunded
+                 *     and refunded only (a narrower view inside `paid`, the web
+                 *     event center's Refunds tab). Any other value is 400
                  *     `orders.invalid_tab`. Combines with `status` (AND).
                  */
                 tab?: string;
@@ -69191,6 +76750,10 @@ export interface operations {
                 from?: string;
                 /** @description Only orders created at or before this RFC3339 timestamp. */
                 to?: string;
+                /** @description Only orders whose session starts at or after this RFC3339 timestamp (EC-V3). */
+                session_from?: string;
+                /** @description Only orders whose session starts at or before this RFC3339 timestamp (EC-V3). */
+                session_to?: string;
                 /** @description Page size, 1-200 (default 50). */
                 limit?: number;
                 /** @description Pagination offset (default 0). */
@@ -69598,6 +77161,180 @@ export interface operations {
                 };
             };
             /** @description Order queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSummary: {
+        parameters: {
+            query?: {
+                /** @description First day included, `YYYY-MM-DD` (UTC), or an RFC 3339 time. Sessions starting earlier are left out. */
+                from?: string;
+                /** @description Last day included, `YYYY-MM-DD` (UTC); with an RFC 3339 time the bound is exclusive. Sessions starting later are left out. */
+                to?: string;
+                /** @description Only the sessions of this event. An event of another organization simply has no sessions here. */
+                event_id?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cards of the sessions in the range. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgSummary"];
+                };
+            };
+            /**
+             * @description org_id is not a valid UUID, or the range is wrong
+             *     (`summary.invalid_range`: not a date, or `to` before `from`), or
+             *     `event_id` is not a UUID (`summary.invalid_event_id`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`order.read`) in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdExportsAccountingXlsx: {
+        parameters: {
+            query?: {
+                /** @description First day included, `YYYY-MM-DD` (UTC), or an RFC 3339 time. */
+                from?: string;
+                /** @description Last day included, `YYYY-MM-DD` (UTC); with an RFC 3339 time the bound is exclusive. */
+                to?: string;
+                /** @description Only the sessions of this event. */
+                event_id?: string;
+                /** @description Header and sheet-name language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The workbook attachment, `Content-Disposition: attachment;
+             *     filename="accounting_<from>_<to>.xlsx"` (`accounting_<today>.xlsx`
+             *     without a range).
+             */
+            200: {
+                headers: {
+                    /** @description Number of data rows in the "Tickets" sheet, the header row not counted. */
+                    "X-Row-Count"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
+                };
+            };
+            /** @description org_id is not a valid UUID, or the range is wrong (`summary.invalid_range`, `summary.invalid_event_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `order.read` or `session.read`, is not a member of the organization, or is an API key (`accounting.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The range holds more than 5 000 sessions (`export.too_many_sessions`)
+             *     or more than 50 000 tickets (`export.too_many_rows`); narrow the dates.
+             */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Export store unavailable (database not wired). */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -72464,7 +80201,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description More than 50 000 active tickets (`export.too_many_rows`). */
+            /** @description More than 50 000 tickets (`export.too_many_rows`). */
             413: {
                 headers: {
                     [name: string]: unknown;
@@ -72581,6 +80318,257 @@ export interface operations {
                 };
             };
             /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdEventsEventIdGuestListXlsx: {
+        parameters: {
+            query?: {
+                /** @description Header and sheet-name language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The workbook attachment. */
+            200: {
+                headers: {
+                    /** @description Number of data rows (tickets) in the sheet, the header row not counted. */
+                    "X-Row-Count"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
+                };
+            };
+            /** @description org_id or event_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `order.read` or `session.read`, is not a member of the organization, or is an organization API key (`guest_list.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found, or not part of this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description More than 50 000 tickets (`export.too_many_rows`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdGuestListSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's setting. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestListSettings"];
+                };
+            };
+            /** @description org_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not a member with `org.read`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization not found (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putV1OrganizationsOrgIdGuestListSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuestListSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description The setting after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestListSettings"];
+                };
+            };
+            /** @description Body has no boolean `auto_send` or carries another field (`guest_list.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not a member with `org.update`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization not found (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable (`dependency.database_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -73925,7 +81913,7 @@ export interface operations {
                     "application/json": components["schemas"]["SeatBatch"];
                 };
             };
-            /** @description Invalid path parameter or body (`seat_batch.invalid_body` — the decoder's text is in `details.reason`, the body is capped at 1 MiB; `seat_batch.invalid_kind`, `seat_batch.no_changes`, `seat_batch.invalid_change`, `seat_batch.duplicate_seat_key`). */
+            /** @description Invalid path parameter or body (`seat_batch.invalid_body` — the decoder's text is in `details.reason`, the body is capped at 1 MiB; `seat_batch.invalid_kind`, `seat_batch.no_changes`, `seat_batch.invalid_change`, `seat_batch.duplicate_seat_key`, `seat_batch.new_tiers_not_allowed`, `seat_batch.invalid_new_tier`, `seat_batch.duplicate_new_tier_key`, `seat_batch.invalid_new_tier_name`, `seat_batch.duplicate_new_tier_name`, `seat_batch.invalid_new_tier_price`, `seat_batch.invalid_new_tier_color`, `seat_batch.unknown_new_tier_key`, `seat_batch.unused_new_tier`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -73943,7 +81931,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it, or the batch has `new_tiers` and the actor does not hold `tier.create` there (`permissions.denied`, `details.permission`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -73961,7 +81949,16 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description More than 10 000 changes (`seat_batch.too_many_changes`), a category that is not a live category of this session (`seat_batch.tier_not_in_session`), or `new_tiers` (`seat_batch.new_tiers_unsupported`). */
+            /** @description A new tier has the name of a live category of the session (`seat_batch.tier_name_taken`). Nothing was written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description More than 10 000 changes (`seat_batch.too_many_changes`), a category that is not a live category of this session (`seat_batch.tier_not_in_session`), or live plus new categories above 15 (`seat_batch.too_many_tiers`). Nothing was written. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -74443,6 +82440,811 @@ export interface operations {
             };
         };
     };
+    getV1OrganizationsOrgIdOrdersOrderIdReissueOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the order */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The check screen. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReissueOptions"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order not found, or not linked to this organization (`orders.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket store unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdOrdersOrderIdReissueTickets: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The operation's key, at most 200 characters. A repeat with the same key answers the first result. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the order */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReissueTicketsRequest"];
+            };
+        };
+        responses: {
+            /** @description The tickets were replaced and the letter is queued. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReissueTicketsResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID, the body is not valid (`reissue.invalid_body`), or the Idempotency-Key header is missing (`reissue.idempotency_key_required`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order not found, or not linked to this organization (`orders.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The order is not paid (`order.not_paid`), belongs to a live selling site (`order.seller_site_order`), has no active ticket (`reissue.nothing_to_reissue`), a ticket is on review hold or has a refund in progress (`reissue.ticket_not_reissuable`, ticket number and reason in `details`), the date is cancelled or over (`reissue.session_closed`), an earlier reissue has not been sent (`reissue.in_progress`), or the key was used for another request (`reissue.idempotency_key_reused`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The address is not valid (`reissue.invalid_email`), the reason is unknown (`reissue.invalid_reason`), or the note is longer than 500 characters (`reissue.note_too_long`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket store unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdOrdersOrderIdReissuesReissueIdResend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the order */
+                order_id: string;
+                /** @description UUIDv7 of the reissue */
+                reissue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The letter was queued again. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReissueResendResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order not found, or not linked to this organization (`orders.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The reissue was already applied (`reissue.already_applied`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket store unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdOrdersOrderIdReissues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the order */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The order's reissues. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReissueHistory"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order not found, or not linked to this organization (`orders.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket store unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdComplimentaryIdReissueOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the invitation (complimentary issuance) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The check screen. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationReissueOptions"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invitation not found, or not linked to this organization (`complimentary.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket store unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdComplimentaryIdReissueTickets: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The operation's key, at most 200 characters. A repeat with the same key answers the first result. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the invitation (complimentary issuance) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReissueTicketsRequest"];
+            };
+        };
+        responses: {
+            /** @description The tickets were replaced and the letter is queued. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReissueTicketsResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID, the body is not valid (`reissue.invalid_body`), or the Idempotency-Key header is missing (`reissue.idempotency_key_required`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invitation not found, or not linked to this organization (`complimentary.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The invitation is revoked or not issued (`reissue.invitation_not_issued`), has no active ticket (`reissue.nothing_to_reissue`), a ticket is on review hold (`reissue.ticket_not_reissuable`), the date is cancelled or over (`reissue.session_closed`), an earlier reissue has not been sent (`reissue.in_progress`), or the key was used for another request (`reissue.idempotency_key_reused`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The address is not valid (`reissue.invalid_email`), the reason is unknown (`reissue.invalid_reason`), or the note is longer than 500 characters (`reissue.note_too_long`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket store unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdComplimentaryIdReissuesReissueIdResend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the invitation (complimentary issuance) */
+                id: string;
+                /** @description UUIDv7 of the reissue */
+                reissue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The letter was queued again. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReissueResendResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invitation not found, or not linked to this organization (`complimentary.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The reissue was already applied (`reissue.already_applied`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket store unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdComplimentaryIdReissues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the invitation (complimentary issuance) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invitation's reissues. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReissueHistory"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invitation not found, or not linked to this organization (`complimentary.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket store unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdOrdersOrderIdExternalRefund: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the order */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExternalRefundRequest"];
+            };
+        };
+        responses: {
+            /** @description The refunds were recorded and the tickets cancelled. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalRefundResponse"];
+                };
+            };
+            /** @description The body is malformed, a ticket id is not a UUID, a ticket repeats, or an amount is not positive. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`refund.create`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order not found, or not linked to this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The order is not paid (`order.not_refundable`), the ticket already has a refund (`order.external_refund_exists`), or is not active (`ticket.not_active`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The ticket is not in this order (`order.ticket_not_in_order`) or the amount is above the ticket price (`order.refund_exceeds_price`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getV1OrganizationsOrgIdOrdersOrderIdConsents: {
         parameters: {
             query?: never;
@@ -74842,6 +83644,74 @@ export interface operations {
                 };
             };
             /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refunds are not available (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdRefundsQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The queue. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderRefundProblemQueue"];
+                };
+            };
+            /** @description org_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (refund.read) or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`refund.queue_failed`). */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -81266,7 +90136,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Internal server error (`shop.failed`, `checkout.payment_start_failed`). */
+            /** @description Internal server error (`shop.failed`). */
             500: {
                 headers: {
                     [name: string]: unknown;

@@ -3,7 +3,7 @@
  * organization, against a REAL arena-api and the REAL refund engine. It walks
  * the scenario of the bot's e2e (httpserver/bot_e2e_refund_integration_test.go):
  * the card offers the refund and the options are the server's; nothing is
- * ticked at the start; a wrong word refunds nothing; the right word, then the
+ * ticked at the start; closing the password question refunds nothing; the press, then the
  * password again, returns the money and cancels only the chosen ticket; a
  * part of one ticket's amount; the provider's refusal; an order of a seller's
  * own site only gets an explanation; the people who may not do it.
@@ -100,12 +100,6 @@ async function openCard(page: Page, role: Role, orderId: string) {
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 }
 
-async function typeWord(page: Page, text: string) {
-  const dialog = page.getByTestId("confirm-word");
-  await dialog.getByLabel("Type the word").fill(text);
-  await page.getByTestId("confirm-word-submit").click();
-}
-
 async function confirmPassword(page: Page, role: Role) {
   const dialog = page.getByTestId("step-up");
   await expect(dialog).toBeVisible();
@@ -147,7 +141,7 @@ test.beforeEach(async ({ request }) => {
 });
 
 test.describe("refund an order (live)", () => {
-  test("owner: nothing ticked, a wrong word refunds nothing, the word and the password return one ticket", async ({ page, request }) => {
+  test("owner: nothing ticked, closing the password question refunds nothing, the press and the password return one ticket", async ({ page, request }) => {
     const permissions = await permissionsOf(request, "org_admin");
     for (const p of ["refund.create", "refund.read", "refund.approve"]) expect(permissions, p).toContain(p);
     expect(rows(ORDER_OWNER)).toMatchObject({ refunds: 0, active_tickets: 3, status: "paid" });
@@ -171,11 +165,11 @@ test.describe("refund an order (live)", () => {
 
     // Nothing ticked: the screen says so and sends nothing.
     await page.getByTestId("refund-continue").click();
-    await expect(page.getByTestId("refund-problem")).toContainText("Select at least one ticket");
+    await expect(page.getByTestId("refund-problem")).toContainText("Select one ticket or more");
     // A ticket but no reason.
     await ticketBox(page, TICKET_1).check();
     await page.getByTestId("refund-continue").click();
-    await expect(page.getByTestId("refund-problem")).toContainText("reason");
+    await expect(page.getByTestId("refund-problem")).toContainText("cause");
 
     await page.getByTestId("refund-reason-buyer").check();
     await page.getByTestId("refund-letter").uncheck();
@@ -186,34 +180,30 @@ test.describe("refund an order (live)", () => {
     await expect(final).toBeVisible();
     await expect(page.getByTestId("refund-final-ticket")).toHaveCount(1);
     await expect(page.getByTestId("refund-final-amount")).toContainText(/25[.,]00/);
-    await expect(page.getByTestId("refund-final-letter")).toContainText("No letter");
-    await expect(final).toContainText("stop being valid");
+    await expect(page.getByTestId("refund-final-letter")).toContainText("We send no e-mail");
+    await expect(final).toContainText("stop to work for entry");
     await expect(page.getByTestId("refund-needs-approval")).toHaveCount(0);
     await noA11yViolations(page);
 
-    // The word dialog: nothing, a wrong word and the other actions' words refund nothing.
+    // EC-V4: no typed word any more. The press goes straight to the password question.
     await page.getByTestId("refund-go").click();
-    const dialog = page.getByTestId("confirm-word");
-    await expect(dialog).toContainText("REFUND");
-    await page.getByTestId("confirm-word-submit").click();
-    await expect(page.getByTestId("confirm-word-note")).toBeVisible();
-    for (const other of ["yes", "CANCEL ORDER", "DELETE", "ANNUL"]) {
-      await typeWord(page, other);
-      await expect(page.getByTestId("confirm-word-note")).toBeVisible();
-    }
+    await expect(page.getByTestId("confirm-word")).toHaveCount(0);
+    await expect(page.getByTestId("step-up")).toBeVisible();
+    // Closing the question sends nothing.
+    await page.getByTestId("step-up").getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByTestId("step-up")).toHaveCount(0);
+    await expect(page.getByTestId("refund-final")).toBeVisible();
     expect(calls.filter((c) => c === createPath(ORDER_OWNER)), "no refund request was sent").toEqual([]);
-    expect(calls.includes("POST /v1/auth/step-up"), "no password was asked for a wrong word").toBe(false);
     expect(await stripeCalls(request)).toEqual([]);
     expect(rows(ORDER_OWNER).refunds).toBe(0);
 
-    // The refund word (any case), then the password: the money goes back.
-    await typeWord(page, " refund. ");
+    // The press again, then the password: the money goes back.
+    await page.getByTestId("refund-go").click();
     await confirmPassword(page, "org_admin");
     const result = page.getByTestId("refund-result");
     await expect(result).toBeVisible();
     await expect(page.getByTestId("refund-result-line")).toHaveCount(1);
     await expect(page.getByTestId("refund-result-line")).toHaveAttribute("data-state", "succeeded");
-    await expect(page.getByTestId("confirm-word")).toHaveCount(0);
     await noA11yViolations(page);
 
     const after = rows(ORDER_OWNER);
@@ -234,7 +224,7 @@ test.describe("refund an order (live)", () => {
 
     // The card shows the new state; the refunded ticket is no longer offered.
     await page.getByTestId("refund-close").click();
-    await expect(page.getByText("Partly refunded").first()).toBeVisible();
+    await expect(page.getByText("Refunded in part").first()).toBeVisible();
     await page.getByTestId("refund-open").click();
     await expect(page.getByTestId("refund-ticket")).toHaveCount(1);
     await expect(ticketBox(page, TICKET_1)).toHaveCount(0);
@@ -255,11 +245,10 @@ test.describe("refund an order (live)", () => {
     await page.getByTestId("refund-continue").click();
     await expect(page.getByTestId("refund-final-amount")).toContainText(/50[.,]00/);
     await page.getByTestId("refund-go").click();
-    await typeWord(page, "REFUND");
     await expect(page.getByTestId("step-up")).toBeVisible();
     await page.getByTestId("step-up").getByRole("button", { name: "Cancel" }).click();
     await expect(page.getByTestId("step-up")).toHaveCount(0);
-    await expect(page.getByTestId("confirm-word")).toBeVisible();
+    await expect(page.getByTestId("refund-final")).toBeVisible();
     expect(calls.filter((c) => c === createPath(ORDER_OWNER))).toEqual([]);
     expect(await stripeCalls(request)).toEqual([]);
     expect(rows(ORDER_OWNER).refunds).toBe(0);
@@ -283,7 +272,6 @@ test.describe("refund an order (live)", () => {
     await page.getByTestId("refund-reason-duplicate").check();
     await page.getByTestId("refund-continue").click();
     await page.getByTestId("refund-go").click();
-    await typeWord(page, "REFUND");
     await confirmPassword(page, "org_admin");
 
     // Not "failed": the screen says the answer is missing and offers a check.
@@ -304,7 +292,7 @@ test.describe("refund an order (live)", () => {
     // sessionStorage, so the dialog promise "5 minutes" holds and the password is NOT asked again.
     await expect(page.getByTestId("step-up")).toHaveCount(0);
     await expect(page.getByTestId("refund-result")).toBeVisible();
-    await expect(page.getByTestId("refund-result")).toContainText("Nothing was refunded twice");
+    await expect(page.getByTestId("refund-result")).toContainText("We did not refund two times");
     await expect(page.getByTestId("refund-result-line")).toHaveAttribute("data-state", "succeeded");
     // One refund, one provider call: the check replayed the first operation.
     expect(rows(ORDER_OWNER)).toMatchObject({ refunds: 1, amounts: [2500], active_tickets: 2 });
@@ -328,15 +316,13 @@ test.describe("refund an order (live)", () => {
     // The ticket is scanned at the entrance now, after the options were read.
     seed("scan");
     await page.getByTestId("refund-go").click();
-    await typeWord(page, "REFUND");
     await confirmPassword(page, "organizer");
 
     // The API refused it (refund.ticket_scanned): the text follows owners_notice.
     const scanned = page.getByTestId("refund-scanned");
     await expect(scanned).toBeVisible();
-    await expect(scanned).toContainText("already scanned at the entrance");
+    await expect(scanned).toContainText("at the entrance. Arena cannot refund its money");
     await expect(scanned).toContainText("owners got a notice");
-    await expect(page.getByTestId("confirm-word")).toHaveCount(0);
     // The panel shows the latest options: nothing left that can be refunded.
     await expect(page.getByTestId("refund-explain")).toHaveAttribute("data-entry", "scanned_all");
     await noA11yViolations(page);
@@ -353,37 +339,33 @@ test.describe("refund an order (live)", () => {
     await page.getByTestId("refund-open").click();
     await expect(page.getByTestId("refund-select-all")).toHaveCount(0); // one ticket only
     await page.getByTestId("refund-ticket").check();
-    await page.getByTestId("refund-partial").check();
     await page.getByTestId("refund-reason-other").check();
     await page.getByTestId("refund-reason-text").fill("Late start, part of the price back");
 
     // A part above the ticket's amount is refused on the screen.
-    await page.getByTestId("refund-part").fill("30");
+    await page.locator('[data-testid^="refund-part-"]').fill("30");
     await page.getByTestId("refund-continue").click();
     await expect(page.getByTestId("refund-problem")).toBeVisible();
 
     // 7.77: the stub provider declines it.
-    await page.getByTestId("refund-part").fill("7,77");
+    await page.locator('[data-testid^="refund-part-"]').fill("7,77");
     await page.getByTestId("refund-continue").click();
     await expect(page.getByTestId("refund-final-amount")).toContainText(/7[.,]77/);
     await page.getByTestId("refund-go").click();
-    await typeWord(page, "REFUND");
     await confirmPassword(page, "organizer");
     await expect(page.getByTestId("refund-result-line")).toHaveAttribute("data-state", "failed");
-    await expect(page.getByTestId("refund-result-line")).toContainText("not returned");
+    await expect(page.getByTestId("refund-result-line")).toContainText("not refunded");
     expect(rows(ORDER_MANAGER)).toMatchObject({ refunds: 1, states: ["failed"], active_tickets: 1, status: "paid" });
 
     // The ticket is still refundable: return 10.00 of it.
     await page.getByTestId("refund-close").click();
     await page.getByTestId("refund-open").click();
     await page.getByTestId("refund-ticket").check();
-    await page.getByTestId("refund-partial").check();
-    await page.getByTestId("refund-part").fill("10");
+    await page.locator('[data-testid^="refund-part-"]').fill("10");
     await page.getByTestId("refund-reason-buyer").check();
     await page.getByTestId("refund-continue").click();
     await expect(page.getByTestId("refund-final-amount")).toContainText(/10[.,]00/);
     await page.getByTestId("refund-go").click();
-    await typeWord(page, "REFUND");
     // The password was confirmed a minute ago: the token still covers this request.
     await expect(page.getByTestId("refund-result-line")).toHaveAttribute("data-state", "succeeded");
 
@@ -400,7 +382,7 @@ test.describe("refund an order (live)", () => {
     await page.getByTestId("refund-open").click();
     const explain = page.getByTestId("refund-explain");
     await expect(explain).toHaveAttribute("data-entry", "site");
-    await expect(explain).toContainText("seller's own site");
+    await expect(explain).toContainText("through the seller's site");
     await expect(page.getByTestId("refund-pick")).toHaveCount(0);
     expect(calls.filter((c) => c === createPath(ORDER_SITE))).toEqual([]);
     await noA11yViolations(page);

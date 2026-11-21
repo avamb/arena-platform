@@ -23,6 +23,7 @@
     {{if not .Change.Date}}{{with .SessionStart}}<tr><td><strong>Session</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
     {{with .DoorsOpen}}<tr><td><strong>Doors open</strong></td><td>{{.}}</td></tr>{{end}}
     {{if not .Change.Venue}}{{with .VenueName}}<tr><td><strong>Venue</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{with .Directions.GoogleURL}}<tr><td><strong>Directions</strong></td><td><a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a></td></tr>{{end}}
     {{with .TierName}}<tr><td><strong>Tier</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .SeatSector}}<tr><td><strong>Sector</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .SeatRow}}<tr><td><strong>Row</strong></td><td>{{.}}</td></tr>{{end}}
@@ -41,7 +42,7 @@
   <p style="font-size:12px;color:#666">Ticket ID: {{.TicketID}}</p>
   <p style="font-size:12px;color:#666">Delivered to: {{.RecipientEmail}}</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
 {{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
     {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
@@ -52,7 +53,7 @@
     {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
     {{with .Branding.ContactEmail}}<br>Contact: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Contact: <a href="{{.}}" style="color:#666">Write to the organizer</a>{{end}}{{end}}
   </p>
-  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}Arena Platform — automated message{{end}}</p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Ticket processing by arenasoldout.com</a>{{end}}</p>
   <p style="font-size:11px;color:#999;line-height:1.5">If you click “Unsubscribe”, the letters with your tickets and the important letters about your order will no longer reach you. We do not send marketing mailings without your consent.</p>
   </td></tr>
 </table>
@@ -77,7 +78,8 @@ Event: {{.EventName}}
 {{if not .Change.Date}}{{with .SessionStart}}Session: {{.}}
 {{end}}{{end}}{{with .DoorsOpen}}Doors open {{.}}
 {{end}}{{if not .Change.Venue}}{{with .VenueName}}Venue: {{.}}
-{{end}}{{end}}{{with .TierName}}Tier: {{.}}
+{{end}}{{end}}{{with .Directions.GoogleURL}}Directions:: Google Maps {{.}} · Waze {{$.Directions.WazeURL}}
+{{end}}{{with .TierName}}Tier: {{.}}
 {{end}}{{with .SeatSector}}Sector: {{.}}
 {{end}}{{with .SeatRow}}Row: {{.}}
 {{end}}{{with .SeatNumber}}Seat: {{.}}
@@ -93,7 +95,7 @@ Message from the organizer:
 {{end}}{{if or .Change.ContactEmail .Change.ContactFormURL}}If the change does not suit you, write to the organizer{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}at {{.Change.ContactEmail}}{{else if .Change.ContactFormURL}}through the form on the sales page: {{.Change.ContactFormURL}}{{end}}{{with .Change.ContactPhone}}, phone {{.}}{{end}}, and describe what you would like to do. The organizer reads every message.
 
 {{end}}Ticket ID: {{.TicketID}}
-Delivered to: {{.RecipientEmail}}
+{{template "contact_text" .}}Delivered to: {{.RecipientEmail}}
 
 --
 {{.Branding.SellerLabel}} {{.Branding.LegalName}}
@@ -107,7 +109,7 @@ Delivered to: {{.RecipientEmail}}
 {{end}}{{with .Branding.ContactEmail}}Contact: {{.}}
 {{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Contact: {{.}}
 {{end}}{{end}}
-{{if not .WhiteLabel}}Arena Platform — automated message{{end}}
+{{if not .WhiteLabel}}Ticket processing by arenasoldout.com — https://arenasoldout.com{{end}}
 
 If you click “Unsubscribe”, the letters with your tickets and the important letters about your order will no longer reach you. We do not send marketing mailings without your consent.
 {{end}}

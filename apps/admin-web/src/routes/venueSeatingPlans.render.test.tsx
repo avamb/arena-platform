@@ -9,17 +9,21 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   CreatePlanFormView,
   GACategoryEditorView,
+  PlanActions,
   UploadSVGFormView,
   VersionHistoryTable,
   VersionPreview,
   createPlanFormIssues,
   emptyGADraft,
   type OrganizationSummary,
+  type SeatingPlan,
   type SeatingPlanVersion,
 } from "@/routes/venueSeatingPlans";
+import type { Venue } from "@/routes/venues";
 
 const ORGS: readonly OrganizationSummary[] = [
   { id: "org-1", name: "Northern Arena" },
@@ -73,8 +77,8 @@ describe("CreatePlanFormView validation display (AB-25a)", () => {
 
   it("renders one message per unmet requirement", () => {
     const html = createFormMarkup({ issues: createPlanFormIssues("", "") });
-    expect(html).toContain("Plan name is required.");
-    expect(html).toContain("Owner organization is required.");
+    expect(html).toContain("Type the plan name.");
+    expect(html).toContain("Select the owner organization.");
     expect(html).toContain('data-testid="venues-plan-create-validation"');
     expect(html).toContain('role="alert"');
   });
@@ -93,15 +97,15 @@ describe("CreatePlanFormView validation display (AB-25a)", () => {
       name: "Main Hall",
       issues: createPlanFormIssues("Main Hall", ""),
     });
-    expect(html).not.toContain("Plan name is required.");
-    expect(html).toContain("Owner organization is required.");
+    expect(html).not.toContain("Type the plan name.");
+    expect(html).toContain("Select the owner organization.");
     expect(html).not.toContain('data-testid="venues-plan-create-name-error"');
   });
 
   it("renders no validation feedback before the first submit attempt", () => {
     const html = createFormMarkup({ issues: [] });
     expect(html).not.toContain('data-testid="venues-plan-create-validation"');
-    expect(html).not.toContain("is required.");
+    expect(html).not.toContain("Type the plan name.");
     expect(html).not.toContain('aria-invalid="true"');
   });
 
@@ -478,5 +482,80 @@ describe("GACategoryEditorView (AB-40 C1)", () => {
     );
     const btn = html.slice(html.indexOf("venues-plan-create-ga-remove-0") - 200);
     expect(btn).toContain("disabled");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Plan activation — draft -> active via PATCH status="active"
+// ---------------------------------------------------------------------------
+
+const ACTIVATE_VENUE: Venue = {
+  id: "venue-1",
+  display_number: 1,
+  org_id: "org-1",
+  city_id: null,
+  name: "Test Hall",
+  address: null,
+  capacity_default: null,
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+};
+
+function planWithStatus(status: SeatingPlan["status"]): SeatingPlan {
+  return {
+    id: "plan-1",
+    venue_id: "venue-1",
+    owner_org_id: "org-1",
+    name: "Plan",
+    plan_type: "assigned_seats",
+    visibility: "private",
+    status,
+    source_seating_plan_id: null,
+    current_version_id: null,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+}
+
+function planActionsMarkup(status: SeatingPlan["status"]): string {
+  return renderToStaticMarkup(
+    <QueryClientProvider client={new QueryClient()}>
+      <PlanActions plan={planWithStatus(status)} venue={ACTIVATE_VENUE} />
+    </QueryClientProvider>,
+  );
+}
+
+/** Isolates the opening tag of the button carrying the given test id. */
+function buttonTagByTestID(html: string, testID: string): string {
+  const at = html.indexOf(`data-testid="${testID}"`);
+  if (at < 0) return "";
+  const start = html.lastIndexOf("<button", at);
+  const end = html.indexOf(">", at);
+  return html.slice(start, end + 1);
+}
+
+describe("PlanActions — Activate button (draft -> active)", () => {
+  it("shows an enabled Activate button for a draft plan", () => {
+    const html = planActionsMarkup("draft");
+    const tag = buttonTagByTestID(html, "venues-plan-activate-plan-1");
+    expect(tag).not.toBe("");
+    expect(tag).not.toContain("disabled");
+    expect(html).toContain(">Activate</button>");
+  });
+
+  it("hides the Activate button for an active plan", () => {
+    const html = planActionsMarkup("active");
+    expect(html).not.toContain("venues-plan-activate-plan-1");
+    expect(html).not.toContain(">Activate<");
+  });
+
+  it("hides the Activate button for an archived plan", () => {
+    const html = planActionsMarkup("archived");
+    expect(html).not.toContain("venues-plan-activate-plan-1");
+  });
+
+  it("keeps the Archive button next to Activate on a draft", () => {
+    const html = planActionsMarkup("draft");
+    expect(html).toContain("venues-plan-archive-plan-1");
   });
 });

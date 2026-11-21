@@ -62,7 +62,7 @@ describe("tabs and counts", () => {
     expect(ONBOARDING_TABS.map((t) => t.label)).toEqual([
       "Pending approval",
       "Info requested",
-      "In progress",
+      "Draft",
       "Approved",
       "Rejected",
       "Expired",
@@ -211,13 +211,13 @@ describe("timeline text", () => {
   });
 
   it("explains a few events", () => {
-    expect(eventDetailText({ kind: "rejected", detail: { reason: "duplicate" } })).toBe("Reason: duplicate");
+    expect(eventDetailText({ kind: "rejected", detail: { reason: "duplicate" } })).toBe("Cause: duplicate");
     expect(eventDetailText({ kind: "info_requested", detail: { fields: ["tax_id", "phone"] } })).toBe(
       "Fields: Tax number, Phone",
     );
     expect(eventDetailText({ kind: "extended", detail: { days: 30 } })).toBe("30 days");
     expect(eventDetailText({ kind: "approved", detail: { org_slug: "acme", automatic: true } })).toBe(
-      "Organization acme, approved automatically",
+      "Organization acme, approved by the system",
     );
     expect(eventDetailText({ kind: "submitted", detail: null })).toBe("");
   });
@@ -351,8 +351,8 @@ describe("settings form", () => {
     expect(validateSettings(form({ approval_mode: "whenever" })).errors.approval_mode).toBeTruthy();
   });
 
-  it("warns that automatic mode approves without a human", () => {
-    expect(AUTO_MODE_WARNING).toMatch(/without any human/);
+  it("warns that automatic mode approves without a person", () => {
+    expect(AUTO_MODE_WARNING).toMatch(/No person examines/);
   });
 
   it("reads field errors out of a server envelope", () => {

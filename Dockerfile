@@ -39,7 +39,8 @@ RUN go build -mod=readonly -ldflags="-s -w" -o /out/arena-api         ./apps/bac
  && go build -mod=readonly -ldflags="-s -w" -o /out/arena-worker      ./apps/backend/cmd/arena-worker      \
  && go build -mod=readonly -ldflags="-s -w" -o /out/arena-migrate     ./apps/backend/cmd/arena-migrate     \
  && go build -mod=readonly -ldflags="-s -w" -o /out/arena-healthcheck ./apps/backend/cmd/arena-healthcheck \
- && go build -mod=readonly -ldflags="-s -w" -o /out/arena-bot         ./apps/backend/cmd/arena-bot          && go build -mod=readonly -ldflags="-s -w" -o /out/arena-shop-import ./apps/backend/cmd/arena-shop-import
+ && go build -mod=readonly -ldflags="-s -w" -o /out/arena-bot         ./apps/backend/cmd/arena-bot          && go build -mod=readonly -ldflags="-s -w" -o /out/arena-shop-import ./apps/backend/cmd/arena-shop-import \
+ && go build -mod=readonly -ldflags="-s -w" -o /out/arena-slug-backfill ./apps/backend/cmd/arena-slug-backfill
 
 # ---- Stage 2: runtime ----
 FROM gcr.io/distroless/static-debian12:nonroot
@@ -55,6 +56,8 @@ COPY --from=build /out/arena-bot          /app/arena-bot
 # shell, so the tool must be inside it: run it with
 # `docker run --entrypoint /app/arena-shop-import ...`.
 COPY --from=build /out/arena-shop-import  /app/arena-shop-import
+# One-shot operator tool (docs/ops/event_slug_backfill.md).
+COPY --from=build /out/arena-slug-backfill /app/arena-slug-backfill
 
 USER nonroot:nonroot
 EXPOSE 8080

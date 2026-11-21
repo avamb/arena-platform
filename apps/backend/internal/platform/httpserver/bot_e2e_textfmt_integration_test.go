@@ -226,7 +226,7 @@ func TestBotE2E_DescriptionIsFormattedAndPreviewedBeforeItIsSaved(t *testing.T) 
 	// the model marks the text up correctly and the preview shows it.
 	press("wz:new", "Как называется")
 	say(eventName, "Возраст")
-	press("wz:age:16+", "От чьего имени")
+	press("wz:age:16+", "Под каким брендом")
 	press("wz:prom:org", "афишу")
 	press("wz:skip", "Дата сеанса 1")
 	sayDate("15.12.2099", "2099-12-15", "Время начала")
@@ -286,6 +286,8 @@ func TestBotE2E_DescriptionIsFormattedAndPreviewedBeforeItIsSaved(t *testing.T) 
 	// edit changes the description of the published event and saves it.
 	edit := func(text, previewNeedle string) string {
 		t.Helper()
+		// The way a person goes: the Edit group of the card, then the first button.
+		press("ec:g:"+eventID.String()+":e", "Измените название")
 		press("wz:edit:"+eventID.String(), "Правим")
 		ask := press("wz:e:desc", "Сейчас")
 		if !strings.Contains(ask, "оформлю") {

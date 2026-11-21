@@ -31,6 +31,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/marketing"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/trackingconsent"
 )
 
 // PublicMarketingConsent is the buyer's tick on "send me news and offers".
@@ -263,6 +264,10 @@ func grantFor(st marketingState, r *http.Request, orgID uuid.UUID, buyer publicO
 type growthCheckout struct {
 	grant     *marketing.Grant
 	rewardWon bool
+	// tracking is the buyer's cookie consent sent with checkout/start
+	// (spec 62 §8.1, П-20); nil when the site sent none or one arena
+	// could not read (never a reason to refuse the purchase).
+	tracking *trackingconsent.Consent
 }
 
 // recordGrowthTx stores, in the checkout-confirmation transaction, the buyer's
@@ -273,6 +278,11 @@ type growthCheckout struct {
 func (h *Handler) recordGrowthTx(ctx context.Context, tx pgx.Tx, checkoutID uuid.UUID, returnBase string, g growthCheckout) error {
 	if returnBase != "" {
 		if _, err := tx.Exec(ctx, `UPDATE checkout_sessions SET return_url = $2 WHERE id = $1`, checkoutID, returnBase); err != nil {
+			return err
+		}
+	}
+	if g.tracking != nil {
+		if _, err := trackingconsent.Store(ctx, tx, checkoutID, *g.tracking); err != nil {
 			return err
 		}
 	}

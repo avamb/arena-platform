@@ -25,6 +25,12 @@ function sourceKey(source: string): MessageKey | null {
   return source === "web" || source === "shopify" ? (`shop.order.source.${source}` as MessageKey) : null;
 }
 
+/** An imported order is a record: the actions that touch a parcel, a buyer or a payment are not offered. */
+function HistoricOrderNote() {
+  const { t } = useI18n();
+  return <p className="muted" data-testid="shop-order-historic">{t("shop.order.historic")}</p>;
+}
+
 /** The order as a card. Pure: the screen gives it the order, the actions are a child. */
 export function ShopOrderCard({ order, orgId, actions, note, country }: { order: ShopOrder; orgId: string; actions?: ReactNode; note?: ReactNode; country?: string | null }) {
   const { t, locale } = useI18n();
@@ -243,7 +249,7 @@ export function ShopOrderScreen() {
         orgId={orgId}
         country={country}
         note={<ShopOrderNote key={`note:${orgId}:${order.data.id}`} orgId={orgId} order={order.data} canManage={access.can("shop.manage")} country={country} />}
-        actions={<ShopOrderActions key={`${orgId}:${order.data.id}`} orgId={orgId} order={order.data} country={country} canManage={access.can("shop.manage")} canRefund={access.can("refund.create") && access.can("refund.approve")} />}
+        actions={order.data.source === "shopify" ? <HistoricOrderNote /> : <ShopOrderActions key={`${orgId}:${order.data.id}`} orgId={orgId} order={order.data} country={country} canManage={access.can("shop.manage")} canRefund={access.can("refund.create") && access.can("refund.approve")} />}
       />
     </>
   );

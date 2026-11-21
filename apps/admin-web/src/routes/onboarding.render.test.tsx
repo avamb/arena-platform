@@ -81,7 +81,7 @@ describe("OnboardingTabs", () => {
       expect(html).toMatch(new RegExp(`data-testid="onboarding-tab-count-${status}"[^>]*>${n}<`));
     }
     expect(html).toContain("Pending approval");
-    expect(html).toContain("In progress");
+    expect(html).toContain("Draft");
   });
 
   it("marks only the active tab as selected", () => {
@@ -112,8 +112,8 @@ describe("OnboardingQueueTable", () => {
 
   it("badges a row the system would approve and one it would not", () => {
     const html = table([item(), item({ id: A2, would_approve: false })]);
-    expect(html).toMatch(new RegExp(`onboarding-would-approve-${A1}"[^>]*>System would approve<`));
-    expect(html).toMatch(new RegExp(`onboarding-would-approve-${A2}"[^>]*>Needs a look<`));
+    expect(html).toMatch(new RegExp(`onboarding-would-approve-${A1}"[^>]*>The system will approve<`));
+    expect(html).toMatch(new RegExp(`onboarding-would-approve-${A2}"[^>]*>Operator must examine<`));
   });
 
   it("labels a Telegram application and copes with a draft that has nothing yet", () => {
@@ -121,7 +121,7 @@ describe("OnboardingQueueTable", () => {
       item({ source: "telegram", status: "draft", org_name: null, legal_name: null, country: null, phone: null, applicant_name: null, progress_pct: 20, current_step: "organization", would_approve: false }),
     ]);
     expect(html).toContain("Telegram");
-    expect(html).toContain("In progress");
+    expect(html).toContain("Draft");
     expect(html).toContain("organization · 20%");
     expect(html).toContain("—");
   });
@@ -217,13 +217,13 @@ describe("OnboardingCardBody", () => {
       expect(html).toContain(`data-testid="onboarding-block-${block}"`);
     }
     expect(html).toContain("Name on posters and tickets");
-    expect(html).toMatch(/onboarding-answer-event_types"[^>]*>Theatre and shows, Festivals/);
+    expect(html).toMatch(/onboarding-answer-event_types"[^>]*>Theater and shows, Festivals/);
     expect(html).toMatch(/onboarding-answer-accept_terms"[^>]*>Yes/);
     expect(html).toMatch(/onboarding-answer-marketing_opt_in"[^>]*>No/);
   });
 
   it("lists the checks with their result and detail", () => {
-    expect(html).toContain("E-mail confirmed");
+    expect(html).toContain("E-mail is confirmed");
     expect(html).toContain("same tax number as another application");
     expect(html).toMatch(/onboarding-check-tax_id_format[\s\S]*?fail/);
     expect(html).toContain('data-testid="onboarding-recheck"');
@@ -231,7 +231,7 @@ describe("OnboardingCardBody", () => {
 
   it("shows the timeline and the private notes", () => {
     expect(html).toContain("Draft started");
-    expect(html).toContain("Submitted for approval");
+    expect(html).toContain("Sent for approval");
     expect(html).toContain("Called, will send the VAT paper");
   });
 
@@ -239,7 +239,7 @@ describe("OnboardingCardBody", () => {
     expect(html).toContain("ana@example.test");
     expect(html).toContain("+420600111222");
     expect(html).toContain("@ana_n");
-    expect(html).toContain("System would not approve yet");
+    expect(html).toContain("The system will not approve");
   });
 
   it("offers the decisions of a pending application", () => {
@@ -268,9 +268,9 @@ describe("OnboardingCardBody", () => {
     const asked = card(
       detail("info_requested", { requested_fields: ["tax_id"], info_request_message: "Please send the VAT number" }),
     );
-    expect(asked).toContain("Waiting for the applicant");
+    expect(asked).toContain("We wait for the applicant");
     expect(asked).toContain("Please send the VAT number");
-    expect(asked).toContain("asked to fix");
+    expect(asked).toContain("must be corrected");
     expect(asked).toContain("onboarding-action-extend");
   });
 
@@ -307,7 +307,7 @@ describe("approval confirmation", () => {
     expect(lines.join("\n")).toContain("Organization “Acme Events”");
     expect(lines.join("\n")).toContain("direct-merchant sales channel with a public sales page");
     expect(lines.join("\n")).toContain("never merchant of record");
-    expect(lines.join("\n")).toContain("set-password e-mail");
+    expect(lines.join("\n")).toContain("e-mail to that address to set the password");
     expect(lines.join("\n")).toContain("ana@example.test");
     expect(lines.join("\n")).toContain("unverified");
     expect(lines.join("\n")).not.toContain("Telegram");
@@ -372,7 +372,7 @@ describe("OnboardingSettingsView", () => {
       expect(html).toContain(`data-testid="onboarding-set-${key}"`);
     }
     expect(html).toContain('value="180"');
-    expect(html).toContain("Empty means every country.");
+    expect(html).toContain("If the field is empty, all countries are accepted.");
   });
 
   it("warns about automatic approval only when that mode is chosen", () => {
@@ -380,7 +380,7 @@ describe("OnboardingSettingsView", () => {
     const auto = settingsMarkup({ approval_mode: "auto_when_complete" });
     expect(auto).toContain('data-testid="onboarding-auto-warning"');
     expect(auto).toContain("approves");
-    expect(auto).toContain("without any human");
+    expect(auto).toContain("No person examines");
   });
 
   it("prints a validation error under its field", () => {
@@ -390,6 +390,6 @@ describe("OnboardingSettingsView", () => {
   });
 
   it("confirms a save", () => {
-    expect(settingsMarkup({}, {}, true)).toContain("Settings saved.");
+    expect(settingsMarkup({}, {}, true)).toContain("We saved the settings.");
   });
 });

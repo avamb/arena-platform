@@ -209,163 +209,16 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 			Buttons: nav([]Button{btn("bot.wz.same_venue_btn", "same"), btn("bot.wz.other_venue_btn", "other")})}, nil
 
 	case stSCountry:
-		countries, err := w.refs.Countries(ctx, ws.JWT, loc)
-		if err != nil {
-			return Screen{}, err
-		}
-		venues, err := w.refs.Venues(ctx, ws.JWT, ws.OrgID)
-		if err != nil {
-			return Screen{}, err
-		}
-		venues = append(venues, w.sharedVenues(ctx, ws, "", "")...)
-		hasVenue := map[string]bool{}
-		for _, v := range venues {
-			hasVenue[strings.ToUpper(v.CountryISO2)] = true
-		}
-		rows := [][]Button{}
-		// The poster's city names the country first (UXH-02): "Keep: Latvia"
-		// above a poster that says Valencia invited a hurried tap on the
-		// wrong country. Keep stays, below the poster's answer, unless it is
-		// the same country.
-		posterCountries := w.posterCountries(d, countries)
-		keepIsPoster := false
-		for _, c := range posterCountries {
-			rows = append(rows, []Button{{Label: t(d.Hints.buttonKey(), map[string]any{"Value": truncate(c.Name, 40)}), Data: "country:" + c.ID}})
-			keepIsPoster = keepIsPoster || c.ID == ws.Defaults.CountryID
-		}
-		if ws.Defaults.CountryID != "" && !keepIsPoster {
-			rows = append(rows, []Button{{Label: t("bot.wz.keep_btn", map[string]any{"Value": ws.Defaults.CountryName}), Data: "keep"}})
-		}
-		// A long list goes through regions: the region buttons first, the
-		// countries the organization already has venues in right under "keep",
-		// and only after a region is pressed, that region's countries.
-		if groupByRegion(countries) {
-			region := d.Scratch.CountryRegion
-			if !validRegion(countries, region) {
-				region = ""
-			}
-			if region == "" {
-				for _, c := range sortedByName(countries) {
-					if hasVenue[strings.ToUpper(c.ISO2)] {
-						rows = append(rows, []Button{{Label: c.Name, Data: "country:" + c.ID}})
-					}
-				}
-				for _, r := range presentRegions(countries) {
-					rows = append(rows, []Button{btn(regionKey(r), "region:"+r)})
-				}
-				return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_region", nil), Buttons: nav(chunk(rows, 2)...)}, nil
-			}
-			countries = inRegion(countries, region)
-			rows = nil
-			for _, c := range sortedByName(countries) {
-				rows = append(rows, []Button{{Label: c.Name, Data: "country:" + c.ID}})
-			}
-			rows = chunk(rows, 2)
-			rows = append(rows, []Button{btn("bot.wz.regions_back_btn", "region:")})
-			return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_country", nil), Buttons: nav(rows...)}, nil
-		}
-		first, rest := []RefItem{}, []RefItem{}
-		for _, c := range sortedByName(countries) {
-			if hasVenue[strings.ToUpper(c.ISO2)] {
-				first = append(first, c)
-			} else {
-				rest = append(rest, c)
-			}
-		}
-		for _, c := range append(first, rest...) {
-			rows = append(rows, []Button{{Label: c.Name, Data: "country:" + c.ID}})
-		}
-		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_country", nil), Buttons: nav(chunk(rows, 2)...)}, nil
+		return w.renderCountry(ctx, ws, d, header, nav)
 
 	case stSCity:
-		s := d.session()
-		cities, err := w.refs.Cities(ctx, ws.JWT, s.CountryID, loc)
-		if err != nil {
-			return Screen{}, err
-		}
-		venues, err := w.refs.Venues(ctx, ws.JWT, ws.OrgID)
-		if err != nil {
-			return Screen{}, err
-		}
-		venues = append(venues, w.sharedVenues(ctx, ws, "", s.CountryISO2)...)
-		withVenue := map[string]bool{}
-		for _, v := range venues {
-			withVenue[v.CityID] = true
-		}
-		rows := [][]Button{}
-		if ws.Defaults.CityID != "" && ws.Defaults.CountryID == s.CountryID {
-			rows = append(rows, []Button{{Label: t("bot.wz.keep_btn", map[string]any{"Value": ws.Defaults.CityName}), Data: "keep"}})
-		}
-		first, rest := []RefItem{}, []RefItem{}
-		for _, c := range sortedByName(cities) {
-			if withVenue[c.ID] {
-				first = append(first, c)
-			} else {
-				rest = append(rest, c)
-			}
-		}
-		if len(rest) > 24 {
-			rest = rest[:24]
-		}
-		listed := map[string]bool{}
-		for _, c := range cities {
-			listed[geotz.Normalize(c.Name)] = true
-		}
-		for _, c := range append(first, rest...) {
-			rows = append(rows, []Button{{Label: c.Name, Data: "city:" + c.ID}})
-		}
-		// The platform's own list holds only cities somebody already used, so
-		// the country's biggest cities follow as buttons (they are added to
-		// the platform when pressed).
-		shown := 0
-		for i, name := range geotz.TopCities(s.CountryISO2) {
-			if shown >= maxCitySuggestions {
-				break
-			}
-			if listed[geotz.Normalize(name)] {
-				continue
-			}
-			rows = append(rows, []Button{{Label: truncate(name, 40), Data: "city:g:" + strconv.Itoa(i)}})
-			shown++
-		}
-		rows = chunk(rows, 2)
-		rows = append(rows, []Button{btn("bot.wz.city_other", "city:new")})
-		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_city", nil), Buttons: nav(rows...)}, nil
+		return w.renderCity(ctx, ws, d, header, nav)
 
 	case stCityName:
 		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_city_name", nil), Buttons: nav()}, nil
 
 	case stSVenue:
-		s := d.session()
-		venues, err := w.refs.Venues(ctx, ws.JWT, ws.OrgID)
-		if err != nil {
-			return Screen{}, err
-		}
-		rows := [][]Button{}
-		if d.Scratch.DupVenueID != "" {
-			rows = append(rows, []Button{{Label: t("bot.wz.venue_dup_btn", map[string]any{"Value": truncate(d.Scratch.DupVenueName, 40)}), Data: "venue:" + d.Scratch.DupVenueID}})
-		}
-		if ws.Defaults.VenueID != "" && ws.Defaults.CityID == s.CityID {
-			rows = append(rows, []Button{{Label: t("bot.wz.keep_btn", map[string]any{"Value": ws.Defaults.VenueName}), Data: "keep"}})
-		}
-		text := t("bot.wz.ask_venue", nil)
-		shared := false
-		for _, v := range venues {
-			if v.CityID == s.CityID {
-				rows = append(rows, []Button{{Label: truncate(v.Name, 48), Data: "venue:" + v.ID}})
-			}
-		}
-		for _, v := range w.sharedVenues(ctx, ws, s.CityID, "") {
-			if !hasVenueID(venues, v.ID) {
-				rows = append(rows, []Button{{Label: sharedVenueMark + truncate(v.Name, 46), Data: "venue:" + v.ID}})
-				shared = true
-			}
-		}
-		if shared {
-			text += "\n\n" + t("bot.wz.venue_shared_note", nil)
-		}
-		rows = append(rows, []Button{btn("bot.wz.venue_new", "venue:new")})
-		return Screen{Text: header(2, "bot.wz.title_when") + text, Buttons: nav(rows...)}, nil
+		return w.renderVenue(ctx, ws, d, header, nav)
 
 	case stSPlan, stSPlanPrice, stSPlanExtra, stSPlanExtraName, stSPlanExtraPrice, stSPlanExtraColor:
 		return w.renderSeated(loc, d, header, nav), nil
@@ -945,6 +798,21 @@ func zoneButtons(d *Draft) [][]Button {
 			break
 		}
 		add(z.ID, "")
+	}
+	// A country the built-in data does not know: the zones the API named.
+	for _, z := range d.Scratch.TzZones {
+		if len(rows) >= maxZoneButtons {
+			break
+		}
+		if z.ID == "" || seen[z.ID] {
+			continue
+		}
+		seen[z.ID] = true
+		label := z.ID
+		if z.Label != "" && z.Label != z.ID {
+			label = z.Label + " · " + z.ID
+		}
+		rows = append(rows, []Button{{Label: truncate(label, 56), Data: "tz:" + z.ID}})
 	}
 	return rows
 }

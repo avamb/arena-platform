@@ -57,6 +57,8 @@ func NormalizeLocale(raw string) string {
 		return "ru"
 	case "es":
 		return "es"
+	case "uk":
+		return "uk"
 	default:
 		return "en"
 	}

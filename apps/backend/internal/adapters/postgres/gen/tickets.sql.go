@@ -447,7 +447,9 @@ SELECT t.system_ticket_id,
        epr.name                      AS promoter_name,
        s.doors_open_at               AS doors_open_at,
        een.note                      AS email_note,
-       een.note_format               AS email_note_format
+       een.note_format               AS email_note_format,
+       v.geo_lat::float8             AS venue_geo_lat,
+       v.geo_lng::float8             AS venue_geo_lng
 FROM       tickets t
 LEFT JOIN  sessions      s  ON s.id  = t.session_id
 LEFT JOIN  events        e  ON e.id  = s.event_id
@@ -533,6 +535,11 @@ type TicketPresentationRow struct {
 	// EmailNoteFormat is the format the note is stored in ("art" or "text", RT-02).
 	// NULL when there is no note.
 	EmailNoteFormat *string `json:"email_note_format"`
+	// VenueGeoLat / VenueGeoLng are venues.geo_lat / geo_lng (migration 0050,
+	// numeric(9,6) cast to float8). Either may be NULL; directions uses them
+	// only as a pair.
+	VenueGeoLat *float64 `json:"venue_geo_lat"`
+	VenueGeoLng *float64 `json:"venue_geo_lng"`
 }
 
 // GetTicketPresentationByID resolves the presentation values for one
@@ -563,6 +570,8 @@ func (q *Queries) GetTicketPresentationByID(ctx context.Context, ticketID uuid.U
 		&p.DoorsOpenAt,
 		&p.EmailNote,
 		&p.EmailNoteFormat,
+		&p.VenueGeoLat,
+		&p.VenueGeoLng,
 	)
 	return p, err
 }

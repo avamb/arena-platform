@@ -16,10 +16,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/geotz"
-
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/citymatch"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/geotz"
 )
 
 const defaultBil24URL = "https://api.bil24.pro/json"
@@ -266,6 +268,19 @@ func importLiveVenues(ctx context.Context, pool *pgxpool.Pool, orgID string, cou
 		cityISO[city.ID] = countryISO[city.CountryID]
 		if city.ID == "" || city.Name == "" || countryID == "" {
 			return stats, fmt.Errorf("Bil24 city %q has no imported country", city.Name)
+		}
+		// A city the country already has under another spelling or slug
+		// ("Praha" vs "Prague") is reused, never inserted a second time.
+		countryUUID, perr := uuid.Parse(countryID)
+		if perr != nil {
+			return stats, fmt.Errorf("country id %q: %w", countryID, perr)
+		}
+		if found, hit, ferr := citymatch.FindInCountry(ctx, tx, countryUUID, countryISO[city.CountryID], city.Name); ferr != nil {
+			return stats, fmt.Errorf("look up city %q: %w", city.Name, ferr)
+		} else if hit {
+			cityIDs[city.ID] = found.ID.String()
+			stats.Cities++
+			continue
 		}
 		slug := slugFor(city.Name, "bil24-city-"+city.ID)
 		var id string

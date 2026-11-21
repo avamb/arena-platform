@@ -13,15 +13,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 
+// The rights of the person: the test turns single permissions off.
+const denied = new Set<string>();
 vi.mock("@/screens/OrgLayout", () => ({
-  useOrg: () => ({ orgId: ORG, access: { can: () => true, data: { platform_superadmin: false } } }),
+  useOrg: () => ({ orgId: ORG, access: { can: (p: string) => !denied.has(p), data: { platform_superadmin: false } } }),
 }));
 vi.mock("@/lib/api/endpoints", () => ({
   listVenueSeatingPlans: vi.fn(),
   listSeatingPlanVersions: vi.fn(),
+  listVenuePlanIntakes: vi.fn(),
+  listPlanTemplates: vi.fn(),
+  forkSeatingPlan: vi.fn(),
 }));
 
-import { listSeatingPlanVersions, listVenueSeatingPlans } from "@/lib/api/endpoints";
+import { forkSeatingPlan, listPlanTemplates, listSeatingPlanVersions, listVenuePlanIntakes, listVenueSeatingPlans } from "@/lib/api/endpoints";
 import { WizardSeatingSection } from "@/components/WizardSeatingSection";
 import { I18nProvider } from "@/lib/i18n";
 import { newDraft, reduceDraft, type DraftAction, type WizardDraft } from "@/lib/wizard/draft";
@@ -30,6 +35,14 @@ import { newDraft, reduceDraft, type DraftAction, type WizardDraft } from "@/lib
 
 const roots: Root[] = [];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** The queries of the section run one after the other (plans, then templates): give each hop its turn. */
+async function settle() {
+  for (let i = 0; i < 3; i += 1) {
+    await act(async () => {
+      await sleep(20);
+    });
+  }
+}
 const byId = (el: HTMLElement, id: string) => el.querySelector('[data-testid="' + id + '"]') as HTMLElement | null;
 
 function churchPlan(owner = ORG, status = "active") {
@@ -75,9 +88,15 @@ async function mount(): Promise<HTMLElement> {
 }
 
 beforeEach(() => {
+  denied.clear();
   vi.mocked(listVenueSeatingPlans).mockReset();
   vi.mocked(listSeatingPlanVersions).mockReset();
   vi.mocked(listSeatingPlanVersions).mockResolvedValue({ seating_plan_versions: [churchVersion] } as never);
+  vi.mocked(listVenuePlanIntakes).mockReset();
+  vi.mocked(listVenuePlanIntakes).mockResolvedValue({ intakes: [] } as never);
+  vi.mocked(listPlanTemplates).mockReset();
+  vi.mocked(listPlanTemplates).mockResolvedValue({ plan_templates: [] } as never);
+  vi.mocked(forkSeatingPlan).mockReset();
 });
 afterEach(() => {
   while (roots.length > 0) act(() => (roots.pop() as Root).unmount());
@@ -86,6 +105,7 @@ afterEach(() => {
 
 describe("WizardSeatingSection", () => {
   it("says plainly that a venue has no plan, and how to sell seats", async () => {
+    denied.add("seating_plan.create");
     vi.mocked(listVenueSeatingPlans).mockResolvedValue({ seating_plans: [] } as never);
     const el = await mount();
     const none = byId(el, "wizard-seating-none");
@@ -93,6 +113,109 @@ describe("WizardSeatingSection", () => {
     expect(none?.textContent).toContain("нет загруженной схемы");
     expect(none?.textContent).toContain("другую площадку");
     expect(byId(el, "wizard-seating-plan-none")).toBeNull();
+    // Without seating_plan.create there is no upload.
+    expect(byId(el, "wizard-seating-upload")).toBeNull();
+  });
+
+  it("offers the upload, and 'Continue without a plan', to a person who may create seating plans", async () => {
+    vi.mocked(listVenueSeatingPlans).mockResolvedValue({ seating_plans: [] } as never);
+    let release: (v: never) => void = () => undefined;
+    vi.mocked(listPlanTemplates).mockReturnValue(new Promise((r) => (release = r as never)) as never);
+    const el = await mount();
+    // While the templates are read: the loading hint, no upload choice.
+    expect(byId(el, "wizard-seating-templates-loading")).not.toBeNull();
+    expect(byId(el, "wizard-seating-upload")).toBeNull();
+    await act(async () => release({ plan_templates: [] } as never));
+    await settle();
+    expect(byId(el, "wizard-seating-templates-loading")).toBeNull();
+    expect(byId(el, "wizard-seating-none")?.textContent).toContain("Пришлите то, что у вас есть");
+    expect(byId(el, "wizard-seating-template")).toBeNull();
+    await act(async () => (byId(el, "wizard-seating-upload") as HTMLButtonElement).click());
+    expect(byId(el, "wizard-plan-upload")).not.toBeNull();
+    expect(byId(el, "wizard-plan-upload-input")).not.toBeNull();
+    await act(async () => (byId(el, "wizard-seating-continue") as HTMLButtonElement).click());
+    expect(byId(el, "wizard-plan-upload")).toBeNull();
+    expect(byId(el, "wizard-seating-none")?.textContent).toContain("Без схемы");
+  });
+
+  it("offers a verified template BEFORE any upload, and a copy is selected", async () => {
+    const copy = { ...churchPlan(), id: "p9", name: "Church (fork)", current_version_id: "ver9" };
+    vi.mocked(listVenueSeatingPlans).mockResolvedValueOnce({ seating_plans: [] } as never).mockResolvedValue({ seating_plans: [copy] } as never);
+    vi.mocked(listSeatingPlanVersions).mockResolvedValue({ seating_plan_versions: [{ ...churchVersion, id: "ver9", seating_plan_id: "p9" }] } as never);
+    vi.mocked(listPlanTemplates).mockResolvedValue({ plan_templates: [{ plan_id: "t1", name: "Church", own: false, capacity_seated: 2 }] } as never);
+    vi.mocked(forkSeatingPlan).mockResolvedValue({ seating_plan: copy } as never);
+    const el = await mount();
+    await settle();
+    expect(byId(el, "wizard-seating-template")?.textContent).toContain("проверил");
+    expect(byId(el, "wizard-seating-upload")).toBeNull();
+    await act(async () => (byId(el, "wizard-seating-template-use") as HTMLButtonElement).click());
+    await act(async () => {
+      await sleep(20);
+    });
+    expect(forkSeatingPlan).toHaveBeenCalledWith("t1", { owner_org_id: ORG, venue_id: "v1" });
+    expect(latest.seating.versionId).toBe("ver9");
+  });
+
+  it("falls back to the upload choice when the templates cannot be read", async () => {
+    vi.mocked(listVenueSeatingPlans).mockResolvedValue({ seating_plans: [] } as never);
+    vi.mocked(listPlanTemplates).mockRejectedValue(new Error("down"));
+    const el = await mount();
+    await settle();
+    expect(byId(el, "wizard-seating-templates-loading")).toBeNull();
+    expect(byId(el, "wizard-seating-upload")).not.toBeNull();
+  });
+
+  it("selects the copy from the answer of the copy request, even when the list does not hold it", async () => {
+    const copy = { ...churchPlan(), id: "p9", name: "Church (fork)", current_version_id: "ver9" };
+    vi.mocked(listVenueSeatingPlans).mockResolvedValue({ seating_plans: [] } as never);
+    vi.mocked(listSeatingPlanVersions).mockResolvedValue({ seating_plan_versions: [{ ...churchVersion, id: "ver9", seating_plan_id: "p9" }] } as never);
+    vi.mocked(listPlanTemplates).mockResolvedValue({ plan_templates: [{ plan_id: "t1", name: "Church", own: false, capacity_seated: 2 }] } as never);
+    vi.mocked(forkSeatingPlan).mockResolvedValue({ seating_plan: copy } as never);
+    const el = await mount();
+    await settle();
+    await act(async () => (byId(el, "wizard-seating-template-use") as HTMLButtonElement).click());
+    await settle();
+    expect(latest.seating.versionId).toBe("ver9");
+  });
+
+  it("says the copy has no current version, and offers no second copy", async () => {
+    const copy = { ...churchPlan(), id: "p9", current_version_id: null };
+    vi.mocked(listVenueSeatingPlans).mockResolvedValue({ seating_plans: [] } as never);
+    vi.mocked(listPlanTemplates).mockResolvedValue({ plan_templates: [{ plan_id: "t1", name: "Church", own: false, capacity_seated: 2 }] } as never);
+    vi.mocked(forkSeatingPlan).mockResolvedValue({ seating_plan: copy } as never);
+    const el = await mount();
+    await settle();
+    await act(async () => (byId(el, "wizard-seating-template-use") as HTMLButtonElement).click());
+    await settle();
+    expect(byId(el, "wizard-seating-copy-note")?.getAttribute("data-kind")).toBe("noVersion");
+    expect(byId(el, "wizard-seating-template-use")).toBeNull();
+    expect(forkSeatingPlan).toHaveBeenCalledTimes(1);
+  });
+
+  it("says the copy exists when the read after the copy failed, and offers to reload the list", async () => {
+    const copy = { ...churchPlan(), id: "p9", current_version_id: "ver9" };
+    vi.mocked(listVenueSeatingPlans).mockResolvedValue({ seating_plans: [] } as never);
+    vi.mocked(listSeatingPlanVersions).mockRejectedValue(new Error("down"));
+    vi.mocked(listPlanTemplates).mockResolvedValue({ plan_templates: [{ plan_id: "t1", name: "Church", own: false, capacity_seated: 2 }] } as never);
+    vi.mocked(forkSeatingPlan).mockResolvedValue({ seating_plan: copy } as never);
+    const el = await mount();
+    await settle();
+    await act(async () => (byId(el, "wizard-seating-template-use") as HTMLButtonElement).click());
+    await settle();
+    expect(byId(el, "wizard-seating-copy-note")?.getAttribute("data-kind")).toBe("listFailed");
+    expect(byId(el, "wizard-seating-reload")).not.toBeNull();
+    expect(byId(el, "wizard-seating-template-use")).toBeNull();
+    expect(forkSeatingPlan).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets the person decline the template and upload their own plan", async () => {
+    vi.mocked(listVenueSeatingPlans).mockResolvedValue({ seating_plans: [] } as never);
+    vi.mocked(listPlanTemplates).mockResolvedValue({ plan_templates: [{ plan_id: "t1", name: "Church", own: false, capacity_seated: 2 }] } as never);
+    const el = await mount();
+    await settle();
+    await act(async () => (byId(el, "wizard-seating-template-decline") as HTMLButtonElement).click());
+    expect(byId(el, "wizard-plan-upload")).not.toBeNull();
+    expect(forkSeatingPlan).not.toHaveBeenCalled();
   });
 
   it("offers neither a plan of another organization nor an archived one", async () => {

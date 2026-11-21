@@ -243,10 +243,10 @@ function OrdersConsole() {
             Orders
           </h1>
           <p style={S.subheadingStyle}>
-            Orders of every organization. Search by order number, the
-            selling site's reference, or the buyer's email, name or phone.
-            Read-only here; cancel from the organization's
-            orders page.
+            Orders of all organizations. Search by order number, by the
+            reference of the selling site, or by the e-mail, name or phone
+            of the buyer. You cannot change orders here. To cancel an
+            order, go to the orders page of the organization.
           </p>
         </div>
         <div style={S.refreshWrapStyle}>
@@ -257,7 +257,7 @@ function OrdersConsole() {
             disabled={query.isFetching}
             data-testid="orders-refresh"
           >
-            {query.isFetching ? "Refreshing…" : "Refresh"}
+            {query.isFetching ? "Reloading…" : "Reload"}
           </button>
         </div>
       </header>
@@ -277,7 +277,7 @@ function OrdersConsole() {
               <span style={{ display: "flex", gap: 8 }}>
                 <input
                   type="search"
-                  placeholder="Order #, email, name, phone"
+                  placeholder="Order #, e-mail, name, phone"
                   value={qInput}
                   maxLength={100}
                   onChange={(e) => {
@@ -312,19 +312,19 @@ function OrdersConsole() {
                   style={{ color: "#7f1d1d", fontSize: 11 }}
                   data-testid="orders-org-id-error"
                 >
-                  Must be a valid UUID — filter not applied.
+                  This UUID is not correct. We do not use this filter.
                 </span>
               ) : null}
             </label>
             <label style={S.fieldGroupStyle}>
-              <span style={S.fieldLabelStyle}>State</span>
+              <span style={S.fieldLabelStyle}>Status</span>
               <select
                 value={state}
                 onChange={(e) => setState(e.target.value)}
                 style={S.selectStyle}
                 data-testid="orders-state"
               >
-                <option value="">Any state</option>
+                <option value="">All statuses</option>
                 {ORDER_STATES.map((s) => (
                   <option key={s} value={s}>
                     {s}
@@ -333,7 +333,7 @@ function OrdersConsole() {
               </select>
             </label>
             <label style={S.fieldGroupStyle}>
-              <span style={S.fieldLabelStyle}>Page size</span>
+              <span style={S.fieldLabelStyle}>Rows on a page</span>
               <select
                 value={String(limit)}
                 onChange={(e) => setLimit(clampLimit(Number(e.target.value)))}
@@ -355,7 +355,7 @@ function OrdersConsole() {
                 onClick={() => setOffset(clampOffset(offset - limit))}
                 data-testid="orders-prev"
               >
-                Prev
+                Previous
               </button>
               <span data-testid="orders-page-caption">
                 Page {currentPage(offset, limit)} · rows {rows.length}
@@ -441,7 +441,7 @@ function Body({ query, rows, activeOrderId, onOpen }: BodyProps) {
   if (rows.length === 0) {
     return (
       <div style={S.statusBoxStyle} role="status" data-testid="orders-empty">
-        No orders match the current filters.
+        No order fits the filters.
       </div>
     );
   }
@@ -491,7 +491,7 @@ function Body({ query, rows, activeOrderId, onOpen }: BodyProps) {
     },
     {
       id: "state",
-      header: "State",
+      header: "Status",
       renderCell: (o) => <span style={badgeForState(o.state)}>{o.state}</span>,
     },
     {
@@ -520,7 +520,7 @@ function Body({ query, rows, activeOrderId, onOpen }: BodyProps) {
           onClick={() => onOpen(o.id)}
           data-testid={`orders-open-${o.id}`}
         >
-          Details
+          Open
         </button>
       ),
     },
@@ -568,7 +568,7 @@ export function badgeForState(state: string): CSSProperties {
 
 function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => void }) {
   // SAUI-13 accessibility: Escape closes, focus lands on close button,
-  // focus returns to the row's "Details" button on unmount.
+  // focus returns to the row's "Open" button on unmount.
   const closeRef = useRef<HTMLButtonElement | null>(null);
   useEscapeClose(true, onClose);
   useFocusOnMount<HTMLButtonElement>(true, closeRef);
@@ -593,7 +593,7 @@ function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => voi
           ref={closeRef}
           onClick={onClose}
           style={S.drawerCloseStyle}
-          aria-label="Close order details"
+          aria-label="Close the order card"
           data-testid="orders-drawer-close"
           title="Close (Esc)"
         >
@@ -606,7 +606,7 @@ function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => voi
           Fields
         </h3>
         <dl style={S.metaListStyle}>
-          <MetaRow k="State" v={<span style={badgeForState(order.state)}>{order.state}</span>} />
+          <MetaRow k="Status" v={<span style={badgeForState(order.state)}>{order.state}</span>} />
           <MetaRow k="Order ID" v={<code style={S.monoStyle}>{order.id}</code>} />
           <MetaRow
             k="Organization"
@@ -619,7 +619,7 @@ function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => voi
           />
           <MetaRow k="Event" v={order.event_name || <span style={S.mutedStyle}>—</span>} />
           <MetaRow k="Buyer" v={order.buyer_name || <span style={S.mutedStyle}>—</span>} />
-          <MetaRow k="Email" v={order.buyer_email || <span style={S.mutedStyle}>—</span>} />
+          <MetaRow k="E-mail" v={order.buyer_email || <span style={S.mutedStyle}>—</span>} />
           <MetaRow k="Phone" v={order.buyer_phone || <span style={S.mutedStyle}>—</span>} />
           <MetaRow k="Sales path" v={order.source} />
           <MetaRow
@@ -633,7 +633,7 @@ function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => voi
             }
           />
           <MetaRow k="Channel" v={<code style={S.monoStyle}>{order.channel_id}</code>} />
-          <MetaRow k="Reservation" v={<code style={S.monoStyle}>{order.reservation_id}</code>} />
+          <MetaRow k="Hold" v={<code style={S.monoStyle}>{order.reservation_id}</code>} />
           <MetaRow
             k="User"
             v={
@@ -663,7 +663,7 @@ function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => voi
           >
             <span style={S.relatedTileLabelStyle}>Organization orders</span>
             <span style={S.relatedTileHintStyle}>
-              Full order card with tickets and cancellation
+              Full order card with tickets and the cancel button
             </span>
           </a>
           <Link
@@ -672,7 +672,7 @@ function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => voi
             style={S.relatedTileStyle}
             data-testid="orders-related-tickets-org"
           >
-            <span style={S.relatedTileLabelStyle}>Tickets in this org</span>
+            <span style={S.relatedTileLabelStyle}>Tickets of this organization</span>
             <span style={S.relatedTileHintStyle}>
               GET /v1/admin/tickets?org_id={shortUuid(order.org_id)}
             </span>
@@ -683,7 +683,7 @@ function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => voi
             style={S.relatedTileStyle}
             data-testid="orders-related-refunds-org"
           >
-            <span style={S.relatedTileLabelStyle}>Refunds in this org</span>
+            <span style={S.relatedTileLabelStyle}>Refunds of this organization</span>
             <span style={S.relatedTileHintStyle}>
               GET /v1/admin/refunds?org_id={shortUuid(order.org_id)}
             </span>
@@ -691,22 +691,22 @@ function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => voi
           <BackendGapTile
             id="ticket-by-order"
             label="Tickets for this order"
-            reason="No /v1/admin/orders/{id}/tickets endpoint yet; ticket list is filterable only by org_id."
+            reason="There is no /v1/admin/orders/{id}/tickets endpoint. You can filter the ticket list only by org_id."
           />
           <BackendGapTile
             id="refund-by-order"
             label="Refunds for this order"
-            reason="No /v1/admin/orders/{id}/refunds endpoint yet; refund list is filterable only by org_id."
+            reason="There is no /v1/admin/orders/{id}/refunds endpoint. You can filter the refund list only by org_id."
           />
           <BackendGapTile
             id="payment"
             label="Payment intent"
-            reason="No /v1/admin/payments endpoint exposed; payment_intent_id is referenced from refunds only."
+            reason="There is no /v1/admin/payments endpoint. Only refunds show payment_intent_id."
           />
           <BackendGapTile
             id="line-items"
-            label="Line items"
-            reason="List endpoint does not return seat/tier breakdown; richer detail endpoint not exposed."
+            label="Order lines"
+            reason="The list endpoint does not give the seat and category data. There is no endpoint with more data."
           />
         </div>
       </section>
@@ -741,7 +741,7 @@ function BackendGapTile({
       title={reason}
     >
       <span style={S.relatedTileLabelStyle}>{label}</span>
-      <span style={S.relatedTileGapBadgeStyle}>backend gap</span>
+      <span style={S.relatedTileGapBadgeStyle}>missing in the backend</span>
       <span style={S.relatedTileHintStyle}>{reason}</span>
     </div>
   );

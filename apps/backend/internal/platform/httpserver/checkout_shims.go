@@ -49,6 +49,7 @@ func (s *Server) checkoutHandler() *hcheckout.Handler {
 		s.publishTicketRefundedEvents,
 		s.publishTicketRefundedV1Events,
 	).WithMetrics(s.typedMetrics).WithPromoAttempts(s.promoAttemptRecorder()).WithRowOrgAccess(s.rowOrgAccess).WithRefundEngine(s.refundEngine()).WithShopPayments(s.shopPayments()).WithDisputes(s.disputeRecorder()).
+		WithLatePaymentHold(widgetPaymentWindow(s.cfg), widgetPaymentGrace(s.cfg)).
 		WithModuleOptions(payments.Options{
 			StripeAPIBaseURL:  s.stripeBaseURL(),
 			FlittAPIBaseURL:   s.flittBaseURL(),

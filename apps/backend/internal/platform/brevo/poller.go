@@ -2,6 +2,7 @@ package brevo
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -55,6 +56,9 @@ func (p *Poller) poll(ctx context.Context) {
 			continue
 		}
 		sender, err := p.client.GetSender(ctx, email)
+		if errors.Is(err, ErrSenderNotFound) {
+			continue
+		}
 		if err != nil {
 			p.logger.Warn("sender verification check failed", "email", email, "error", err)
 			continue

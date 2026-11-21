@@ -31,8 +31,8 @@ function RootComponent() {
 function NotFound() {
   return (
     <div style={{ padding: 24 }}>
-      <h1 style={{ marginTop: 0 }}>404 — Route not found</h1>
-      <p>The admin workspace has no page at this URL.</p>
+      <h1 style={{ marginTop: 0 }}>404. Page not found</h1>
+      <p>The console has no page at this URL. Check the address and try again.</p>
     </div>
   );
 }

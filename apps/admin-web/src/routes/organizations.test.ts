@@ -152,6 +152,23 @@ describe("filterRows", () => {
     expect(filterRows(rows, "000000000003", true).map((r) => r.slug)).toEqual(["beta"]);
   });
 
+  it("matches by legal name, contact e-mail, tax number and organization number", () => {
+    const legal: AdminOrganization = {
+      ...otherOrg,
+      id: "00000000-0000-0000-0000-000000000009",
+      slug: "legal",
+      display_number: 4711,
+      legal_name: "Kolybel Theatre s.r.o.",
+      contact_email: "box@kolybel.example",
+      tax_id: "CZ12345678",
+    };
+    const all = [...rows, legal];
+    expect(filterRows(all, "kolybel theatre", true).map((r) => r.slug)).toEqual(["legal"]);
+    expect(filterRows(all, "box@kolybel", true).map((r) => r.slug)).toEqual(["legal"]);
+    expect(filterRows(all, "cz1234", true).map((r) => r.slug)).toEqual(["legal"]);
+    expect(filterRows(all, "4711", true).map((r) => r.slug)).toEqual(["legal"]);
+  });
+
   it("returns no rows when nothing matches", () => {
     expect(filterRows(rows, "no-such-organization", true)).toEqual([]);
   });
@@ -325,7 +342,7 @@ describe("mapUpdateOrgServerError (feature #239)", () => {
   });
 
   it("maps not_found to a form-level refresh prompt", () => {
-    expect(mapUpdateOrgServerError(makeErr("admin_org.not_found")).form).toMatch(/no longer exists/i);
+    expect(mapUpdateOrgServerError(makeErr("admin_org.not_found")).form).toMatch(/not available/i);
   });
 
   it("maps body-shape errors to the form-level surface", () => {
@@ -359,7 +376,7 @@ describe("mapArchiveOrgServerError (feature #239)", () => {
   }
 
   it("maps not_found to a refresh prompt", () => {
-    expect(mapArchiveOrgServerError(makeErr("admin_org.not_found")).form).toMatch(/no longer exists/i);
+    expect(mapArchiveOrgServerError(makeErr("admin_org.not_found")).form).toMatch(/not available/i);
   });
 
   it("maps permissions.denied to org.delete guidance", () => {
@@ -372,7 +389,7 @@ describe("mapArchiveOrgServerError (feature #239)", () => {
   });
 
   it("maps database_unavailable to a retry prompt", () => {
-    expect(mapArchiveOrgServerError(makeErr("dependency.database_unavailable")).form).toMatch(/unavailable/i);
+    expect(mapArchiveOrgServerError(makeErr("dependency.database_unavailable")).form).toMatch(/not available/i);
   });
 
   it("falls back to a generic form-level message with the code suffix", () => {
@@ -660,8 +677,8 @@ describe("Users tab membership helpers (feature #241)", () => {
       return new ApiError(400, { code, message });
     }
     it("maps duplicate / not_found / permissions / reason to friendly messages", () => {
-      expect(mapMembershipMutationError(makeErr("admin_membership.duplicate"))).toMatch(/already holds/);
-      expect(mapMembershipMutationError(makeErr("admin_membership.not_found"))).toMatch(/not found/);
+      expect(mapMembershipMutationError(makeErr("admin_membership.duplicate"))).toMatch(/holds this role/);
+      expect(mapMembershipMutationError(makeErr("admin_membership.not_found"))).toMatch(/did not find/);
       expect(mapMembershipMutationError(makeErr("permissions.denied"))).toMatch(/membership\.grant/);
       expect(mapMembershipMutationError(makeErr("superadmin.missing_reason"))).toMatch(/audit reason/i);
       expect(mapMembershipMutationError(makeErr("superadmin.reason_required"))).toMatch(/audit reason/i);

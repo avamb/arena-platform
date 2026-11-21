@@ -122,7 +122,8 @@ SELECT
           AND (p.valid_from  IS NULL OR p.valid_from  <= now())
           AND (p.valid_until IS NULL OR p.valid_until >  now())
           AND (p.max_uses IS NULL
-               OR p.max_uses > (SELECT COUNT(*) FROM promo_code_redemptions r WHERE r.promo_code_id = p.id))
+               OR p.max_uses > (SELECT COUNT(*) FROM promo_code_redemptions r WHERE r.promo_code_id = p.id
+                                   AND NOT EXISTS (SELECT 1 FROM orders t WHERE t.id = r.order_id AND t.is_test)))
     ) AS promo_codes_available,
     -- P2: the consent switch and the seller profile inputs of the rule that
     -- decides it (hfeed.consentFromFlags); never contact_email/contact_phone.

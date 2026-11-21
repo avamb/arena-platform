@@ -116,16 +116,16 @@ export function organizationHref(orgId: string): string {
 /** Lines of the approval confirmation: exactly what the server will create. */
 export function approvalSummary(app: Pick<OnboardingApplication, "org_name" | "legal_name" | "country" | "email" | "applicant_name" | "source" | "telegram_user_id">): readonly string[] {
   const lines = [
-    `Organization “${app.org_name ?? "—"}”${app.legal_name ? ` (legal name ${app.legal_name})` : ""}${app.country ? `, ${app.country}` : ""}, with the legal and address fields from the application.`,
-    "A direct-merchant sales channel with a public sales page. The channel is never merchant of record — only a superadmin can switch that on by hand.",
-    `The owner account for ${app.applicant_name ? `${app.applicant_name} ` : ""}<${app.email}>, with a set-password e-mail sent to that address.`,
+    `Organization “${app.org_name ?? "—"}”${app.legal_name ? ` (legal name ${app.legal_name})` : ""}${app.country ? `, ${app.country}` : ""}, with the legal fields and the address from the application.`,
+    "A direct-merchant sales channel with a public sales page. The channel is never merchant of record. Only a superadmin can set it by hand.",
+    `The owner account for ${app.applicant_name ? `${app.applicant_name} ` : ""}<${app.email}>, and an e-mail to that address to set the password.`,
   ];
   if (app.source === "telegram" || (app.telegram_user_id !== null && app.telegram_user_id !== undefined)) {
-    lines.push("A link between the owner and their Telegram account, so the event-center bot works at once without a second invitation.");
+    lines.push("A link between the owner and the Telegram account of the owner. The event-center bot then works immediately and needs no second invitation.");
   }
   lines.push(
-    "KYB status stays “unverified”.",
-    "Any other open application from the same e-mail is closed as a duplicate.",
+    "The KYB status stays “unverified”.",
+    "We close each different open application from the same e-mail as a duplicate.",
   );
   return lines;
 }
@@ -200,25 +200,25 @@ export function OnboardingCard({ applicationId }: { readonly applicationId: stri
 
   const onReject = (reason: string, message: string) =>
     run("reject", () => rejectOnboardingApplication(applicationId, { reason: reason.trim(), message: message.trim() }), (d) =>
-      keepDetail(d, "The application was rejected."),
+      keepDetail(d, "We rejected the application."),
     );
 
   const onRequestInfo = (fields: readonly string[], message: string) =>
     run("request_info", () => requestOnboardingInfo(applicationId, { fields: [...fields], message: message.trim() }), (d) =>
-      keepDetail(d, "The applicant was asked for details and got a fresh link."),
+      keepDetail(d, "We asked the applicant for details and sent a new link."),
     );
 
   const onExtend = (days: number | undefined) =>
-    run("extend", () => extendOnboardingApplication(applicationId, days), (d) => keepDetail(d, "The draft was extended."));
+    run("extend", () => extendOnboardingApplication(applicationId, days), (d) => keepDetail(d, "We made the draft longer."));
 
   const onPurge = () =>
-    run("purge", () => purgeOnboardingApplication(applicationId), (d) => keepDetail(d, "Personal data was erased."));
+    run("purge", () => purgeOnboardingApplication(applicationId), (d) => keepDetail(d, "We erased the personal data."));
 
   const onResend = () =>
-    run("resend", () => resendOnboardingLink(applicationId), (d) => keepDetail(d, "A new continue link was sent to the applicant."));
+    run("resend", () => resendOnboardingLink(applicationId), (d) => keepDetail(d, "We sent a new link to the applicant to continue."));
 
   const onRecheck = () =>
-    run("recheck", () => recheckOnboardingApplication(applicationId), (d) => keepDetail(d, "The checks were recomputed."));
+    run("recheck", () => recheckOnboardingApplication(applicationId), (d) => keepDetail(d, "We did the checks again."));
 
   const onAddNote = (body: string) =>
     run("note", () => addOnboardingNote(applicationId, body.trim()), async () => {
@@ -263,7 +263,7 @@ export function OnboardingCard({ applicationId }: { readonly applicationId: stri
       {query.isLoading ? <p style={mutedStyle}>Loading…</p> : null}
       {query.error ? (
         <div style={errorStyle} data-testid="onboarding-card-error">
-          {query.error.status === 404 ? "This application does not exist." : `Could not load the application: ${query.error.message}`}
+          {query.error.status === 404 ? "This application is not in the list." : `We did not load the application: ${query.error.message}`}
         </div>
       ) : null}
 
@@ -325,9 +325,9 @@ export function OnboardingCard({ applicationId }: { readonly applicationId: stri
 function ApprovedBanner({ result }: { readonly result: OnboardingApproveResult }): JSX.Element {
   return (
     <div style={noticeStyle} data-testid="onboarding-approved-banner">
-      <strong>Approved.</strong> The organization <code>{result.org_slug}</code> was created
-      {result.owner_created ? " together with its owner account" : " (the owner account already existed)"}
-      {result.closed_duplicates > 0 ? `; ${result.closed_duplicates} duplicate application(s) were closed` : ""}.{" "}
+      <strong>Approved.</strong> We made the organization <code>{result.org_slug}</code>
+      {result.owner_created ? " and its owner account" : " (the owner account was there before)"}
+      {result.closed_duplicates > 0 ? `. We closed ${result.closed_duplicates} duplicate application(s)` : ""}.{" "}
       <a href={organizationHref(result.org_id)} data-testid="onboarding-approved-org-link">
         Open the organization
       </a>
@@ -388,7 +388,7 @@ export function CardHeader({
       <div style={headerRowStyle}>
         <div>
           <h1 style={headingStyle} data-testid="onboarding-title">
-            {app.org_name && app.org_name !== "" ? app.org_name : "Application without a name yet"}
+            {app.org_name && app.org_name !== "" ? app.org_name : "Application without a name"}
           </h1>
           <p style={subheadingStyle}>
             {app.legal_name ? `${app.legal_name} · ` : ""}
@@ -398,7 +398,7 @@ export function CardHeader({
             <StatusPill status={app.status} />
             <Pill tone="muted">{sourceLabel(app.source)}</Pill>
             <Pill tone={wouldApprove ? "good" : "muted"} testId="onboarding-would-approve">
-              {wouldApprove ? "System would approve" : "System would not approve yet"}
+              {wouldApprove ? "The system will approve" : "The system will not approve"}
             </Pill>
           </div>
         </div>
@@ -431,9 +431,9 @@ export function CardHeader({
           <dd style={ddStyle}>{formatDateTime(app.created_at)}</dd>
           <dt style={dtStyle}>Submitted</dt>
           <dd style={ddStyle}>{formatDateTime(app.submitted_at)}</dd>
-          <dt style={dtStyle}>Last activity</dt>
+          <dt style={dtStyle}>Last action</dt>
           <dd style={ddStyle}>{relativeAge(app.last_activity_at, now)}</dd>
-          <dt style={dtStyle}>Draft expires</dt>
+          <dt style={dtStyle}>Draft ends</dt>
           <dd style={ddStyle}>{formatDateTime(app.expires_at)}</dd>
           <dt style={dtStyle}>Step</dt>
           <dd style={ddStyle}>
@@ -448,17 +448,17 @@ export function CardHeader({
 
       {purged ? (
         <div style={warningStyle} data-testid="onboarding-purged">
-          Personal data of this application was erased on {formatDateTime(app.purged_at)}. It cannot be decided or edited any more.
+          We erased the personal data of this application on {formatDateTime(app.purged_at)}. You cannot decide on it or edit it.
         </div>
       ) : null}
 
       {app.status === "info_requested" ? (
         <div style={{ ...warningStyle, marginTop: 8 }} data-testid="onboarding-info-request">
-          <strong>Waiting for the applicant.</strong>{" "}
+          <strong>We wait for the applicant.</strong>{" "}
           {app.info_request_message ?? ""}
           {(app.requested_fields ?? []).length > 0 ? (
             <div style={{ marginTop: 4 }}>
-              Asked about: {(app.requested_fields ?? []).map((f) => fieldLabel(f)).join(", ")}
+              We asked about: {(app.requested_fields ?? []).map((f) => fieldLabel(f)).join(", ")}
             </div>
           ) : null}
         </div>
@@ -466,8 +466,8 @@ export function CardHeader({
 
       {app.reviewed_at ? (
         <div style={{ ...hintStyle, marginTop: 8, marginBottom: 0 }} data-testid="onboarding-decision">
-          Decided {formatDateTime(app.reviewed_at)}
-          {app.decision_reason ? ` — ${app.decision_reason}` : ""}.
+          Decision on {formatDateTime(app.reviewed_at)}
+          {app.decision_reason ? `. ${app.decision_reason}` : ""}.
         </div>
       ) : null}
 
@@ -533,7 +533,7 @@ export function AnswersSection({ groups, purged }: { readonly groups: readonly A
   return (
     <section style={sectionStyle} data-testid="onboarding-answers">
       <h2 style={sectionTitleStyle}>Answers</h2>
-      {purged ? <p style={hintStyle}>The personal fields were erased.</p> : null}
+      {purged ? <p style={hintStyle}>We erased the personal fields.</p> : null}
       {groups.map((g) => (
         <div key={g.id} style={{ marginBottom: 14 }} data-testid={`onboarding-block-${g.id}`}>
           <h3 style={{ margin: "0 0 6px 0", fontSize: 13, fontWeight: 600, color: "#334155" }}>{g.title}</h3>
@@ -569,7 +569,7 @@ function FragmentRow({
         {requested ? (
           <>
             {" "}
-            <Pill tone="warn">asked to fix</Pill>
+            <Pill tone="warn">must be corrected</Pill>
           </>
         ) : null}
       </dd>
@@ -607,9 +607,9 @@ export function ChecksSection({
         ) : null}
       </div>
       <p style={hintStyle}>
-        {wouldApprove ? "Every check passed: in automatic mode the system would approve this application." : "At least one check is not green."}
+        {wouldApprove ? "All checks are correct. In automatic mode the system will approve this application." : "One check or more is not green."}
       </p>
-      {checks.length === 0 ? <p style={mutedStyle}>No checks have run yet.</p> : null}
+      {checks.length === 0 ? <p style={mutedStyle}>No checks.</p> : null}
       <table style={tableStyle}>
         <tbody>
           {checks.map((c) => (
@@ -633,7 +633,7 @@ export function TimelineSection({ events, now }: { readonly events: readonly Onb
   return (
     <section style={sectionStyle} data-testid="onboarding-timeline">
       <h2 style={sectionTitleStyle}>Timeline</h2>
-      {events.length === 0 ? <p style={mutedStyle}>Nothing has happened yet.</p> : null}
+      {events.length === 0 ? <p style={mutedStyle}>No events.</p> : null}
       <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
         {events.map((e) => {
           const detail = eventDetailText(e);
@@ -659,7 +659,7 @@ export function TimelineSection({ events, now }: { readonly events: readonly Onb
 // ---------------------------------------------------------------------------
 
 export function NotesList({ notes }: { readonly notes: readonly OnboardingNote[] }): JSX.Element {
-  if (notes.length === 0) return <p style={mutedStyle} data-testid="onboarding-notes-empty">No notes yet.</p>;
+  if (notes.length === 0) return <p style={mutedStyle} data-testid="onboarding-notes-empty">No notes.</p>;
   return (
     <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
       {notes.map((n) => (
@@ -689,7 +689,7 @@ function NotesPanel({
   return (
     <section style={sectionStyle} data-testid="onboarding-notes">
       <h2 style={sectionTitleStyle}>Private notes</h2>
-      <p style={hintStyle}>Visible to operators only; the applicant never sees them.</p>
+      <p style={hintStyle}>Only operators can see them. The applicant cannot see them.</p>
       <NotesList notes={notes} />
       <form
         style={{ marginTop: 10 }}
@@ -740,7 +740,7 @@ export function ApproveDialogBody({ detail }: { readonly detail: OnboardingDetai
   const problems = checkProblems(detail.checks);
   return (
     <>
-      <p style={{ margin: 0, fontSize: 13 }}>Approving this application will create, in one step:</p>
+      <p style={{ margin: 0, fontSize: 13 }}>If you approve this application, we make these items in one step:</p>
       <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, lineHeight: 1.5 }} data-testid="onboarding-approve-list">
         {approvalSummary(detail.application).map((line) => (
           <li key={line}>{line}</li>
@@ -748,11 +748,11 @@ export function ApproveDialogBody({ detail }: { readonly detail: OnboardingDetai
       </ul>
       {!detail.would_approve ? (
         <div style={warningStyle} data-testid="onboarding-approve-warning">
-          The system would <strong>not</strong> approve this application by itself
-          {problems.fail + problems.warn > 0 ? ` (${problems.fail} failed, ${problems.warn} with a warning)` : ""}. Make sure you have looked at the checks.
+          The system will <strong>not</strong> approve this application
+          {problems.fail + problems.warn > 0 ? ` (${problems.fail} failed, ${problems.warn} with a warning)` : ""}. Examine the checks.
         </div>
       ) : null}
-      <p style={{ ...hintStyle, margin: 0 }}>Approval asks for an audit reason and cannot be undone from here.</p>
+      <p style={{ ...hintStyle, margin: 0 }}>To approve, give an audit reason. You cannot cancel the approval from this page.</p>
     </>
   );
 }
@@ -836,7 +836,7 @@ function RejectDialog({
     >
       <div>
         <label style={labelStyle} htmlFor="onboarding-reject-reason">
-          Reason (required, kept in the record)
+          Cause (necessary, we keep it in the record)
         </label>
         <textarea
           id="onboarding-reject-reason"
@@ -846,7 +846,7 @@ function RejectDialog({
           aria-invalid={errors.reason !== undefined}
           data-testid="onboarding-reject-reason"
         />
-        {errors.reason ? <p style={fieldErrorStyle} data-testid="onboarding-reject-reason-error">{errors.reason === "required" ? "Give the reason for the rejection." : errors.reason}</p> : null}
+        {errors.reason ? <p style={fieldErrorStyle} data-testid="onboarding-reject-reason-error">{errors.reason === "required" ? "Give the cause of the rejection." : errors.reason}</p> : null}
       </div>
       <div>
         <label style={labelStyle} htmlFor="onboarding-reject-message">
@@ -860,7 +860,7 @@ function RejectDialog({
           data-testid="onboarding-reject-message"
         />
         <p style={{ ...hintStyle, margin: "4px 0 0 0" }}>
-          Sent in the rejection e-mail when the applicant confirmed their address. The reason above is not sent.
+          We send it in the rejection e-mail if the applicant confirmed the address. We do not send the cause above.
         </p>
       </div>
       <DialogError error={error} />
@@ -936,7 +936,7 @@ function RequestInfoDialog({
         </div>
         {errors.fields ? (
           <p style={fieldErrorStyle} data-testid="onboarding-info-fields-error">
-            {errors.fields === "required" || errors.fields === "invalid" ? "Pick at least one field to ask about." : errors.fields}
+            {errors.fields === "required" || errors.fields === "invalid" ? "Select one field or more to ask about." : errors.fields}
           </p>
         ) : null}
       </fieldset>
@@ -954,10 +954,10 @@ function RequestInfoDialog({
         />
         {errors.message ? (
           <p style={fieldErrorStyle} data-testid="onboarding-info-message-error">
-            {errors.message === "required" ? "Write what the applicant should add or correct." : errors.message}
+            {errors.message === "required" ? "Write what the applicant must add or correct." : errors.message}
           </p>
         ) : null}
-        <p style={{ ...hintStyle, margin: "4px 0 0 0" }}>The applicant gets this text with a fresh link to the form and can change only the fields you picked.</p>
+        <p style={{ ...hintStyle, margin: "4px 0 0 0" }}>The applicant gets this text with a new link to the form. The applicant can change only the fields that you selected.</p>
       </div>
       <DialogError error={error} />
     </Dialog>
@@ -1000,7 +1000,7 @@ function ExtendDialog({
     >
       <div>
         <label style={labelStyle} htmlFor="onboarding-extend-days">
-          Days from now
+          Days from today
         </label>
         <input
           id="onboarding-extend-days"
@@ -1012,7 +1012,7 @@ function ExtendDialog({
           data-testid="onboarding-extend-days"
         />
         <p style={{ ...hintStyle, margin: "4px 0 0 0" }}>
-          Leave empty for the standard draft lifetime from the settings. An expired draft becomes a draft again.
+          Keep it empty to use the standard draft time from the settings. A draft that ended becomes a draft again.
         </p>
         {localError ? <p style={fieldErrorStyle} data-testid="onboarding-extend-error">{localError}</p> : null}
       </div>
@@ -1050,8 +1050,8 @@ function PurgeDialog({
       }
     >
       <p style={{ margin: 0, fontSize: 13 }}>
-        This erases the applicant's name, e-mail, phone and every answer. The row stays with its status and decision
-        reason for statistics, and the timeline records the deletion. It cannot be undone.
+        This step erases the name, e-mail, phone and all answers of the applicant. The row stays with its status and the
+        cause of the decision for statistics. The timeline shows the deletion. You cannot go back after this step.
       </p>
       <DialogError error={error} />
     </Dialog>

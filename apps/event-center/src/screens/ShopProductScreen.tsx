@@ -32,6 +32,7 @@ import { RichTextField } from "@/components/RichTextField";
 import { ShopImages } from "@/components/ShopImages";
 import { NoShopAccess, ShopNav, ShopReadOnlyNote } from "@/components/ShopNav";
 import { ShopVariantsEditor, type VariantStat } from "@/components/ShopVariantsEditor";
+import { SaveBar } from "@/components/SaveBar";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { Badge, ErrorBox, Loading } from "@/components/ui";
 import {
@@ -365,17 +366,21 @@ export function ProductForm({ orgId, currency, product, canManage, canViewMedia 
     <div ref={root} className="shop-card">
       <UnsavedChangesGuard dirty={dirty} allowLeave={allowLeave} onOpenChange={setGuardOpen} onSaveAndLeave={canManage && editing ? saveAll : undefined} />
       {canManage && editing && (
-        <div className="shop-savebar" data-testid="shop-savebar" hidden={guardOpen} aria-hidden={guardOpen ? true : undefined}>
-          <button type="button" className="btn btn-primary" disabled={busy !== null || !dirty} onClick={() => void saveAll()} data-testid="shop-product-save">
-            {busy === "save" ? t("shop.card.saving") : t("shop.card.save")}
-          </button>
-          <p className={`shop-savebar-status${barText?.tone === "bad" ? " field-error" : ""}`} role="status" aria-live="polite" data-testid="shop-savebar-status">
-            {barText !== null && t(barText.key)}
-            {failure !== null && failure.scope !== "file" && savedParts.length > 0 && (
+        <SaveBar
+          dirty={dirty}
+          busy={busy !== null}
+          onSave={() => void saveAll()}
+          hidden={guardOpen}
+          testId="shop-product-save"
+          barTestId="shop-savebar"
+          statusTestId="shop-savebar-status"
+          status={barText}
+          extra={
+            failure !== null && failure.scope !== "file" && savedParts.length > 0 ? (
               <> {t("shop.card.partial", { parts: savedParts.map((p) => t(`shop.card.part.${p}` as MessageKey)).join(", ") })}</>
-            )}
-          </p>
-        </div>
+            ) : undefined
+          }
+        />
       )}
       {canManage && editing && wrong.length > 0 && fixLine(wrong)}
       <h2>{t("shop.product.f.title")}</h2>

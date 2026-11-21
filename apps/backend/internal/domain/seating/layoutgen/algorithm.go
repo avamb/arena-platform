@@ -146,6 +146,11 @@ type Metrics struct {
 	RevenueRemainingMinor int64 `json:"revenue_remaining_minor"`
 	// RevenueEstimateMinor = sold + held + remaining.
 	RevenueEstimateMinor int64 `json:"revenue_estimate_minor"`
+	// RealisticRevenueMinor is the estimate if not every seat sells: sold
+	// seats in full, every open free seat at its slot's price times the
+	// slot's sell-through rate (SellThroughRates), a held seat at its price
+	// times the rate of the slot price level nearest to it. Rounded half up.
+	RealisticRevenueMinor int64 `json:"realistic_revenue_minor"`
 
 	BySlot []SlotMetrics `json:"by_slot"`
 }

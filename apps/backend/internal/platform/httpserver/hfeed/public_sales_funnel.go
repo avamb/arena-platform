@@ -7,10 +7,10 @@
 //
 //	{"feed_token": "...", "event_id": "uuid"}          the widget (surface "widget"), or
 //	{"page": {"slug": "...", "event_slug": "..."}}     a hosted / tickets page
-//	                                                   (surface "hosted_page" or "tickets_page")
+//	                                                   (surface "hosted_page", "tickets_page" or "external_site")
 //	+ "session_id": "uuid"                              optional
 //	+ "step": "view" | "session_open" | "seats_chosen"
-//	+ "surface": "widget" | "hosted_page" | "tickets_page"
+//	+ "surface": "widget" | "hosted_page" | "tickets_page" | "external_site"
 //	+ "utm_source", "utm_campaign"                      optional
 //
 // It counts how far a visitor got, per event and day, without knowing who the
@@ -36,7 +36,8 @@
 // The surface is tied to how the event is addressed: a feed token is the
 // widget on a seller's site ("widget" only), a page address is one of the pages
 // Arena hosts ("hosted_page" or "tickets_page"). A beacon that disagrees with
-// itself is not counted.
+// itself is not counted. "external_site" (a customer's own domain) may use either
+// addressing.
 //
 // Answers: 204 counted or deliberately not counted (an unknown step, surface,
 // event, session or page, or a body that disagrees with itself, is answered
@@ -112,7 +113,7 @@ func parseFunnelRequest(req funnelRequest) (ctx funnelContext, step, surface str
 	token := strings.TrimSpace(req.FeedToken)
 	switch {
 	case token != "" && req.Page == nil:
-		if surface != salesfunnel.SurfaceWidget {
+		if surface != salesfunnel.SurfaceWidget && surface != salesfunnel.SurfaceExternalSite {
 			return ctx, "", "", false
 		}
 		id, err := uuid.Parse(strings.TrimSpace(req.EventID))

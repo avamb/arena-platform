@@ -191,11 +191,11 @@ export function validateBindForm(input: {
     -readonly [K in keyof BindFormErrors]?: BindFormErrors[K];
   } = {};
   if (input.admissionMode !== "assigned_seats" && input.admissionMode !== "hybrid") {
-    out.admission_mode =
-      "Admission mode must be assigned_seats or hybrid to bind a plan.";
+        out.admission_mode =
+      "The admission mode must be assigned_seats or hybrid to bind a plan.";
   }
   if (input.planVersionId.trim() === "") {
-    out.plan_version_id = "Pick a seating plan version to bind.";
+    out.plan_version_id = "Select a seating plan version to bind.";
   }
   const unmapped: number[] = [];
   for (const r of input.rows) {
@@ -226,41 +226,41 @@ export function anyAutoCreate(rows: readonly CategoryTierMapRow[]): boolean {
 export function mapBindError(err: ApiError): string {
   switch (err.code) {
     case "seating.invalid_body":
-      return "The bind request body was rejected. Please refresh and retry.";
+      return "The platform did not accept the bind request. Please reload and try again.";
     case "seating.invalid_admission_mode":
-      return "Admission mode must be assigned_seats or hybrid to bind a plan.";
+            return "The admission mode must be assigned_seats or hybrid to bind a plan.";
     case "seating.version_not_found":
-      return "The selected seating plan version no longer exists.";
+      return "The selected seating plan version is not available. Select a different version.";
     case "seating.invalid_category_key":
-      return "One of the category → tier mapping keys is not a valid category index.";
+      return "One of the keys in the category → ticket category map is not a correct category index.";
     case "seating.unknown_category":
-      return "One of the mapped categories is not present in the plan version geometry.";
+      return "One of the mapped categories is not in the geometry of the plan version.";
     case "seating.invalid_category_tier_map":
-      return "The category → tier mapping is not valid. Check each row.";
+      return "The category → ticket category map is not correct. Examine each row.";
     case "seating.tier_not_found":
-      return "One of the mapped ticket tiers no longer exists on this session.";
+      return "One of the mapped ticket categories is not on this session now.";
     case "seating.category_tier_map_incomplete":
-      return "Every geometry category must be mapped, or auto-create must be enabled.";
+      return "Each geometry category must be mapped, or auto-create must be on.";
     case "seating.rebind_forbidden":
       return (
-        "This session already has reservations, tickets or sold seats and cannot be rebound. " +
-        "Create a new session to bind a different plan."
+        "This session has holds, tickets or sold seats, so you cannot bind it again. " +
+        "Make a new session to bind a different plan."
       );
     case "permissions.denied":
-      return "Your account is missing event_session.assign_seating_plan.";
+      return "Your account does not have event_session.assign_seating_plan.";
     default:
-      if (err.status === 401) return "Session expired. Please sign in again.";
+      if (err.status === 401) return "Your session ended. Please sign in again.";
       if (err.status === 403)
-        return "Forbidden — missing event_session.assign_seating_plan.";
+        return "Access denied. Your account does not have event_session.assign_seating_plan.";
       if (err.status === 409)
         return (
-          "The session cannot be rebound while reservations or tickets exist. " +
-          "Create a new session to bind a different plan."
+          "The session has holds or tickets, so you cannot bind it again. " +
+          "Make a new session to bind a different plan."
         );
       if (err.status === 404)
-        return "Session or plan not found. Refresh and retry.";
+        return "We did not find the session or the plan. Reload and try again.";
       if (err.status === 503)
-        return "Seating service temporarily unavailable.";
+        return "The seating service is not available now. Try again after a short time.";
       return `${err.message} (${err.code})`;
   }
 }
@@ -396,10 +396,10 @@ export function SessionSeatingBindPanel({
     onSuccess: (data) => {
       onSaved(
         data.rebound
-          ? `Rebound session to plan version ${data.seating_plan_version.version_number}. ` +
-              `Materialized ${data.materialized_seats.toLocaleString()} seats.`
-          : `Bound session to plan version ${data.seating_plan_version.version_number}. ` +
-              `Materialized ${data.materialized_seats.toLocaleString()} seats.`,
+          ? `We bound the session to plan version ${data.seating_plan_version.version_number} again. ` +
+              `We made ${data.materialized_seats.toLocaleString()} seats.`
+          : `We bound the session to plan version ${data.seating_plan_version.version_number}. ` +
+              `We made ${data.materialized_seats.toLocaleString()} seats.`,
       );
     },
     onError: (err) => onError(mapBindError(err)),
@@ -411,7 +411,7 @@ export function SessionSeatingBindPanel({
         style={placeholderStyle}
         data-testid="events-session-seating-no-venue"
       >
-        Attach a venue to this event before binding a seating plan.
+        Attach a venue to this event. Then bind a seating plan.
       </div>
     );
   }
@@ -422,9 +422,9 @@ export function SessionSeatingBindPanel({
     <section
       style={sectionStyle}
       data-testid={`events-session-seating-panel-${sessionId}`}
-      aria-label="Seating binding"
+      aria-label="Seating plan"
     >
-      <div style={detailLabelStyle}>Seating binding</div>
+      <div style={detailLabelStyle}>Seating plan</div>
 
       <div style={gridStyle}>
         <label style={fieldStyle}>
@@ -516,7 +516,7 @@ export function SessionSeatingBindPanel({
                   Category
                 </th>
                 <th scope="col" style={thStyle}>
-                  Ticket tier
+                  Ticket category
                 </th>
                 <th scope="col" style={thStyle}>
                   Auto-create
@@ -546,7 +546,7 @@ export function SessionSeatingBindPanel({
                       style={inputStyle}
                       data-testid={`events-session-seating-map-tier-${r.categoryIndex}`}
                     >
-                      <option value="">— Pick a tier —</option>
+                      <option value="">— Select a category —</option>
                       {availableTiers.map((t) => (
                         <option key={t.id} value={t.id}>
                           {t.name}

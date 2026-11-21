@@ -155,12 +155,39 @@ export function buildTierById(tiers: Tier[]): Map<string, Tier> {
 }
 
 /**
- * Identify GA tiers: session tiers that are NOT referenced in category_prices.
+ * True for a category that, by the server's own answer, owns no place: no
+ * quantity (`capacity` explicitly null or 0) and nothing free (`available`
+ * explicitly null or 0). On a session with a seat plan that is a price
+ * category nobody painted seats into yet. It is not a General Admission
+ * category: a quantity card for it would sell nothing. Fields the server did
+ * not send (undefined, an older server) never make a tier placeless.
+ */
+export function isPlacelessTier(t: Tier): boolean {
+  const noQuantity = t.capacity === null || t.capacity === 0;
+  const nothingFree = t.available === null || t.available === 0;
+  return noQuantity && nothingFree;
+}
+
+/**
+ * Identify GA tiers: session tiers that are NOT referenced in category_prices
+ * (extra_categories are folded into it) and own places of their own.
  * These should render as always-visible GA tier cards under the seat map.
  */
 export function identifyGaTiers(sessionTiers: Tier[], categoryPrices: CategoryPrice[]): Tier[] {
   const seatedTierIds = new Set(categoryPrices.map((cp) => cp.tier_id).filter(Boolean));
-  return sessionTiers.filter((t) => !seatedTierIds.has(t.id));
+  return sessionTiers.filter((t) => !seatedTierIds.has(t.id) && !isPlacelessTier(t));
+}
+
+/**
+ * The price-category legend of the selected session, in sort order. Once the
+ * schema has given the tiers their colours, a tier with no colour of its own
+ * that owns no place is left out: it has no seat on the map and no quantity
+ * card, so the legend would show a category nobody can buy.
+ */
+export function legendTiersOf(sessionTiers: readonly Tier[], tierColors: ReadonlyMap<string, string>): Tier[] {
+  const sorted = [...sessionTiers].sort((a, b) => a.sort_order - b.sort_order);
+  if (tierColors.size === 0) return sorted;
+  return sorted.filter((t) => tierColors.has(t.id) || !isPlacelessTier(t));
 }
 
 /**
@@ -194,6 +221,45 @@ export function planlessGaTiers(
 ): Tier[] | null {
   if (!session || session.schema_url) return null;
   return session.tiers ?? [];
+}
+
+/**
+ * First GA tier a buyer can actually take now: open, inside its sale window,
+ * with at least one place left. Used to preselect quantity 1 so the sticky
+ * cart bar is visible at once. `available` null/undefined means the session
+ * reports no per-category places, so `capacity` (when 0) is the only bound.
+ */
+export function firstPurchasableGaTier(tiers: readonly Tier[], now: number = Date.now()): Tier | null {
+  for (const t of tiers) {
+    if (t.is_open === false) continue;
+    if (typeof t.available === 'number') {
+      if (t.available <= 0) continue;
+    } else if (t.capacity === 0) {
+      continue;
+    }
+    if (t.sale_window_start && Date.parse(t.sale_window_start) > now) continue;
+    if (t.sale_window_end && Date.parse(t.sale_window_end) <= now) continue;
+    return t;
+  }
+  return null;
+}
+
+/**
+ * Decides the one-time GA preselection. Returns the quantities map to apply,
+ * or null when nothing should change (nothing GA, a selection already exists,
+ * or no tier is purchasable).
+ */
+export function gaPreselection(
+  tiers: readonly Tier[],
+  currentGa: ReadonlyMap<string, number>,
+  seatCount: number,
+  now: number = Date.now(),
+): Map<string, number> | null {
+  if (seatCount > 0) return null;
+  for (const q of currentGa.values()) if (q > 0) return null;
+  const tier = firstPurchasableGaTier(tiers, now);
+  if (!tier) return null;
+  return new Map([[tier.id, 1]]);
 }
 
 /**

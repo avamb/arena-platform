@@ -164,3 +164,29 @@ func mustBuild(t *testing.T, s Sheet) []byte {
 	}
 	return b
 }
+
+func TestBuildBook_SeveralSheetsKeepOrderNamesAndFilters(t *testing.T) {
+	body, err := BuildBook([]Sheet{
+		{Name: "One", Columns: []Column{{Header: "A"}}, Rows: [][]csvexport.Cell{{csvexport.Text("x")}}},
+		{Name: "One", Columns: []Column{{Header: "B"}, {Header: "C", Text: true}}, Rows: [][]csvexport.Cell{{csvexport.Number(7), csvexport.Text("007")}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sheets := xlsxtest.OpenBook(t, body)
+	if len(sheets) != 2 {
+		t.Fatalf("sheets = %d", len(sheets))
+	}
+	if sheets[0].SheetName != "One" || sheets[1].SheetName != "One 2" {
+		t.Fatalf("names = %q, %q", sheets[0].SheetName, sheets[1].SheetName)
+	}
+	if got := sheets[1].Values(); len(got) != 2 || got[1][0] != "7" || got[1][1] != "007" {
+		t.Fatalf("second sheet values = %v", got)
+	}
+	if sheets[1].Sheet.AutoFilter == nil || sheets[1].Sheet.AutoFilter.Ref != "A1:B2" {
+		t.Fatalf("autofilter = %+v", sheets[1].Sheet.AutoFilter)
+	}
+	if _, err := BuildBook(nil); err == nil {
+		t.Fatal("an empty workbook must be refused")
+	}
+}

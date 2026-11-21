@@ -195,6 +195,13 @@ type SMTPConfig struct {
 	// UseTLS enables implicit TLS on connect (port 465 style). When false,
 	// opportunistic STARTTLS is used instead.
 	UseTLS bool
+	// FromName is the display name given to a letter that goes out from a
+	// platform address (From or one of PlatformFroms) and names no sender of
+	// its own. Empty keeps the bare address.
+	FromName string
+	// PlatformFroms are extra platform addresses besides From (the dedicated
+	// ticket address) that also get FromName.
+	PlatformFroms []string
 }
 
 // SMTPSender sends email via Go's standard net/smtp package. Each Send call
@@ -235,6 +242,41 @@ func (s *SMTPSender) Send(ctx context.Context, msg Message) error {
 // out with (recorded with each buyer letter as dispute evidence).
 func (s *SMTPSender) DefaultFrom() string { return s.cfg.From }
 
+// fromNameFor is the display name the letter goes out with: its own FromName,
+// else cfg.FromName when the effective from is a platform address
+// (case-insensitive), else empty.
+func (s *SMTPSender) fromNameFor(msg Message) string {
+	if strings.TrimSpace(msg.FromName) != "" || s.cfg.FromName == "" {
+		return msg.FromName
+	}
+	from := s.cfg.From
+	if msg.From != "" {
+		from = msg.From
+	}
+	if strings.EqualFold(from, s.cfg.From) {
+		return s.cfg.FromName
+	}
+	for _, p := range s.cfg.PlatformFroms {
+		if p != "" && strings.EqualFold(from, p) {
+			return s.cfg.FromName
+		}
+	}
+	return msg.FromName
+}
+
+// HeaderFromFor is the From header the buyer sees for msg: the effective
+// address with the display name (own or the platform default).
+func (s *SMTPSender) HeaderFromFor(msg Message) string {
+	from := s.cfg.From
+	if msg.From != "" {
+		from = msg.From
+	}
+	if from == "" {
+		return ""
+	}
+	return HeaderFrom(from, s.fromNameFor(msg))
+}
+
 // SendReceipt is Send that also returns the message id the server reported
 // in its final reply to DATA (Brevo: "250 2.0.0 OK: queued as <id>").
 func (s *SMTPSender) SendReceipt(_ context.Context, msg Message) (Receipt, error) {
@@ -246,6 +288,7 @@ func (s *SMTPSender) SendReceipt(_ context.Context, msg Message) (Receipt, error
 		}
 		from = msg.From
 	}
+	msg.FromName = s.fromNameFor(msg)
 	raw, err := buildMIMEMessage(from, msg)
 	if err != nil {
 		return Receipt{}, fmt.Errorf("smtp: build MIME message: %w", err)

@@ -7,7 +7,7 @@
 // buyer's PDF never contains the internal ticket UUID.
 //
 // Found in production 2026-09-20 on the first live client: the PDF title
-// read "Arena Event", Venue / Category / Holder printed as bare labels
+// read "ArenaSoldOut.com Event", Venue / Category / Holder printed as bare labels
 // with nothing after them, the session time was UTC, and the ticket
 // number line was the raw UUID.
 //
@@ -404,7 +404,7 @@ func TestDeliveryPresentation_HintlessPayloadRendersRealValues(t *testing.T) {
 	})
 	doc := storedTicketPDF(ctx, t, pool, seed.TicketID)
 
-	// ── PDF: the real values, not "Arena Event" and blank rows ────────
+	// ── PDF: the real values, not "ArenaSoldOut.com Event" and blank rows ────────
 	for label, want := range map[string]string{
 		"event name": seed.EventName,
 		"venue":      seed.VenueName,
@@ -416,8 +416,8 @@ func TestDeliveryPresentation_HintlessPayloadRendersRealValues(t *testing.T) {
 			t.Errorf("PDF does not print the %s %q", label, want)
 		}
 	}
-	if pdfContainsText(doc, "Arena Event") {
-		t.Error("PDF still prints the \"Arena Event\" placeholder title")
+	if pdfContainsText(doc, "ArenaSoldOut.com Event") {
+		t.Error("PDF still prints the \"ArenaSoldOut.com Event\" placeholder title")
 	}
 
 	// ── PDF: the venue-local session time ─────────────────────────────
@@ -455,8 +455,8 @@ func TestDeliveryPresentation_HintlessPayloadRendersRealValues(t *testing.T) {
 			t.Errorf("e-mail body does not carry the %s %q\n--- body ---\n%s", label, want, body)
 		}
 	}
-	if strings.Contains(body, "Arena Event") {
-		t.Error("e-mail body still carries the \"Arena Event\" placeholder")
+	if strings.Contains(body, "ArenaSoldOut.com Event") {
+		t.Error("e-mail body still carries the \"ArenaSoldOut.com Event\" placeholder")
 	}
 	if strings.Contains(body, seed.TicketID.String()) {
 		t.Error("e-mail body leaks the internal ticket UUID")

@@ -123,7 +123,7 @@ const heldKeys = () => Object.keys(sessionStorage).filter((k) => k.startsWith("a
 describe("the decision on an order that waits for a check", () => {
   it("offers both buttons only for manual_review and only with shop.manage and the refund rights", async () => {
     const review = await mount(order());
-    expect(byId(review, "shop-order-resolve-fulfil").textContent).toBe("Fulfil the order");
+    expect(byId(review, "shop-order-resolve-fulfil").textContent).toBe("Complete the order");
     expect(byId(review, "shop-order-resolve-refund").textContent).toBe("Refund and cancel");
     const paid = await mount(order({ status: "paid" }));
     expect(byId(paid, "shop-order-resolve-fulfil")).toBeNull();
@@ -145,7 +145,7 @@ describe("the decision on an order that waits for a check", () => {
     expect([org, id, action, headers]).toEqual([ORG, ID, "fulfil", { "X-Step-Up-Token": "t" }]);
     expect(key).toMatch(/^web-/);
     expect(byId(el, "confirm-word")).toBeNull();
-    expect(byId(el, "shop-order-note").textContent).toContain("The order is fulfilled.");
+    expect(byId(el, "shop-order-note").textContent).toContain("The order is complete.");
     expect(document.activeElement).toBe(byId(el, "shop-order-note"));
     expect(heldKeys()).toEqual([]);
   });

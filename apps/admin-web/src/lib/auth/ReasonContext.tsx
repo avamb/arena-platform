@@ -155,7 +155,7 @@ export function ReasonProvider({ children }: ReasonProviderProps) {
   );
 
   const cancelPrompt = useCallback(() => {
-    const cause = new Error("Operator cancelled the audit-reason prompt");
+    const cause = new Error("The operator canceled the audit reason prompt");
     failQueue(cause);
     pendingPromptRef.current = null;
     setPendingPrompt(null);

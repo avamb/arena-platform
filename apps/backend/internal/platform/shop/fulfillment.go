@@ -227,6 +227,9 @@ func (s *Service) SetFulfillmentStep(ctx context.Context, tx pgx.Tx, orgID, orde
 	if err != nil {
 		return StepResult{}, err
 	}
+	if o.Source == OrderSourceShopify {
+		return StepResult{}, ErrOrderHistoric
+	}
 	if o.DeliveryKind == DeliveryNone {
 		// Digital or service goods: there is no parcel, no address and no
 		// letter, so a step would only write a false event (SA-32).

@@ -124,3 +124,51 @@ Bcc: z@evil.example"}`} {
 		t.Errorf("a broken organization address falls through to the owner -> %q", got)
 	}
 }
+
+func TestOrganizerFrom_OnlyAVerifiedSenderIsUsed(t *testing.T) {
+	if from, name := organizerFrom("tickets@own.example", "verified", "Teatro"); from != "tickets@own.example" || name != "Teatro" {
+		t.Errorf("verified: from=%q name=%q", from, name)
+	}
+	for _, st := range []string{"pending", "failed", ""} {
+		if from, name := organizerFrom("tickets@own.example", st, "Teatro"); from != "" || name != "Teatro" {
+			t.Errorf("status %q: from=%q name=%q", st, from, name)
+		}
+	}
+	if from, _ := organizerFrom("", "verified", "Teatro"); from != "" {
+		t.Errorf("verified without an address: from=%q", from)
+	}
+}
+
+func TestPageRef_SiteMarkerPrintsTheSiteHost(t *testing.T) {
+	origins := []byte(`["https://vinoandco.events","https://other.example"]`)
+	ref := pageRef("feed-site", origins)
+	if ref != "(vinoandco.events)" {
+		t.Fatalf("ref = %q", ref)
+	}
+	_, h, txt := RenderEmailTopic("en", "Vino&Co", ref, "Ann", "a@b.example", "", "", "Hi")
+	if !strings.Contains(txt, "Vino&Co (vinoandco.events)") || strings.Contains(txt+h, "feed-site") {
+		t.Errorf("text:\n%s", txt)
+	}
+	if tg := FormatTelegram("Vino&Co", ref, "Ann", "a@b.example", "Hi", EmailMailed); !strings.Contains(tg, "(vinoandco.events)") || strings.Contains(tg, "feed-site") {
+		t.Errorf("telegram: %s", tg)
+	}
+	for _, none := range [][]byte{nil, []byte(`[]`), []byte(`not json`)} {
+		ref := pageRef("feed-site", none)
+		if ref != "" {
+			t.Fatalf("ref without origin = %q", ref)
+		}
+		_, _, txt := RenderEmailTopic("en", "Vino&Co", ref, "Ann", "a@b.example", "", "", "Hi")
+		if strings.Contains(txt, "feed-site") || strings.Contains(txt, "()") || strings.Contains(txt, "(/") {
+			t.Errorf("no-origin text:\n%s", txt)
+		}
+		if tg := FormatTelegram("Vino&Co", ref, "Ann", "a@b.example", "Hi", EmailMailed); strings.Contains(tg, "feed-site") || strings.Contains(tg, "(") {
+			t.Errorf("no-origin telegram: %s", tg)
+		}
+	}
+	if pageRef("teatro", origins) != "teatro" {
+		t.Error("an ordinary slug must stay a slug")
+	}
+	if _, _, txt := RenderEmail("en", "Teatro", "teatro", "Ann", "a@b.example", "Hi"); !strings.Contains(txt, "Teatro (/teatro)") {
+		t.Errorf("slug line changed:\n%s", txt)
+	}
+}

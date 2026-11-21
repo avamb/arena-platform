@@ -6,6 +6,7 @@ import { wasEnteredThroughTelegram } from "@/lib/tgEnter";
 import { useI18n } from "@/lib/i18n";
 import { useFocusOnRouteChange } from "@/lib/routeFocus";
 import { ScreenTracking } from "@/lib/analytics/hooks";
+import { NewVersionBanner } from "@/components/NewVersionBanner";
 
 /** The page frame: skip link, then the screen. Headers live in OrgLayout. */
 export function RootLayout() {
@@ -23,6 +24,7 @@ export function RootLayout() {
         {t("nav.skip")}
       </a>
       <ScreenTracking />
+      <NewVersionBanner />
       <Outlet />
     </>
   );

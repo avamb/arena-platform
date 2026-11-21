@@ -28,7 +28,7 @@ const PLAN_VERSION = "fe0000e2-0000-7000-8000-00000000e604";
 const nonce = Date.now().toString(36);
 
 const status = (page: Page) => page.getByTestId("wizard-status");
-const correct = (page: Page) => expect(status(page)).toContainText("Everything you filled in is correct", { timeout: 25_000 });
+const correct = (page: Page) => expect(status(page)).toContainText("All data you added is correct", { timeout: 25_000 });
 
 test.describe("event wizard: hall plan (live)", () => {
   test("a draft event sold by the venue's plan, with an extra price category, opens its seat map", async ({ page, request }) => {

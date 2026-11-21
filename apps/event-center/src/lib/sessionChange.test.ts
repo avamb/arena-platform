@@ -217,8 +217,8 @@ describe("impactToDryRun", () => {
   });
   it("blocks on a partner site and says nothing was changed", () => {
     const r = impactToDryRun(impact({ blocked: "site_route_unsupported", site_orders: 2 }), "cancel", t);
-    expect(r.blocked).toContain("2 orders were sold through a partner site");
-    expect(r.blocked).toContain("Nothing was changed");
+    expect(r.blocked).toContain("A partner site sold 2 orders.");
+    expect(r.blocked).toContain("We did not change the session.");
   });
   it("says again that a cancellation refunds nothing", () => {
     const r = impactToDryRun(impact({ kinds: ["cancelled"], no_address: 1 }), "cancel", t);
@@ -226,7 +226,7 @@ describe("impactToDryRun", () => {
     expect(r.warnings?.some((w) => w.includes("1 orders have no buyer e-mail"))).toBe(true);
   });
   it("says no letters go out without buyers or without a visible change", () => {
-    expect(impactToDryRun(impact({ orders: 0, tickets: 0, arena_orders: 0 }), "move", t).summary).toContain("Nobody has bought");
+    expect(impactToDryRun(impact({ orders: 0, tickets: 0, arena_orders: 0 }), "move", t).summary).toContain("No buyer has tickets for this session");
     expect(impactToDryRun(impact({ kinds: [] }), "move", t).summary).toContain("no change");
   });
 });

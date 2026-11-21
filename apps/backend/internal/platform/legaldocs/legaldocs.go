@@ -65,11 +65,11 @@ var RefundModes = []string{RefundNone, RefundUntilSalesEnd, RefundByLaw}
 // chose a mode.
 const DefaultRefundMode = RefundByLaw
 
-// PlatformSellerName is the seller named in the terms of a merchant_of_record
-// channel, where the platform sells as merchant of record. It equals
-// delivery/templates.PlatformLegalName (a test keeps them equal) until the
-// owner gives the platform's legal entity data.
-const PlatformSellerName = "Arena Platform"
+// PlatformSellerName is the PLATFORM BRAND name shown where a document names
+// the platform. The platform is not a seller of tickets: it gives services to
+// organizers. It equals delivery/templates.PlatformLegalName (a test keeps
+// them equal) until the owner gives the platform's legal entity data.
+const PlatformSellerName = "ArenaSoldOut.com"
 
 // KnownKind reports whether k is one of Kinds.
 func KnownKind(k string) bool { return contains(Kinds, k) }

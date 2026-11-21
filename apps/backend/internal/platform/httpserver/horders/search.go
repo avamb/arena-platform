@@ -204,11 +204,14 @@ func legacyTicketSystemID(code string) (int64, bool) {
 //	         (no confirmed payment behind the order; manual_review is a
 //	         payment that could not complete and waits for an operator).
 //
-// "recent" (the default) is every status, newest first.
+// "recent" (the default) is every status, newest first. "refunds" is the
+// orders money went back on, partially_refunded and refunded: a narrower
+// view inside "paid", the web event center's Refunds tab (spec 62 §12.1).
 const (
-	tabRecent = "recent"
-	tabPaid   = "paid"
-	tabUnpaid = "unpaid"
+	tabRecent  = "recent"
+	tabPaid    = "paid"
+	tabUnpaid  = "unpaid"
+	tabRefunds = "refunds"
 )
 
 // tabFilter maps the `tab` query parameter onto the SQL tab filter; ok is
@@ -221,6 +224,8 @@ func tabFilter(tab string) (string, bool) {
 		return tabPaid, true
 	case tabUnpaid:
 		return tabUnpaid, true
+	case tabRefunds:
+		return tabRefunds, true
 	}
 	return "", false
 }

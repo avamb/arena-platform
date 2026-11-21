@@ -1,4 +1,4 @@
-{{define "subject"}}{{if gt (len .Tickets) 1}}Your tickets — {{.EventName}}{{else}}Your ticket — {{.EventName}}{{end}}{{end}}
+{{define "subject"}}{{with .Reissue}}Your new tickets — {{$.EventName}}{{else}}{{if gt (len .Tickets) 1}}Your tickets — {{.EventName}}{{else}}Your ticket — {{.EventName}}{{end}}{{end}}{{end}}
 
 {{define "html"}}<!DOCTYPE html>
 <html lang="en" dir="ltr">
@@ -9,10 +9,10 @@
   {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
   <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
   <tr><td style="padding:28px 32px 8px 32px;color:#22333D;font-size:16px;">Hello{{with .HolderName}} {{.}}{{end}}!</td></tr>
-  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">{{if gt (len .Tickets) 1}}Thank you for your purchase. Your tickets for “{{.EventName}}” are attached to this email (PDF files).{{else}}Thank you for your purchase. Your ticket for “{{.EventName}}” is attached to this email (PDF).{{end}}</td></tr>
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">{{with .Reissue}}{{if .Typo}}There was a typo in the e-mail address given at purchase, so the first letter with your tickets went to another address. You contacted the organizer and confirmed your details. We have issued new tickets for you, they are attached.<br><br>The tickets from the first letter are no longer valid. Only the new tickets will get you in.{{else}}At your request we have issued new tickets to replace the earlier ones. They are attached.<br><br>The earlier tickets are no longer valid. Only the new tickets will get you in.{{end}}<br><br>Your seats and payment have not changed.{{with .OrderNumber}} Order number: {{.}}.{{end}}{{else}}{{if gt (len .Tickets) 1}}Thank you for your purchase. Your tickets for “{{.EventName}}” are attached to this email (PDF files).{{else}}Thank you for your purchase. Your ticket for “{{.EventName}}” is attached to this email (PDF).{{end}}{{end}}</td></tr>
   <tr><td style="padding:8px 32px;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-left:4px solid {{.Accent}};background:#f8f9fa;"><tr><td style="padding:12px 16px;color:#22333D;font-size:14px;line-height:1.6;">
-      <strong>{{.EventName}}</strong>{{with .SessionStart}}<br>{{.}}{{end}}{{with .DoorsOpen}}<br>Doors open {{.}}{{end}}{{with .VenueName}}<br>{{.}}{{end}}
+      <strong>{{.EventName}}</strong>{{with .SessionStart}}<br>{{.}}{{end}}{{with .DoorsOpen}}<br>Doors open {{.}}{{end}}{{with .VenueName}}<br>{{.}}{{end}}{{with .Directions.GoogleURL}}<br>Directions: <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a>{{end}}
     </td></tr></table>
   </td></tr>
   <tr><td style="padding:8px 32px;">
@@ -39,8 +39,7 @@
   </td></tr>{{end}}
   {{if .WithdrawalNotice}}<tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Tickets for an event on a specific date are not covered by the right of withdrawal. Your order became binding when you paid.</td></tr>{{end}}
   <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Open the file on your phone and show the barcode at the entrance — no need to print.</td></tr>
-  {{if .Branding.ContactEmail}}<tr><td style="padding:8px 32px 16px 32px;color:#46555f;font-size:14px;line-height:1.6;">If you have any questions, just reply to this email.</td></tr>{{end}}
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
     Delivered to: {{.RecipientEmail}}<br><br>
 {{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
@@ -52,7 +51,7 @@
     {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
     {{with .Branding.ContactEmail}}<br>Contact: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Contact: <a href="{{.}}" style="color:#666">Write to the organizer</a>{{end}}{{end}}
   </p>
-  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}Arena Platform — automated delivery{{end}}</p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Ticket processing by arenasoldout.com</a>{{end}}</p>
   <p style="font-size:11px;color:#999;line-height:1.5">If you click “Unsubscribe”, the letters with your tickets and the important letters about your order will no longer reach you. We do not send marketing mailings without your consent.</p>
   </td></tr>
 </table>
@@ -64,12 +63,19 @@
 
 Hello{{with .HolderName}} {{.}}{{end}}!
 
-{{if gt (len .Tickets) 1}}Thank you for your purchase. Your tickets for “{{.EventName}}” are attached to this email (PDF files).{{else}}Thank you for your purchase. Your ticket for “{{.EventName}}” is attached to this email (PDF).{{end}}
+{{with .Reissue}}{{if .Typo}}There was a typo in the e-mail address given at purchase, so the first letter with your tickets went to another address. You contacted the organizer and confirmed your details. We have issued new tickets for you, they are attached.
+
+The tickets from the first letter are no longer valid. Only the new tickets will get you in.{{else}}At your request we have issued new tickets to replace the earlier ones. They are attached.
+
+The earlier tickets are no longer valid. Only the new tickets will get you in.{{end}}
+
+Your seats and payment have not changed.{{with .OrderNumber}} Order number: {{.}}.{{end}}{{else}}{{if gt (len .Tickets) 1}}Thank you for your purchase. Your tickets for “{{.EventName}}” are attached to this email (PDF files).{{else}}Thank you for your purchase. Your ticket for “{{.EventName}}” is attached to this email (PDF).{{end}}{{end}}
 
 {{.EventName}}
 {{with .SessionStart}}{{.}}
 {{end}}{{with .DoorsOpen}}Doors open {{.}}
 {{end}}{{with .VenueName}}{{.}}
+{{end}}{{with .Directions.GoogleURL}}Directions:: Google Maps {{.}} · Waze {{$.Directions.WazeURL}}
 {{end}}
 {{if gt (len .Tickets) 1}}Tickets ({{len .Tickets}}){{else}}Ticket{{end}}:
 {{range .Tickets}}- No. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .Price}} · {{.}}{{end}}{{with .DownloadURL}}
@@ -90,9 +96,7 @@ Payment:
 {{end}}{{if .WithdrawalNotice}}Tickets for an event on a specific date are not covered by the right of withdrawal. Your order became binding when you paid.
 
 {{end}}Open the file on your phone and show the barcode at the entrance — no need to print.
-{{if .Branding.ContactEmail}}If you have any questions, just reply to this email.
-{{end}}
-Delivered to: {{.RecipientEmail}}
+{{template "contact_text" .}}Delivered to: {{.RecipientEmail}}
 
 --
 {{.Branding.SellerLabel}} {{.Branding.LegalName}}
@@ -106,7 +110,7 @@ Delivered to: {{.RecipientEmail}}
 {{end}}{{with .Branding.ContactEmail}}Contact: {{.}}
 {{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Contact: {{.}}
 {{end}}{{end}}
-{{if not .WhiteLabel}}Arena Platform — automated delivery{{end}}
+{{if not .WhiteLabel}}Ticket processing by arenasoldout.com — https://arenasoldout.com{{end}}
 
 If you click “Unsubscribe”, the letters with your tickets and the important letters about your order will no longer reach you. We do not send marketing mailings without your consent.
 {{end}}

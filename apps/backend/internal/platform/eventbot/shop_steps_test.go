@@ -172,7 +172,7 @@ func TestShopCardText_StepAndHistory(t *testing.T) {
 	// A reason somebody typed is shown as typed and escaped.
 	typed := shopStepOrder(shStatusPaid, stepFailed)
 	typed.Events = &[]openapi.ShopOrderEvent{{Id: openapi_types.UUID(uuid.New()), Step: stepFailed, Reason: "gate <closed>", ActorName: "Ana", CreatedAt: time.Now()}}
-	if got := b.shopCardText("en", typed, "", true); !strings.Contains(got, "reason: gate &lt;closed&gt;") {
+	if got := b.shopCardText("en", typed, "", true); !strings.Contains(got, "cause: gate &lt;closed&gt;") {
 		t.Errorf("typed reason:\n%s", got)
 	}
 	// No delivery: no step block at all.

@@ -180,8 +180,8 @@ describe("mapCustomerImportServerError", () => {
 describe("formatImportStatus", () => {
   it("formats every known status", () => {
     expect(formatImportStatus("uploaded")).toBe("Uploaded");
-    expect(formatImportStatus("dry_run_running")).toBe("Dry-run running");
-    expect(formatImportStatus("dry_run_done")).toBe("Dry-run done");
+    expect(formatImportStatus("dry_run_running")).toBe("Dry run in progress");
+    expect(formatImportStatus("dry_run_done")).toBe("Dry run done");
     expect(formatImportStatus("applying")).toBe("Applying");
     expect(formatImportStatus("applied")).toBe("Applied");
     expect(formatImportStatus("failed")).toBe("Failed");

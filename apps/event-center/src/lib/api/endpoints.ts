@@ -5,7 +5,7 @@
  */
 import { ApiError, PAGE_READ_TIMEOUT_MS, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
-import type { PageStatsResponse, SalesFunnelResponse } from "@/lib/api/types";
+import type { GettingStarted, PageStatsResponse, SalesFunnelResponse } from "@/lib/api/types";
 import type {
   BillingAccountInvoice,
   BillingAccountInvoiceList,
@@ -40,8 +40,14 @@ import type {
   EventContactResponse,
   EventListResponse,
   EventSummary,
+  OrgSummary,
   GeoCitiesResponse,
   GeoCountriesResponse,
+  CreateVenueRequest,
+  CreateOrgCityRequest,
+  OrgCityResponse,
+  TelegramConnectStatus,
+  TelegramConnectCode,
   GeoCountryCurrencyResponse,
   GeoCountryTimezonesResponse,
   ImportBil24SessionResponse,
@@ -52,6 +58,15 @@ import type {
   OrderListResponse,
   OrderRefundOptions,
   OrderResendTicketsResponse,
+  ReissueHistory,
+  InvitationReissueOptions,
+  ReissueOptions,
+  ReissueResendResponse,
+  ReissueTicketsRequest,
+  ReissueTicketsResponse,
+  ExternalRefundRequest,
+  ExternalRefundResponse,
+  RefundProblemQueue,
   OrderSummary,
   OrganizationItem,
   OrgMeResponse,
@@ -77,6 +92,7 @@ import type {
   SessionChangeImpact,
   SessionEnvelope,
   SessionSalesState,
+  GuestListSettings,
   GuestListSubscription,
   SessionSalesStateHistory,
   SessionListResponse,
@@ -89,6 +105,10 @@ import type {
   VenueItem,
   SeatingPlan,
   SeatingPlanVersion,
+  VenuePlanIntakeEnvelope,
+  VenuePlanIntakeList,
+  PlanTemplatesResponse,
+  ForkSeatingPlanRequest,
   TextFormatRequest,
   TextFormatResponse,
   AdminSeatsResponse,
@@ -133,6 +153,35 @@ export function fetchEventSummary(orgId: string, eventId: string): Promise<Event
   return call<EventSummary>({ route: API.eventSummary, params: { org_id: orgId, event_id: eventId } });
 }
 
+/** The range of the organization summary and of the accounting workbook; empty bounds are open. */
+export interface OrgSummaryRange {
+  /** First day, `YYYY-MM-DD`. */
+  from?: string;
+  /** Last day included, `YYYY-MM-DD`. */
+  to?: string;
+  eventId?: string;
+}
+
+/** EC-V1: a card per session and currency for the sessions that start in the range. */
+export function fetchOrgSummary(orgId: string, range: OrgSummaryRange): Promise<OrgSummary> {
+  return call<OrgSummary>({
+    route: API.orgSummary,
+    params: { org_id: orgId },
+    query: { from: range.from, to: range.to, event_id: range.eventId },
+  });
+}
+
+/** EC-V2: the accountant's Excel workbook (by sessions, by prices, tickets). */
+export function downloadAccountingXlsx(orgId: string, range: OrgSummaryRange, locale: string): Promise<DownloadedFile> {
+  return download({
+    route: API.accountingXlsx,
+    params: { org_id: orgId },
+    query: { from: range.from, to: range.to, event_id: range.eventId, locale },
+    accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    fallbackName: "accounting.xlsx",
+  });
+}
+
 export function listSessions(orgId: string, eventId: string): Promise<SessionListResponse> {
   return call<SessionListResponse>({ route: API.eventSessions, params: { org_id: orgId, event_id: eventId } });
 }
@@ -148,13 +197,19 @@ export function listTiers(orgId: string, eventId: string, sessionId: string): Pr
   });
 }
 
-export type OrderTab = "recent" | "paid" | "unpaid";
+export type OrderTab = "recent" | "paid" | "unpaid" | "refunds";
 
 export interface OrderQuery {
   tab?: OrderTab;
   q?: string;
   eventId?: string;
   sessionId?: string;
+  /** The order date range, RFC 3339 (EC-V3). */
+  from?: string;
+  to?: string;
+  /** The range of the session start, RFC 3339 (EC-V3). */
+  sessionFrom?: string;
+  sessionTo?: string;
   limit?: number;
   offset?: number;
 }
@@ -168,6 +223,10 @@ export function listOrders(orgId: string, query: OrderQuery): Promise<OrderListR
       q: query.q === "" ? undefined : query.q,
       event_id: query.eventId,
       session_id: query.sessionId,
+      from: query.from,
+      to: query.to,
+      session_from: query.sessionFrom,
+      session_to: query.sessionTo,
       limit: query.limit,
       offset: query.offset,
     },
@@ -237,6 +296,37 @@ export function downloadGuestListXlsx(orgId: string, sessionId: string, locale: 
     accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     fallbackName: "guests.xlsx",
   });
+}
+
+/** The guest list of every session of an event as one Excel workbook (a Session column first). */
+export function downloadEventGuestListXlsx(orgId: string, eventId: string, locale: string): Promise<DownloadedFile> {
+  return download({
+    route: API.eventGuestListXlsx,
+    params: { org_id: orgId, event_id: eventId },
+    query: { locale },
+    accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    fallbackName: "guests.xlsx",
+  });
+}
+
+/** The organization switch for the automatic team guest list (on by default). */
+export function getGuestListSettings(orgId: string): Promise<GuestListSettings> {
+  return call<GuestListSettings>({ route: API.guestListSettings, params: { org_id: orgId } });
+}
+
+/** The owner turns the automatic team guest list on or off. */
+export function setGuestListSettings(orgId: string, autoSend: boolean): Promise<GuestListSettings> {
+  return call<GuestListSettings>({
+    route: API.guestListSettingsSet,
+    params: { org_id: orgId },
+    body: { auto_send: autoSend },
+  });
+}
+
+/** The first steps of the organization the caller may do, and which are done. */
+export async function fetchGettingStarted(orgId: string): Promise<GettingStarted> {
+  const out = await call<{ getting_started: GettingStarted }>({ route: API.gettingStarted, params: { org_id: orgId } });
+  return out.getting_started;
 }
 
 /** The caller's own "send me the guest list" setting in this organization. */
@@ -405,6 +495,75 @@ export function resendOrderTickets(orgId: string, orderId: string, email?: strin
   });
 }
 
+// ─── Spec 63: replace the tickets of an order ───────────────────────────────
+
+/** The check screen of a ticket reissue: the tickets, the route, what blocks it now. */
+export function fetchReissueOptions(orgId: string, orderId: string): Promise<ReissueOptions> {
+  return call<ReissueOptions>({ route: API.reissueOptions, params: { org_id: orgId, order_id: orderId } });
+}
+
+/**
+ * Replaces every active ticket of the order. `key` is the operation's
+ * Idempotency-Key: the same key with the same body answers the first
+ * operation (`replayed: true`) and writes nothing.
+ */
+export function reissueOrderTickets(
+  orgId: string,
+  orderId: string,
+  body: ReissueTicketsRequest,
+  key: string,
+): Promise<ReissueTicketsResponse> {
+  return call<ReissueTicketsResponse>({
+    route: API.reissueTickets,
+    params: { org_id: orgId, order_id: orderId },
+    body,
+    headers: { "Idempotency-Key": key },
+  });
+}
+
+/** Queues the letter of a reissue that was not applied yet again, to the same address. */
+export function resendReissueLetter(orgId: string, orderId: string, reissueId: string): Promise<ReissueResendResponse> {
+  return call<ReissueResendResponse>({
+    route: API.reissueResend,
+    params: { org_id: orgId, order_id: orderId, reissue_id: reissueId },
+    body: {},
+  });
+}
+
+/** The check screen of an invitation that has no order (spec 63 R-5). */
+export function fetchInvitationReissueOptions(orgId: string, invitationId: string): Promise<InvitationReissueOptions> {
+  return call<InvitationReissueOptions>({ route: API.invitationReissueOptions, params: { org_id: orgId, id: invitationId } });
+}
+
+/** Replaces the tickets of an invitation; the same key rules as an order. */
+export function reissueInvitationTickets(
+  orgId: string,
+  invitationId: string,
+  body: ReissueTicketsRequest,
+  key: string,
+): Promise<ReissueTicketsResponse> {
+  return call<ReissueTicketsResponse>({
+    route: API.invitationReissueTickets,
+    params: { org_id: orgId, id: invitationId },
+    body,
+    headers: { "Idempotency-Key": key },
+  });
+}
+
+/** Queues the letter of an invitation's reissue again. */
+export function resendInvitationReissueLetter(orgId: string, invitationId: string, reissueId: string): Promise<ReissueResendResponse> {
+  return call<ReissueResendResponse>({
+    route: API.invitationReissueResend,
+    params: { org_id: orgId, id: invitationId, reissue_id: reissueId },
+    body: {},
+  });
+}
+
+/** The reissues of an order, newest first. */
+export function fetchReissueHistory(orgId: string, orderId: string): Promise<ReissueHistory> {
+  return call<ReissueHistory>({ route: API.reissueHistory, params: { org_id: orgId, order_id: orderId } });
+}
+
 /**
  * Cancels a `pending_payment` order and ends the hold on its seats (4-2).
  * The caller has already checked the typed word. `headers` carries the
@@ -415,6 +574,25 @@ export function cancelOrder(orgId: string, orderId: string, headers: Record<stri
 }
 
 // ─── 8-1: refunds of an order ─────────────────────────────────────────────────
+
+/** Failed and stuck refunds with undelivered buyer letters (`refund.read`, EC-V5). */
+export function fetchRefundQueue(orgId: string): Promise<RefundProblemQueue> {
+  return call<RefundProblemQueue>({ route: API.refundQueue, params: { org_id: orgId } });
+}
+
+/**
+ * Retries one failed refund (`refund.approve`, 202). The server starts the
+ * "retry-<id>" operation, so a repeated press answers the first one. `headers`
+ * carries the step-up token (`withStepUp`).
+ */
+export function retryRefund(orgId: string, refundId: string, headers: Record<string, string>): Promise<CreateOrderRefundsResponse> {
+  return call<CreateOrderRefundsResponse>({
+    route: API.refundRetry,
+    params: { org_id: orgId, refund_id: refundId },
+    body: {},
+    headers,
+  });
+}
 
 /** What can be refunded on an order and how (`refund.read`). Changes nothing. */
 export function fetchRefundOptions(orgId: string, orderId: string): Promise<OrderRefundOptions> {
@@ -460,6 +638,28 @@ export async function createOrderRefunds(
     throw new ApiError(200, "refund.unconfirmed_response", "The refund response could not be verified.");
   }
   return answer;
+}
+
+// ─── P-14: a refund made outside the platform ────────────────────────────────
+
+/**
+ * Records money the organizer returned in the provider's own cabinet: voids the
+ * named tickets and books one FINAL amount per ticket (spec 62 14.6). `headers`
+ * carries the step-up token (`withStepUp`). A ticket that already has a refund
+ * answers 409 `order.external_refund_exists` with the recorded amount.
+ */
+export function recordExternalRefund(
+  orgId: string,
+  orderId: string,
+  body: ExternalRefundRequest,
+  headers: Record<string, string>,
+): Promise<ExternalRefundResponse> {
+  return call<ExternalRefundResponse>({
+    route: API.externalRefund,
+    params: { org_id: orgId, order_id: orderId },
+    body,
+    headers,
+  });
 }
 
 // ─── 4-7: the owner's "Organization data" ────────────────────────────────────
@@ -868,6 +1068,27 @@ export function listVenues(orgId: string): Promise<{ venues: VenueItem[] }> {
   return call<{ venues: VenueItem[] }>({ route: API.venues, params: { org_id: orgId } });
 }
 
+/** F-004: creates a venue of the organization (`venue.create`). */
+export function createVenue(orgId: string, body: CreateVenueRequest, locale?: string): Promise<{ venue: VenueItem }> {
+  // `locale` names a city made by `city_name` (the query alias of `lang`).
+  return call<{ venue: VenueItem }>({ route: API.venueCreate, params: { org_id: orgId }, body, query: locale ? { locale } : undefined });
+}
+
+/** F-004: finds or creates a city of a country by name (`city.create`, idempotent by name). */
+export function createOrgCity(orgId: string, body: CreateOrgCityRequest): Promise<OrgCityResponse> {
+  return call<OrgCityResponse>({ route: API.orgCityCreate, params: { org_id: orgId }, body });
+}
+
+/** F-007: is the signed-in person's Telegram connected to the bot? */
+export function getTelegramConnect(orgId: string): Promise<TelegramConnectStatus> {
+  return call<TelegramConnectStatus>({ route: API.telegramConnectStatus, params: { org_id: orgId } });
+}
+
+/** F-007: a one-time t.me link (and its QR code) that connects the person's Telegram here. */
+export function createTelegramConnectCode(orgId: string): Promise<TelegramConnectCode> {
+  return call<TelegramConnectCode>({ route: API.telegramConnectCode, params: { org_id: orgId } });
+}
+
 /** The seating plans of a venue (`seating_plan.read`). */
 export function listVenueSeatingPlans(venueId: string): Promise<{ seating_plans: SeatingPlan[] }> {
   return call<{ seating_plans: SeatingPlan[] }>({ route: API.venueSeatingPlans, params: { venue_id: venueId } });
@@ -876,6 +1097,94 @@ export function listVenueSeatingPlans(venueId: string): Promise<{ seating_plans:
 /** The versions of a seating plan, each with its geometry (`seating_plan.read`). */
 export function listSeatingPlanVersions(planId: string): Promise<{ seating_plan_versions: SeatingPlanVersion[] }> {
   return call<{ seating_plan_versions: SeatingPlanVersion[] }>({ route: API.seatingPlanVersions, params: { id: planId } });
+}
+
+// ─── Spec 64: the seating plan intake ────────────────────────────────────────
+
+/** A plan of up to 80 MB over a slow line: five minutes. */
+const PLAN_UPLOAD_TIMEOUT_MS = 300_000;
+
+/**
+ * Sends the files of a seating plan (`seating_plan.create`). The key makes a repeat of
+ * the same attempt, after an answer was lost, the same intake and no second one.
+ */
+export function createVenuePlanIntake(orgId: string, venueId: string, files: readonly File[], idempotencyKey: string): Promise<VenuePlanIntakeEnvelope> {
+  const form = new FormData();
+  for (const f of files) form.append("files", f, f.name);
+  form.append("channel", "event_center_web");
+  return call<VenuePlanIntakeEnvelope>({
+    route: API.planIntakeCreate,
+    params: { org_id: orgId, venue_id: venueId },
+    form,
+    headers: { "Idempotency-Key": idempotencyKey },
+    timeoutMs: PLAN_UPLOAD_TIMEOUT_MS,
+  });
+}
+
+/** The intakes of the organization, newest first (`seating_plan.read`). */
+export function listVenuePlanIntakes(orgId: string, filter: { venueId?: string; state?: string; limit?: number } = {}): Promise<VenuePlanIntakeList> {
+  return call<VenuePlanIntakeList>({
+    route: API.planIntakeList,
+    params: { org_id: orgId },
+    query: { venue_id: filter.venueId, state: filter.state, limit: filter.limit },
+  });
+}
+
+export function getVenuePlanIntake(orgId: string, intakeId: string): Promise<VenuePlanIntakeEnvelope> {
+  return call<VenuePlanIntakeEnvelope>({ route: API.planIntakeGet, params: { org_id: orgId, intake_id: intakeId } });
+}
+
+/** The SVG of a draft as a blob: it is shown from a blob URL in an <img>, never as markup. */
+export function downloadPlanDraftSvg(orgId: string, intakeId: string, n: number): Promise<DownloadedFile> {
+  return download({
+    route: API.planIntakeDraftSvg,
+    params: { org_id: orgId, intake_id: intakeId, n: String(n) },
+    accept: "image/svg+xml",
+    fallbackName: `draft-${n}.svg`,
+  });
+}
+
+/** A file of an intake (or its PNG copy) as a blob. */
+export function downloadPlanSource(orgId: string, intakeId: string, sourceId: string, fileName: string, pngCopy = false): Promise<DownloadedFile> {
+  return download({
+    route: API.planIntakeSource,
+    params: { org_id: orgId, intake_id: intakeId, source_id: sourceId },
+    query: { format: pngCopy ? "png" : undefined },
+    accept: "*/*",
+    fallbackName: fileName,
+  });
+}
+
+/** "Fix it": the written correction of the current draft. The intake goes to an administrator. */
+export function correctPlanIntakeText(orgId: string, intakeId: string, draft: number, text: string): Promise<VenuePlanIntakeEnvelope> {
+  return call<VenuePlanIntakeEnvelope>({ route: API.planIntakeCorrection, params: { org_id: orgId, intake_id: intakeId }, body: { draft, text } });
+}
+
+export function escalatePlanIntake(orgId: string, intakeId: string, text: string): Promise<VenuePlanIntakeEnvelope> {
+  return call<VenuePlanIntakeEnvelope>({
+    route: API.planIntakeEscalate,
+    params: { org_id: orgId, intake_id: intakeId },
+    body: text.trim() === "" ? {} : { text: text.trim() },
+  });
+}
+
+export function cancelPlanIntake(orgId: string, intakeId: string): Promise<VenuePlanIntakeEnvelope> {
+  return call<VenuePlanIntakeEnvelope>({ route: API.planIntakeCancel, params: { org_id: orgId, intake_id: intakeId } });
+}
+
+/** "Correct": makes the seating plan of the current draft (the server does it in one transaction). */
+export function approvePlanIntake(orgId: string, intakeId: string, draft: number): Promise<VenuePlanIntakeEnvelope> {
+  return call<VenuePlanIntakeEnvelope>({ route: API.planIntakeApprove, params: { org_id: orgId, intake_id: intakeId }, body: { draft } });
+}
+
+/** The verified seating plans of a venue the organization may copy (`seating_plan.read`). */
+export function listPlanTemplates(orgId: string, venueId: string): Promise<PlanTemplatesResponse> {
+  return call<PlanTemplatesResponse>({ route: API.planTemplates, params: { org_id: orgId, venue_id: venueId } });
+}
+
+/** Copies a verified template into the organization, for the venue (`seating_plan.fork`). */
+export function forkSeatingPlan(planId: string, body: ForkSeatingPlanRequest): Promise<{ seating_plan: SeatingPlan }> {
+  return call<{ seating_plan: SeatingPlan }>({ route: API.seatingPlanFork, params: { id: planId }, body });
 }
 
 export function listCountries(lang?: string): Promise<GeoCountriesResponse> {
@@ -1042,6 +1351,21 @@ export function saveDescription(orgId: string, eventId: string, art: string): Pr
     params: { org_id: orgId, id: eventId },
     body: { description: art, description_format: "art" },
   });
+}
+
+/**
+ * Saves the event card's own fields from the web editor: ONE PATCH carrying only what changed. The name is sent
+ * only when the person edited it (the list shows a translated name for another language, so an unchanged name
+ * must never be written back as the canonical one). The description goes as ART, like saveDescription.
+ */
+export function saveEventDetails(orgId: string, eventId: string, fields: { name?: string; description?: string }): Promise<EventEnvelope> {
+  const body: Record<string, unknown> = {};
+  if (fields.name !== undefined) body.name = fields.name;
+  if (fields.description !== undefined) {
+    body.description = fields.description;
+    body.description_format = "art";
+  }
+  return call<EventEnvelope>({ route: API.eventUpdate, params: { org_id: orgId, id: eventId }, body });
 }
 
 /** A test letter with the text (the draft when `note` is given, else the saved one) to the caller's own address. */

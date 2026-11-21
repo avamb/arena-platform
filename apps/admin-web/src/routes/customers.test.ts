@@ -26,7 +26,7 @@ describe("validateCustomerQuery", () => {
 
   it("rejects a query one char over the 200 char cap", () => {
     expect(validateCustomerQuery("a".repeat(201))).toBe(
-      "Search must be at most 200 characters",
+      "The search can have 200 characters or less.",
     );
   });
 
@@ -39,11 +39,11 @@ describe("validateCustomerQuery", () => {
 
 describe("validateOrgID", () => {
   it("rejects empty input", () => {
-    expect(validateOrgID("")).toBe("Organization ID is required");
+    expect(validateOrgID("")).toBe("Enter the organization ID.");
   });
 
   it("rejects a non-UUID string", () => {
-    expect(validateOrgID("not-a-uuid")).toBe("Organization ID must be a UUID");
+    expect(validateOrgID("not-a-uuid")).toBe("The organization ID must be a UUID.");
   });
 
   it("accepts a valid UUID", () => {
@@ -104,7 +104,7 @@ describe("mapServerError", () => {
 
   it("maps permissions.denied with operator-readable copy", () => {
     const r = mapServerError(envelopeError("permissions.denied", "forbidden"));
-    expect(r.form).toMatch(/missing the required permission/i);
+    expect(r.form).toMatch(/does not have the necessary permission/i);
   });
 
   it("falls back to form-level for unknown codes", () => {

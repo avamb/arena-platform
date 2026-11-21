@@ -17,6 +17,7 @@
 //   - valid token resets password (200 + can log in with new password)
 //   - reused token rejected (410 Gone)
 //   - expired token rejected (410 Gone)
+//   - parallel confirms with one token: exactly one succeeds
 package httpserver
 
 import (
@@ -26,6 +27,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -256,5 +258,80 @@ func TestPasswordResetIntegration116_ExpiredTokenRejected(t *testing.T) {
 	errObj, _ := m["error"].(map[string]any)
 	if code, _ := errObj["code"].(string); code != "auth.token_expired" {
 		t.Errorf("error.code = %q; want 'auth.token_expired'", code)
+	}
+}
+
+// TestPasswordResetIntegration116_ConcurrentConfirmConsumesOnce verifies that
+// parallel confirms with one token succeed exactly once and the stored
+// password is the one from the successful request.
+func TestPasswordResetIntegration116_ConcurrentConfirmConsumesOnce(t *testing.T) {
+	pool := integrationPool(t)
+	userID, _ := seedTestUser(t, pool)
+	srv := buildIntegrationResetServer(t, pool)
+
+	rawToken, err := users.GenerateVerificationToken()
+	if err != nil {
+		t.Fatalf("GenerateVerificationToken: %v", err)
+	}
+	q := gen.New(pool)
+	if err := q.InsertPasswordResetToken(t.Context(), users.TokenHash(rawToken), userID, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("InsertPasswordResetToken: %v", err)
+	}
+
+	const n = 8
+	type result struct {
+		password string
+		code     int
+		errCode  string
+	}
+	results := make([]result, n)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			password := fmt.Sprintf("ParallelPassword%d!", i)
+			body := `{"token":"` + rawToken + `","new_password":"` + password + `"}`
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodPost, "/v1/auth/password-reset/confirm", strings.NewReader(body))
+			r.Header.Set("Content-Type", "application/json")
+			<-start
+			srv.handleAuthPasswordResetConfirm(w, r)
+			res := result{password: password, code: w.Code}
+			var m map[string]any
+			if json.NewDecoder(w.Body).Decode(&m) == nil {
+				if errObj, ok := m["error"].(map[string]any); ok {
+					res.errCode, _ = errObj["code"].(string)
+				}
+			}
+			results[i] = res
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	winner := ""
+	ok := 0
+	for i, res := range results {
+		switch {
+		case res.code == http.StatusOK:
+			ok++
+			winner = res.password
+		case res.code == http.StatusGone && res.errCode == "auth.token_already_used":
+		default:
+			t.Errorf("request %d: status = %d, error.code = %q; want 200 or 410 auth.token_already_used", i, res.code, res.errCode)
+		}
+	}
+	if ok != 1 {
+		t.Fatalf("successful confirms = %d; want exactly 1", ok)
+	}
+
+	var hash string
+	if err := pool.QueryRow(t.Context(), "SELECT password_hash FROM users WHERE id = $1", userID).Scan(&hash); err != nil {
+		t.Fatalf("read password_hash: %v", err)
+	}
+	if err := users.CheckPassword(hash, winner); err != nil {
+		t.Errorf("stored password does not match the successful request: %v", err)
 	}
 }

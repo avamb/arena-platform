@@ -245,6 +245,9 @@ func (h *Handler) HandlePublishEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// P-5: an event on a public feed needs a page address.
+	h.ensureEventSlug(ctx, orgID, eventID)
+
 	httputil.WriteJSON(w, http.StatusOK, publicationFromRow(pub))
 }
 

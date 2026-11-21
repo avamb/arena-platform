@@ -68,6 +68,9 @@ func TestManagerPermissions0129_OrganizerPassesEveryEventCenterGate(t *testing.T
 		{"ticket.cancel", http.MethodPost, "/v1/tickets/" + random + "/cancel", `{"reason":"test","refund_mode":"none"}`},
 		{"ticket.update", http.MethodGet, "/v1/admin/tickets/" + random + "/delivery", ""},
 		{"refund.read", http.MethodGet, "/v1/refunds/" + random, ""},
+		// EC-V5: the refund queue of the web event center (failed refunds, undelivered letters).
+		{"refund.read", http.MethodGet, orgPath + "/refunds/queue", ""},
+		{"refund.read", http.MethodGet, orgPath + "/orders/" + random + "/refund-options", ""},
 		{"refund.create", http.MethodPost, "/v1/refunds", `{"payment_intent_id":"` + random + `","amount":1,"currency":"EUR"}`},
 		{"refund.approve", http.MethodPost, "/v1/refunds/" + random + "/approve", "{}"},
 		{"promo.read", http.MethodGet, orgPath + "/promo-codes", ""},

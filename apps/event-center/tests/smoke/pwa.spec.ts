@@ -17,7 +17,7 @@ test.describe("web session and installable app", () => {
     await page.getByLabel("E-mail").fill("manager@example.test");
     await page.getByLabel("Password").fill("right-password");
     await page.getByTestId("login-submit").click();
-    await expect(page.getByRole("heading", { name: "Choose an organization" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Select an organization" })).toBeVisible();
 
     // A tab opened by hand starts with an empty sessionStorage.
     const tab = await context.newPage();
@@ -59,7 +59,7 @@ test.describe("web session and installable app", () => {
     await page.getByLabel("E-mail").fill("manager@example.test");
     await page.getByLabel("Password").fill("right-password");
     await page.getByTestId("login-submit").click();
-    await expect(page.getByRole("heading", { name: "Choose an organization" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Select an organization" })).toBeVisible();
     await page.goto(`/o/${ORG_A}/events`);
     await expect(page.getByTestId("event-row").first()).toBeVisible();
 

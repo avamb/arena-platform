@@ -295,8 +295,7 @@ func (b *Bot) renderEvents(ctx context.Context, chatID int64, editMsgID *int, id
 		b.reply(ctx, chatID, editMsgID, note+b.texts.T(loc, "bot.events_empty", nil), b.backKeyboard(loc, "home"))
 		return
 	}
-	filtered := FilterEvents(events, st.Filter, st.Query)
-	items, page, pages := PageOf(filtered, st.Page, listPageSize)
+	controls, filtered, items, page, pages := b.eventsListItems(loc, st, events)
 	st.Page = page
 	st.IDs = st.IDs[:0]
 	for _, e := range items {
@@ -324,28 +323,55 @@ func (b *Bot) renderEvents(ctx context.Context, chatID int64, editMsgID *int, id
 		text += "\n\n" + b.emptyListText(loc, st)
 	}
 
+	rows := controls.rows()
+	rows = append(rows, b.helpRow(loc, hpList, ""))
+	rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}})
+	b.reply(ctx, chatID, editMsgID, text, &models.InlineKeyboardMarkup{InlineKeyboard: rows})
+}
+
+// eventsListItems is the list of the controls of "My events": the filter chips,
+// the search hint, the rows of events, the paging and "Clear search". The
+// keyboard and the help of the list are both made from it. It also answers the
+// events of the filter and search, the events of the page, and the page and the
+// number of pages.
+func (b *Bot) eventsListItems(loc string, st eventsDialog, events []openapi.EventItem) (items screenItems, filtered, shown []openapi.EventItem, page, pages int) {
+	filtered = FilterEvents(events, st.Filter, st.Query)
+	shown, page, pages = PageOf(filtered, st.Page, listPageSize)
+	running, archive := CountByFilter(events)
+	runLabel := b.texts.T(loc, "bot.ec.filter_run", map[string]any{"N": running})
+	arcLabel := b.texts.T(loc, "bot.ec.filter_arc", map[string]any{"N": archive})
 	mark := func(label, filter string) string {
 		if st.Filter == filter {
 			return "✔ " + label
 		}
 		return label
 	}
-	rows := [][]models.InlineKeyboardButton{{
-		{Text: mark(b.texts.T(loc, "bot.ec.filter_run", map[string]any{"N": running}), evFilterRun), CallbackData: "el:f:" + evFilterRun},
-		{Text: mark(b.texts.T(loc, "bot.ec.filter_arc", map[string]any{"N": archive}), evFilterArc), CallbackData: "el:f:" + evFilterArc},
-	}}
-	for i, e := range items {
-		rows = append(rows, []models.InlineKeyboardButton{{Text: eventRowLabel(e, st.Filter), CallbackData: ItemCallback("el:o", i)}})
+	items = append(items, screenItem{
+		ID: "el.filters", Label: runLabel + " / " + arcLabel,
+		Rows: [][]button{{
+			{Text: mark(runLabel, evFilterRun), CallbackData: "el:f:" + evFilterRun},
+			{Text: mark(arcLabel, evFilterArc), CallbackData: "el:f:" + evFilterArc},
+		}},
+	})
+	items = append(items, screenItem{ID: "el.search", Label: b.texts.T(loc, "bot.hp.l_search", nil)}) // typed text: no button
+	if len(shown) > 0 {
+		eventRows := make([][]button, 0, len(shown))
+		for i, e := range shown {
+			eventRows = append(eventRows, []button{{Text: eventRowLabel(e, st.Filter), CallbackData: ItemCallback("el:o", i)}})
+		}
+		items = append(items, screenItem{ID: "el.event", Rows: eventRows, Label: b.texts.T(loc, "bot.hp.l_event", nil)})
 	}
 	if nav := PagerRow(Pager{Prefix: "el:p", Page: page, Pages: pages},
 		b.texts.T(loc, "bot.btn_prev", nil), b.texts.T(loc, "bot.btn_next", nil)); nav != nil {
-		rows = append(rows, nav)
+		items = append(items, screenItem{
+			ID: "el.paging", Rows: [][]button{nav},
+			Label: b.texts.T(loc, "bot.btn_prev", nil) + " / " + b.texts.T(loc, "bot.btn_next", nil),
+		})
 	}
 	if st.Query != "" {
-		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.ec.clear_search_btn", nil), CallbackData: "el:x"}})
+		items.add("el.clear", []button{{Text: b.texts.T(loc, "bot.ec.clear_search_btn", nil), CallbackData: "el:x"}})
 	}
-	rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}})
-	b.reply(ctx, chatID, editMsgID, text, &models.InlineKeyboardMarkup{InlineKeyboard: rows})
+	return items, filtered, shown, page, pages
 }
 
 func (b *Bot) emptyListText(loc string, st eventsDialog) string {

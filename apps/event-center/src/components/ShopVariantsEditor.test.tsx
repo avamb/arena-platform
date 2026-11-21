@@ -90,12 +90,12 @@ describe("ShopVariantsEditor", () => {
     const check = checkVariants([bad], "EUR", 1);
     const html = render({ rows: [bad], optionCount: 1, optionNames: ["Color"], check });
     expect(html).toContain("Type a price, for example 12.50.");
-    expect(html).toContain("Type a whole number, 0 or more.");
+    expect(html).toContain("Type a number, 0 or more, with no decimals.");
   });
 
   it("says that a product needs at least one variant", () => {
     const html = render({ rows: [], check: checkVariants([], "EUR", 0) });
-    expect(html).toContain("Add at least one variant.");
+    expect(html).toContain("Add one variant or more.");
   });
 
   it("is read only for a person who cannot change the shop", () => {

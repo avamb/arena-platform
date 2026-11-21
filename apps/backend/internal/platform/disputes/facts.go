@@ -32,6 +32,7 @@ type Facts struct {
 	Consent        *ConsentFacts
 	Refunds        []RefundFacts
 	Changes        []ChangeFacts
+	Reissues       []ReissueFacts
 	// PriorOrders: earlier paid orders of the same buyer at this
 	// organization that were never disputed (for a fraud claim).
 	PriorOrders int
@@ -158,6 +159,21 @@ type RefundFacts struct {
 type ChangeFacts struct {
 	Kinds []string
 	At    time.Time
+}
+
+// ReissueFacts is one replacement of the order's tickets after a letter went
+// to a wrong address (spec 63, decision R-17 П-5): who, when and why the
+// buyer's address changed, so a different address at the provider is
+// explained.
+type ReissueFacts struct {
+	At         time.Time
+	AppliedAt  *time.Time
+	OldEmail   string
+	NewEmail   string
+	Reason     string
+	ActorType  string
+	OldNumbers []string
+	NewNumbers []string
 }
 
 // ChargeInfo is what the provider adds.
@@ -383,6 +399,25 @@ func CollectFacts(ctx context.Context, q querier, d Dispute) (Facts, error) {
 		return nil
 	}); err != nil {
 		return f, fmt.Errorf("disputes: session changes: %w", err)
+	}
+
+	if err := collectRows(ctx, q, `SELECT r.created_at, r.applied_at, COALESCE(r.old_email, ''), r.new_email,
+			r.reason, r.actor_type,
+			ARRAY(SELECT ot.system_ticket_id::text FROM ticket_reissue_items i JOIN tickets ot ON ot.id = i.old_ticket_id
+			      WHERE i.reissue_id = r.id ORDER BY ot.system_ticket_id),
+			ARRAY(SELECT nt.system_ticket_id::text FROM ticket_reissue_items i JOIN tickets nt ON nt.id = i.new_ticket_id
+			      WHERE i.reissue_id = r.id ORDER BY nt.system_ticket_id)
+		FROM ticket_reissues r WHERE r.org_id = $1 AND r.order_id = $2 ORDER BY r.created_at`,
+		[]any{d.OrgID, o.ID}, func(r pgx.Rows) error {
+			var x ReissueFacts
+			if err := r.Scan(&x.At, &x.AppliedAt, &x.OldEmail, &x.NewEmail, &x.Reason, &x.ActorType,
+				&x.OldNumbers, &x.NewNumbers); err != nil {
+				return err
+			}
+			f.Reissues = append(f.Reissues, x)
+			return nil
+		}); err != nil {
+		return f, fmt.Errorf("disputes: reissues: %w", err)
 	}
 
 	if err := q.QueryRow(ctx, `SELECT count(*) FROM orders o2

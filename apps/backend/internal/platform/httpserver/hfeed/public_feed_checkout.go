@@ -65,12 +65,15 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/conversions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customers"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailaddr"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/trackingconsent"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -131,10 +134,29 @@ type PublicFeedCheckoutStartRequest struct {
 	// a sales link of the organization before the hold; an empty or invalid
 	// object is never an error — a purchase must not fail over a label.
 	Attribution json.RawMessage `json:"attribution,omitempty"`
+	// BuyerContext is the browser's tracking context (spec 62 section 8.1 and
+	// 8.3): fbclid, gclid, fbp, fbc, ga_client_id, page_url and the
+	// tracking_consent answer with its text version (stored on
+	// checkout_sessions, not in the context row). Optional and bounded;
+	// the server adds the client IP and User-Agent. It feeds the server-side
+	// Meta CAPI / GA4 conversions and is never logged.
+	BuyerContext json.RawMessage `json:"buyer_context,omitempty"`
 	// MarketingConsent is the buyer's tick on the organizer's mailings
 	// (spec 51-1). Recorded only when the organization offers the tick;
 	// ticked, it may earn the organizer's reward code.
 	MarketingConsent *PublicMarketingConsent `json:"marketing_consent,omitempty"`
+	// ExpectedTotal is the total (minor units) the selling site showed the
+	// buyer, optional. When present and different from what arena prices the
+	// cart at, the request is refused with 409 checkout.price_changed before
+	// anything is held (see refuseChangedPrice).
+	ExpectedTotal *int64 `json:"expected_total,omitempty"`
+	// TrackingConsent is the buyer's answer to the site's cookie banner
+	// (spec 62 §8.1, П-20): {granted, version, at}. Deprecated alias of
+	// buyer_context.tracking_consent + tracking_consent_text_version: both
+	// write the same checkout_sessions columns. Stored on the checkout;
+	// the conversion sender reads it from there at send time. Optional, and
+	// an unreadable one is dropped, never a reason to refuse the purchase.
+	TrackingConsent *trackingconsent.Input `json:"tracking_consent,omitempty"`
 }
 
 // normalizeBuyerLocale validates a caller-supplied locale against the
@@ -213,8 +235,43 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// ── 1a. Idempotency-Key (П-19). Checked AFTER the rate limit, so a
+	// replay still counts against it, and BEFORE everything that takes a
+	// hold: the same key and body answer the stored response (the same
+	// checkout and payment link) even when the hold has since been consumed
+	// by that very first request; the same key with another body is 409.
+	// Without the header the request runs as it always did.
+	h.serveCheckoutIdempotent(w, r, http.HandlerFunc(h.publicFeedCheckoutStart))
+}
+
+// serveCheckoutIdempotent runs next behind the checkout/start
+// Idempotency-Key middleware when one is installed.
+func (h *Handler) serveCheckoutIdempotent(w http.ResponseWriter, r *http.Request, next http.Handler) {
+	if h.checkoutIdem == nil {
+		next.ServeHTTP(w, r)
+		return
+	}
+	h.checkoutIdem(next).ServeHTTP(w, r)
+}
+
+// CheckoutStartMaxBody is how much of a checkout/start body is read, by the
+// handler and by the idempotency middleware in front of it alike.
+const CheckoutStartMaxBody = 64 * 1024
+
+// CheckoutStartIdempotencyScope is the idempotency_keys.scope of a
+// checkout/start request: one key namespace per feed token (sales channel),
+// no actor — the buyer is anonymous.
+func CheckoutStartIdempotencyScope(r *http.Request) string {
+	return "POST checkout/start:" + chi.URLParam(r, "feed_token")
+}
+
+// publicFeedCheckoutStart is checkout/start after the rate limit and the
+// idempotency check.
+func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request) {
+	feedToken := chi.URLParam(r, "feed_token")
+
 	// ── 2. Parse + validate body ──────────────────────────────────────────────
-	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
+	body, err := io.ReadAll(io.LimitReader(r.Body, CheckoutStartMaxBody))
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"checkout.invalid_body", "We could not read the request body: "+err.Error(), r,
@@ -261,11 +318,19 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	buyerLocale := normalizeBuyerLocale(req.Locale)
 
 	// ── 4b. Validate holder_email ─────────────────────────────────────────────
+	req.HolderEmail = strings.TrimSpace(req.HolderEmail)
 	if req.HolderEmail == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"checkout.missing_holder_email", "Enter the e-mail address for the tickets (holder_email).", r,
 			map[string]any{"field": "holder_email"},
 		))
+		return
+	}
+	// A malformed address is refused HERE, before any hold or order exists:
+	// the payment provider refuses it too, but only after the seats are held
+	// (F-BR-03).
+	if !emailaddr.Valid(req.HolderEmail) {
+		writeInvalidEmail(w, r)
 		return
 	}
 
@@ -526,6 +591,14 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		return
 	}
 	growth := growthCheckout{grant: grantFor(mk, r, checkCtx.OrgID, publicOrderBuyer{Email: req.HolderEmail, Name: buyerName}, buyerLocale, "")}
+	growth.tracking = h.trackingConsentFromStart(req.TrackingConsent)
+	if growth.tracking == nil {
+		// buyer_context.tracking_consent (spec 62 section 8.1) is the same
+		// answer: it lands in the same checkout_sessions columns, never in the
+		// stored buyer context. The top-level object, when readable, wins: it
+		// carries the time of the choice.
+		growth.tracking = h.trackingConsentFromStart(conversions.ConsentFromBuyerContext(req.BuyerContext))
+	}
 
 	// ── 9. Mint checkout_token ────────────────────────────────────────────────
 	checkoutToken, err := mintCheckoutToken()
@@ -582,6 +655,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// The attribution's sales link is looked up here, on the pool, before the
 	// hold transaction: inside it only the resolved values are written.
 	attr := h.resolveCheckoutAttribution(ctx, checkCtx.OrgID, req.Attribution, time.Now())
+	attr.buyerCtx = conversions.CleanBuyerContext(req.BuyerContext, httputil.TrustedClientIP(r, 0), r.UserAgent())
 
 	// ── 10. Begin transaction ─────────────────────────────────────────────────
 	if h.inventoryQueries == nil || h.pool == nil {
@@ -866,6 +940,9 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		// attempts "sold out" a 15-seat master class on 2026-09-20. The
 		// answer was gathered before the transaction opened (9b); only the
 		// decision is taken here, once the total is known.
+		if h.refuseChangedPrice(w, r, req.ExpectedTotal, bd) {
+			return // the deferred rollback releases the holds
+		}
 		if !h.applyPaymentPreflight(ctx, w, r, checkCtx, bd.Total, preflight) {
 			return
 		}
@@ -1031,6 +1108,9 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// request: the deferred tx.Rollback releases the GA units and the
 	// reserved capacity instead of leaving them held until the TTL sweep.
 	// The configuration was read before the transaction opened (9b).
+	if h.refuseChangedPrice(w, r, req.ExpectedTotal, bd) {
+		return // the deferred rollback releases the holds
+	}
 	if !h.applyPaymentPreflight(ctx, w, r, checkCtx, bd.Total, preflight) {
 		return
 	}
@@ -1338,9 +1418,12 @@ func (h *Handler) confirmPublicCheckout(
 	// move reservations.expires_at inside the SAME transaction that mints
 	// the order, and ordering.CreateOrderFromCheckout copies orders.expires_at
 	// straight off the reservation it re-reads — so the two cannot disagree.
+	// The window is the CHANNEL's (П-3, payment_window.go), read on the pool
+	// here, before the transaction opens.
 	holdExpiresAt := expiresAt
 	if paid && h.paymentWindow > 0 {
-		holdExpiresAt = time.Now().UTC().Add(h.paymentWindow + h.paymentGrace)
+		window := h.channelPaymentWindow(ctx, checkCtx.OrgID, checkCtx.SalesChannelID)
+		holdExpiresAt = time.Now().UTC().Add(window + h.paymentGrace)
 	}
 
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -1573,7 +1656,11 @@ func (h *Handler) confirmPublicCheckout(
 		"redirect_url":     redirectURL,
 		"checkout_token":   checkoutToken,
 		"expires_at":       expiresAt.Format(time.RFC3339),
-		"pricing":          bd,
+		// The moment the provider's page stops taking the payment (the
+		// channel's window, П-3): what the site counts down to. expires_at
+		// is the hold, a grace later.
+		"payment_expires_at": expiresAt.Add(-h.paymentGrace).Format(time.RFC3339),
+		"pricing":            bd,
 
 		"marketing_discount_applied": growth.rewardWon && bd.Discount > 0,
 	})
@@ -1739,6 +1826,7 @@ func (h *Handler) createPublicOrder(
 		return nil, err
 	}
 	orderID := res.Order.ID
+	h.storeBuyerContext(ctx, tx, cs.ID, orderID, attr.buyerCtx)
 	return &orderID, nil
 }
 

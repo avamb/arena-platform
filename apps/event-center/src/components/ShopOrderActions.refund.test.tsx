@@ -196,11 +196,11 @@ describe("the refund of a shop order: one operation, one Idempotency-Key (SA-01)
     const el = await mount(order());
     await refund(el, "40");
     expect(byId(el, "shop-refund-left-now").textContent).toContain("15");
-    expect(byId(el, "shop-refund-error").textContent).toContain("The amount does not fit.");
+    expect(byId(el, "shop-refund-error").textContent).toContain("We cannot use this sum.");
     // The form now judges the amount against the server's number.
     await typeInto(byId(el, "shop-refund-amount") as HTMLInputElement, "20");
     await press(el, "shop-refund-continue");
-    expect(byId(el, "shop-refund-form").textContent).toContain("more than what is left");
+    expect(byId(el, "shop-refund-form").textContent).toContain("more than the sum that remains to refund");
     expect(byId(el, "confirm-word")).toBeNull();
   });
 
@@ -209,7 +209,7 @@ describe("the refund of a shop order: one operation, one Idempotency-Key (SA-01)
     const el = await mount(order());
     await refund(el, "10");
     const text = byId(el, "shop-refund-error").textContent ?? "";
-    expect(text).toContain("nothing left to refund on this order");
+    expect(text).toContain("No money is left to refund on this order");
     expect(text.toLowerCase()).not.toContain("ticket");
   });
 });
@@ -220,7 +220,7 @@ describe("shipping an order whose goods are gone (SA-19)", () => {
     const el = await mount(order({ status: "manual_review" }));
     await press(el, "shop-order-ship");
     await press(el, "shop-ship-submit");
-    expect(byId(el, "shop-order-error").textContent).toContain("Some goods of this order are not on the shelf.");
+    expect(byId(el, "shop-order-error").textContent).toContain("Some products of this order are not in stock.");
     expect(byId(el, "shop-order-short").textContent).toContain("Riesling: ordered 2, free 1");
   });
 });

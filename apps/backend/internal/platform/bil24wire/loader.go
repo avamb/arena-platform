@@ -99,7 +99,7 @@ SELECT COALESCE(MIN(t.system_ticket_id), o.system_id), o.channel_id
 FROM   orders o
 LEFT   JOIN tickets t
        ON t.order_id = o.id
-      AND t.status IN ('active', 'cancelled', 'revoked')
+      AND t.status IN ('active', 'cancelled', 'revoked', 'transferred')
 WHERE  o.id = $1
 GROUP  BY o.id, o.system_id, o.channel_id`
 

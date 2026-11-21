@@ -60,7 +60,7 @@ export function RatesTable({ rates, onClose, onRemove }: RatesTableProps): JSX.E
   if (rates.length === 0) {
     return (
       <p style={mutedStyle} data-testid="billing-rates-empty">
-        No individual rate yet.
+        This organization has no individual rate.
       </p>
     );
   }
@@ -131,8 +131,8 @@ export function RateFormBody({ form, onChange, orgs, errors, serverError }: Rate
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="billing-rate-form">
       <p style={hintStyle}>
-        The rate replaces the price list for this organization in this currency, from the start you pick (in the future).
-        A rate that is open at that moment is ended there. Amounts are in minor units, for example 50 is 0.50.
+        The rate replaces the price list for this organization in this currency. It starts at the time you select. The time must be in the future.
+        If a rate is open at that time, the rate ends there. Enter amounts in minor units. For example, 50 is 0.50.
       </p>
       <div style={gridStyle}>
         <div>
@@ -140,7 +140,7 @@ export function RateFormBody({ form, onChange, orgs, errors, serverError }: Rate
             Organization
           </label>
           <select id="billing-rate-org" style={inputStyle} value={form.orgId} onChange={(e) => set({ orgId: e.target.value })} data-testid="billing-rate-org">
-            <option value="">Pick an organization…</option>
+            <option value="">Select an organization…</option>
             {orgs.map((o) => (
               <option key={o.id} value={o.id}>
                 {o.name}
@@ -183,14 +183,14 @@ export function RateFormBody({ form, onChange, orgs, errors, serverError }: Rate
         </div>
         <div>
           <label style={labelStyle} htmlFor="billing-rate-to">
-            Ends (UTC, empty: open)
+            Ends (UTC, empty = open)
           </label>
           <input id="billing-rate-to" type="datetime-local" style={inputStyle} value={form.effectiveToLocal} onChange={(e) => set({ effectiveToLocal: e.target.value })} data-testid="billing-rate-to" />
         </div>
       </div>
       <div>
         <label style={labelStyle} htmlFor="billing-rate-note">
-          Note, for example the contract it comes from
+          Note, for example the contract of this rate
         </label>
         <input id="billing-rate-note" style={inputStyle} maxLength={500} value={form.note} onChange={(e) => set({ note: e.target.value })} data-testid="billing-rate-note" />
       </div>
@@ -219,7 +219,7 @@ export function AccountsTable({ accounts, onChangeTerms }: AccountsTableProps): 
   if (accounts.length === 0) {
     return (
       <p style={mutedStyle} data-testid="billing-accounts-empty">
-        No billing account yet.
+        No billing account.
       </p>
     );
   }
@@ -248,7 +248,7 @@ export function AccountsTable({ accounts, onChangeTerms }: AccountsTableProps): 
                 <td style={tdStyle}>
                   <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
                     {a.flags.venue ? <Pill tone="info">Permanent venue</Pill> : null}
-                    {a.flags.existing_client ? <Pill tone="good">Existing client</Pill> : null}
+                    {a.flags.existing_client ? <Pill tone="good">Individual rate</Pill> : null}
                     {a.flags.tools ? <Pill tone="warn">Tools</Pill> : null}
                     {!a.flags.venue && !a.flags.existing_client && !a.flags.tools ? <span style={mutedStyle}>—</span> : null}
                   </span>
@@ -309,9 +309,10 @@ export function TermsFormBody({ account, form, onChange, priceLists, errors, ser
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="billing-terms-form">
       <p style={hintStyle}>
         New terms for {account.org_name} ({account.currency}
-        {tools ? ", tools account" : ""}). They start at the time you pick, in the future, and do not change what was
-        already rated. The price list must have a version in force at that moment with the rule the plan is rated by.
-        {tools ? " A tools account is prepaid only." : ""}
+        {tools ? ", tools account" : ""}). They start at the time you select. The time must be in the future.
+        They do not change the charges we made. At that time, the price list must have a version in force
+        with the rule of the plan.
+        {tools ? " A tools account can only prepay." : ""}
       </p>
       <div style={gridStyle}>
         <div>
@@ -325,7 +326,7 @@ export function TermsFormBody({ account, form, onChange, priceLists, errors, ser
             Price list
           </label>
           <select id="billing-terms-list" style={inputStyle} value={form.priceListCode} onChange={(e) => set({ priceListCode: e.target.value })} data-testid="billing-terms-list">
-            <option value="">Pick a price list…</option>
+            <option value="">Select a price list…</option>
             {codes.map((c) => (
               <option key={c} value={c}>
                 {c}
@@ -395,13 +396,13 @@ export function TermsFormBody({ account, form, onChange, priceLists, errors, ser
         </div>
         <div>
           <label style={labelStyle} htmlFor="billing-terms-delay">
-            Invoice delay, days (empty: none)
+            Invoice delay, days (empty = none)
           </label>
           <input id="billing-terms-delay" style={inputStyle} inputMode="numeric" value={form.invoiceDelayDays} onChange={(e) => set({ invoiceDelayDays: e.target.value })} />
         </div>
         <div>
           <label style={labelStyle} htmlFor="billing-terms-due">
-            Days to pay (empty: none)
+            Days to pay (empty = none)
           </label>
           <input id="billing-terms-due" style={inputStyle} inputMode="numeric" value={form.dueDays} onChange={(e) => set({ dueDays: e.target.value })} />
         </div>

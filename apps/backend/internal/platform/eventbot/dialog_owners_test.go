@@ -90,6 +90,8 @@ func TestLeaveForeignDialogs(t *testing.T) {
 		{"sh:f:all", []string{shopDialogKind, shopRefundDialogKind}},
 		{"sh:rv:f:" + uuid.NewString(), []string{shopDialogKind, shopRefundDialogKind}},
 		{"ec:o:" + uuid.NewString(), []string{eventsDialogKind, evsDialogKind}},
+		{"ec:g:" + uuid.NewString() + ":m", []string{eventsDialogKind, evsDialogKind}}, // a group screen of the card keeps the events list
+		{"ec:lk:" + uuid.NewString(), []string{eventsDialogKind, evsDialogKind}},
 		{"el:p:2", []string{eventsDialogKind}},
 		{"ses:go", []string{sesDialogKind}},
 		{"team:invite", []string{teamDialogKind}},

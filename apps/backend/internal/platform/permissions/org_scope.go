@@ -125,6 +125,30 @@ func AllowedInOrg(ctx context.Context, orgID uuid.UUID) (bool, error) {
 	return true, nil
 }
 
+// ActionAllowedInOrg reports whether the caller holds action inside orgID,
+// asked of the same checker the route's gate used. It is for a route whose
+// request may need a SECOND permission besides its gate's (a seat batch that
+// also creates categories needs tier.create): the answer is exactly the one
+// the route of that permission would give, an organization API key deciding
+// from its scopes. A request that did not pass a gate (a handler called
+// directly) is allowed, as in AllowedInOrg.
+func ActionAllowedInOrg(ctx context.Context, action string, orgID uuid.UUID) (bool, error) {
+	oc, ok := ctx.Value(orgCheckerKey{}).(OrgChecker)
+	if !ok {
+		if perm, gated := RequiredPermissionFromContext(ctx); gated {
+			return false, fmt.Errorf("permissions: gate recorded %q without a checker", perm)
+		}
+		return true, nil
+	}
+	if err := oc.CheckInOrg(ctx, action, orgID); err != nil {
+		if errors.Is(err, ErrPermissionDenied) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 // membershipRoles returns the roles the caller's memberships give them for
 // this request: inside the request's organization when it has one and the
 // querier can resolve it, otherwise across all memberships (the historical

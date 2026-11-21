@@ -102,14 +102,14 @@ export function ChatsView({
       ) : null}
       {chats.length === 0 ? (
         <p style={{ ...mutedStyle, marginTop: 8 }} data-testid="sales-chats-empty">
-          No chats yet. Add one, then post the code in the Telegram group.
+          No chats. Add one, then post the code in the Telegram group.
         </p>
       ) : (
         <div style={{ overflowX: "auto", marginTop: 8 }}>
           <table style={tableStyle} data-testid="sales-chats-table">
             <thead>
               <tr>
-                {["Name", "Hears", "State", "Telegram chat", "Connected", "Last error", ""].map((h, i) => (
+                {["Name", "Gets", "State", "Telegram chat", "Connected", "Last error", ""].map((h, i) => (
                   <th key={`${h}-${i}`} style={thStyle}>
                     {h}
                   </th>
@@ -130,7 +130,7 @@ export function ChatsView({
                         {st.label}
                       </Pill>
                     </td>
-                    <td style={tdStyle}>{c.chat_title != null && c.chat_title !== "" ? c.chat_title : c.chat_id === "" ? "Not connected yet" : c.chat_id}</td>
+                    <td style={tdStyle}>{c.chat_title != null && c.chat_title !== "" ? c.chat_title : c.chat_id === "" ? "Not connected" : c.chat_id}</td>
                     <td style={tdStyle}>{whenLabel(c.connected_at)}</td>
                     <td style={{ ...tdStyle, color: c.last_error != null ? "#b91c1c" : undefined }} data-testid={`sales-chat-error-${c.id}`}>
                       {c.last_error ?? ""}
@@ -169,7 +169,7 @@ export function ReasonField({ value, onChange }: { value: string; onChange: (v: 
 export function KindsField({ kinds, onChange }: { kinds: readonly ChatKind[]; onChange: (k: ChatKind[]) => void }): JSX.Element {
   return (
     <fieldset style={{ border: "1px solid #e2e8f0", borderRadius: 4, padding: "8px 12px", margin: 0 }}>
-      <legend style={{ fontSize: 12, fontWeight: 600, color: "#334155", padding: "0 4px" }}>What the chat hears</legend>
+      <legend style={{ fontSize: 12, fontWeight: 600, color: "#334155", padding: "0 4px" }}>What the chat gets</legend>
       {CHAT_KINDS.map((k) => (
         <label key={k} style={{ display: "block", fontSize: 13, margin: "4px 0" }}>
           <input
@@ -182,7 +182,7 @@ export function KindsField({ kinds, onChange }: { kinds: readonly ChatKind[]; on
           <span style={{ ...mutedStyle, fontSize: 12, display: "block", marginLeft: 22 }}>{kindHint(k)}</span>
         </label>
       ))}
-      <p style={{ ...mutedStyle, fontSize: 12, marginTop: 6 }}>A chat that hears both Shop sales and Delivery gets only the full card, one message.</p>
+      <p style={{ ...mutedStyle, fontSize: 12, marginTop: 6 }}>A chat with Shop sales and Delivery gets one message with the full card.</p>
     </fieldset>
   );
 }
@@ -251,7 +251,7 @@ export function CodeBody({
   return (
     <>
       <p style={{ margin: 0, fontSize: 13 }} data-testid="sales-chat-instruction">
-        Add {BOT_HANDLE} to the Telegram group, then post this command there. The bot answers which organization the chat now hears.
+        Add {BOT_HANDLE} to the Telegram group, then post this command there. The bot answers with the organization that the chat gets messages for.
       </p>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <code
@@ -265,11 +265,11 @@ export function CodeBody({
         </button>
       </div>
       <p style={{ ...mutedStyle, fontSize: 12 }}>
-        Works once, expires in <Countdown expiresAt={code.expires_at} {...(now !== undefined ? { now } : {})} />. It is shown only now: close this window and
-        you will need a new code.
+        Works one time. Expires in <Countdown expiresAt={code.expires_at} {...(now !== undefined ? { now } : {})} />. The window shows the code one time. If you close the window,
+        you must make a new code.
       </p>
       <p style={{ ...mutedStyle, fontSize: 12 }}>
-        Chat: {code.name}. Hears: {kindsLabel(code.kinds)}.
+        Chat: {code.name}. Gets: {kindsLabel(code.kinds)}.
       </p>
     </>
   );
@@ -366,11 +366,11 @@ export function SalesChatsPanel({ orgId, scopeLabel }: { orgId: string | null; s
       setErrors([]);
       editChat.mutate({ id: modal.chat.id, request: built.request, reason: built.reason });
     } else if (modal.kind === "toggle") {
-      if (modal.reason.trim() === "") return setErrors(["Reason: write why. It is kept in the audit log."]);
+      if (modal.reason.trim() === "") return setErrors(["Reason: write the cause. The audit log keeps it."]);
       setErrors([]);
       toggleChat.mutate({ chat: modal.chat, reason: modal.reason.trim() });
     } else if (modal.kind === "delete") {
-      if (modal.reason.trim() === "") return setErrors(["Reason: write why. It is kept in the audit log."]);
+      if (modal.reason.trim() === "") return setErrors(["Reason: write the cause. The audit log keeps it."]);
       setErrors([]);
       removeChat.mutate({ chat: modal.chat, reason: modal.reason.trim() });
     }
@@ -473,7 +473,7 @@ export function SalesChatsPanel({ orgId, scopeLabel }: { orgId: string | null; s
       {modal.kind === "delete" ? (
         <Dialog title="Delete the chat" testId="sales-chat-delete-dialog" onClose={close} onSubmit={submit} footer={footer("sales-chat-delete-save", "Delete", true)}>
           <p style={{ margin: 0, fontSize: 13 }}>
-            Delete "{modal.chat.name}"? Nothing is sent there any more. The delivery history stays. To use the group again, add it with a new code.
+            Delete "{modal.chat.name}"? The platform sends no more messages there. The delivery history stays. To use the group again, add it with a new code.
           </p>
           <ReasonField value={modal.reason} onChange={(reason) => setModal({ ...modal, reason })} />
           <Problems errors={errors} serverError={serverError} />

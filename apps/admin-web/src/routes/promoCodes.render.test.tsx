@@ -143,7 +143,7 @@ describe("PromoCodesTable", () => {
   it("shows the empty state when there are no codes", () => {
     const html = markup({ codes: [] });
     expect(html).toContain('data-testid="promo-codes-empty"');
-    expect(html).toContain("No promo codes yet.");
+    expect(html).toContain("This organization has no promo codes.");
     expect(html).not.toContain("promo-codes-table");
   });
 
@@ -151,7 +151,7 @@ describe("PromoCodesTable", () => {
     const html = markup({ expandedId: FIXED_ID, redemptions });
     expect(html).toContain(`data-testid="promo-codes-usage-row-${FIXED_ID}"`);
     expect(html).toContain(`data-testid="promo-codes-usage-panel-${FIXED_ID}"`);
-    expect(html).toContain("Usage — WELCOME10");
+    expect(html).toContain("Usage: WELCOME10");
     expect(html).toContain("1000038286");
     expect(html).toContain("paid");
     expect(html).toContain("buyer@example.test");
@@ -176,6 +176,6 @@ describe("PromoCodesTable", () => {
   it("shows an honest empty state when a code has no redemptions yet", () => {
     const html = markup({ expandedId: PERCENT_ID, redemptions: [] });
     expect(html).toContain(`data-testid="promo-codes-usage-empty-${PERCENT_ID}"`);
-    expect(html).toContain("has not been redeemed yet");
+    expect(html).toContain("No buyer used this code.");
   });
 });

@@ -37,6 +37,11 @@ func (r *Repo) queuePrerender(ctx context.Context, obj Object) {
 	if !r.prerender || r.pool == nil || variantExt(obj.ContentType) == "" {
 		return
 	}
+	// A hall plan source is never served through the resizing download
+	// route (it has no public link), so it gets no resized copies.
+	if obj.OwnerType == OwnerVenuePlanSource {
+		return
+	}
 	if obj.Width != nil && int(*obj.Width) <= PrerenderWidths[0] {
 		return
 	}

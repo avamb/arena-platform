@@ -243,6 +243,8 @@ const apiEnv = {
   // The Telegram mini app twin (spec 44, RT-12b) plays the bot: it asks POST /v1/bot/web-login-codes for a code.
   // The route answers 503 without a token; this one is a test value for the throwaway API of this run.
   BOT_SERVICE_TOKEN: botServiceToken,
+  // "Connect Telegram" (F-007): the page shows the block only when the API knows the bot's public name.
+  EVENTS_TELEGRAM_BOT_USERNAME: process.env.EVENTS_TELEGRAM_BOT_USERNAME ?? "ArenaE2EEventsBot",
   // Credit packs and platform invoices (B3-3/B4) are closed by default in a
   // deployment; the billing-packs twin needs them open.
   BILLING_ORGANIZER_ENABLED: process.env.BILLING_ORGANIZER_ENABLED ?? "true",

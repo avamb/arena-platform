@@ -77,6 +77,9 @@ const platformSuperadmin = fixture(
     "onboarding.settings",
     // B1-5 — price lists and rates (billing.admin, platform superadmin).
     "billing.admin",
+    // Spec 64 — seating plan intakes and plan verification.
+    "venue_plan_intake.curate",
+    "seating_plan.verify",
   ],
   ["global", "network:0193f01a-0001-7000-8000-000000000001"],
 );
@@ -163,6 +166,7 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
       "organizations",
       "events_sessions",
       "venues",
+      "venue_plans",
       "orders",
       "tickets",
       "refunds",

@@ -27,14 +27,14 @@ import { mobileFormStyles } from "./login";
  */
 
 const requestSchema = z.object({
-  email: z.string().trim().toLowerCase().email({ message: "Enter a valid email." }),
+  email: z.string().trim().toLowerCase().email({ message: "Type a correct e-mail address." }),
 });
 
 const confirmSchema = z.object({
   password: z
     .string()
-    .min(8, { message: "Password must be at least 8 characters." })
-    .max(72, { message: "Password must be 72 characters or fewer." }),
+    .min(8, { message: "The password must have 8 characters or more." })
+    .max(72, { message: "The password must have 72 characters or less." }),
 });
 
 interface PasswordResetSearch {
@@ -71,7 +71,7 @@ function RequestForm() {
     setError(null);
     const parsed = requestSchema.safeParse({ email });
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "Invalid email.");
+      setError(parsed.error.issues[0]?.message ?? "This e-mail address is not correct. Check it and try again.");
       return;
     }
     setSubmitting(true);
@@ -88,7 +88,7 @@ function RequestForm() {
       }
       setDone(true);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Network request failed");
+      setError(cause instanceof Error ? cause.message : "We could not reach the server. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -101,11 +101,11 @@ function RequestForm() {
       data-testid="password-reset-request"
     >
       <h1 id="reset-request-heading" style={headingStyle}>
-        Reset your password
+        Set a new password
       </h1>
       <p style={subStyle}>
-        Enter the email tied to your operator account. If we recognise it,
-        we&apos;ll send a one-time reset link.
+        Type the e-mail address of your operator account. If we find it,
+        we will send a link that works one time.
       </p>
       {error !== null ? (
         <div role="alert" aria-live="assertive" style={mobileFormStyles.alertStyle} data-testid="reset-error">
@@ -119,13 +119,13 @@ function RequestForm() {
           style={successStyle}
           data-testid="reset-request-done"
         >
-          If that email is registered, a reset link is on its way. Check your
+          If we have this e-mail address, we send a link to it. Examine your
           inbox (and your server log in development).
         </div>
       ) : (
         <form onSubmit={onSubmit} style={formStyle} noValidate>
           <label style={labelStyle}>
-            <span>Email</span>
+            <span>E-mail</span>
             <input
               type="email"
               inputMode="email"
@@ -145,7 +145,7 @@ function RequestForm() {
             style={mobileFormStyles.submitStyle}
             data-testid="reset-submit"
           >
-            {submitting ? "Sending…" : "Send reset link"}
+            {submitting ? "Sending…" : "Send the link"}
           </button>
         </form>
       )}
@@ -169,7 +169,7 @@ function ConfirmForm(props: { readonly token: string }) {
     setError(null);
     const parsed = confirmSchema.safeParse({ password });
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "Invalid password.");
+      setError(parsed.error.issues[0]?.message ?? "This password is not correct. Check it and try again.");
       return;
     }
     setSubmitting(true);
@@ -189,7 +189,7 @@ function ConfirmForm(props: { readonly token: string }) {
       }
       setDone(true);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Network request failed");
+      setError(cause instanceof Error ? cause.message : "We could not reach the server. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -202,11 +202,10 @@ function ConfirmForm(props: { readonly token: string }) {
       data-testid="password-reset-confirm"
     >
       <h1 id="reset-confirm-heading" style={headingStyle}>
-        Choose a new password
+        Select a new password
       </h1>
       <p style={subStyle}>
-        Pick a strong password (8–72 characters). The reset link can only be
-        used once.
+        Select a strong password (8–72 characters). The link works one time.
       </p>
       {error !== null ? (
         <div role="alert" aria-live="assertive" style={mobileFormStyles.alertStyle} data-testid="reset-error">
@@ -215,7 +214,7 @@ function ConfirmForm(props: { readonly token: string }) {
       ) : null}
       {done ? (
         <div role="status" aria-live="polite" style={successStyle} data-testid="reset-confirm-done">
-          Your password has been updated. You can now{" "}
+          We saved your new password. Now you can{" "}
           <Link to="/login" style={mobileFormStyles.linkStyle}>
             sign in
           </Link>

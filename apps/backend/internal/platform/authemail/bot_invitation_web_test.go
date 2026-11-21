@@ -37,7 +37,7 @@ func TestHandleBotInvitationEmail_NamesTheWebEventCenter(t *testing.T) {
 		if !strings.Contains(msg.TextBody, "https://t.me/ArenaBot?start=inv_c0de") {
 			t.Errorf("%s: the deep link is gone", tc.name)
 		}
-		if !strings.HasSuffix(strings.TrimSpace(msg.TextBody), "Arena Platform — mensaje automático") {
+		if !strings.HasSuffix(strings.TrimSpace(msg.TextBody), "ArenaSoldOut.com — mensaje automático") {
 			t.Errorf("%s: the footer must stay last:\n%s", tc.name, msg.TextBody)
 		}
 	}

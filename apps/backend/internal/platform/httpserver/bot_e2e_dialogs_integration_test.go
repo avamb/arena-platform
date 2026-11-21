@@ -106,7 +106,7 @@ func TestBotE2E_TeamInviteAfterRestartStartsFromANewScreen(t *testing.T) {
 
 	m := tg.mark()
 	tg.push(e2eCallbackAs(ownerTG, "team"))
-	tg.waitSince(t, m, "Сотрудники: ")
+	tg.waitSince(t, m, "Команда: ")
 	m = tg.mark()
 	tg.push(e2eCallbackAs(ownerTG, "team:invite"))
 	tg.waitSince(t, m, "E-mail коллеги")
@@ -141,7 +141,7 @@ func TestBotE2E_TeamInviteAfterRestartStartsFromANewScreen(t *testing.T) {
 	tg.waitSince(t, m, "Что будем делать")
 	m = tg.mark()
 	tg.push(e2eCallbackAs(ownerTG, "team"))
-	tg.waitSince(t, m, "Сотрудники: ")
+	tg.waitSince(t, m, "Команда: ")
 	m = tg.mark()
 	tg.push(e2eCallbackAs(ownerTG, "team:invite"))
 	tg.waitSince(t, m, "E-mail коллеги")

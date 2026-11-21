@@ -23,7 +23,7 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		"When": "w", "Venue": "v", "Sold": 1, "Total": 2, "Available": 1, "Held": 0, "Money": "m",
 		"Paid": "1 EUR", "Orders": 1, "Value": "x", "Label": "L", "Currency": "EUR", "N": 1, "Title": "t", "W": 1080, "H": 1350,
 		"Reason": "r", "City": "c", "Capacity": 80, "Date": "d", "List": "l", "Price": "p",
-		"Schedule": "", "Age": "18+", "Promoter": "", "Poster": "", "Published": "", "Link": "",
+		"Schedule": "", "Age": "18+", "Promoter": "", "Poster": "", "Published": "", "Link": "", "Google": "", "Dist": "1", "Other": "o", "OtherKm": "1",
 		"Warnings": "", "URL": "u", "State": "s", "Text": "tx", "Until": "d", "Limit": "5", "Raw": "r", "Tickets": "t", "Letter": "l", "TicketRule": "tr", "Issued": 2, "Cancelled": 1, "Active": 1, "Min": "01.01.2026", "Max": "02.01.2026",
 		"Old": "o", "New": "n", "Contact": "c", "Letters": "", "Time": "19:30", "Now": "now", "Hours": 1, "Start": "19:30", "SalesEnd": "21:00", "Doors": "19:00", "Word": "CANCEL", "Subject": "s", "Zone": "Europe/Madrid",
 		"Message": "m", "Missing": "mi", "Pct": 40, "Links": "l", "Url": "https://x.test/a",
@@ -32,10 +32,12 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		// the page statistics line (page_stats.go)
 		"Views": 12, "Days": 30, "Suspect": 2,
 		// the event-center screens (ec_keys.go)
-		"Filter": "f", "Search": "s", "Legend": "lg", "Query": "q", "Count": 1, "Amount": "1 EUR", "Net": "1 EUR", "Used": 1,
+		"Filter": "f", "Search": "s", "Legend": "lg", "Query": "q", "Q": "q", "Count": 1, "Amount": "1 EUR", "Net": "1 EUR", "Used": 1,
 		"Code": "C", "Discount": "1 EUR", "Closed": "", "Places": 5, "Revenue": "1 EUR", "Transferred": 1, "Pending": "1 EUR",
 		"Unavailable": 1, "Scope": "sc", "Charge": "1 EUR", "RefundCount": 1, "Refunded": "1 EUR", "External": "1 EUR",
 		"PendingOrders": 1, "Rows": 3, "What": "w", "Bot": "@Bot",
+		// the seating plan intake (plan_intake.go)
+		"Sections": 2, "Note": "n",
 		// categories per date (wizard_date_tickets.go)
 		"Prev": "15.12.2026 20:00", "Plan": "P", "Extra": 1,
 		// the orders screens (ord_keys.go)
@@ -45,7 +47,7 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		// the Materials screens (materials_keys.go)
 		"Caption": "c", "Seller": "s", "Lat": "50.075500", "Lon": "14.437800",
 		// the seat layout screens (seat_layout_keys.go)
-		"Seats": 3, "Share": 40, "Changed": 2, "Same": 1,
+		"Seats": 3, "Share": 40, "Changed": 2, "Same": 1, "Cats": 3, "Top": "1 EUR", "Bottom": "1 EUR",
 		// a hall plan sent from the wizard (plan_upload.go)
 		"Element": "e",
 		// the smart price screen (smart_price.go)
@@ -58,6 +60,8 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		"Size": "12 KB", "Tag": " (t)",
 		// the Shop screens (shop_keys.go)
 		"ToShip": 3, "Review": "1", "Unpaid": 2, "Country": "ES", "Domain": "shop.example.test", "ReasonLine": "", "Seconds": 60, "Who": "who",
+		// the help of a screen (screen_help.go)
+		"Screen": "s", "Path": "p",
 	}
 	for _, loc := range SupportedLocales {
 		for _, key := range MessageKeys {

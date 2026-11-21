@@ -143,7 +143,7 @@ describe("ShopStockCell: one variant", () => {
     await typeInto(input(el), "twelve");
     await leave(input(el));
     expect(replaceShopVariants).not.toHaveBeenCalled();
-    expect(status(el)).toBe("Type a whole number, 0 or more.");
+    expect(status(el)).toBe("Type a number, 0 or more, with no decimals.");
     expect(input(el).getAttribute("aria-invalid")).toBe("true");
   });
 
@@ -156,8 +156,8 @@ describe("ShopStockCell: one variant", () => {
     expect(fetchShopProduct).toHaveBeenCalledTimes(1);
     expect(input(el).value).toBe("9");
     const line = el.querySelector('[data-testid="shop-stock-moved-line"]')?.textContent ?? "";
-    expect(line).toContain("Someone changed the stock first.");
-    expect(line).toContain("you saw 12, now 9");
+    expect(line).toContain("A different user changed the stock first.");
+    expect(line).toContain("you saw 12, the stock is 9");
     expect(line).toContain("You typed 20");
   });
 
@@ -201,6 +201,6 @@ describe("ShopStockCell: several variants and none", () => {
   it("has nothing to edit when no variant counts its stock", async () => {
     const el = await mount(product([variant("v1", 0, { track_stock: false })]));
     expect(el.querySelector("input")).toBeNull();
-    expect(el.textContent).toBe("Not tracked");
+    expect(el.textContent).toBe("Not counted");
   });
 });

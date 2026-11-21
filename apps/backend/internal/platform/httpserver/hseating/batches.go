@@ -9,6 +9,9 @@
 // Every write goes through seatlayout (ApplyBatch / Revert). The shim
 // (seating_batch_shims.go) has checked the membership of {org_id} and that
 // the session belongs to it; the queries are scoped by (session, org) again.
+// A batch may create categories (new_tiers) in the same transaction; such a
+// batch also needs tier.create in the organization, the permission of the
+// create-category route, checked before the transaction (requireTierCreate).
 package hseating
 
 import (
@@ -27,6 +30,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/seatlayout"
 )
 
@@ -50,16 +54,40 @@ func batchActor(ctx context.Context) seatlayout.Actor {
 }
 
 type seatBatchChangeRequest struct {
-	SeatKey string  `json:"seat_key"`
-	TierID  *string `json:"tier_id"`
-	Status  *string `json:"status"`
+	SeatKey    string  `json:"seat_key"`
+	TierID     *string `json:"tier_id"`
+	NewTierKey *string `json:"new_tier_key"`
+	Status     *string `json:"status"`
+}
+
+type seatBatchNewTierRequest struct {
+	Key         string  `json:"key"`
+	Name        string  `json:"name"`
+	PriceAmount int64   `json:"price_amount"`
+	Color       *string `json:"color"`
+	SortOrder   *int32  `json:"sort_order"`
 }
 
 type seatBatchRequest struct {
-	Kind     string                   `json:"kind"`
-	Changes  []seatBatchChangeRequest `json:"changes"`
-	NewTiers []json.RawMessage        `json:"new_tiers"`
+	Kind     string                    `json:"kind"`
+	Changes  []seatBatchChangeRequest  `json:"changes"`
+	NewTiers []seatBatchNewTierRequest `json:"new_tiers"`
 }
+
+// SeatBatchCreatedTier is one category a batch created (openapi
+// SeatBatchCreatedTier).
+type SeatBatchCreatedTier struct {
+	Key         string  `json:"key"`
+	TierID      string  `json:"tier_id"`
+	Name        string  `json:"name"`
+	PriceAmount int64   `json:"price_amount"`
+	Color       *string `json:"color"`
+}
+
+// tierCreatePermission is the permission of the session's create-category
+// route (POST .../sessions/{session_id}/tiers, mount_catalog.go). A batch
+// that creates categories must hold it as well as session.seats.manage.
+const tierCreatePermission = "tier.create"
 
 // SeatBatchResponse is the wire shape of one batch (openapi SeatBatch).
 type SeatBatchResponse struct {
@@ -76,6 +104,9 @@ type SeatBatchResponse struct {
 	Changes           []seatlayout.AppliedChange `json:"changes"`
 	Skipped           []seatlayout.SkippedSeat   `json:"skipped"`
 	UnchangedSeatKeys []string                   `json:"unchanged_seat_keys,omitempty"`
+	// CreatedTiers is only in the answer of an apply or a revert (an empty
+	// array when the batch created none); a stored batch does not keep it.
+	CreatedTiers *[]SeatBatchCreatedTier `json:"created_tiers,omitempty"`
 }
 
 func uuidStr(id *uuid.UUID) *string {
@@ -113,6 +144,18 @@ func seatBatchResponse(b seatlayout.Batch, withNoops bool) SeatBatchResponse {
 		for _, n := range b.Noops {
 			out.UnchangedSeatKeys = append(out.UnchangedSeatKeys, n.SeatKey)
 		}
+		created := make([]SeatBatchCreatedTier, 0, len(b.CreatedTiers))
+		for _, c := range b.CreatedTiers {
+			var color *string
+			if c.Color != "" {
+				v := c.Color
+				color = &v
+			}
+			created = append(created, SeatBatchCreatedTier{
+				Key: c.Key, TierID: c.TierID.String(), Name: c.Name, PriceAmount: c.PriceAmount, Color: color,
+			})
+		}
+		out.CreatedTiers = &created
 	}
 	return out
 }
@@ -151,12 +194,29 @@ func (h *Handler) HandleCreateSeatBatch(w http.ResponseWriter, r *http.Request) 
 		))
 		return
 	}
-	// new_tiers is only counted here; seatlayout.Validate refuses a
-	// non-empty list (ErrNewTiersUnsupported, one place for the rule).
-	newTiers := make([]seatlayout.NewTier, len(req.NewTiers))
+	// The rules of new_tiers live in seatlayout.Validate (one place); here
+	// the wire shape is only copied.
+	newTiers := make([]seatlayout.NewTier, 0, len(req.NewTiers))
+	for _, t := range req.NewTiers {
+		nt := seatlayout.NewTier{Key: t.Key, Name: t.Name, PriceAmount: t.PriceAmount, SortOrder: t.SortOrder}
+		if t.Color != nil {
+			nt.Color = *t.Color
+		}
+		newTiers = append(newTiers, nt)
+	}
 	changes := make([]seatlayout.Change, 0, len(req.Changes))
 	for i, c := range req.Changes {
 		ch := seatlayout.Change{SeatKey: c.SeatKey, Status: c.Status}
+		if c.NewTierKey != nil {
+			ch.NewTierKey = *c.NewTierKey
+			if ch.NewTierKey == "" {
+				httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+					"seat_batch.invalid_change", "changes[].new_tier_key must not be empty", r,
+					map[string]any{"index": i, "seat_key": c.SeatKey},
+				))
+				return
+			}
+		}
 		if c.TierID != nil {
 			id, err := uuid.Parse(*c.TierID)
 			if err != nil {
@@ -171,10 +231,14 @@ func (h *Handler) HandleCreateSeatBatch(w http.ResponseWriter, r *http.Request) 
 		changes = append(changes, ch)
 	}
 	kind := seatlayout.Kind(req.Kind)
-	batch, err := seatlayout.ApplyBatch(r.Context(), h.pool, h.queries, seatlayout.BatchInput{
+	in := seatlayout.BatchInput{
 		OrgID: orgID, SessionID: sessionID, Actor: batchActor(r.Context()), Kind: kind, Changes: changes,
 		NewTiers: newTiers,
 		Audit: func(ctx context.Context, tx pgx.Tx, b seatlayout.Batch) error {
+			created := make([]string, 0, len(b.CreatedTiers))
+			for _, c := range b.CreatedTiers {
+				created = append(created, c.TierID.String())
+			}
 			return h.writeSessionAuditTx(ctx, tx, r, "v1.session.seat_batch.apply", sessionID, map[string]any{
 				"batch_id":            b.ID.String(),
 				"kind":                string(b.Kind),
@@ -182,9 +246,20 @@ func (h *Handler) HandleCreateSeatBatch(w http.ResponseWriter, r *http.Request) 
 				"changed_count":       len(b.Changes),
 				"skipped_count":       len(b.Skipped),
 				"unchanged_count":     len(b.Noops),
+				"created_tier_ids":    created,
 			})
 		},
-	})
+	}
+	// Shape first (cheap 400s), then the second permission, both before
+	// the transaction opens.
+	if err := seatlayout.Validate(in); err != nil {
+		h.writeBatchError(w, r, err)
+		return
+	}
+	if len(newTiers) > 0 && !h.requireTierCreate(w, r, orgID) {
+		return
+	}
+	batch, err := seatlayout.ApplyBatch(r.Context(), h.pool, h.queries, in)
 	if err != nil {
 		h.writeBatchError(w, r, err)
 		return
@@ -221,6 +296,30 @@ func (h *Handler) HandleRevertSeatBatch(w http.ResponseWriter, r *http.Request) 
 	httputil.WriteJSON(w, http.StatusCreated, seatBatchResponse(batch, true))
 }
 
+// requireTierCreate checks that the caller may create a category in orgID
+// (tierCreatePermission), asked of the gate's own checker so the answer is
+// the create-category route's: per organization, an API key by its scopes.
+// It answers 403 permissions.denied like that route's gate and runs before
+// the batch transaction opens.
+func (h *Handler) requireTierCreate(w http.ResponseWriter, r *http.Request, orgID uuid.UUID) bool {
+	allowed, err := permissions.ActionAllowedInOrg(r.Context(), tierCreatePermission, orgID)
+	if err != nil {
+		h.logger.Error("seating: tier.create check failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"permissions.internal_error", "An internal error occurred while evaluating permissions.", r,
+		))
+		return false
+	}
+	if !allowed {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelopeWithDetails(
+			"permissions.denied", "You do not have permission to perform this action.", r,
+			map[string]any{"permission": tierCreatePermission, "field": "new_tiers"},
+		))
+		return false
+	}
+	return true
+}
+
 func (h *Handler) writeBatchError(w http.ResponseWriter, r *http.Request, err error) {
 	var inErr *seatlayout.InputError
 	var tierErr *seatlayout.TierError
@@ -235,14 +334,13 @@ func (h *Handler) writeBatchError(w http.ResponseWriter, r *http.Request, err er
 		))
 	case errors.As(err, &inErr):
 		status := http.StatusBadRequest
-		if inErr.Code == "seat_batch.too_many_changes" {
+		switch inErr.Code {
+		case "seat_batch.too_many_changes", seatlayout.CodeTooManyTiers:
 			status = http.StatusUnprocessableEntity
+		case seatlayout.CodeTierNameTaken:
+			status = http.StatusConflict
 		}
 		httputil.WriteJSON(w, status, httputil.ErrorEnvelopeWithDetails(inErr.Code, inErr.Message, r, inErr.Details))
-	case errors.Is(err, seatlayout.ErrNewTiersUnsupported):
-		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
-			"seat_batch.new_tiers_unsupported", "creating a category inside a batch is not supported yet", r,
-		))
 	case errors.As(err, &tierErr):
 		ids := make([]string, 0, len(tierErr.TierIDs))
 		for _, id := range tierErr.TierIDs {

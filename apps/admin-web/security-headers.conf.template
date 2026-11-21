@@ -1,0 +1,22 @@
+# Security headers of the admin console, `include`d into EVERY location of
+# nginx.conf. nginx inherits add_header from an outer context only when the
+# current location defines none of its own, so a header set once at the server
+# level vanishes from `location = /index.html` (where the SPA catch-all sends
+# every app URL) the moment that location adds Cache-Control. Finding F-FC-04,
+# acceptance run 2026-11-09: app.arenasoldout.com came back with no CSP and no
+# frame protection. Same approach as apps/event-center.
+#
+# The console is the platform superadmin's tool: no external script, API calls
+# only to __API_ORIGIN__, never framed. style-src keeps 'unsafe-inline' because
+# the seat-plan preview injects SVG that carries style attributes. The venue
+# forms embed the OpenStreetMap pin preview, hence frame-src. Images may come
+# from any https host (an event's image_url is an organizer's link).
+# __API_ORIGIN__ is replaced at image build time (Dockerfile).
+add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self'; connect-src 'self' __API_ORIGIN__; frame-src https://www.openstreetmap.org; manifest-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "DENY" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Cross-Origin-Opener-Policy "same-origin" always;
+add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+# Closed admin app: keep it out of search indexes.
+add_header X-Robots-Tag "noindex, nofollow" always;

@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 
 	emailadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
@@ -57,11 +58,11 @@ type orgAddedText struct {
 
 var orgAddedTexts = map[string]orgAddedText{
 	"en": {
-		subjectOrg: "%s added you to the Arena event center",
-		subject:    "You were added to an organization in the Arena event center",
+		subjectOrg: "%s added you to the ArenaSoldOut.com event center",
+		subject:    "You were added to an organization in the ArenaSoldOut.com event center",
 		title:      "You are in the team",
-		introOrg:   "%s added you to its team in the Arena event center.",
-		intro:      "You were added to an organization in the Arena event center.",
+		introOrg:   "%s added you to its team in the ArenaSoldOut.com event center.",
+		intro:      "You were added to an organization in the ArenaSoldOut.com event center.",
 		whatIs:     "In the event center you see your events, sales and orders.",
 		hello:      "Hello!",
 		stepsIntro: "What to do:",
@@ -77,11 +78,11 @@ var orgAddedTexts = map[string]orgAddedText{
 		auto:    "This letter was sent automatically. Please do not reply to it.",
 	},
 	"ru": {
-		subjectOrg: "%s добавляет вас в ивент-центр Arena",
-		subject:    "Вас добавили в организацию в ивент-центре Arena",
+		subjectOrg: "%s добавляет вас в ивент-центр ArenaSoldOut.com",
+		subject:    "Вас добавили в организацию в ивент-центре ArenaSoldOut.com",
 		title:      "Вы в команде",
-		introOrg:   "Организация «%s» добавила вас в свою команду в ивент-центре Arena.",
-		intro:      "Вас добавили в организацию в ивент-центре Arena.",
+		introOrg:   "Организация «%s» добавила вас в свою команду в ивент-центре ArenaSoldOut.com.",
+		intro:      "Вас добавили в организацию в ивент-центре ArenaSoldOut.com.",
 		whatIs:     "В ивент-центре вы видите свои мероприятия, продажи и заказы.",
 		hello:      "Здравствуйте!",
 		stepsIntro: "Что сделать:",
@@ -96,12 +97,32 @@ var orgAddedTexts = map[string]orgAddedText{
 		address: "Адрес ивент-центра: %s. Сохраните его в закладки.",
 		auto:    "Письмо отправлено автоматически. Отвечать на него не нужно.",
 	},
+	"uk": {
+		subjectOrg: "%s додає вас до центру заходів ArenaSoldOut.com",
+		subject:    "Вас додали до організації в івент-центрі ArenaSoldOut.com",
+		title:      "Ви в команді",
+		introOrg:   "Організація «%s» додала вас до своєї команди в івент-центрі ArenaSoldOut.com.",
+		intro:      "Вас додали до організації в івент-центрі ArenaSoldOut.com.",
+		whatIs:     "В івент-центрі ви бачите свої заходи, продажі та замовлення.",
+		hello:      "Вітаємо!",
+		stepsIntro: "Що зробити:",
+		fallback:   "Якщо кнопка не працює, скопіюйте це посилання в адресний рядок браузера:",
+		steps: []string{
+			"Натисніть кнопку «Відкрити івент-центр» нижче.",
+			"Увійдіть. Ваша адреса: %s. Пароль той самий, що у вас уже є.",
+			"Якщо пароля ще немає, відкрийте %s, введіть свою адресу й попросіть новий лист.",
+		},
+		button:  "Відкрити івент-центр",
+		ignore:  "Якщо ви не очікували цього листа, нічого не робіть. Ваш пароль залишиться попереднім.",
+		address: "Адреса центру заходів: %s. Збережіть її в закладки.",
+		auto:    "Лист надіслано автоматично. Відповідати на нього не потрібно.",
+	},
 	"es": {
-		subjectOrg: "%s te añade al centro de eventos de Arena",
-		subject:    "Te han añadido a una organización en el centro de eventos de Arena",
+		subjectOrg: "%s te añade al centro de eventos de ArenaSoldOut.com",
+		subject:    "Te han añadido a una organización en el centro de eventos de ArenaSoldOut.com",
 		title:      "Ya estás en el equipo",
-		introOrg:   "La organización «%s» te ha añadido a su equipo en el centro de eventos de Arena.",
-		intro:      "Te han añadido a una organización en el centro de eventos de Arena.",
+		introOrg:   "La organización «%s» te ha añadido a su equipo en el centro de eventos de ArenaSoldOut.com.",
+		intro:      "Te han añadido a una organización en el centro de eventos de ArenaSoldOut.com.",
 		whatIs:     "En el centro de eventos ves tus eventos, ventas y pedidos.",
 		hello:      "¡Hola!",
 		stepsIntro: "Qué hacer:",
@@ -124,7 +145,9 @@ func renderOrgAddedEmail(locale, orgName, email, base string) (subject, htmlBody
 	lang := organizerLocale(locale)
 	t := orgAddedTexts[lang]
 	orgName = strings.Join(strings.Fields(orgName), " ")
-	loginURL := base + "/login"
+	// The address names the account, so a browser already signed in to
+	// another one asks before entering it (event center LoginScreen).
+	loginURL := base + "/login?email=" + url.QueryEscape(email)
 	forgot := base + "/forgot-password"
 
 	l := organizerLetter{lang: lang, title: t.title, stepsIntro: t.stepsIntro, fallback: t.fallback, button: t.button}

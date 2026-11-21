@@ -358,7 +358,9 @@ func (w *Wizard) renderSeated(loc string, d *Draft, header func(int, string) str
 			}})
 		}
 		if d.Scratch.CanUpload {
-			rows = append(rows, []Button{{Label: t("bot.wz.plan_up_more_btn", nil), Data: "plan:upload"}})
+			// Another plan for this venue: an intake of its own that leaves the
+			// draft where it is (plan_intake.go).
+			rows = append(rows, []Button{{Label: t("bot.wz.plan_in_upload_btn", nil), Data: planDataPrefix + "up:" + s.VenueID}})
 		}
 		rows = append(rows, []Button{{Label: t("bot.wz.plan_none_btn", nil), Data: "plan:none"}})
 		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_plan", map[string]any{"Venue": Esc(s.VenueName)}), Buttons: nav(rows...)}

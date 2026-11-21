@@ -18,7 +18,7 @@ import (
 
 // SupportedLocales is the baseline set used when the caller does not supply
 // an explicit list. It matches the ACTIVE_LOCALES default in config.go.
-var SupportedLocales = []string{"en", "ru"}
+var SupportedLocales = []string{"en", "ru", "uk"}
 
 // DefaultLocale is used as the final fallback when no supported locale can be
 // matched. It must appear in SupportedLocales.

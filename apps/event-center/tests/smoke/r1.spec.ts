@@ -14,7 +14,7 @@ async function signIn(page: Page) {
   await page.getByLabel("E-mail").fill("manager@example.test");
   await page.getByLabel("Password").fill("right-password");
   await page.getByTestId("login-submit").click();
-  await expect(page.getByRole("heading", { name: "Choose an organization" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Select an organization" })).toBeVisible();
 }
 
 /** WCAG 2.1 A and AA rules of axe on the screen as it is now (review finding L6). */
@@ -50,7 +50,7 @@ test.describe("R1 read-only event center", () => {
     await page.getByLabel("E-mail").fill("manager@example.test");
     await page.getByLabel("Password").fill("wrong");
     await page.getByTestId("login-submit").click();
-    await expect(page.getByRole("alert")).toContainText("does not match");
+    await expect(page.getByRole("alert")).toContainText("The e-mail or the password is not correct");
     // Review finding L6: the error is tied to the fields, not to the form.
     await expect(page.getByLabel("E-mail")).toHaveAttribute("aria-describedby", "login-error");
     await expect(page.getByLabel("Password")).toHaveAttribute("aria-describedby", "login-error");
@@ -83,11 +83,11 @@ test.describe("R1 read-only event center", () => {
     await expect(email).toHaveAttribute("readonly", "");
     await expect(email).toHaveAttribute("autocomplete", "username");
     await page.getByLabel("New password").fill("a long phrase");
-    await page.getByLabel("Repeat the password").fill("a long phrase!");
+    await page.getByLabel("Type the password again").fill("a long phrase!");
     await page.getByTestId("password-submit").click();
     await expect(page.getByTestId("password-error")).toContainText("The two passwords are different");
     expect(state.requests).not.toContain("POST /v1/auth/password-reset/confirm");
-    await page.getByLabel("Repeat the password").fill("a long phrase");
+    await page.getByLabel("Type the password again").fill("a long phrase");
     await page.getByTestId("password-submit").click();
     await expect(page.getByTestId("password-done")).toBeVisible();
     expect(state.requests).toContain("POST /v1/auth/password-reset/confirm");
@@ -98,12 +98,12 @@ test.describe("R1 read-only event center", () => {
   test("a used reset link says what to do next", async ({ page }) => {
     await mockApi(page);
     await page.goto("/reset-password?token=used-token");
-    await expect(page.getByRole("heading", { name: "Choose a new password" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Type a new password" })).toBeVisible();
     await page.getByLabel("New password").fill("a long phrase");
-    await page.getByLabel("Repeat the password").fill("a long phrase");
+    await page.getByLabel("Type the password again").fill("a long phrase");
     await page.getByTestId("password-submit").click();
-    await expect(page.getByTestId("password-error")).toContainText("This link was already used");
-    await expect(page.getByRole("link", { name: "Ask for a new letter" })).toBeVisible();
+    await expect(page.getByTestId("password-error")).toContainText("You used this link before");
+    await expect(page.getByRole("link", { name: "Get a new e-mail" })).toBeVisible();
     await page.goto("/reset-password");
     await expect(page.getByTestId("password-missing")).toBeVisible();
     await noA11yViolations(page);
@@ -196,16 +196,22 @@ test.describe("R1 read-only event center", () => {
     await expect(page.getByTestId("resend-dialog")).toBeVisible();
     await noA11yViolations(page);
     await page.getByTestId("resend-same").click();
+    // The order's own address: no warning about the copy.
+    await expect(page.getByTestId("resend-same-codes")).toHaveCount(0);
     expect(state.requests.some((r) => r.includes("resend-tickets"))).toBe(false);
     await page.getByTestId("resend-send").click();
-    await expect(page.getByTestId("resend-done")).toContainText("on their way");
+    await expect(page.getByTestId("resend-done")).toContainText("We sent the tickets of order");
     await page.getByTestId("resend-close").click();
     await page.getByTestId("resend-open").click();
     await page.getByTestId("resend-other").click();
     await page.getByTestId("resend-email").fill("site@example.test");
     await page.getByTestId("resend-continue").click();
+    // Another address (O-8): the same barcodes go out, and the replacement is offered.
+    await expect(page.getByTestId("resend-same-codes")).toContainText("same barcodes");
+    await expect(page.getByTestId("resend-use-reissue")).toBeVisible();
+    await noA11yViolations(page);
     await page.getByTestId("resend-send").click();
-    await expect(page.getByTestId("resend-refused-site")).toContainText("sold through the seller's own site");
+    await expect(page.getByTestId("resend-refused-site")).toContainText("The site of the seller sold this order");
     await page.getByTestId("resend-close").click();
     // An unknown outcome (5xx): no blind retry, the person is sent to the letter line.
     await page.getByTestId("resend-open").click();
@@ -213,7 +219,7 @@ test.describe("R1 read-only event center", () => {
     await page.getByTestId("resend-email").fill("boom@example.test");
     await page.getByTestId("resend-continue").click();
     await page.getByTestId("resend-send").click();
-    await expect(page.getByTestId("resend-unconfirmed")).toContainText("We could not confirm the send");
+    await expect(page.getByTestId("resend-unconfirmed")).toContainText("We could not make sure that we sent the e-mail");
     await expect(page.getByTestId("resend-retry")).toHaveCount(0);
     await noHorizontalScroll(page);
   });
@@ -227,11 +233,12 @@ test.describe("R1 read-only event center", () => {
     await expect(page.getByTestId("order-row")).toBeVisible();
 
     // In-app navigation keeps the text.
-    await page.getByRole("navigation").getByRole("link", { name: "Events" }).click();
-    await page.getByRole("navigation").getByRole("link", { name: "Orders" }).click();
+    await page.getByRole("navigation", { name: "Main menu" }).getByRole("link", { name: "Events" }).click();
+    await page.getByRole("navigation", { name: "Main menu" }).getByRole("link", { name: "Orders" }).click();
     await expect(page.getByLabel("Search for an order")).toHaveValue("anna@example.test");
 
-    // Sign-out wipes it, without a page reload in between.
+    // Sign-out wipes it, without a page reload in between. It lives under "More".
+    await page.getByTestId("nav-more").click();
     await page.getByTestId("logout").click();
     await expect(page).toHaveURL(/\/login/);
     await page.getByLabel("E-mail").fill("manager@example.test");
@@ -290,13 +297,16 @@ test.describe("R1 read-only event center", () => {
     await mockApi(page);
     await signIn(page);
     await page.goto(`/o/${ORG_A}/events`);
+    await page.getByTestId("nav-more").click();
     await page.getByTestId("language-select").selectOption("ru");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Мероприятия");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Мероприятия");
     await expect(page.locator("html")).toHaveAttribute("lang", "ru");
-    for (const name of ["Мероприятия", "Заказы", "Уведомления"]) {
-      const box = await page.getByRole("navigation").getByRole("link", { name }).boundingBox();
+    for (const name of ["Мероприятия", "Заказы", "Вход"]) {
+      const box = await page.getByRole("navigation", { name: "Главное меню" }).getByRole("link", { name }).boundingBox();
       expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TAP);
     }
+    const more = await page.getByRole("navigation", { name: "Меню", exact: true }).getByRole("link", { name: "Мои уведомления" }).boundingBox();
+    expect(more?.height ?? 0).toBeGreaterThanOrEqual(MIN_TAP);
   });
 
   test("a signed-out visitor is sent to sign in and comes back", async ({ page }) => {

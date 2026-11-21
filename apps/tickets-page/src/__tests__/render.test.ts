@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest';
 import { consumeCheckoutTokenFromURL, eventIDWithOpenCheckout, isPosterCatalog, renderError, renderEvent, renderLoading, renderNotFound, renderPromoterPage } from '../lib/render.ts';
 import type { PromoterPageOptions } from '../lib/render.ts';
 import type { HostedPageEvent, HostedPageResponse, HostedPromoterPageResponse } from '../lib/api.ts';
@@ -11,6 +11,14 @@ function freshContainer(): HTMLElement {
 
 beforeEach(() => {
   document.body.innerHTML = '';
+  // The fixtures carry fixed dates and the page labels a past date "Took
+  // place": freeze the clock so the suite does not rot as the calendar moves.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-09-01T12:00:00Z'));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('renderNotFound', () => {

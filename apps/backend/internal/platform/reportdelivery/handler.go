@@ -61,7 +61,7 @@ type HandlerOptions struct {
 	// (development / test mode).
 	Sender email.Sender
 	// FromAddress is the envelope From address for outgoing emails.
-	// Example: "Arena Platform <reports@arena.example.com>"
+	// Example: "ArenaSoldOut.com <reports@arena.example.com>"
 	FromAddress string
 	// Logger receives structured log entries. Defaults to slog.Default() when nil.
 	Logger *slog.Logger
@@ -165,7 +165,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 
 			msg := email.Message{
 				To:       recipient.Email,
-				Subject:  "Post-event report — Arena Platform",
+				Subject:  "Post-event report — ArenaSoldOut.com",
 				HTMLBody: htmlBody,
 				TextBody: textBody,
 			}
@@ -283,7 +283,7 @@ func renderReportEmailHTML(
 
 	sb.WriteString("    </tbody>\n  </table>\n")
 	sb.WriteString("  <hr>\n")
-	sb.WriteString("  <p style=\"font-size:11px;color:#999\">Arena Platform — automated report delivery</p>\n")
+	sb.WriteString("  <p style=\"font-size:11px;color:#999\">ArenaSoldOut.com — automated report delivery</p>\n")
 	sb.WriteString("</body>\n</html>")
 	return sb.String()
 }
@@ -297,7 +297,7 @@ func renderReportEmailText(
 ) string {
 	var sb strings.Builder
 
-	sb.WriteString("Post-event Report — Arena Platform\n\n")
+	sb.WriteString("Post-event Report — ArenaSoldOut.com\n\n")
 	fmt.Fprintf(&sb, "Hello,\n\n")
 	fmt.Fprintf(&sb, "Your post-event report is ready. You are receiving this as: %s.\n\n",
 		formatRolesDisplay(recipient.Roles))

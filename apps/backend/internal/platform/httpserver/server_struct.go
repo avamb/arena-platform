@@ -33,6 +33,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/redissession"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesfunnel"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/textformat"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan"
 )
 
 // Server is the long-lived HTTP listener that hosts the arena-api.
@@ -146,6 +147,12 @@ type Server struct {
 	// first use by promoAttemptRecorder.
 	promoAttempts     *promoattempts.Recorder
 	promoAttemptsOnce sync.Once
+	// checkoutStartIdem is the Idempotency-Key middleware of the widget's
+	// checkout/start (П-19), built once on first use by
+	// checkoutStartIdempotency: its singleflight group must outlive the
+	// per-request hfeed.Handler.
+	checkoutStartIdem     func(http.Handler) http.Handler
+	checkoutStartIdemOnce sync.Once
 	// stepUpSessionCheck replaces the database lookup of requireWebStepUp
 	// ("is this sign-in still live?") in unit tests; nil in production.
 	stepUpSessionCheck func(ctx context.Context, sessionID, userID uuid.UUID) (bool, error)
@@ -195,6 +202,9 @@ type Server struct {
 	// Options.PosterReader stub, else the Anthropic reader built from
 	// POSTER_LLM_API_KEY, else nil (the route answers 503). See poster_facts_shims.go.
 	posterReader PosterReader
+	// venuePlanNotifier hears of hall plan intakes (nil = nobody); set with
+	// SetVenuePlanNotifier, see mount_venue_plan.go.
+	venuePlanNotifier venueplan.Notifier
 	// textFormatter formats texts for POST .../texts/format: the Anthropic client
 	// built from the poster key, else nil (the route answers the plain
 	// conversion). Set when the route is mounted, see text_format_shims.go.

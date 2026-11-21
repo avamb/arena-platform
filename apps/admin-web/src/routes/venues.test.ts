@@ -119,7 +119,7 @@ describe("validateVenuePostalCode", () => {
     expect(validateVenuePostalCode("SW1A 1AA")).toBeNull();
   });
   it("rejects >32 chars", () => {
-    expect(validateVenuePostalCode("x".repeat(33))).toMatch(/at most 32/);
+    expect(validateVenuePostalCode("x".repeat(33))).toMatch(/32 characters or less/);
   });
 });
 
@@ -178,7 +178,7 @@ describe("validateVenueTimezone", () => {
 
 describe("validateVenueTimezoneRequired", () => {
   it("rejects blank on create (bug B-3: timezone is mandatory for a new venue)", () => {
-    expect(validateVenueTimezoneRequired("", false, "")).toMatch(/required/i);
+    expect(validateVenueTimezoneRequired("", false, "")).toMatch(/Select a timezone/);
   });
   it("accepts a value on create", () => {
     expect(validateVenueTimezoneRequired("Europe/Berlin", false, "")).toBeNull();
@@ -186,7 +186,7 @@ describe("validateVenueTimezoneRequired", () => {
   it("rejects clearing an existing timezone on edit (bug B-3: forbid clearing)", () => {
     expect(
       validateVenueTimezoneRequired("", true, "Europe/Prague"),
-    ).toMatch(/cannot be cleared/i);
+    ).toMatch(/cannot clear the timezone/i);
   });
   it("accepts replacing an existing timezone with another value on edit", () => {
     expect(
@@ -206,8 +206,8 @@ describe("validateVenueContactEmail", () => {
     expect(validateVenueContactEmail("ops@example.com")).toBeNull();
   });
   it("rejects malformed", () => {
-    expect(validateVenueContactEmail("bad-email")).toMatch(/valid email/);
-    expect(validateVenueContactEmail("a@b")).toMatch(/valid email/);
+    expect(validateVenueContactEmail("bad-email")).toMatch(/correct e-mail/);
+    expect(validateVenueContactEmail("a@b")).toMatch(/correct e-mail/);
   });
 });
 
@@ -228,7 +228,7 @@ describe("validateVenueWebsiteUrl", () => {
     expect(validateVenueWebsiteUrl("http://localhost:8080/v")).toBeNull();
   });
   it("rejects junk and non-http schemes", () => {
-    expect(validateVenueWebsiteUrl("not-a-url")).toMatch(/valid URL/);
+    expect(validateVenueWebsiteUrl("not-a-url")).toMatch(/correct URL/);
     expect(validateVenueWebsiteUrl("ftp://example.com")).toMatch(/http or https/);
   });
 });
@@ -467,7 +467,7 @@ describe("venue verification helpers", () => {
   it("explains the refusals in plain words", () => {
     const e = (code: string) => new ApiError(403, { code, message: "raw message" });
     expect(reviewErrorMessage(e("venue.curate_superadmin_only"))).toMatch(/platform owner/);
-    expect(reviewErrorMessage(e("venue.not_found"))).toMatch(/no longer exists/);
+    expect(reviewErrorMessage(e("venue.not_found"))).toMatch(/does not exist/);
     expect(reviewErrorMessage(e("superadmin.missing_reason"))).toMatch(/reason/);
     expect(reviewErrorMessage(e("something.else"))).toContain("something.else");
   });

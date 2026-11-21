@@ -30,5 +30,5 @@ def pytest_collection_modifyitems(config, items):
         return
     skip = pytest.mark.skip(reason="needs private client data that is not in the repository")
     for item in items:
-        if item.nodeid.replace("\\", "/") in NEEDS_PRIVATE_DATA:
+        if item.nodeid.replace("\\", "/") in NEEDS_PRIVATE_DATA or item.get_closest_marker("private_data"):
             item.add_marker(skip)

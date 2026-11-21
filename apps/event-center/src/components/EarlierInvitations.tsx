@@ -10,7 +10,7 @@ import { InvitationList } from "@/components/InvitationList";
 import { listInvitations } from "@/lib/api/endpoints";
 import { useI18n } from "@/lib/i18n";
 
-export function EarlierInvitations({ orgId, canIssue }: { orgId: string; canIssue: boolean }) {
+export function EarlierInvitations({ orgId, canIssue, canReissue = false }: { orgId: string; canIssue: boolean; canReissue?: boolean }) {
   const { t } = useI18n();
   // One row is enough to know whether the section is needed. The key sits under ["invitations", orgId]
   // like the list itself, so annulling refreshes both.
@@ -21,7 +21,7 @@ export function EarlierInvitations({ orgId, canIssue }: { orgId: string; canIssu
   if (probe.data === undefined || probe.data.issuances.length === 0) return null;
   return (
     <div data-testid="earlier-invitations">
-      <InvitationList orgId={orgId} canIssue={canIssue} title={t("orgInv.earlier.title")} intro={t("orgInv.earlier.intro")} />
+      <InvitationList orgId={orgId} canIssue={canIssue} canReissue={canReissue} title={t("orgInv.earlier.title")} intro={t("orgInv.earlier.intro")} />
     </div>
   );
 }

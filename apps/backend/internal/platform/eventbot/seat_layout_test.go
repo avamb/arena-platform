@@ -277,6 +277,7 @@ func TestSeatLayoutKeys_AreTranslated(t *testing.T) {
 	vars := map[string]any{
 		"Name": "N", "When": "w", "Price": "p", "Count": 3, "Seats": 4, "Share": 25, "Sold": 1, "Held": 2,
 		"Money": "m", "Changed": 5, "Same": 6, "Max": 10000,
+		"Cats": 3, "Currency": "EUR", "N": 2, "Top": "t", "Bottom": "b",
 	}
 	for _, key := range append(append([]string{}, seatLayoutKeys...), layoutAlgorithmKeys...) {
 		en := b.texts.T("en", key, vars)

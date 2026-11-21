@@ -328,3 +328,13 @@ func TestLocaleFromRequest(t *testing.T) {
 		}
 	}
 }
+
+func TestLabels_EveryColumnHasAWordInEveryLocale(t *testing.T) {
+	for _, loc := range SupportedLocales {
+		for c := ColOrder; c <= ColRefundRef; c++ {
+			if _, ok := labels[loc][c]; !ok {
+				t.Errorf("locale %s has no label for column %d", loc, c)
+			}
+		}
+	}
+}

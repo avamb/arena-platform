@@ -10,10 +10,15 @@
  * to a person who may issue (the revoke route reuses `complimentary.issue`).
  * A ticket already scanned at the door cannot be annulled: its card says
  * "used" and offers nothing.
+ *
+ * "Replace invitation" (spec 63 stage R-5) gives the guest new tickets with new
+ * barcodes at the right address, for a person who holds ticket.update; it uses
+ * the order's reissue dialog without the case question.
  */
 import { useState } from "react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { ConfirmWordDialog } from "@/components/ConfirmWordDialog";
+import { ReissueTicketsDialog } from "@/components/ReissueTicketsDialog";
 import { Badge, Empty, ErrorBox, Loading } from "@/components/ui";
 import { listInvitations, annulInvitation, type InvitationState } from "@/lib/api/endpoints";
 import type { ComplimentaryListItem } from "@/lib/api/types";
@@ -27,6 +32,7 @@ import {
   letterSummary,
   letterTone,
 } from "@/lib/invitations";
+import { invitationReissueOffered } from "@/lib/reissue";
 
 export const INVITATIONS_PAGE_SIZE = 20;
 
@@ -36,11 +42,15 @@ const FILTERS: readonly Filter[] = ["all", "valid", "used", "revoked"];
 function InvitationCard({
   item,
   canIssue,
+  canReissue,
   onAnnul,
+  onReissue,
 }: {
   item: ComplimentaryListItem;
   canIssue: boolean;
+  canReissue: boolean;
   onAnnul: (item: ComplimentaryListItem) => void;
+  onReissue: (item: ComplimentaryListItem) => void;
 }) {
   const { t, locale } = useI18n();
   const ticket = item.tickets[0];
@@ -79,11 +89,18 @@ function InvitationCard({
           {t("invitations.letter.attention")}
         </p>
       )}
-      {canRevoke(item.state, canIssue) && (
+      {(canRevoke(item.state, canIssue) || invitationReissueOffered(item, () => canReissue)) && (
         <p>
-          <button type="button" className="btn" onClick={() => onAnnul(item)} data-testid="invitation-annul">
-            {t("invitations.annul")}
-          </button>
+          {canRevoke(item.state, canIssue) && (
+            <button type="button" className="btn" onClick={() => onAnnul(item)} data-testid="invitation-annul">
+              {t("invitations.annul")}
+            </button>
+          )}{" "}
+          {invitationReissueOffered(item, () => canReissue) && (
+            <button type="button" className="btn" onClick={() => onReissue(item)} data-testid="invitation-reissue">
+              {t("reissue.inv.btn")}
+            </button>
+          )}
         </p>
       )}
     </li>
@@ -93,11 +110,14 @@ function InvitationCard({
 export function InvitationList({
   orgId,
   canIssue,
+  canReissue = false,
   title,
   intro,
 }: {
   orgId: string;
   canIssue: boolean;
+  /** ticket.update in this organization: "Replace invitation" (spec 63 R-5). */
+  canReissue?: boolean;
   /** The heading; "Issued invitations" by default. */
   title?: string;
   /** A sentence under the heading. */
@@ -108,6 +128,7 @@ export function InvitationList({
   const [filter, setFilter] = useState<Filter>("all");
   const [annulling, setAnnulling] = useState<ComplimentaryListItem | null>(null);
   const [annulled, setAnnulled] = useState(false);
+  const [reissuing, setReissuing] = useState<ComplimentaryListItem | null>(null);
 
   const list = useInfiniteQuery({
     queryKey: ["invitations", orgId, filter],
@@ -178,6 +199,8 @@ export function InvitationList({
               key={item.id}
               item={item}
               canIssue={canIssue}
+              canReissue={canReissue}
+              onReissue={(it) => setReissuing(it)}
               onAnnul={(it) => {
                 setAnnulled(false);
                 setAnnulling(it);
@@ -198,6 +221,19 @@ export function InvitationList({
             {t("invitations.list.more")}
           </button>
         </p>
+      )}
+      {reissuing !== null && (
+        <ReissueTicketsDialog
+          key={`${orgId}:${reissuing.id}`}
+          orgId={orgId}
+          target={{
+            kind: "invitation",
+            id: reissuing.id,
+            number: `№${reissuing.tickets[0]?.system_ticket_id ?? ""}`,
+            timezone: reissuing.venue_timezone,
+          }}
+          onClose={() => setReissuing(null)}
+        />
       )}
       {annulling !== null && (
         <ConfirmWordDialog

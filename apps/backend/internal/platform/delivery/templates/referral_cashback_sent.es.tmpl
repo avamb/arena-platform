@@ -15,7 +15,7 @@
   <p style="margin:0 0 12px 0;">Tu banco suele tardar de 5 a 10 días hábiles en mostrarlo.</p>
   <p style="font-size:12px;color:#666">Enviado a: {{.RecipientEmail}}</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
 {{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
     <strong>{{.Branding.LegalName}}</strong>
@@ -26,7 +26,7 @@
     {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
     {{with .Branding.ContactEmail}}<br>Contacto: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Contacto: <a href="{{.}}" style="color:#666">Escribir al organizador</a>{{end}}{{end}}
   </p>
-  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}Arena Platform — mensaje automático{{end}}</p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}ArenaSoldOut.com — mensaje automático{{end}}</p>
   <p style="font-size:11px;color:#999;line-height:1.5">Si pulsas «Cancelar suscripción», dejarás de recibir los correos con tus entradas y los correos importantes sobre tu pedido. No enviamos correos publicitarios sin tu consentimiento.</p>
   </td></tr>
 </table>
@@ -44,7 +44,7 @@ Un amigo ha comprado con tu código {{.Referral.Code}}. Hemos devuelto {{.Referr
 
 Tu banco suele tardar de 5 a 10 días hábiles en mostrarlo.
 
-Enviado a: {{.RecipientEmail}}
+{{template "contact_text" .}}Enviado a: {{.RecipientEmail}}
 
 --
 {{.Branding.LegalName}}
@@ -57,7 +57,7 @@ Enviado a: {{.RecipientEmail}}
 {{end}}{{with .Branding.ContactEmail}}Contacto: {{.}}
 {{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Contacto: {{.}}
 {{end}}{{end}}
-{{if not .WhiteLabel}}Arena Platform — mensaje automático{{end}}
+{{if not .WhiteLabel}}ArenaSoldOut.com — mensaje automático{{end}}
 
 Si pulsas «Cancelar suscripción», dejarás de recibir los correos con tus entradas y los correos importantes sobre tu pedido. No enviamos correos publicitarios sin tu consentimiento.
 {{end}}

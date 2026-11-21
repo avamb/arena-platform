@@ -5,6 +5,7 @@ package hexport
 //
 //	GET /v1/organizations/{org_id}/sessions/{session_id}/guest-list.xlsx (order.read + session.read)
 //	GET /v1/organizations/{org_id}/sessions/{session_id}/guest-list.csv  (order.read + session.read)
+//	GET /v1/organizations/{org_id}/events/{event_id}/guest-list.xlsx     (order.read + session.read)
 //	GET /v1/organizations/{org_id}/guest-list-subscription               (order.read)
 //	PUT /v1/organizations/{org_id}/guest-list-subscription               (order.read)
 //
@@ -20,6 +21,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -41,8 +43,74 @@ func (h *Handler) HandleSessionGuestList(w http.ResponseWriter, r *http.Request)
 	h.serveGuestList(w, r, guestlist.CSV)
 }
 
-// serveGuestList writes one row per active ticket, sorted by the guest's
-// name. X-Row-Count carries the number of data rows, so a client (the bot)
+// HandleEventGuestListXLSX serves GET .../events/{event_id}/guest-list.xlsx:
+// the tickets of every session of the event in one sheet, a Session column
+// (date and time in the venue's zone) first.
+func (h *Handler) HandleEventGuestListXLSX(w http.ResponseWriter, r *http.Request) {
+	if !h.ready(w, r) {
+		return
+	}
+	orgID, ok := uuidParam(w, r, "org_id")
+	if !ok {
+		return
+	}
+	eventID, ok := uuidParam(w, r, "event_id")
+	if !ok {
+		return
+	}
+	if guestListForbiddenForKey(w, r) {
+		return
+	}
+	ctx := r.Context()
+	header, err := h.queries.GetExportEventHeader(ctx, eventID, orgID)
+	if isNoRows(err) {
+		notFound(w, r, "event.not_found", "event not found")
+		return
+	}
+	if err != nil {
+		h.internal(w, r, "event", err)
+		return
+	}
+	file, err := guestlist.BuildEvent(ctx, h.queries, orgID, eventID, csvexport.LocaleFromRequest(r), time.UTC, h.maxRows, guestlist.XLSX)
+	if errors.Is(err, guestlist.ErrTooManyRows) {
+		n, _ := h.queries.CountEventGuestListRows(ctx, eventID, orgID)
+		h.tooManyRows(w, r, n)
+		return
+	}
+	if err != nil {
+		h.internal(w, r, "guest list", err)
+		return
+	}
+	slug := ""
+	if header.Slug != nil {
+		slug = *header.Slug
+	}
+	h.writeGuestListFile(w, file, guestlist.FileName(header.Name, slug, time.Now(), time.UTC, guestlist.XLSX))
+}
+
+// guestListForbiddenForKey refuses an organization API key: the file names
+// buyers and their contacts, like the per-date ticket list.
+func guestListForbiddenForKey(w http.ResponseWriter, r *http.Request) bool {
+	if actor, ok := auth.ActorFromContext(r.Context()); ok && actor.IsService() {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
+			"guest_list.api_key_forbidden", "the guest list holds buyers' contacts and is not served to an API key", r))
+		return true
+	}
+	return false
+}
+
+func (h *Handler) writeGuestListFile(w http.ResponseWriter, file guestlist.File, name string) {
+	w.Header().Set("Content-Type", file.ContentType)
+	w.Header().Set("X-Row-Count", strconv.Itoa(file.Rows))
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(file.Body)
+}
+
+// serveGuestList writes one row per ticket (every status), sorted by the
+// guest's last name. X-Row-Count carries the number of data rows, so a client (the bot)
 // can say how many tickets the file holds without reading it.
 func (h *Handler) serveGuestList(w http.ResponseWriter, r *http.Request, format guestlist.Format) {
 	if !h.ready(w, r) {
@@ -56,11 +124,7 @@ func (h *Handler) serveGuestList(w http.ResponseWriter, r *http.Request, format 
 	if !ok {
 		return
 	}
-	// The file names buyers and their contacts, like the per-date ticket list:
-	// a person reads it, an organization API key does not.
-	if actor, ok := auth.ActorFromContext(r.Context()); ok && actor.IsService() {
-		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
-			"guest_list.api_key_forbidden", "the guest list holds buyers' contacts and is not served to an API key", r))
+	if guestListForbiddenForKey(w, r) {
 		return
 	}
 	ctx := r.Context()
@@ -89,13 +153,7 @@ func (h *Handler) serveGuestList(w http.ResponseWriter, r *http.Request, format 
 		slug = *header.EventSlug
 	}
 	name := guestlist.FileName(header.EventName, slug, header.StartAt, loc, format)
-	w.Header().Set("Content-Type", file.ContentType)
-	w.Header().Set("X-Row-Count", strconv.Itoa(file.Rows))
-	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(file.Body)
+	h.writeGuestListFile(w, file, name)
 }
 
 // GuestListSubscription is the answer of the subscription routes. channel
@@ -204,4 +262,71 @@ func (h *Handler) writeSubscription(w http.ResponseWriter, r *http.Request, orgI
 		channel = "email"
 	}
 	httputil.WriteJSON(w, http.StatusOK, GuestListSubscription{Enabled: row.Enabled, Channel: channel, Eligible: row.Eligible})
+}
+
+// GuestListSettings is the organization-level switch of the team guest list
+// (guest_list.team_send): the current list goes to the owners, the managers
+// and the organization's sales Telegram groups 24 h and 3 h before every
+// session. On by default.
+type GuestListSettings struct {
+	AutoSend bool `json:"auto_send"`
+}
+
+// HandleGetGuestListSettings serves GET .../guest-list-settings.
+func (h *Handler) HandleGetGuestListSettings(w http.ResponseWriter, r *http.Request) {
+	if !h.ready(w, r) {
+		return
+	}
+	orgID, ok := uuidParam(w, r, "org_id")
+	if !ok {
+		return
+	}
+	h.writeGuestListSettings(w, r, orgID)
+}
+
+// HandlePutGuestListSettings serves PUT .../guest-list-settings with
+// {"auto_send": true|false}; a repeat of the current value changes nothing.
+func (h *Handler) HandlePutGuestListSettings(w http.ResponseWriter, r *http.Request) {
+	if !h.ready(w, r) {
+		return
+	}
+	orgID, ok := uuidParam(w, r, "org_id")
+	if !ok {
+		return
+	}
+	var body struct {
+		AutoSend *bool `json:"auto_send"`
+	}
+	dec := json.NewDecoder(io.LimitReader(r.Body, 4096))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil || body.AutoSend == nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
+			"guest_list.invalid_body", `send {"auto_send": true} or {"auto_send": false}`, r))
+		return
+	}
+	if _, err := h.queries.GetOrgGuestListAutoSend(r.Context(), orgID); isNoRows(err) {
+		notFound(w, r, "org.not_found", "organization not found")
+		return
+	} else if err != nil {
+		h.internal(w, r, "settings", err)
+		return
+	}
+	if err := h.queries.SetOrgGuestListAutoSend(r.Context(), orgID, *body.AutoSend); err != nil {
+		h.internal(w, r, "settings", err)
+		return
+	}
+	h.writeGuestListSettings(w, r, orgID)
+}
+
+func (h *Handler) writeGuestListSettings(w http.ResponseWriter, r *http.Request, orgID uuid.UUID) {
+	on, err := h.queries.GetOrgGuestListAutoSend(r.Context(), orgID)
+	if isNoRows(err) {
+		notFound(w, r, "org.not_found", "organization not found")
+		return
+	}
+	if err != nil {
+		h.internal(w, r, "settings", err)
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, GuestListSettings{AutoSend: on})
 }

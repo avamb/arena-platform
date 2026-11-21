@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { listPromoCodes } from "@/lib/api/endpoints";
 import type { PromoCodeItem } from "@/lib/api/types";
 import { useI18n } from "@/lib/i18n";
+import { ScreenHelp } from "@/components/ScreenHelp";
 import { eventNames } from "@/lib/promoScope";
 import { promoDiscountText, promoLimitsText, promoSessionsText, promoUsageText, promoValidText } from "@/lib/promoView";
 import { Empty, ErrorBox, Loading } from "@/components/ui";
@@ -58,7 +59,10 @@ export function PromoListScreen() {
   const list = codes.data?.promo_codes ?? [];
   return (
     <section aria-labelledby="promo-title">
-      <h1 id="promo-title">{t("promo.title")}</h1>
+      <div className="screen-head">
+        <h1 id="promo-title">{t("promo.title")}</h1>
+        <ScreenHelp screenId="promo" />
+      </div>
       {search.deleted !== undefined && (
         <p className="notice notice-ok" role="status" data-testid="promo-notice">
           {t("promo.deleted", { code: search.deleted })}

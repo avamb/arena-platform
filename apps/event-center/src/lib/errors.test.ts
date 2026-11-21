@@ -30,7 +30,7 @@ describe("apiErrorStem", () => {
     expect(apiErrorStem(err(422, "shop.cannot_open"))).toBe("shopCannotOpen");
     expect(errorKey(err(404, "shop.module_not_enabled"))).toBe("shop.notConnected.body");
     expect(errorKey(err(404, "order.not_found"))).toBe("common.error.notFound");
-    expect(translate("en", "apiError.shopModuleOff.title")).toContain("not connected");
+    expect(translate("en", "apiError.shopModuleOff.title")).toContain("did not connect");
     expect(translate("ru", "apiError.shopCannotOpen.title")).toContain("Витрину");
   });
 
@@ -86,7 +86,7 @@ describe("describeApiError", () => {
   }
 
   it("translates through the person's language", () => {
-    expect(describeApiError(err(409, "refund.ticket_scanned"), tFor("en")).title).toBe("This ticket was already scanned at the entrance.");
+    expect(describeApiError(err(409, "refund.ticket_scanned"), tFor("en")).title).toBe("We scanned this ticket at the entrance.");
     expect(describeApiError(err(409, "refund.ticket_scanned"), tFor("ru")).title).toBe("Этот билет уже отсканировали на входе.");
     expect(describeApiError(err(409, "refund.ticket_scanned"), tFor("es")).title).toContain("escaneó");
   });

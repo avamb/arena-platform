@@ -12,6 +12,8 @@ package eventbot
 //	ec:nt              the Notifications screen
 //	ec:ev:<event>:<act> a status button: publish, take off sale, archive, delete (evstatus.go)
 //	ec:mt:<event>      the Materials menu: photos, videos, map, links, report (materials.go)
+//	ec:g:<event>:<s|e|p|m>  a group screen of the card; ec:lk:<event> the buyers' link and QR;
+//	                   ec:gl:<event> the guest list (event_card_groups.go)
 //
 // The ids are in the payload (a UUID plus its prefix is 43 bytes, inside
 // Telegram's 64), because a button on a card must keep meaning THAT event
@@ -50,6 +52,12 @@ func (b *Bot) ecCallback(ctx context.Context, chatID int64, msgID int, from *mod
 		b.evStatusCallback(ctx, chatID, msgID, from, target, flag)
 	case "mt":
 		b.showMaterials(ctx, chatID, &msgID, from, target) // the Materials menu (task 7-3)
+	case "g":
+		b.showCardGroup(ctx, chatID, &msgID, from, target, flag) // a group screen of the card
+	case cardLinkKind:
+		b.sendBuyersLink(ctx, chatID, &msgID, from, target) // the buyers' link and its QR code
+	case "gl":
+		b.cardGuestList(ctx, chatID, &msgID, from, target) // the guest list of the event
 	case "es":
 		b.showEventSummary(ctx, chatID, &msgID, from, target)
 	case "ss":

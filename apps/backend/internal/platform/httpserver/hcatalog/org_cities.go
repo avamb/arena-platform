@@ -17,7 +17,6 @@ package hcatalog
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -27,6 +26,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/citymatch"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/geoslug"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
@@ -48,8 +48,13 @@ type OrgCityResponse struct {
 
 type createOrgCityRequest struct {
 	CountryID string `json:"country_id"`
-	Name      string `json:"name"`
-	Locale    string `json:"locale"`
+	// CountryIso2 names the country by code when CountryID is empty; the
+	// country must already be in the arena reference (409
+	// city.country_not_in_reference otherwise: a country comes only with a
+	// venue, see venue_geo.go).
+	CountryIso2 string `json:"country_iso2"`
+	Name        string `json:"name"`
+	Locale      string `json:"locale"`
 }
 
 // normalizeCityLocale reduces a locale tag to the form i18n_text rows are
@@ -117,13 +122,21 @@ func (h *Handler) HandleCreateOrgCity(w http.ResponseWriter, r *http.Request) {
 	if !readJSONBody(w, r, "city", &req) {
 		return
 	}
-	countryID, err := uuid.Parse(strings.TrimSpace(req.CountryID))
-	if err != nil {
+	if strings.TrimSpace(req.CountryID) == "" && strings.TrimSpace(req.CountryIso2) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"city.invalid_country_id", "country_id must be a valid UUID", r,
 			map[string]any{"field": "country_id"},
 		))
 		return
+	}
+	if strings.TrimSpace(req.CountryID) != "" {
+		if _, err := uuid.Parse(strings.TrimSpace(req.CountryID)); err != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"city.invalid_country_id", "country_id must be a valid UUID", r,
+				map[string]any{"field": "country_id"},
+			))
+			return
+		}
 	}
 	name := NormalizePromoterName(req.Name) // same trim + collapse rule
 	if name == "" {
@@ -142,21 +155,13 @@ func (h *Handler) HandleCreateOrgCity(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = tx.Rollback(ctx) }()
 	qtx := h.venueQueries.WithTx(tx)
 
-	country, err := qtx.GetCountryByID(ctx, countryID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
-				"city.country_not_found", "the specified country does not exist", r,
-				map[string]any{"field": "country_id"},
-			))
-			return
-		}
-		h.logger.Error("city: country lookup failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("city.create_failed", "failed to create city", r))
+	country, ok := h.countryForCity(ctx, w, r, qtx, req.CountryID, req.CountryIso2)
+	if !ok {
 		return
 	}
+	countryID := country.ID
 
-	cityID, created, err := createOrFindOrgCity(ctx, qtx, country, name, locale)
+	cityID, created, err := createOrFindOrgCity(ctx, tx, qtx, country, name, locale)
 	if err != nil {
 		h.logger.Error("city: create failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("city.create_failed", "failed to create city", r))
@@ -204,16 +209,18 @@ func (h *Handler) HandleCreateOrgCity(w http.ResponseWriter, r *http.Request) {
 // createOrFindOrgCity returns the id of the country's city called name,
 // creating it when there is none. Runs inside the caller's transaction and
 // takes the per-country advisory lock first.
-func createOrFindOrgCity(ctx context.Context, q *gen.Queries, country gen.CountryRow, name, locale string) (uuid.UUID, bool, error) {
+func createOrFindOrgCity(ctx context.Context, db citymatch.DB, q *gen.Queries, country gen.CountryRow, name, locale string) (uuid.UUID, bool, error) {
 	if err := q.LockCountryCities(ctx, country.ID); err != nil {
 		return uuid.Nil, false, err
 	}
-	id, err := q.FindCityInCountryByName(ctx, country.ID, geoslug.NormalizeName(name), geoslug.Slugify(name))
-	switch {
-	case err == nil:
-		return id, false, nil
-	case !errors.Is(err, pgx.ErrNoRows):
+	// One shared matcher: slug, any stored name in any locale (accents folded)
+	// and the same place of the geo data ("Praha" finds "Prague").
+	found, ok, err := citymatch.FindInCountry(ctx, db, country.ID, country.Iso2, name)
+	if err != nil {
 		return uuid.Nil, false, err
+	}
+	if ok {
+		return found.ID, false, nil
 	}
 
 	slug := ""

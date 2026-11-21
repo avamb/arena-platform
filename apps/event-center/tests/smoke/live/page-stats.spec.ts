@@ -67,12 +67,12 @@ test.describe("page statistics of an event (live)", () => {
       }
       await expect(block).toBeVisible();
       await expect(block).toContainText("Page statistics");
-      await expect(block).toContainText("not proof for an advertising account");
+      await expect(block).toContainText("not proof for your ad account");
       await expect(block.getByTestId("stat-views")).toContainText("14");
-      await expect(block.getByTestId("stat-views")).toContainText("2 of them look like bots");
+      await expect(block.getByTestId("stat-views")).toContainText("2 of them seem to be bots");
       await expect(block.getByTestId("stat-plays")).toContainText("4");
       await expect(block.getByTestId("stat-clicks")).toContainText("4");
-      await expect(block.getByTestId("stat-clicks")).toContainText("2 of them look like bots");
+      await expect(block.getByTestId("stat-clicks")).toContainText("2 of them seem to be bots");
       await expect(block.getByTestId("stat-source").first()).toContainText("instagram");
       await expect(block.getByTestId("stat-source").first()).toContainText("spring");
       await expect(block.getByTestId("stat-source").first()).toContainText("8");

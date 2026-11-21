@@ -172,6 +172,7 @@ SELECT DISTINCT
 FROM   venues v
 JOIN   sessions s ON s.venue_id = v.id AND s.deleted_at IS NULL
 JOIN   events   e ON e.id       = s.event_id AND e.status = 'published'
+      AND e.id <> ALL($3::uuid[])
 LEFT JOIN cities    ci      ON ci.id       = v.city_id
 LEFT JOIN countries co_city ON co_city.id  = ci.country_id
 LEFT JOIN countries co_vn   ON co_vn.iso2  = v.country

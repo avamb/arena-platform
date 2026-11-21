@@ -45,6 +45,16 @@ type AlertEmailPayload struct {
 	// many sites sell the event.
 	State string `json:"state,omitempty"`
 	Sites int    `json:"sites,omitempty"`
+	// The old code of a replaced ticket (KindReissueOldCode): an entry
+	// before the replacement, or a try after it (Attempt). At is RFC 3339.
+	Attempt     bool   `json:"attempt,omitempty"`
+	OrderNumber int64  `json:"order_number,omitempty"`
+	OldNumber   int64  `json:"old_number,omitempty"`
+	NewNumber   int64  `json:"new_number,omitempty"`
+	At          string `json:"at,omitempty"`
+	Source      string `json:"source,omitempty"`
+	Result      string `json:"result,omitempty"`
+	Gate        string `json:"gate,omitempty"`
 }
 
 // Querier is what the loaders read through (a pool or a transaction).

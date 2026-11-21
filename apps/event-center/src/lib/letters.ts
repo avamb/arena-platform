@@ -89,7 +89,9 @@ function letterTime(l: OrderLetter): number {
  * The newest ticket letter of every ticket. A resend adds a letter for tickets
  * that already had one; the card speaks about the letter the buyer got last,
  * so an old bounce no longer counts once a later letter for the same tickets
- * went out. An entry that names no ticket is always kept.
+ * went out. An entry that names no ticket (a letter imported from WordPress)
+ * is kept unless another ticket letter is newer, compared by sent_at to the
+ * second, like the orders list does. Candidates without sent_at are ignored.
  */
 export function latestTicketLetters(letters: readonly OrderLetter[]): OrderLetter[] {
   const ticket = letters.filter((l) => l.kind === "ticket");
@@ -101,7 +103,16 @@ export function latestTicketLetters(letters: readonly OrderLetter[]): OrderLette
     }
   }
   const keep = new Set(newest.values());
-  return ticket.filter((l) => l.ticket_ids.length === 0 || keep.has(l));
+  const sec = (l: OrderLetter): number => {
+    const ms = l.sent_at ? Date.parse(l.sent_at) : NaN;
+    return Number.isNaN(ms) ? NaN : Math.floor(ms / 1000);
+  };
+  const supersededTicketless = (l: OrderLetter): boolean => {
+    const mine = sec(l);
+    if (Number.isNaN(mine)) return false;
+    return ticket.some((o) => o !== l && sec(o) > mine);
+  };
+  return ticket.filter((l) => (l.ticket_ids.length === 0 ? !supersededTicketless(l) : keep.has(l)));
 }
 
 /** The ticket letters of the order, folded into one status. */

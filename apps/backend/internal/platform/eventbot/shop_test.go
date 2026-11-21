@@ -83,17 +83,17 @@ func TestHomeKeyboard_ShopRowAfterOrders(t *testing.T) {
 		return out
 	}
 	with := rowsOf(shopIdentityOf("organizer", false, []string{"shop"}, "full"))
-	oi, si := -1, -1
+	di, si := -1, -1
 	for i, d := range with {
 		switch d {
-		case "or:new":
-			oi = i
+		case "mn:door":
+			di = i
 		case "sh:home":
 			si = i
 		}
 	}
-	if oi < 0 || si != oi+1 {
-		t.Errorf("shop must follow Orders: orders at %d, shop at %d in %v", oi, si, with)
+	if di < 0 || si != di+1 {
+		t.Errorf("shop must follow the entrance section: entrance at %d, shop at %d in %v", di, si, with)
 	}
 	for _, d := range rowsOf(shopIdentityOf("organizer", false, nil, "")) {
 		if d == "sh:home" {

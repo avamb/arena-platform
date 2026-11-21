@@ -17,7 +17,19 @@ const (
 	// the other.
 	disputeSubmitWordKey = "bot.dp.submit_word"
 	disputeAcceptWordKey = "bot.dp.accept_word"
+	// reissueWordKey confirms "Replace tickets" (spec 63, decision R-5).
+	reissueWordKey = "bot.reissue.word"
 )
+
+// reissueWord is the phrase the organizer types to replace an order's tickets.
+func (b *Bot) reissueWord(loc string) string {
+	return b.texts.T(loc, reissueWordKey, nil)
+}
+
+// isReissueWord reports whether the typed text confirms a ticket reissue.
+func (b *Bot) isReissueWord(loc, text string) bool {
+	return b.typedPhrase(loc, reissueWordKey, text)
+}
 
 // ordCancelWord is the phrase the organizer types to cancel an unpaid order.
 func (b *Bot) ordCancelWord(loc string) string {

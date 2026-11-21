@@ -26,6 +26,10 @@ type fakeRefs struct {
 	created   []string
 	// plans are the seating plans of a venue by its id (wizard_seated_test.go).
 	plans map[string][]PlanRef
+	// world are countries of the world the reference does not have (the venue
+	// choice tests); dirErr makes the venue directory fail.
+	world  []WorldCountry
+	dirErr error
 }
 
 func newFakeRefs() *fakeRefs {
@@ -61,9 +65,92 @@ func (f *fakeRefs) CreateCity(_ context.Context, _ string, _ uuid.UUID, countryI
 }
 func (f *fakeRefs) CreateVenue(_ context.Context, _ string, _ uuid.UUID, v VenueCreate) (VenueRef, error) {
 	r := VenueRef{ID: "venue-" + strings.ToLower(v.Name), Name: v.Name, CityID: v.CityID, CountryISO2: v.CountryISO2, Timezone: v.Timezone, Capacity: v.Capacity}
+	if v.CityID == "" && v.CityName != "" {
+		// The server's answer to country_iso2 + city_name.
+		r.CityID = "city-" + strings.ToLower(v.CityName)
+		r.NewCity = &RefItem{ID: r.CityID, Name: v.CityName, ISO2: v.CountryISO2}
+		inRef := false
+		for _, c := range f.countries {
+			inRef = inRef || strings.EqualFold(c.ISO2, v.CountryISO2)
+		}
+		if !inRef {
+			r.NewCountry = &RefItem{ID: "country-" + strings.ToLower(v.CountryISO2), ISO2: v.CountryISO2}
+		}
+		f.created = append(f.created, "venue-by-name:"+v.Name+"@"+v.CountryISO2+"/"+v.CityName)
+	} else {
+		f.created = append(f.created, "venue:"+v.Name+"@"+v.Timezone)
+	}
 	f.venues = append(f.venues, r)
-	f.created = append(f.created, "venue:"+v.Name+"@"+v.Timezone)
 	return r, nil
+}
+
+// WorldCountries is the reference's countries plus f.world (countries outside
+// the reference). A country without a region sits in Europe.
+func (f *fakeRefs) WorldCountries(context.Context, string, string) (WorldList, error) {
+	var l WorldList
+	for _, c := range f.countries {
+		region := c.Region
+		if region == "" {
+			region = "europe"
+		}
+		l.Countries = append(l.Countries, WorldCountry{ISO2: c.ISO2, Name: c.Name, NameEn: c.Name, Currency: c.Currency, Region: region, InReference: true, CountryID: c.ID})
+	}
+	l.Countries = append(l.Countries, f.world...)
+	return l, nil
+}
+
+// VenueDirectory answers from f.venues the way the server does: the counters
+// by country, the cities of the country with venues, the venues of the filters.
+func (f *fakeRefs) VenueDirectory(_ context.Context, _ string, _ uuid.UUID, country, cityID, q, _ string) (VenueDir, error) {
+	if f.dirErr != nil {
+		return VenueDir{}, f.dirErr
+	}
+	var dir VenueDir
+	perCountry, perCity := map[string]int{}, map[string]int{}
+	cityName := map[string]string{}
+	for _, cities := range f.cities {
+		for _, c := range cities {
+			cityName[c.ID] = c.Name
+		}
+	}
+	for _, v := range f.venues {
+		perCountry[v.CountryISO2]++
+		perCity[v.CityID]++
+	}
+	for _, c := range f.countries {
+		if n := perCountry[c.ISO2]; n > 0 {
+			dir.Countries = append(dir.Countries, DirCountry{ISO2: c.ISO2, CountryID: c.ID, Name: c.Name, Venues: n})
+			dir.QuickPick = append(dir.QuickPick, c.ISO2)
+		}
+	}
+	for _, c := range f.cities[f.countryID(country)] {
+		if n := perCity[c.ID]; n > 0 {
+			dir.Cities = append(dir.Cities, DirCity{ID: c.ID, Name: c.Name, ISO2: country, Venues: n})
+		}
+	}
+	if country == "" && cityID == "" && q == "" {
+		return dir, nil
+	}
+	for _, v := range f.venues {
+		if (country != "" && !strings.EqualFold(v.CountryISO2, country)) || (cityID != "" && v.CityID != cityID) ||
+			!strings.Contains(strings.ToLower(v.Name), strings.ToLower(q)) {
+			continue
+		}
+		dir.Venues = append(dir.Venues, DirVenue{ID: v.ID, Name: v.Name, CityID: v.CityID, CityName: cityName[v.CityID], CountryISO2: v.CountryISO2,
+			Timezone: v.Timezone, Capacity: v.Capacity, Own: true, HasPlan: len(f.plans[v.ID]) > 0})
+	}
+	dir.Total = len(dir.Venues)
+	return dir, nil
+}
+
+// countryID is the reference id of a country by its code.
+func (f *fakeRefs) countryID(iso2 string) string {
+	for _, c := range f.countries {
+		if strings.EqualFold(c.ISO2, iso2) {
+			return c.ID
+		}
+	}
+	return ""
 }
 func (f *fakeRefs) CreatePromoter(_ context.Context, _ string, _ uuid.UUID, name, legalID string) (RefItem, error) {
 	p := RefItem{ID: "prom-" + strings.ToLower(name), Name: name}
@@ -190,7 +277,7 @@ func TestWizard_ScreensNameTheOrgVenueCapacityAndCurrency(t *testing.T) {
 	if !strings.Contains(fmt.Sprint(screen.Buttons), "Arena Test Promotions") {
 		t.Errorf("no button carries the organization's name: %v", screen.Buttons)
 	}
-	if note := r.press("prom:org", stEvPoster); !strings.Contains(note, "Промоутер: Arena Test Promotions") {
+	if note := r.press("prom:org", stEvPoster); !strings.Contains(note, "Бренд: Arena Test Promotions") {
 		t.Errorf("ack = %q, want the organization by name", note)
 	}
 	r.press("skip", stSDate)

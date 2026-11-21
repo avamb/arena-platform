@@ -32,6 +32,9 @@ test("cached organization navigation isolates wizard text, a selected poster, it
       await route.fulfill({ json: { ...allowed, org_id: SECOND_ORG, organization_id: SECOND_ORG } });
     } else if (path.endsWith("/venues")) {
       await route.fulfill({ json: { venues: [] } });
+    } else if (path.endsWith("/refunds/queue")) {
+      // The bottom bar counts the refund queue (badge on "Refunds"): an empty one.
+      await route.fulfill({ json: { refunds: [], letters: [], refunds_total: 0, letters_total: 0, count: 0 } });
     } else if (path.endsWith("/promoters")) {
       await route.fulfill({ json: { promoters: [] } });
     } else if (path.endsWith(`/media/${SECOND_MEDIA}/poster-facts`)) {

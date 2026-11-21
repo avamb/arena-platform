@@ -58,6 +58,9 @@ type stubAllPayServer struct {
 	// next refunds take effect and then answer HTTP 502 (a lost answer).
 	refundCalls       int
 	loseRefundAnswers int
+	// loseCreateAnswers > 0 makes the next getpayment calls create the order
+	// and then answer HTTP 502: AllPay has the page, arena never hears of it.
+	loseCreateAnswers int
 }
 
 // allpayLedgerOrder is one AllPay order, amounts in minor units.
@@ -119,7 +122,14 @@ func newStubAllPayServer(t *testing.T, accounts ...*allpayFixture) *stubAllPaySe
 				total += price * qty
 			}
 			cur, _ := body["currency_display"].(string)
-			s.ledger[oid] = &allpayLedgerOrder{login: login, amount: total, currency: cur}
+			if prev := s.ledger[oid]; prev == nil || prev.status == 0 {
+				s.ledger[oid] = &allpayLedgerOrder{login: login, amount: total, currency: cur}
+			}
+			if s.loseCreateAnswers > 0 {
+				s.loseCreateAnswers--
+				w.WriteHeader(http.StatusBadGateway)
+				return
+			}
 			_, _ = fmt.Fprintf(w, `{"payment_url":"https://allpay.test/~login/pay/?payment_id=%s&code=xyz"}`, oid)
 		case "checkkeys":
 			_, _ = w.Write([]byte(`{"last_paid_order_id":"-1","last_paid_order_date":"-1"}`))

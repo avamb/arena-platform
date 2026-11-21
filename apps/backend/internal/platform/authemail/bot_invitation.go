@@ -106,15 +106,15 @@ func renderBotInvitationEmail(locale, orgName, role, link string, expiresAt time
 			roleWord = "владельца"
 		}
 		if orgName != "" {
-			subject = orgName + ": приглашение в бот мероприятий Arena"
+			subject = orgName + ": приглашение в бот мероприятий ArenaSoldOut.com"
 		} else {
-			subject = "Приглашение в бот мероприятий Arena"
+			subject = "Приглашение в бот мероприятий ArenaSoldOut.com"
 		}
 		intro := "Вас пригласили заводить мероприятия и смотреть продажи"
 		if orgName != "" {
 			intro += " организации «" + orgName + "»"
 		}
-		intro += " в Telegram-боте Arena (роль: " + roleWord + ")."
+		intro += " в Telegram-боте ArenaSoldOut.com (роль: " + roleWord + ")."
 		htmlBody = fmt.Sprintf(botInviteHTMLRu, html.EscapeString(intro), expiry, safeLink, safeLink)
 		textBody = strings.Join([]string{
 			subject, "",
@@ -123,7 +123,32 @@ func renderBotInvitationEmail(locale, orgName, role, link string, expiresAt time
 			link, "",
 			"Ссылка одноразовая и действует до " + expiry + ".",
 			"Если вы не ждали этого письма, просто проигнорируйте его.",
-			"", "Arena Platform — автоматическое сообщение",
+			"", "ArenaSoldOut.com — автоматическое сообщение",
+		}, "\n")
+	case "uk":
+		roleWord := "менеджера"
+		if role == "owner" {
+			roleWord = "власника"
+		}
+		if orgName != "" {
+			subject = orgName + ": запрошення до бота заходів ArenaSoldOut.com"
+		} else {
+			subject = "Запрошення до бота заходів ArenaSoldOut.com"
+		}
+		intro := "Вас запросили створювати заходи та переглядати продажі"
+		if orgName != "" {
+			intro += " організації «" + orgName + "»"
+		}
+		intro += " у Telegram-боті ArenaSoldOut.com (роль: " + roleWord + ")."
+		htmlBody = fmt.Sprintf(botInviteHTMLUk, html.EscapeString(intro), expiry, safeLink, safeLink)
+		textBody = strings.Join([]string{
+			subject, "",
+			intro,
+			"Відкрийте посилання в Telegram і натисніть «Start»:",
+			link, "",
+			"Посилання одноразове й дійсне до " + expiry + ".",
+			"Якщо ви не очікували цього листа, просто проігноруйте його.",
+			"", "ArenaSoldOut.com — автоматичне повідомлення",
 		}, "\n")
 	case "es":
 		roleWord := "gestor"
@@ -131,15 +156,15 @@ func renderBotInvitationEmail(locale, orgName, role, link string, expiresAt time
 			roleWord = "propietario"
 		}
 		if orgName != "" {
-			subject = orgName + ": invitación al bot de eventos de Arena"
+			subject = orgName + ": invitación al bot de eventos de ArenaSoldOut.com"
 		} else {
-			subject = "Invitación al bot de eventos de Arena"
+			subject = "Invitación al bot de eventos de ArenaSoldOut.com"
 		}
 		intro := "Te han invitado a crear eventos y seguir las ventas"
 		if orgName != "" {
 			intro += " de la organización «" + orgName + "»"
 		}
-		intro += " en el bot de Arena en Telegram (rol: " + roleWord + ")."
+		intro += " en el bot de ArenaSoldOut.com en Telegram (rol: " + roleWord + ")."
 		htmlBody = fmt.Sprintf(botInviteHTMLEs, html.EscapeString(intro), expiry, safeLink, safeLink)
 		textBody = strings.Join([]string{
 			subject, "",
@@ -148,7 +173,7 @@ func renderBotInvitationEmail(locale, orgName, role, link string, expiresAt time
 			link, "",
 			"El enlace es de un solo uso y es válido hasta " + expiry + ".",
 			"Si no esperabas este correo, simplemente ignóralo.",
-			"", "Arena Platform — mensaje automático",
+			"", "ArenaSoldOut.com — mensaje automático",
 		}, "\n")
 	default:
 		roleWord := "manager"
@@ -156,15 +181,15 @@ func renderBotInvitationEmail(locale, orgName, role, link string, expiresAt time
 			roleWord = "owner"
 		}
 		if orgName != "" {
-			subject = orgName + ": your invitation to the Arena events bot"
+			subject = orgName + ": your invitation to the ArenaSoldOut.com events bot"
 		} else {
-			subject = "Your invitation to the Arena events bot"
+			subject = "Your invitation to the ArenaSoldOut.com events bot"
 		}
 		intro := "You have been invited to create events and follow sales"
 		if orgName != "" {
 			intro += " of " + orgName
 		}
-		intro += " in the Arena Telegram bot (role: " + roleWord + ")."
+		intro += " in the ArenaSoldOut.com Telegram bot (role: " + roleWord + ")."
 		htmlBody = fmt.Sprintf(botInviteHTMLEn, html.EscapeString(intro), expiry, safeLink, safeLink)
 		textBody = strings.Join([]string{
 			subject, "",
@@ -173,7 +198,7 @@ func renderBotInvitationEmail(locale, orgName, role, link string, expiresAt time
 			link, "",
 			"The link works once and is valid until " + expiry + ".",
 			"If you were not expecting this e-mail, you can safely ignore it.",
-			"", "Arena Platform - automated message",
+			"", "ArenaSoldOut.com - automated message",
 		}, "\n")
 	}
 	return
@@ -183,9 +208,9 @@ func renderBotInvitationEmail(locale, orgName, role, link string, expiresAt time
 // [4]=link (display).
 const botInviteHTMLEn = `<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>Arena events bot</title></head>
+<head><meta charset="UTF-8"><title>ArenaSoldOut.com events bot</title></head>
 <body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
-  <h1 style="color:#1a1a2e">Arena events bot</h1>
+  <h1 style="color:#1a1a2e">ArenaSoldOut.com events bot</h1>
   <p>%s</p>
   <p>Open the link in Telegram and press <strong>Start</strong>.
      The link works once and is valid until <strong>%s</strong>.</p>
@@ -203,15 +228,15 @@ const botInviteHTMLEn = `<!DOCTYPE html>
     If you were not expecting this e-mail, you can safely ignore it.
   </p>
   <hr>
-  <p style="font-size:11px;color:#999">Arena Platform &mdash; automated message</p>
+  <p style="font-size:11px;color:#999">ArenaSoldOut.com &mdash; automated message</p>
 </body>
 </html>`
 
 const botInviteHTMLEs = `<!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><title>Bot de eventos de Arena</title></head>
+<head><meta charset="UTF-8"><title>Bot de eventos de ArenaSoldOut.com</title></head>
 <body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
-  <h1 style="color:#1a1a2e">Bot de eventos de Arena</h1>
+  <h1 style="color:#1a1a2e">Bot de eventos de ArenaSoldOut.com</h1>
   <p>%s</p>
   <p>Abre el enlace en Telegram y pulsa <strong>Start</strong>.
      El enlace es de un solo uso y es válido hasta <strong>%s</strong>.</p>
@@ -229,15 +254,41 @@ const botInviteHTMLEs = `<!DOCTYPE html>
     Si no esperabas este correo, simplemente ignóralo.
   </p>
   <hr>
-  <p style="font-size:11px;color:#999">Arena Platform &mdash; mensaje automático</p>
+  <p style="font-size:11px;color:#999">ArenaSoldOut.com &mdash; mensaje automático</p>
+</body>
+</html>`
+
+const botInviteHTMLUk = `<!DOCTYPE html>
+<html lang="uk">
+<head><meta charset="UTF-8"><title>Бот заходів ArenaSoldOut.com</title></head>
+<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
+  <h1 style="color:#1a1a2e">Бот заходів ArenaSoldOut.com</h1>
+  <p>%s</p>
+  <p>Відкрийте посилання в Telegram і натисніть <strong>Start</strong>.
+     Посилання одноразове й дійсне до <strong>%s</strong>.</p>
+  <p style="margin:24px 0">
+    <a href="%s"
+       style="background:#1a73e8;color:#fff;padding:12px 24px;border-radius:4px;text-decoration:none;font-weight:bold;display:inline-block">
+      Відкрити бота
+    </a>
+  </p>
+  <p style="font-size:12px;color:#666">
+    Якщо кнопка не працює, скопіюйте й вставте це посилання в Telegram:<br>
+    <span style="word-break:break-all">%s</span>
+  </p>
+  <p style="font-size:11px;color:#999">
+    Якщо ви не очікували цього листа, просто проігноруйте його.
+  </p>
+  <hr>
+  <p style="font-size:11px;color:#999">ArenaSoldOut.com &mdash; автоматичне повідомлення</p>
 </body>
 </html>`
 
 const botInviteHTMLRu = `<!DOCTYPE html>
 <html lang="ru">
-<head><meta charset="UTF-8"><title>Бот мероприятий Arena</title></head>
+<head><meta charset="UTF-8"><title>Бот мероприятий ArenaSoldOut.com</title></head>
 <body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
-  <h1 style="color:#1a1a2e">Бот мероприятий Arena</h1>
+  <h1 style="color:#1a1a2e">Бот мероприятий ArenaSoldOut.com</h1>
   <p>%s</p>
   <p>Откройте ссылку в Telegram и нажмите <strong>Start</strong>.
      Ссылка одноразовая и действует до <strong>%s</strong>.</p>
@@ -255,6 +306,6 @@ const botInviteHTMLRu = `<!DOCTYPE html>
     Если вы не ждали этого письма, просто проигнорируйте его.
   </p>
   <hr>
-  <p style="font-size:11px;color:#999">Arena Platform &mdash; автоматическое сообщение</p>
+  <p style="font-size:11px;color:#999">ArenaSoldOut.com &mdash; автоматическое сообщение</p>
 </body>
 </html>`

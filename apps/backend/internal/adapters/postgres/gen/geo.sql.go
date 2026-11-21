@@ -75,6 +75,37 @@ func (q *Queries) ListCountries(ctx context.Context, locale string) ([]ListCount
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ListOrganizerCountries
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listOrganizerCountries = `-- name: ListOrganizerCountries :many
+SELECT DISTINCT upper(btrim(country)) AS iso2
+FROM   organizations
+WHERE  deleted_at IS NULL
+  AND  btrim(country) <> ''
+ORDER  BY 1
+`
+
+// ListOrganizerCountries returns the upper-case codes of the countries at
+// least one live organization is registered in (organizations.country).
+func (q *Queries) ListOrganizerCountries(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, listOrganizerCountries)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		items = append(items, s)
+	}
+	return items, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ListCities
 // ─────────────────────────────────────────────────────────────────────────────
 

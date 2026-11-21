@@ -56,11 +56,11 @@ export const Route = createRoute({
  */
 const CUSTOMER_DETAIL_NAV_ENTRY: NavEntry = {
   id: "customers-detail",
-  label: "Customer detail",
+  label: "Buyer detail",
   to: "/customers",
   permission: { anyOf: ["customer.read"] },
   scopeKinds: ["global", "platform", "network", "organization"],
-  purpose: "Inspect a single customer's card. Requires customer.read.",
+  purpose: "Examine the card of one buyer. You must have the customer.read permission.",
 };
 
 // ---------------------------------------------------------------------------
@@ -163,8 +163,8 @@ function CustomerDetailModule() {
 
       {orgID === "" ? (
         <div style={statusBoxStyle} role="status" data-testid="customer-detail-org-required">
-          No organization context. Open this page via the Customers list so
-          the <code style={monoStyle}>org</code> id is carried in the URL.
+          No organization is selected. Open this page from the Buyers list.
+          Then the URL has the <code style={monoStyle}>org</code> ID.
         </div>
       ) : (
         <>
@@ -211,7 +211,7 @@ function Breadcrumb({
         to={orgID === "" ? "/customers" : (`/customers?org=${orgID}` as "/customers")}
         style={breadcrumbLinkStyle}
       >
-        Customers
+        Buyers
       </Link>
       <span style={breadcrumbSepStyle}>/</span>
       <span style={breadcrumbCurrentStyle} title={id}>
@@ -225,7 +225,7 @@ function DetailHeader({ query }: { query: UseQueryResult<CustomerCard, ApiError>
   if (query.isPending) {
     return (
       <div style={statusBoxStyle} role="status" aria-live="polite">
-        Loading customer…
+        Loading buyer…
       </div>
     );
   }
@@ -245,7 +245,7 @@ function DetailHeader({ query }: { query: UseQueryResult<CustomerCard, ApiError>
           {c.locale ? (
             <>
               {" "}
-              · Locale <code style={monoStyle}>{c.locale}</code>
+              · Language <code style={monoStyle}>{c.locale}</code>
             </>
           ) : null}
         </p>
@@ -275,11 +275,11 @@ function DetailErrorState({
   if (error instanceof ApiError && error.status === 404) {
     return (
       <div style={errorBoxStyle} role="alert" data-testid="customer-detail-not-found">
-        <strong>Customer not found.</strong>
+        <strong>We did not find the buyer.</strong>
         <p style={errorParaStyle}>
-          {error.message || "This customer does not exist, or is not linked to this organization."}{" "}
-          Use the <Link to="/customers" style={inlineLinkStyle}>customers list</Link>{" "}
-          to pick another customer.
+          {error.message || "This buyer does not exist, or has no link to this organization."}{" "}
+          Use the <Link to="/customers" style={inlineLinkStyle}>buyers list</Link>{" "}
+          to select a different buyer.
         </p>
       </div>
     );
@@ -292,7 +292,7 @@ function DetailErrorState({
       <div style={errorBoxStyle} role="alert" data-testid="customer-detail-forbidden">
         <strong>Forbidden.</strong>
         <p style={errorParaStyle}>
-          Your account is missing <code style={monoStyle}>customer.read</code>.
+          Your account has no <code style={monoStyle}>customer.read</code> permission.
         </p>
       </div>
     );
@@ -301,13 +301,13 @@ function DetailErrorState({
     return (
       <div style={errorBoxStyle} role="status" data-testid="customer-detail-session-expired">
         <strong>Session expired.</strong>
-        <p style={errorParaStyle}>Sign in again to reload this customer.</p>
+        <p style={errorParaStyle}>Sign in again. Then reload this buyer.</p>
       </div>
     );
   }
   return (
     <div style={errorBoxStyle} role="alert" data-testid="customer-detail-error">
-      <strong>Failed to load customer.</strong>
+      <strong>We did not load the buyer.</strong>
       <div style={errorCodeStyle}>{error?.code ?? "unknown.error"}</div>
       {error?.message ? <div style={errorParaStyle}>{error.message}</div> : null}
       <button type="button" style={errorRetryStyle} onClick={onRetry}>
@@ -323,7 +323,7 @@ function DetailErrorState({
 
 function TabBar({ tab, onChange }: { tab: TabId; onChange: (next: TabId) => void }) {
   return (
-    <div role="tablist" aria-label="Customer sections" style={tabBarStyle}>
+    <div role="tablist" aria-label="Buyer sections" style={tabBarStyle}>
       {TABS.map((t) => (
         <button
           key={t.id}
@@ -349,7 +349,7 @@ function IdentitiesTab({ identities }: { identities: readonly CustomerIdentity[]
   if (identities.length === 0) {
     return (
       <div style={statusBoxStyle} role="status" data-testid="identities-empty">
-        No identities on record for this customer.
+        This buyer has no identities.
       </div>
     );
   }
@@ -385,7 +385,7 @@ function OrdersTab({ orders }: { orders: readonly CustomerOrder[] }) {
   if (orders.length === 0) {
     return (
       <div style={statusBoxStyle} role="status" data-testid="orders-empty">
-        No orders for this customer in this organization.
+        This buyer has no orders in this organization.
       </div>
     );
   }
@@ -421,7 +421,7 @@ function AttributesTab({ attributes }: { attributes: readonly CustomerAttribute[
   if (attributes.length === 0) {
     return (
       <div style={statusBoxStyle} role="status" data-testid="attributes-empty">
-        No attributes on record for this customer.
+        This buyer has no attributes.
       </div>
     );
   }
@@ -457,7 +457,7 @@ function ConsentsTab({ consents }: { consents: readonly CustomerConsent[] }) {
   if (consents.length === 0) {
     return (
       <div style={statusBoxStyle} role="status" data-testid="consents-empty">
-        No consents on record for this customer in this organization.
+        This buyer has no consents in this organization.
       </div>
     );
   }

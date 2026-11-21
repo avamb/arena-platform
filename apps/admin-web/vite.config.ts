@@ -1,10 +1,27 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
 
+// Every build gets its own id, written to /version.json (nginx serves it with
+// no-store), so a deploy can be told apart from the previous one. A build may
+// pass its own id (the commit) in VITE_BUILD_ID. Same plugin as the event center.
+process.env.VITE_BUILD_ID ??= Date.now().toString(36);
+
+const versionFile: Plugin = {
+  name: "arena-version-file",
+  apply: "build",
+  generateBundle() {
+    this.emitFile({
+      type: "asset",
+      fileName: "version.json",
+      source: JSON.stringify({ build: process.env.VITE_BUILD_ID }) + "\n",
+    });
+  },
+};
+
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), versionFile],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

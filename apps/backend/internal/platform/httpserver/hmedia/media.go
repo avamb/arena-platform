@@ -261,6 +261,12 @@ func (h *Handler) GetMedia(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	// A hall plan source has no link of its own: it is read only through
+	// the plan intake routes (spec 64 section 2.1).
+	if obj.OwnerType == mediastore.OwnerVenuePlanSource {
+		writeMediaNotFound(w, r)
+		return
+	}
 	if !h.mediaOrgAllowed(w, r, obj.OrgID, false) {
 		return
 	}
@@ -316,6 +322,14 @@ func (h *Handler) DeleteMedia(w http.ResponseWriter, r *http.Request) {
 		// 2): the organization is a party to the dispute, so it never deletes it.
 		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 			"media.receipt_not_deletable", "an archived payment receipt cannot be deleted", r,
+		))
+		return
+	}
+	if obj.OwnerType == mediastore.OwnerVenuePlanSource {
+		// A file of a hall plan intake stays while its plan lives (spec 64
+		// section 4.3): the generator may rebuild the plan from it.
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+			"media.venue_plan_source_not_deletable", "a file of a hall plan intake cannot be deleted here", r,
 		))
 		return
 	}
@@ -385,6 +399,11 @@ func (h *Handler) DownloadMedia(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	// A hall plan source is never served by a signed link, even a valid one.
+	if obj.OwnerType == mediastore.OwnerVenuePlanSource {
+		writeMediaNotFound(w, r)
+		return
+	}
 
 	// Optional resize: ?w=<width> serves a smaller copy of a JPEG or PNG
 	// (rounded up to an allowed width, never upscaled). The signature does
@@ -400,9 +419,11 @@ func (h *Handler) DownloadMedia(w http.ResponseWriter, r *http.Request) {
 		}
 		if vres, ok := h.media.OpenVariant(ctx, obj, wantW); ok {
 			defer func() { _ = vres.Body.Close() }()
-			if vres.ContentType != "" {
-				w.Header().Set("Content-Type", vres.ContentType)
+			variantType := vres.ContentType
+			if variantType == "" {
+				variantType = obj.ContentType
 			}
+			setDownloadHeaders(w.Header(), variantType, obj.OwnerType)
 			w.Header().Set("Content-Length", strconv.FormatInt(vres.Size, 10))
 			w.Header().Set("Cache-Control", "private, max-age=60")
 			w.WriteHeader(http.StatusOK)
@@ -427,20 +448,40 @@ func (h *Handler) DownloadMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = res.Body.Close() }()
 
-	if obj.ContentType != "" {
-		w.Header().Set("Content-Type", obj.ContentType)
-	}
-	if obj.OwnerType == mediastore.OwnerPaymentReceipt {
-		// The copy may be the provider's own HTML page: it is downloaded,
-		// never rendered on the API's origin.
-		w.Header().Set("Content-Disposition", "attachment")
-		w.Header().Set("Content-Security-Policy", "sandbox")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-	}
+	setDownloadHeaders(w.Header(), obj.ContentType, obj.OwnerType)
 	w.Header().Set("Content-Length", strconv.FormatInt(obj.ByteSize, 10))
 	w.Header().Set("Cache-Control", "private, max-age=60")
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, res.Body)
+}
+
+// inlineSafeTypes are the pictures that may be shown without a download prompt.
+var inlineSafeTypes = map[string]bool{
+	"image/png":     true,
+	"image/jpeg":    true,
+	"image/gif":     true,
+	"image/webp":    true,
+	"image/avif":    true,
+	"image/svg+xml": true,
+}
+
+// setDownloadHeaders sets the type and the hardening headers of a download.
+// Every answer is sandboxed and not sniffed; anything but an inline-safe
+// picture (and any payment receipt) is an attachment.
+func setDownloadHeaders(h http.Header, contentType, ownerType string) {
+	if strings.TrimSpace(contentType) == "" {
+		contentType = "application/octet-stream"
+	}
+	h.Set("Content-Type", contentType)
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; sandbox")
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		mediaType = strings.ToLower(strings.TrimSpace(contentType))
+	}
+	if ownerType == mediastore.OwnerPaymentReceipt || !inlineSafeTypes[mediaType] {
+		h.Set("Content-Disposition", "attachment")
+	}
 }
 
 // absoluteSignedURL prefixes a host-relative signed path with the API

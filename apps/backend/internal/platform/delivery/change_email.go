@@ -35,6 +35,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/pdf"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/directions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailstatus"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventnote"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
@@ -277,6 +278,7 @@ func (h *changeEmail) ticketPayload(ctx context.Context, ticketID uuid.UUID, loc
 		}
 	}
 	applyContactRoute(ctx, q, formLink{h.opts.TicketsBaseURL, h.opts.ContactFormEnabled}, ticketID, &p, h.logger)
+	applyBuyerContact(ctx, q.DB(), ticketID, &p, h.logger)
 	resolvePresentation(ctx, q, ticketID, &p, h.logger)
 	return p
 }
@@ -342,9 +344,15 @@ func (h *changeEmail) buildMessage(
 	// follows the ticket letter's rule (ContactRoute, already on the payload):
 	// the sales page's public e-mail, the hosted page's contact form, or -
 	// without a hosted page - the organization's address.
-	contactEmail, contactForm := strings.TrimSpace(contact.Email), ""
-	if contact.Source != "promoter" {
-		contactEmail, contactForm = first.OrgContactEmail, first.ContactFormURL
+	// The payload already carries the buyer contact of the ticket letters
+	// (applyBuyerContact: the promoter, else a public e-mail of the sales page,
+	// else the organization's contact e-mail), so both letters name the same
+	// address; the session-change contact is the fallback.
+	contactEmail, contactForm := strings.TrimSpace(first.OrgContactEmail), strings.TrimSpace(first.ContactFormURL)
+	if contact.Source == "promoter" && strings.TrimSpace(contact.Email) != "" {
+		contactEmail, contactForm = strings.TrimSpace(contact.Email), ""
+	} else if contactEmail == "" && strings.TrimSpace(contact.Email) != "" {
+		contactEmail, contactForm = strings.TrimSpace(contact.Email), ""
 	}
 
 	// The organizer's message: ART (or an older plain text) through the one
@@ -357,11 +365,13 @@ func (h *changeEmail) buildMessage(
 		TicketID:       strings.Join(numbers, ", "),
 		RecipientEmail: recipient.Email,
 		HolderName:     first.HolderName,
-		EventName:      defaultStr(first.EventName, "Arena Event"),
+		EventName:      defaultStr(first.EventName, "ArenaSoldOut.com Event"),
 		SessionStart:   formatSessionForEmail(first.SessionStart, first.SessionTZ),
 		DoorsOpen:      formatClockForEmail(first.DoorsOpenAt, first.SessionTZ),
 		VenueName:      joinNonEmpty(", ", first.VenueName, first.VenueCity),
+		Directions:     directions.Build(first.VenueLat, first.VenueLng, first.VenueAddress, first.VenueCity),
 		Branding:       branding,
+		Contact:        templates.BuyerContact{Email: contactEmail, OrderNumber: orderSystemID(ctx, h.opts.DB, recipient.OrderID)},
 		EventNote:      changeEventNote(moves, first.EventEmailNote, first.EventEmailNoteFormat),
 		WhiteLabel:     whiteLabelForTicket(ctx, whiteLabelResolver(h.opts.DB), h.logger, tickets[0].TicketID.String()),
 		Change: templates.ChangeData{
@@ -398,7 +408,7 @@ func (h *changeEmail) buildMessage(
 	// or the organization's verified one, still originates it.
 	first.OrgContactEmail, first.ContactFormURL = contactEmail, contactForm
 	msg := ticketEmailMessage(first, recipient.Email, out.Subject, out.HTMLBody, out.TextBody)
-	applyWhiteLabelSender(&msg, data.WhiteLabel, brandSenderName(first))
+	applyBrandSender(&msg, brandSenderName(first))
 	if moves {
 		for i, t := range tickets {
 			if len(t.PDF) == 0 {

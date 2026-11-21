@@ -201,30 +201,30 @@ describe("mapBindError", () => {
       /assigned_seats or hybrid/,
     );
     expect(mapBindError(err("seating.version_not_found", 400))).toMatch(
-      /no longer exists/,
+      /not available/,
     );
     expect(mapBindError(err("seating.category_tier_map_incomplete", 400))).toMatch(
-      /Every geometry category/,
+      /Each geometry category/,
     );
     expect(mapBindError(err("seating.tier_not_found", 400))).toMatch(
-      /ticket tiers/,
+      /ticket categories/,
     );
     expect(mapBindError(err("seating.unknown_category", 400))).toMatch(
-      /not present in the plan version/,
+      /not in the geometry of the plan version/,
     );
     expect(mapBindError(err("seating.invalid_category_key", 400))).toMatch(
       /category index/,
     );
     expect(mapBindError(err("seating.invalid_category_tier_map", 400))).toMatch(
-      /not valid/,
+      /not correct/,
     );
-    expect(mapBindError(err("seating.invalid_body", 400))).toMatch(/rejected/);
+    expect(mapBindError(err("seating.invalid_body", 400))).toMatch(/did not accept/);
   });
 
   it("maps the 409 rebind guard to a copy-safe operator sentence", () => {
     const msg = mapBindError(err("seating.rebind_forbidden", 409));
-    expect(msg).toMatch(/reservations/);
-    expect(msg).toMatch(/Create a new session/);
+    expect(msg).toMatch(/holds/);
+    expect(msg).toMatch(/Make a new session/);
   });
 
   it("falls back to status-based messages for auth failures", () => {
@@ -232,14 +232,14 @@ describe("mapBindError", () => {
       /assign_seating_plan/,
     );
     expect(mapBindError(err("http.401", 401))).toMatch(/sign in/);
-    expect(mapBindError(err("http.403", 403))).toMatch(/Forbidden/);
-    expect(mapBindError(err("http.503", 503))).toMatch(/temporarily unavailable/);
-    expect(mapBindError(err("http.404", 404))).toMatch(/not found/);
+    expect(mapBindError(err("http.403", 403))).toMatch(/Access denied/);
+    expect(mapBindError(err("http.503", 503))).toMatch(/not available/);
+    expect(mapBindError(err("http.404", 404))).toMatch(/did not find/);
   });
 
   it("mirrors a bare 409 to the same rebind guard sentence", () => {
     const msg = mapBindError(err("something.else", 409));
-    expect(msg).toMatch(/reservations or tickets/);
+    expect(msg).toMatch(/holds or tickets/);
   });
 
   it("falls back to `<message> (<code>)` for unknown 400s", () => {

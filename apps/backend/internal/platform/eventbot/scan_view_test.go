@@ -34,7 +34,7 @@ func TestEntryLine(t *testing.T) {
 	}{
 		{"macs with a gate", "en",
 			ticketWith(&used, scanAt(40, "denied", scanSourceArena, "North", ""), scanAt(32, "admitted", scanSourceMACS, "Gate 2", "Scanner 7")),
-			[]string{"entered 01.11.2026 19:32", "MACS", "gate Gate 2"}, []string{"turned away", "Scanner 7"}},
+			[]string{"entered 01.11.2026 19:32", "MACS", "gate Gate 2"}, []string{"entry refused", "Scanner 7"}},
 		{"russian wording", "ru",
 			ticketWith(&used, scanAt(32, "admitted", scanSourceMACS, "2", "")),
 			[]string{"01.11.2026 19:32", "МАКС", "вход 2"}, nil},
@@ -45,8 +45,8 @@ func TestEntryLine(t *testing.T) {
 			ticketWith(&used), []string{"entered 01.11.2026 19:32"}, []string{"MACS", "Arena scanner", "gate"}},
 		{"turned away and never let in", "en",
 			ticketWith(nil, scanAt(10, "denied", scanSourceArena, "North", "")),
-			[]string{"turned away 01.11.2026 19:10", "North"}, []string{"entered"}},
-		{"never scanned", "en", ticketWith(nil), nil, []string{"entered", "turned away"}},
+			[]string{"entry refused 01.11.2026 19:10", "North"}, []string{"entered"}},
+		{"never scanned", "en", ticketWith(nil), nil, []string{"entered", "entry refused"}},
 		{"an older server sends no scans at all", "en",
 			openapi.OrderTicketSummary{UsedAt: &used}, []string{"entered"}, []string{"MACS"}},
 	}
@@ -96,7 +96,7 @@ func TestNotEnteredLine(t *testing.T) {
 	}
 	it.TicketId = uuid.New()
 	private := b.notEnteredLine("en", it, "Europe/Madrid", true)
-	for _, want := range []string{"<code>349</code>", "№1000000501", "Parterre", "seat A / 3 / 12", "Anna &lt;b&gt;", "turned away 01.11.2026 19:10", "North"} {
+	for _, want := range []string{"<code>349</code>", "№1000000501", "Parterre", "seat A / 3 / 12", "Anna &lt;b&gt;", "entry refused 01.11.2026 19:10", "North"} {
 		if !strings.Contains(private, want) {
 			t.Errorf("private line %q lacks %q", private, want)
 		}
@@ -106,7 +106,7 @@ func TestNotEnteredLine(t *testing.T) {
 	}
 	// An invitation: no order number, no scan.
 	inv := b.notEnteredLine("en", openapi.SessionTicketItem{SystemTicketId: 5}, "", true)
-	if !strings.Contains(inv, "invitation") || strings.Contains(inv, "turned away") {
+	if !strings.Contains(inv, "invitation") || strings.Contains(inv, "entry refused") {
 		t.Errorf("invitation line = %q", inv)
 	}
 }

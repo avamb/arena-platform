@@ -1,8 +1,9 @@
 // sales_alert.go - the sales_state.alert_email worker job (package
 // salesalert, owner decisions 2026-10-31): tell an organization that a session
-// sold out (the owners AND the managers) or that the WordPress sites did not
-// take a sales state change in time (the owners, only when no sales chat of
-// the organization took the message). The watch queues one job per alert.
+// sold out (the owners AND the managers), that the WordPress sites did not
+// take a sales state change in time, or that the old code of a replaced
+// ticket was used or tried (spec 63 section 4.8) - the last two to the owners,
+// only when no sales chat of the organization took the message. The watch queues one job per alert.
 package delivery
 
 import (
@@ -11,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -51,7 +53,7 @@ func NewSalesAlertHandler(opts SalesAlertOptions) worker.HandlerFunc {
 		}
 		orgID, err1 := uuid.Parse(p.OrgID)
 		sessionID, err2 := uuid.Parse(p.SessionID)
-		if err1 != nil || err2 != nil || (p.Kind != salesalert.KindSoldOut && p.Kind != salesalert.KindSiteStale) {
+		if err1 != nil || err2 != nil || !knownSalesAlertKind(p.Kind) {
 			return nil
 		}
 		if opts.Sender == nil || email.IsDevOnly(opts.Sender) {
@@ -81,6 +83,14 @@ func NewSalesAlertHandler(opts SalesAlertOptions) worker.HandlerFunc {
 				Total: in.TotalPlaces, Free: in.FreePlaces, State: p.State,
 			},
 		}
+		if p.Kind == salesalert.KindReissueOldCode {
+			sa := &data.SalesAlert
+			sa.Attempt, sa.OrderNumber, sa.OldNumber, sa.NewNumber = p.Attempt, p.OrderNumber, p.OldNumber, p.NewNumber
+			sa.Source, sa.Gate, sa.Admitted = p.Source, p.Gate, p.Result == "admitted"
+			if at, perr := time.Parse(time.RFC3339, p.At); perr == nil {
+				sa.At = in.InZone(at)
+			}
+		}
 		sent := 0
 		var firstErr error
 		for _, rc := range recipients {
@@ -105,6 +115,15 @@ func NewSalesAlertHandler(opts SalesAlertOptions) worker.HandlerFunc {
 		}
 		return nil
 	}
+}
+
+// knownSalesAlertKind lists the kinds this job mails.
+func knownSalesAlertKind(k string) bool {
+	switch k {
+	case salesalert.KindSoldOut, salesalert.KindSiteStale, salesalert.KindReissueOldCode:
+		return true
+	}
+	return false
 }
 
 type salesAlertRecipient struct{ email, locale string }

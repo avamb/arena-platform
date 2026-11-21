@@ -6,15 +6,16 @@
  *
  *   - requires `superadmin.read` permission;
  *   - requires the `X-Admin-Reason` header (cross-tenant read);
- *   - returns the *entire* organizations collection in one response,
- *     with no server-side pagination or search controls today.
+ *   - pages with `limit`/`offset` and searches with `q`: one substring,
+ *     case-insensitive, over all main attributes of an organization
+ *     (name, legal name, slug, number, id, country, locale, tax and
+ *     registration numbers, contact e-mail and phone, site, city, sender
+ *     e-mail — `ListOrganizationsPage` in gen/orgs.sql.go).
  *
- * Because the endpoint has no server-side filter API, the search /
- * filter controls below are honestly labelled as *local*: they apply to
- * the rows already returned, and never re-issue a parameterised
- * request. Adding server-side query parameters is a backend change, not
- * a UI workaround — the worst regression we could ship here would be a
- * search box that quietly searches only the first page.
+ * The search box sends its text as `q`, so it searches every organization,
+ * not only the loaded page. `filterRows` repeats the same match on the
+ * loaded rows for an instant result while the debounced request runs. Keep
+ * its field list equal to the server's, or it hides rows the server found.
  *
  * The detail drawer (feature #240) exposes the metadata returned by the
  * list endpoint inside an OVERVIEW tab, and pivots all per-organization
@@ -264,10 +265,7 @@ function OrganizationsExplorer() {
             Organizations
           </h1>
           <p style={subheadingStyle}>
-            Cross-tenant directory of organizations. The list endpoint
-            returns every organization in one response; the controls
-            below filter <strong>locally</strong> — there is no server-side
-            search API today.
+            Directory of the organizations of all tenants. The search finds an organization by any of its main data: name, legal name, slug, number, ID, country, locale, tax or registration number, e-mail, phone, site or city.
           </p>
         </div>
         <div style={refreshWrapStyle}>
@@ -287,7 +285,7 @@ function OrganizationsExplorer() {
             disabled={query.isFetching}
             data-testid="orgs-refresh"
           >
-            {query.isFetching ? "Refreshing…" : "Refresh"}
+            {query.isFetching ? "Reloading" : "Reload"}
           </button>
           {canCreate ? (
             <button
@@ -296,11 +294,11 @@ function OrganizationsExplorer() {
               style={primaryButtonStyle}
               data-testid="orgs-create-open"
             >
-              Create organization
+              Make organization
             </button>
           ) : (
-            <span style={mutedHintStyle} title="Requires org.create">
-              Create requires org.create
+            <span style={mutedHintStyle} title="Necessary permission: org.create">
+              Necessary permission: org.create
             </span>
           )}
         </div>
@@ -313,12 +311,12 @@ function OrganizationsExplorer() {
           <span style={visuallyHiddenStyle}>Filter organizations</span>
           <input
             type="search"
-            placeholder="Search name or slug (server); country, locale, or ID (page)"
+            placeholder="Search by name, legal name, slug, number, ID, e-mail, phone, tax number…"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             style={searchInputStyle}
             data-testid="orgs-filter"
-            aria-label="Search organizations by name or slug"
+            aria-label="Search organizations by any of their data"
           />
         </label>
         <label style={checkboxLabelStyle}>
@@ -328,7 +326,7 @@ function OrganizationsExplorer() {
             onChange={(e) => setIncludeDeleted(e.target.checked)}
             data-testid="orgs-include-deleted"
           />
-          <span>Show soft-deleted</span>
+          <span>Show archived</span>
         </label>
         <div style={countStyle} data-testid="orgs-count" aria-live="polite">
           {renderCount(query.data?.total ?? 0, rows.length, filtered.length, query.isPending)}
@@ -412,15 +410,30 @@ export function filterRows(
   if (needle === "") {
     return visible;
   }
-  return visible.filter((o) => {
-    return (
-      o.name.toLowerCase().includes(needle) ||
-      o.slug.toLowerCase().includes(needle) ||
-      o.country.toLowerCase().includes(needle) ||
-      o.default_locale.toLowerCase().includes(needle) ||
-      o.id.toLowerCase().includes(needle)
-    );
-  });
+  return visible.filter((o) => searchText(o).includes(needle));
+}
+
+// The same fields as the server search (`ListOrganizationsPage`, gen/orgs.sql.go).
+function searchText(o: AdminOrganization): string {
+  return [
+    o.name,
+    o.legal_name,
+    o.slug,
+    o.display_number == null ? "" : String(o.display_number),
+    o.id,
+    o.country,
+    o.default_locale,
+    o.tax_id,
+    o.registration_number,
+    o.contact_email,
+    o.contact_phone,
+    o.website_url,
+    o.legal_address_city,
+    o.sender_email,
+  ]
+    .filter((v): v is string => typeof v === "string" && v !== "")
+    .join(" ")
+    .toLowerCase();
 }
 
 function renderCount(total: number, pageRows: number, shown: number, pending: boolean): string {
@@ -471,7 +484,7 @@ function OrganizationsBody({
   if (rows.length === 0) {
     return (
       <div style={statusBoxStyle} role="status" data-testid="orgs-empty">
-        No organizations match the current filter.
+        No organization matches the filter.
       </div>
     );
   }
@@ -540,7 +553,7 @@ function OrganizationsTable({
     },
     {
       id: "ttl",
-      header: "Reservation TTL",
+      header: "Hold TTL",
       renderCell: (o) => formatDurationSeconds(o.reservation_ttl_seconds),
     },
     {
@@ -580,7 +593,7 @@ function OrganizationsTable({
               disabled={o.deleted_at !== null}
               title={
                 o.deleted_at !== null
-                  ? "Soft-deleted organizations cannot be edited"
+                  ? "You cannot edit an archived organization"
                   : "Edit organization"
               }
               data-testid={`orgs-edit-${o.slug}`}
@@ -596,8 +609,8 @@ function OrganizationsTable({
               disabled={o.deleted_at !== null}
               title={
                 o.deleted_at !== null
-                  ? "Organization is already archived"
-                  : "Archive organization (soft-delete)"
+                  ? "The organization is archived"
+                  : "Archive organization"
               }
               data-testid={`orgs-archive-${o.slug}`}
             >
@@ -631,13 +644,12 @@ function OrgErrorState({
   if (error instanceof ApiError && error.code === "superadmin.reason_required") {
     return (
       <div style={errorBoxStyle} role="status" data-testid="orgs-reason-required">
-        <strong>Audit reason required.</strong>
+        <strong>An audit reason is necessary.</strong>
         <p style={errorParaStyle}>
-          Cross-tenant reads require an <code>X-Admin-Reason</code>. Submit a
-          reason in the prompt at the top of the screen and then retry.
+          Reads across tenants must have an <code>X-Admin-Reason</code>. Send a reason in the prompt at the top of the screen. Then try again.
         </p>
         <button type="button" style={errorRetryStyle} onClick={onRetry}>
-          Retry
+          Try again
         </button>
       </div>
     );
@@ -650,8 +662,7 @@ function OrgErrorState({
       <div style={errorBoxStyle} role="alert" data-testid="orgs-forbidden">
         <strong>Forbidden.</strong>
         <p style={errorParaStyle}>
-          Your account is missing <code>superadmin.read</code>. Ask a platform
-          administrator to grant the permission.
+          Your account does not have <code>superadmin.read</code>. Tell a platform administrator to give you this permission.
         </p>
       </div>
     );
@@ -666,11 +677,11 @@ function OrgErrorState({
   }
   return (
     <div style={errorBoxStyle} role="alert" data-testid="orgs-error">
-      <strong>Failed to load organizations.</strong>
+      <strong>We did not load the organizations.</strong>
       <div style={errorCodeStyle}>{error?.code ?? "unknown.error"}</div>
       {error?.message ? <div style={errorParaStyle}>{error.message}</div> : null}
       <button type="button" style={errorRetryStyle} onClick={onRetry}>
-        Retry
+        Try again
       </button>
     </div>
   );
@@ -901,7 +912,7 @@ function OverviewTab({ org }: { org: AdminOrganization }) {
         <MetaRow k="Country" v={org.country} />
         <MetaRow k="Default locale" v={org.default_locale} />
         <MetaRow
-          k="Reservation TTL"
+          k="Hold TTL"
           v={`${formatDurationSeconds(org.reservation_ttl_seconds)} (${org.reservation_ttl_seconds.toLocaleString()}s)`}
         />
         <MetaRow k="Created" v={formatDateTime(org.created_at)} />
@@ -992,7 +1003,7 @@ function MacsWebhookSection({ orgId }: { orgId: string }) {
       qc.invalidateQueries({ queryKey });
     },
     onError: (err) => {
-      setFormError(err instanceof Error ? err.message : "Registration failed");
+      setFormError(err instanceof Error ? err.message : "The registration did not complete");
     },
   });
 
@@ -1006,7 +1017,7 @@ function MacsWebhookSection({ orgId }: { orgId: string }) {
       qc.invalidateQueries({ queryKey });
     },
     onError: (err) => {
-      setDeleteError(err instanceof Error ? err.message : "Deactivation failed");
+      setDeleteError(err instanceof Error ? err.message : "The deactivation did not complete");
     },
   });
 
@@ -1066,13 +1077,13 @@ function MacsWebhookSection({ orgId }: { orgId: string }) {
 
       {isLoading && <p style={{ fontSize: 13, color: "#64748b" }}>Loading…</p>}
       {error && !isLoading && (
-        <p style={{ fontSize: 12, color: "#b91c1c" }}>Failed to load MACS webhook: {String(error)}</p>
+        <p style={{ fontSize: 12, color: "#b91c1c" }}>We did not load the MACS webhook: {String(error)}</p>
       )}
 
       {justRegistered?.signing_secret && (
         <div style={macsSubStyle}>
           <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 600, color: "#065f46" }}>
-            ✓ Registered. Save the signing secret — it will not be shown again.
+            ✓ Registered. Save the signing secret. The platform will not show it again.
           </p>
           <div style={macsSecretBoxStyle}>{justRegistered.signing_secret}</div>
           <p style={{ margin: "4px 0 0", fontSize: 11, color: "#64748b" }}>
@@ -1129,7 +1140,7 @@ function MacsWebhookSection({ orgId }: { orgId: string }) {
 
       {!isLoading && !subscriber && !showForm && !justRegistered?.signing_secret && (
         <div style={{ marginTop: 8 }}>
-          <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 8px" }}>No MACS webhook registered for this org.</p>
+          <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 8px" }}>No MACS webhook is registered for this organization.</p>
           <button
             type="button"
             style={smallBtnStyle}
@@ -1163,13 +1174,13 @@ function MacsWebhookSection({ orgId }: { orgId: string }) {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <label style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>
-              Signing secret (optional — auto-generated if blank)
+              Signing secret (optional). If blank, the platform makes one.
             </label>
             <input
               type="text"
               value={signingSecret}
               onChange={(e) => setSigningSecret(e.target.value)}
-              placeholder="leave blank to auto-generate"
+              placeholder="Leave blank. The platform makes one."
               style={{ fontSize: 12, padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 4, fontFamily: "ui-monospace, monospace" }}
               data-testid="orgs-macs-webhook-secret-input"
             />
@@ -1216,7 +1227,7 @@ function MacsWebhookSection({ orgId }: { orgId: string }) {
 //        - add  (POST)         — opens a small inline form row
 //        - edit (PATCH)        — opens an inline editor row
 //        - delete (DELETE)     — soft-delete with confirm
-//        - "Designate default" (PATCH {is_primary: true})
+//        - "Make default" (PATCH {is_primary: true})
 //
 // Tax-id format validation is server-side per `tax_id_scheme`. The UI
 // surfaces server-returned per-field errors via mapLegalServerError /
@@ -1311,7 +1322,7 @@ export function validateLegalCountry(raw: string): string | null {
 export function validateLegalEmail(raw: string): string | null {
   const t = raw.trim();
   if (t === "") return null;
-  return EMAIL_RE_LEGAL.test(t) ? null : "Must be a valid email address";
+  return EMAIL_RE_LEGAL.test(t) ? null : "Must be a correct e-mail address";
 }
 
 export function validateLegalUrl(raw: string): string | null {
@@ -1335,7 +1346,7 @@ export function validateTaxId(
   if (t === "" && s === "") return null;
   if (t === "" && s !== "") return "tax_id is required when a scheme is selected";
   if (t !== "" && s === "")
-    return "Choose a tax_id_scheme so the server can validate the format";
+    return "Select a tax_id_scheme. Then the server can check the format.";
   return null;
 }
 
@@ -1374,13 +1385,13 @@ export function mapLegalServerError(err: ApiError): LegalEntityFormErrors {
     case "permissions.denied":
       return {
         form:
-          "Your account is missing org.update. Ask a platform administrator.",
+          "Your account does not have org.update. Tell a platform administrator.",
       };
     case "superadmin.missing_reason":
     case "superadmin.reason_required":
       return {
         form:
-          "An audit reason (X-Admin-Reason) is required. Submit a reason and retry.",
+          "An audit reason (X-Admin-Reason) is necessary. Send a reason and try again.",
       };
     default:
       if (field !== undefined) {
@@ -1434,7 +1445,7 @@ export function validateBankIdentifier(
   const rn = routingNumber.trim();
   if (ib !== "") return null;
   if (an !== "" && rn !== "") return null;
-  return "Provide an IBAN, or both account_number and routing_number";
+  return "Give an IBAN, or give both account_number and routing_number";
 }
 
 export function mapBankAccountServerError(
@@ -1463,13 +1474,13 @@ export function mapBankAccountServerError(
       return { form: err.message };
     case "permissions.denied":
       return {
-        form: "Your account is missing org.update. Ask a platform administrator.",
+        form: "Your account does not have org.update. Tell a platform administrator.",
       };
     case "superadmin.missing_reason":
     case "superadmin.reason_required":
       return {
         form:
-          "An audit reason (X-Admin-Reason) is required. Submit a reason and retry.",
+          "An audit reason (X-Admin-Reason) is necessary. Send a reason and try again.",
       };
     default:
       if (field !== undefined) {
@@ -1585,10 +1596,7 @@ function LegalEntitySection({ org }: { org: AdminOrganization }) {
     <section data-testid="orgs-drawer-legal-entity">
       <h3 style={drawerSectionTitleStyle}>Legal entity</h3>
       <p style={drawerHelpStyle}>
-        <code>PATCH /v1/organizations/{org.id}</code> — registered juridical
-        identity, tax registration, and primary contact channel. Format
-        checks on <code>tax_id</code> are server-side per the chosen
-        <code> tax_id_scheme</code>.
+        <code>PATCH /v1/organizations/{org.id}</code> Legal identity, tax registration and main contact channel. The server checks the format of <code>tax_id</code> for the selected <code> tax_id_scheme</code>.
       </p>
       <form
         onSubmit={onSubmit}
@@ -1601,7 +1609,7 @@ function LegalEntitySection({ org }: { org: AdminOrganization }) {
           htmlFor="legal-name"
           error={serverErrors.legal_name ?? null}
           localError={localErrors.legal_name ?? null}
-          hint="Registered juridical name as recorded by the tax authority. Required for KYB pending/verified. Buyers see it in the footer of the e-ticket PDF and in the Seller block of the ticket sale page, when that block is on."
+          hint="The legal name in the record of the tax authority. Necessary for KYB pending or verified. Buyers see it in the footer of the e-ticket PDF. They also see it in the Seller block of the ticket sale page, if that block is on."
         >
           <input
             id="legal-name"
@@ -1620,7 +1628,7 @@ function LegalEntitySection({ org }: { org: AdminOrganization }) {
             htmlFor="tax-id-scheme"
             error={serverErrors.tax_id_scheme ?? null}
             localError={null}
-            hint="Determines the format check applied to tax_id."
+            hint="This gives the format check for tax_id."
           >
             <select
               id="tax-id-scheme"
@@ -1642,7 +1650,7 @@ function LegalEntitySection({ org }: { org: AdminOrganization }) {
             htmlFor="tax-id"
             error={serverErrors.tax_id ?? null}
             localError={localErrors.tax_id ?? null}
-            hint="Validated server-side per scheme."
+            hint="The server checks it for the scheme."
           >
             <input
               id="tax-id"
@@ -1661,7 +1669,7 @@ function LegalEntitySection({ org }: { org: AdminOrganization }) {
           htmlFor="reg-number"
           error={serverErrors.registration_number ?? null}
           localError={null}
-          hint="Company-registry / juridical-person number (optional)."
+          hint="Number in the company registry (optional)."
         >
           <input
             id="reg-number"
@@ -1676,7 +1684,7 @@ function LegalEntitySection({ org }: { org: AdminOrganization }) {
 
         <h4 style={subSectionTitleStyle}>Registered address</h4>
         <p style={{ margin: 0, fontSize: 12, opacity: 0.75 }} data-testid="legal-address-visibility-note">
-          Buyers see this address in the footer of the e-ticket PDF and in the Seller block of the ticket sale page, when that block is on.
+          Buyers see this address in the footer of the e-ticket PDF. They also see it in the Seller block of the ticket sale page, if that block is on.
         </p>
         <FieldRow
           label="Address line 1"
@@ -1752,7 +1760,7 @@ function LegalEntitySection({ org }: { org: AdminOrganization }) {
             htmlFor="addr-country"
             error={serverErrors.legal_address_country ?? null}
             localError={localErrors.legal_address_country ?? null}
-            hint="Search the country registry by name or code. Raw ISO entry remains available."
+            hint="Search the country registry by name or code. You can also type the ISO code."
           >
             <CountryPicker
               id="addr-country"
@@ -1767,11 +1775,11 @@ function LegalEntitySection({ org }: { org: AdminOrganization }) {
         <h4 style={subSectionTitleStyle}>Contact</h4>
         <div style={fieldGridStyle}>
           <FieldRow
-            label="Contact email"
+            label="Contact e-mail"
             htmlFor="contact-email"
             error={serverErrors.contact_email ?? null}
             localError={localErrors.contact_email ?? null}
-            hint="Public contact email. Buyers see it in ticket letters, session change and cancellation letters, and in the e-ticket PDF. Do not use a personal address."
+            hint="Public contact e-mail. Buyers see it in ticket e-mails, in e-mails about a session change or cancellation, and in the e-ticket PDF. Do not use a personal address."
           >
             <input
               id="contact-email"
@@ -1788,7 +1796,7 @@ function LegalEntitySection({ org }: { org: AdminOrganization }) {
             htmlFor="contact-phone"
             error={serverErrors.contact_phone ?? null}
             localError={null}
-            hint="E.164 recommended. Buyers can see it in letters when the organizer chooses to show it."
+            hint="We recommend the E.164 format. Buyers see it in e-mails if the organizer selects to show it."
           >
             <input
               id="contact-phone"
@@ -1802,7 +1810,7 @@ function LegalEntitySection({ org }: { org: AdminOrganization }) {
           </FieldRow>
         </div>
         <FieldRow
-          label="Website URL"
+          label="Site URL"
           htmlFor="website-url"
           error={serverErrors.website_url ?? null}
           localError={localErrors.website_url ?? null}
@@ -1841,7 +1849,7 @@ function LegalEntitySection({ org }: { org: AdminOrganization }) {
           htmlFor="kyb-status"
           error={serverErrors.kyb_status ?? null}
           localError={null}
-          hint="Transitioning to pending or verified requires legal_name to be set."
+          hint="To change the status to pending or verified, you must set legal_name."
         >
           <select
             id="kyb-status"
@@ -1999,8 +2007,7 @@ function BankAccountsSection({ org }: { org: AdminOrganization }) {
         <code>
           GET/POST/PATCH/DELETE /v1/organizations/{org.id}/bank-accounts
         </code>{" "}
-        — banking coordinates used for payouts, refunds, and tax-form
-        rendering. Exactly one account must be marked primary.
+        Bank details for payouts, refunds and tax forms. Mark exactly one account as primary.
       </p>
 
       {editing.kind === "add" ? (
@@ -2078,7 +2085,7 @@ function BankAccountsSection({ org }: { org: AdminOrganization }) {
                         }}
                         data-testid={`bank-designate-${r.id}`}
                       >
-                        Designate default
+                        Make default
                       </button>
                     )}
                   </td>
@@ -2249,7 +2256,7 @@ function BankAccountForm({
           htmlFor={`bank-holder-${mode}`}
           error={serverErrors.holder_name ?? null}
           localError={state.holder_name.length > 0 ? holderErr : null}
-          hint="Typically the org's legal_name."
+          hint="Usually the legal_name of the organization."
         >
           <input
             id={`bank-holder-${mode}`}
@@ -2268,7 +2275,7 @@ function BankAccountForm({
           htmlFor={`bank-bankname-${mode}`}
           error={serverErrors.bank_name ?? null}
           localError={null}
-          hint="Optional, free-form."
+          hint="Optional. Free text."
         >
           <input
             id={`bank-bankname-${mode}`}
@@ -2327,7 +2334,7 @@ function BankAccountForm({
           htmlFor={`bank-iban-${mode}`}
           error={serverErrors.iban ?? null}
           localError={null}
-          hint="Use IBAN for EU; or fill account_number + routing_number."
+          hint="Use IBAN for the EU. Or fill account_number and routing_number."
         >
           <input
             id={`bank-iban-${mode}`}
@@ -2363,7 +2370,7 @@ function BankAccountForm({
           htmlFor={`bank-acct-${mode}`}
           error={serverErrors.account_number ?? null}
           localError={null}
-          hint="Domestic (non-IBAN) — pairs with routing_number."
+          hint="Domestic (not IBAN). Use it with routing_number."
         >
           <input
             id={`bank-acct-${mode}`}
@@ -2382,7 +2389,7 @@ function BankAccountForm({
           htmlFor={`bank-routing-${mode}`}
           error={serverErrors.routing_number ?? null}
           localError={null}
-          hint="ABA / sort code — pairs with account_number."
+          hint="ABA or sort code. Use it with account_number."
         >
           <input
             id={`bank-routing-${mode}`}
@@ -2404,7 +2411,7 @@ function BankAccountForm({
           onChange={(e) => setState({ ...state, is_primary: e.target.checked })}
           data-testid={`bank-primary-${mode}`}
         />{" "}
-        Designate as default (primary)
+        Make this the default (primary)
       </label>
 
       {identifierErr !== null ? (
@@ -2562,7 +2569,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export function validateMemberUserInput(raw: string): string | null {
   const trimmed = raw.trim();
   if (trimmed === "") {
-    return "Enter a user_id (UUID) or email address";
+    return "Enter a user_id (UUID) or an e-mail address";
   }
   if (UUID_RE.test(trimmed)) {
     return null;
@@ -2570,7 +2577,7 @@ export function validateMemberUserInput(raw: string): string | null {
   if (EMAIL_RE.test(trimmed)) {
     return null;
   }
-  return "Must be a UUID or a valid email address";
+  return "Must be a UUID or a correct e-mail address";
 }
 
 /**
@@ -2657,12 +2664,12 @@ export function mapAddMemberServerError(err: ApiError): AddMemberFieldErrors {
       return { form: err.message };
     case "permissions.denied":
       return {
-        form: "Your account is missing membership.grant. Ask a platform administrator.",
+        form: "Your account does not have membership.grant. Tell a platform administrator.",
       };
     case "superadmin.missing_reason":
     case "superadmin.reason_required":
       return {
-        form: "An audit reason (X-Admin-Reason) is required. Submit a reason and retry.",
+        form: "An audit reason (X-Admin-Reason) is necessary. Send a reason and try again.",
       };
     default:
       if (field === "role") {
@@ -2685,14 +2692,14 @@ export function mapMembershipMutationError(err: ApiError): string {
     case "admin_membership.invalid_role":
       return err.message;
     case "admin_membership.duplicate":
-      return "User already holds the requested role.";
+      return "The user holds this role.";
     case "admin_membership.not_found":
-      return "Membership not found or already revoked.";
+      return "We did not find the membership, or it is revoked.";
     case "permissions.denied":
       return "Permission denied (membership.grant / membership.revoke).";
     case "superadmin.missing_reason":
     case "superadmin.reason_required":
-      return "An audit reason (X-Admin-Reason) is required. Submit a reason and retry.";
+      return "An audit reason (X-Admin-Reason) is necessary. Send a reason and try again.";
     default:
       return `${err.message} (${err.code})`;
   }
@@ -2828,8 +2835,7 @@ function BotInviteNoticeCard({
       {notice.ok ? (
         <>
           <div>
-            Role in the organization: {notice.role !== undefined ? formatMembershipRole(notice.role) : "—"}. The same link
-            was sent to {notice.email} by e-mail; it works once and for 7 days.
+            Role in the organization: {notice.role !== undefined ? formatMembershipRole(notice.role) : "—"}. We sent the same link to {notice.email} by e-mail. It works one time, for 7 days.
           </div>
           {notice.link ? (
             <div style={botInviteLinkRowStyle}>
@@ -2976,8 +2982,8 @@ function UsersTab({ org }: { org: AdminOrganization }) {
               Invite member
             </button>
           ) : (
-            <span style={mutedHintStyle} title="Requires membership.grant">
-              Add requires membership.grant
+            <span style={mutedHintStyle} title="Necessary permission: membership.grant">
+              Necessary permission: membership.grant
             </span>
           )}
         </div>
@@ -3108,7 +3114,7 @@ function UsersTab({ org }: { org: AdminOrganization }) {
                               onClick={() => setBotPickFor(m.id)}
                               data-testid={`orgs-drawer-users-bot-${m.id}`}
                               disabled={botInvite.isPending}
-                              title="Send this member a link to the Telegram event-center bot. You choose the letter language next."
+                              title="Send this member a link to the Telegram event-center bot. Next, you select the language of the e-mail."
                             >
                               {botInvite.isPending && botInvite.variables?.email === m.email
                                 ? "Creating…"
@@ -3321,7 +3327,7 @@ function AddMemberDialog({
             message:
               err instanceof ApiError
                 ? mapMembershipMutationError(err)
-                : "Could not create the bot invitation. Use the Bot link button on the member row.",
+                : "We did not make the bot invitation. Use the Bot link button on the member row.",
           };
         }
       }
@@ -3372,11 +3378,11 @@ function AddMemberDialog({
         </header>
         <form onSubmit={onSubmit} style={formStyle} noValidate>
           <FieldRow
-            label="User ID or email"
+            label="User ID or e-mail"
             htmlFor="orgs-add-member-user"
             error={serverErrors.user ?? null}
             localError={userErr}
-            hint="Enter a UUIDv7 user_id, or an email address — backend resolves email → user via GetUserByEmail."
+            hint="Enter a UUIDv7 user_id or an e-mail address. The backend finds the user from the e-mail with GetUserByEmail."
           >
             <input
               id="orgs-add-member-user"
@@ -3438,7 +3444,7 @@ function AddMemberDialog({
             htmlFor="orgs-add-member-role"
             error={serverErrors.role ?? null}
             localError={null}
-            hint="Roles are enforced by the memberships_role_check CHECK constraint."
+            hint="The memberships_role_check CHECK constraint sets the roles."
           >
             <select
               id="orgs-add-member-role"
@@ -3466,7 +3472,7 @@ function AddMemberDialog({
               htmlFor="orgs-add-member-send"
               error={null}
               localError={null}
-              hint="Console: a new user gets a letter to set a password, for people who work in this admin. Bot: a one-time Telegram link, enough for an organizer who only uses the bot (no console password). Both: the two letters. For an owner the bot opens Team and Events; for an organizer, Events."
+              hint="Console: a new user gets an e-mail to make a password. Use it for people who work in this admin console. Bot: a one-time Telegram link. It is enough for an organizer who uses only the bot (no console password). Both: the two e-mails. For an owner, the bot opens Team and Events. For an organizer, it opens Events."
             >
               <select
                 id="orgs-add-member-send"
@@ -3476,7 +3482,7 @@ function AddMemberDialog({
                 aria-invalid={sendMode === ""}
                 data-testid="orgs-drawer-users-add-send"
               >
-                <option value="">Choose what to send…</option>
+                <option value="">Select what to send</option>
                 <option value="admin">Admin console invitation only</option>
                 <option value="bot">Telegram bot invitation only</option>
                 <option value="both">Both: console and bot</option>
@@ -3492,10 +3498,10 @@ function AddMemberDialog({
                   aria-invalid={botLocale === ""}
                   data-testid="orgs-drawer-users-add-bot-locale"
                 >
-                  <option value="">Choose the bot letter language…</option>
+                  <option value="">Select the language of the bot e-mail</option>
                   {BOT_INVITE_LANGUAGES.map((l) => (
                     <option key={l.code} value={l.code}>
-                      Bot letter in {l.name}
+                      Bot e-mail in {l.name}
                     </option>
                   ))}
                 </select>
@@ -3528,9 +3534,9 @@ function AddMemberDialog({
               disabled={!localValid || sendBlocked || mutation.isPending}
               title={
                 channels.missing
-                  ? "Choose what to send first"
+                  ? "First select what to send"
                   : botLocaleMissing
-                    ? "Choose the language of the bot invitation letter first"
+                    ? "First select the language of the bot invitation e-mail"
                     : undefined
               }
               data-testid="orgs-drawer-users-add-submit"
@@ -3583,13 +3589,13 @@ function VenuesTab({ org }: { org: AdminOrganization }) {
             style={smallPrimaryLinkStyle}
             data-testid="orgs-drawer-venues-create"
           >
-            Create venue
+            Make venue
+
           </a>
         ) : null}
       </div>
       <p style={drawerHelpStyle}>
-        <code>GET /v1/venues</code> — filtered to org_id <code>{org.id}</code>{" "}
-        client-side.
+        <code>GET /v1/venues</code> Filtered to org_id <code>{org.id}</code>{" "} on this page.
       </p>
       {!canRead ? (
         <TabForbidden missing="venue.read" testid="orgs-drawer-venues-forbidden" />
@@ -3697,7 +3703,8 @@ function ChannelsTab({ org }: { org: AdminOrganization }) {
             style={smallPrimaryLinkStyle}
             data-testid="orgs-drawer-channels-create"
           >
-            Create channel
+            Add channel
+
           </a>
         ) : null}
       </div>
@@ -3792,7 +3799,8 @@ function PaymentsTab({ org }: { org: AdminOrganization }) {
             style={smallPrimaryLinkStyle}
             data-testid="orgs-drawer-payments-create"
           >
-            Create payment config
+            Make payment config
+
           </a>
         ) : null}
       </div>
@@ -3898,25 +3906,21 @@ function ProviderReceiptSection({ orgId }: { orgId: string }) {
     <section data-testid="orgs-drawer-provider-receipt" style={{ marginTop: 16 }}>
       <h3 style={drawerSectionTitleStyle}>Provider receipt to the buyer</h3>
       <p style={drawerHelpStyle}>
-        When on, checkout asks the payment provider (Stripe receipt_email,
-        PayPlus sendEmailApproval) to e-mail its own receipt to the buyer.
-        &quot;Off&quot; cannot promise that no receipt is sent: the
-        organizer&apos;s provider account may send one itself.
+        When this is on, checkout asks the payment provider (Stripe receipt_email, PayPlus sendEmailApproval) to e-mail a receipt to the buyer. If this is off, we cannot promise that no receipt goes out. The provider account of the organizer can send one.
       </p>
       {query.isPending ? (
         <div style={tabStatusStyle} role="status">Loading…</div>
       ) : query.isError || !setting ? (
         <TabError
-          error={query.error ?? new ApiError(0, { code: "unknown", message: "No provider receipt setting in the answer" })}
+          error={query.error ?? new ApiError(0, { code: "unknown", message: "The answer has no provider receipt setting" })}
           retry={() => query.refetch()}
           testid="orgs-drawer-provider-receipt-error"
         />
       ) : (
         <>
           <p style={tabStatusStyle} data-testid="orgs-drawer-provider-receipt-state">
-            Owner&apos;s choice: {setting.enabled ? "send" : "do not send"}.
-            Always send (platform): {setting.forced ? "on" : "off"}. Checkout
-            now: {setting.effective ? "asks for the receipt" : "does not ask"}.
+            Choice of the owner: {setting.enabled ? "send" : "do not send"}.
+            Always send (platform): {setting.forced ? "on" : "off"}. Checkout: {setting.effective ? "asks for the receipt" : "does not ask"}.
           </p>
           <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <input
@@ -4015,7 +4019,7 @@ export function validateApiKeyName(raw: string): string | null {
 }
 
 export function validateApiKeyScopes(scopes: readonly string[]): string | null {
-  return scopes.length === 0 ? "Select at least one scope" : null;
+  return scopes.length === 0 ? "Select one scope or more" : null;
 }
 
 export interface ApiKeyFormErrors {
@@ -4037,7 +4041,7 @@ export function mapApiKeyServerError(err: ApiError): ApiKeyFormErrors {
     case "superadmin.missing_reason":
       return {
         form:
-          "An audit reason (X-Admin-Reason) is required. Submit a reason and retry.",
+          "An audit reason (X-Admin-Reason) is necessary. Send a reason and try again.",
       };
     default:
       return { form: `${err.message} (${err.code})` };
@@ -4118,14 +4122,12 @@ function ApiKeysTab({ org }: { org: AdminOrganization }) {
         </button>
       </div>
       <p style={drawerHelpStyle}>
-        <code>GET/POST/DELETE /v1/organizations/{org.id}/api-keys</code> —
-        server-to-server service credentials (spec §13.1). The full secret is
-        shown exactly once, immediately after issue.
+        <code>GET/POST/DELETE /v1/organizations/{org.id}/api-keys</code> Server-to-server service credentials (spec §13.1). The platform shows the full secret one time only, after you issue the key.
       </p>
 
       {justIssued !== null ? (
         <div style={apiKeySecretBannerStyle} role="alert" data-testid="api-key-secret-banner">
-          <strong>Copy this key now — it will never be shown again.</strong>
+          <strong>Copy this key. The platform will not show it again.</strong>
           <div style={apiKeySecretRowStyle}>
             <code data-testid="api-key-secret-value">{justIssued.api_key}</code>
             <button
@@ -4151,7 +4153,7 @@ function ApiKeysTab({ org }: { org: AdminOrganization }) {
           </div>
           {copyState === "failed" ? (
             <p data-testid="api-key-secret-copy-failed">
-              The browser refused the clipboard — select the key above and copy it manually.
+              The browser did not allow access to the clipboard. Select the key above and copy it by hand.
             </p>
           ) : null}
           <button
@@ -4344,7 +4346,7 @@ function ApiKeyIssueForm({
         htmlFor="api-key-name"
         error={serverErrors.name ?? null}
         localError={localErrors.name ?? null}
-        hint="Human-readable label, e.g. the WordPress site's name."
+        hint="A label that a person can read. For example, the name of the WordPress site."
       >
         <input
           id="api-key-name"
@@ -4362,7 +4364,7 @@ function ApiKeyIssueForm({
         htmlFor="api-key-channel"
         error={serverErrors.channel ?? null}
         localError={null}
-        hint="The site channel this key speaks for. Events it imports with publish are published into this channel and its site webhooks fire; without a channel they reach no storefront."
+        hint="The site channel of this key. If the key imports events with publish, the platform publishes them in this channel and sends its site webhooks. Without a channel, the events do not reach a storefront."
       >
         <select
           id="api-key-channel"
@@ -4463,8 +4465,7 @@ const apiKeyScopeLabelStyle: CSSProperties = {
 function TabForbidden({ missing, testid }: { missing: string; testid: string }) {
   return (
     <div style={tabStatusStyle} role="status" data-testid={testid}>
-      Your account is missing <code>{missing}</code>. Ask a platform
-      administrator to grant the permission.
+      Your account does not have <code>{missing}</code>. Tell a platform administrator to give you this permission.
     </div>
   );
 }
@@ -4481,7 +4482,7 @@ function TabError({
   if (error instanceof ApiError && error.status === 403) {
     return (
       <div style={tabStatusStyle} role="alert" data-testid={testid}>
-        Forbidden ({error.code}). {error.message}
+        Access denied ({error.code}). {error.message}
       </div>
     );
   }
@@ -4490,7 +4491,7 @@ function TabError({
       <div style={errorCodeStyle}>{error?.code ?? "unknown.error"}</div>
       {error?.message ? <div>{error.message}</div> : null}
       <button type="button" style={errorRetryStyle} onClick={retry}>
-        Retry
+        Try again
       </button>
     </div>
   );
@@ -4536,7 +4537,7 @@ export function validateOrgSlug(raw: string): string | null {
     return "Slug must be at most 100 characters";
   }
   if (!SLUG_RE.test(trimmed)) {
-    return "Slug must contain only lowercase letters, digits, and dashes";
+    return "The slug can have only lowercase letters, digits and dashes";
   }
   return null;
 }
@@ -4550,7 +4551,7 @@ export function validateOrgCountry(raw: string): string | null {
     return "Country must be a 2-letter ISO 3166-1 alpha-2 code";
   }
   if (!/^[A-Za-z]+$/.test(trimmed)) {
-    return "Country must be alphabetic";
+    return "Country must have letters only";
   }
   return null;
 }
@@ -4562,7 +4563,7 @@ export function validateOrgLocale(raw: string): string | null {
   }
   // BCP-47 lite: language[-REGION]
   if (!/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})?$/.test(trimmed)) {
-    return "Locale must look like 'en' or 'en-US'";
+    return "Locale must be in the format 'en' or 'en-US'";
   }
   return null;
 }
@@ -4662,7 +4663,7 @@ function CountryPicker({
         </datalist>
       ) : (
         <div id={`${id}-registry-hint`} style={fieldHintStyle} data-testid={`${testId}-fallback`}>
-          Country registry is unavailable or empty; enter a 2-letter ISO code.
+          The country registry is not available or is empty. Enter a 2-letter ISO code.
         </div>
       )}
     </>
@@ -4714,13 +4715,13 @@ export function validateOrgReservationTTL(raw: string): string | null {
   }
   const parsed = Number(trimmed);
   if (!Number.isInteger(parsed)) {
-    return "Reservation TTL must be a whole number of seconds";
+    return "Hold TTL must be a whole number of seconds";
   }
   if (parsed <= 0) {
-    return "Reservation TTL must be positive";
+    return "Hold TTL must be more than 0";
   }
   if (parsed > 86_400) {
-    return "Reservation TTL must be at most 86400 (24h)";
+    return "Hold TTL must be 86400 (24h) or less";
   }
   return null;
 }
@@ -4767,12 +4768,12 @@ export function mapCreateOrgServerError(err: ApiError): CreateOrgFieldErrors {
       return out;
     case "permissions.denied":
       out.form =
-        "Your account is missing org.create. Ask a platform administrator.";
+        "Your account does not have org.create. Tell a platform administrator.";
       return out;
     case "superadmin.missing_reason":
     case "superadmin.reason_required":
       out.form =
-        "An audit reason (X-Admin-Reason) is required. Submit a reason and retry.";
+        "An audit reason (X-Admin-Reason) is necessary. Send a reason and try again.";
       return out;
     default:
       if (field === "name") {
@@ -4863,7 +4864,8 @@ function CreateOrganizationDialog({ onClose }: { onClose: () => void }) {
         <div style={dialogStyle}>
           <header style={dialogHeaderStyle}>
             <h2 id="orgs-create-success-title" style={dialogTitleStyle}>
-              Organization created
+              Organization made
+
             </h2>
             <button
               type="button"
@@ -4887,7 +4889,7 @@ function CreateOrganizationDialog({ onClose }: { onClose: () => void }) {
               <MetaRow k="Country" v={success.country || "—"} />
               <MetaRow k="Default locale" v={success.default_locale} />
               <MetaRow
-                k="Reservation TTL"
+                k="Hold TTL"
                 v={`${formatDurationSeconds(success.reservation_ttl_seconds)} (${success.reservation_ttl_seconds.toLocaleString()}s)`}
               />
             </dl>
@@ -4918,7 +4920,7 @@ function CreateOrganizationDialog({ onClose }: { onClose: () => void }) {
       <div style={dialogStyle}>
         <header style={dialogHeaderStyle}>
           <h2 id="orgs-create-title" style={dialogTitleStyle}>
-            Create organization
+            Make organization
           </h2>
           <button
             type="button"
@@ -4937,7 +4939,7 @@ function CreateOrganizationDialog({ onClose }: { onClose: () => void }) {
             htmlFor="orgs-create-name"
             error={serverErrors.name ?? null}
             localError={name.length > 0 ? nameErr : null}
-            hint="Operator-visible organization name. Required."
+            hint="Organization name that the operator sees. Necessary."
           >
             <input
               id="orgs-create-name"
@@ -4961,7 +4963,7 @@ function CreateOrganizationDialog({ onClose }: { onClose: () => void }) {
             htmlFor="orgs-create-slug"
             error={serverErrors.slug ?? null}
             localError={slug.length > 0 ? slugErr : null}
-            hint="Lowercase, URL-safe identifier. Required and unique."
+            hint="Identifier in lowercase, safe for a URL. Necessary and unique."
           >
             <input
               id="orgs-create-slug"
@@ -4987,7 +4989,7 @@ function CreateOrganizationDialog({ onClose }: { onClose: () => void }) {
             htmlFor="orgs-create-country"
             error={serverErrors.country ?? null}
             localError={country.length > 0 ? countryErr : null}
-            hint="Search the country registry by name or code. Optional; raw ISO entry remains available."
+            hint="Search the country registry by name or code. Optional. You can also type the ISO code."
           >
             <CountryPicker
               id="orgs-create-country"
@@ -5002,7 +5004,7 @@ function CreateOrganizationDialog({ onClose }: { onClose: () => void }) {
             htmlFor="orgs-create-locale"
             error={serverErrors.default_locale ?? null}
             localError={locale.length > 0 ? localeErr : null}
-            hint="Choose a common locale or enter any valid BCP-47 locale. Server defaults to 'en' if blank."
+            hint="Select a common locale or enter any correct BCP-47 locale. If blank, the server uses 'en'."
           >
             <LocalePicker
               id="orgs-create-locale"
@@ -5013,11 +5015,11 @@ function CreateOrganizationDialog({ onClose }: { onClose: () => void }) {
             />
           </FieldRow>
           <FieldRow
-            label="Reservation TTL (seconds)"
+            label="Hold TTL (seconds)"
             htmlFor="orgs-create-ttl"
             error={serverErrors.reservation_ttl_seconds ?? null}
             localError={ttl.length > 0 ? ttlErr : null}
-            hint="Cart-hold timeout. Server defaults to 1200 (20m). Max 86400 (24h)."
+            hint="Cart-hold timeout. If blank, the server uses 1200 (20 minutes). Maximum: 86400 (24 hours)."
           >
             <input
               id="orgs-create-ttl"
@@ -5118,7 +5120,7 @@ export function mapUpdateOrgServerError(err: ApiError): UpdateOrgFieldErrors {
       return out;
     case "admin_org.not_found":
       out.form =
-        "Organization no longer exists. Refresh the list and try again.";
+        "The organization is not available now. Reload the list and try again.";
       return out;
     case "admin_org.empty_body":
     case "admin_org.invalid_body":
@@ -5127,12 +5129,12 @@ export function mapUpdateOrgServerError(err: ApiError): UpdateOrgFieldErrors {
       return out;
     case "permissions.denied":
       out.form =
-        "Your account is missing org.update. Ask a platform administrator.";
+        "Your account does not have org.update. Tell a platform administrator.";
       return out;
     case "superadmin.missing_reason":
     case "superadmin.reason_required":
       out.form =
-        "An audit reason (X-Admin-Reason) is required. Submit a reason and retry.";
+        "An audit reason (X-Admin-Reason) is necessary. Send a reason and try again.";
       return out;
     default:
       if (field === "name") {
@@ -5179,7 +5181,7 @@ function EditOrganizationDialog({
   // Edit semantics: reservation TTL is required on the wire (PATCH does
   // not partial-update), so blank is rejected here even though create
   // tolerated blank (server default = 1200).
-  const ttlBlankErr = ttl.trim() === "" ? "Reservation TTL is required" : null;
+  const ttlBlankErr = ttl.trim() === "" ? "Hold TTL is necessary" : null;
   const localValid =
     nameErr === null &&
     slugErr === null &&
@@ -5306,7 +5308,7 @@ function EditOrganizationDialog({
             htmlFor="orgs-edit-name"
             error={serverErrors.name ?? null}
             localError={name.length > 0 ? nameErr : null}
-            hint="Operator-visible organization name. Required."
+            hint="Organization name that the operator sees. Necessary."
           >
             <input
               id="orgs-edit-name"
@@ -5330,7 +5332,7 @@ function EditOrganizationDialog({
             htmlFor="orgs-edit-slug"
             error={serverErrors.slug ?? null}
             localError={slug.length > 0 ? slugErr : null}
-            hint="Lowercase, URL-safe identifier. Required and unique."
+            hint="Identifier in lowercase, safe for a URL. Necessary and unique."
           >
             <input
               id="orgs-edit-slug"
@@ -5356,7 +5358,7 @@ function EditOrganizationDialog({
             htmlFor="orgs-edit-country"
             error={serverErrors.country ?? null}
             localError={country.length > 0 ? countryErr : null}
-            hint="Search the country registry by name or code. Optional; raw ISO entry remains available."
+            hint="Search the country registry by name or code. Optional. You can also type the ISO code."
           >
             <CountryPicker
               id="orgs-edit-country"
@@ -5371,7 +5373,7 @@ function EditOrganizationDialog({
             htmlFor="orgs-edit-locale"
             error={serverErrors.default_locale ?? null}
             localError={locale.length > 0 ? localeErr : null}
-            hint="Choose a common locale or enter any valid BCP-47 locale. Required."
+            hint="Select a common locale or enter any correct BCP-47 locale. Necessary."
           >
             <LocalePicker
               id="orgs-edit-locale"
@@ -5382,11 +5384,11 @@ function EditOrganizationDialog({
             />
           </FieldRow>
           <FieldRow
-            label="Reservation TTL (seconds)"
+            label="Hold TTL (seconds)"
             htmlFor="orgs-edit-ttl"
             error={serverErrors.reservation_ttl_seconds ?? null}
             localError={ttl.length > 0 ? ttlErr : ttlBlankErr}
-            hint="Cart-hold timeout in seconds. Max 86400 (24h)."
+            hint="Cart-hold timeout in seconds. Maximum: 86400 (24 hours)."
           >
             <input
               id="orgs-edit-ttl"
@@ -5402,7 +5404,7 @@ function EditOrganizationDialog({
             />
           </FieldRow>
           <FieldRow
-            label="Ticket sender email"
+            label="Ticket sender e-mail"
             htmlFor="orgs-edit-sender-email"
             error={null}
             localError={null}
@@ -5487,19 +5489,19 @@ export function mapArchiveOrgServerError(err: ApiError): ArchiveOrgFieldErrors {
   switch (err.code) {
     case "admin_org.not_found":
       return {
-        form: "Organization no longer exists. Refresh the list and close this dialog.",
+        form: "The organization is not available now. Reload the list and close this dialog.",
       };
     case "permissions.denied":
       return {
-        form: "Your account is missing org.delete. Ask a platform administrator.",
+        form: "Your account does not have org.delete. Tell a platform administrator.",
       };
     case "superadmin.missing_reason":
     case "superadmin.reason_required":
       return {
-        form: "An audit reason (X-Admin-Reason) is required. Submit a reason and retry.",
+        form: "An audit reason (X-Admin-Reason) is necessary. Send a reason and try again.",
       };
     case "dependency.database_unavailable":
-      return { form: "Database is unavailable. Try again shortly." };
+      return { form: "The database is not available. Try again after a short time." };
     default:
       return { form: `${err.message} (${err.code})` };
   }
@@ -5626,11 +5628,8 @@ function ArchiveOrganizationDialog({
         </header>
         <form onSubmit={onSubmit} style={formStyle} noValidate>
           <p style={successParaStyle}>
-            This will soft-delete <strong>{org.name}</strong> (
-            <code style={monoStyle}>{org.slug}</code>). The organization
-            and all its data become hidden from operators by default;
-            superadmins can still see archived rows via the
-            "Show soft-deleted" toggle. An audit event is written with the
+            This step archives <strong>{org.name}</strong> (
+            <code style={monoStyle}>{org.slug}</code>). Operators do not see the organization and its data by default. Superadmins can see archived rows with the "Show archived" toggle. The platform writes an audit event with the
             <code style={monoStyle}> X-Admin-Reason </code> header.
           </p>
           <FieldRow

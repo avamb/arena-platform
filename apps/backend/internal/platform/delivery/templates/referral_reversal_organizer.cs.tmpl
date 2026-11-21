@@ -13,7 +13,7 @@
   <p style="margin:0 0 12px 0;">{{if eq .Referral.Reversal "disputed"}}Kamarád s kódem <strong>{{.Referral.Code}}</strong> zahájil spor u objednávky č. {{.Referral.Order}}. Cashback {{.Referral.Amount}} už byl vyplacen tomu, kdo kamaráda přivedl, a nelze jej vzít zpět.{{else}}Kamarád s kódem <strong>{{.Referral.Code}}</strong> dostal zpět peníze za objednávku č. {{.Referral.Order}}. Cashback {{.Referral.Amount}} už byl vyplacen tomu, kdo kamaráda přivedl, a nelze jej vzít zpět.{{end}}</p>
   {{if .Referral.CodePaused}}<p style="margin:0 0 12px 0;">Kód <strong>{{.Referral.Code}}</strong> je zastaven: nové slevy už nedá. Již vyplacené odměny zůstávají.</p>{{end}}
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">Arena Platform — automatická zpráva</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">ArenaSoldOut.com — automatická zpráva</td></tr>
 </table>
 </td></tr></table>
 </body>
@@ -27,5 +27,5 @@
 {{if .Referral.CodePaused}}
 Kód {{.Referral.Code}} je zastaven: nové slevy už nedá. Již vyplacené odměny zůstávají.
 {{end}}
-Arena Platform — automatická zpráva
+ArenaSoldOut.com — automatická zpráva
 {{end}}

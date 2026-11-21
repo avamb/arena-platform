@@ -39,8 +39,8 @@ const KIND_LABELS: Record<ChatKind, string> = {
 
 const KIND_HINTS: Record<ChatKind, string> = {
   tickets: "Ticket sales and refunds.",
-  shop_sale: "The fact of a shop sale: order number, sum, items. No buyer data.",
-  shop_delivery: "The full shop order card with the step buttons, for the people who pack and deliver.",
+  shop_sale: "A message for each shop sale: order number, amount and products. No buyer data.",
+  shop_delivery: "The full card of the shop order with the step buttons. It is for the people who pack and deliver.",
 };
 
 export function kindLabel(kind: string): string {
@@ -56,7 +56,7 @@ export function kindsLabel(kinds: readonly string[]): string {
   const known = CHAT_KINDS.filter((k) => kinds.includes(k)).map(kindLabel);
   const other = kinds.filter((k) => !(CHAT_KINDS as readonly string[]).includes(k));
   const all = [...known, ...other];
-  return all.length > 0 ? all.join(", ") : "Nothing";
+  return all.length > 0 ? all.join(", ") : "No kinds";
 }
 
 export function listOrgSalesChats(orgId: string): Promise<SalesChatList> {
@@ -122,10 +122,10 @@ export type Built<T> = { ok: true; request: T; reason: string } | { ok: false; e
 function commonProblems(name: string, kinds: readonly ChatKind[], reason: string): string[] {
   const errors: string[] = [];
   const n = name.trim();
-  if (n === "") errors.push("Name: write a name for the chat, for example the name of the group.");
-  else if ([...n].length > 200) errors.push("Name: up to 200 characters.");
-  if (kinds.length === 0) errors.push("What it hears: tick at least one box.");
-  if (reason.trim() === "") errors.push("Reason: write why. It is kept in the audit log.");
+  if (n === "") errors.push("Name: type a name for the chat, for example the name of the group.");
+  else if ([...n].length > 200) errors.push("Name: use 200 characters or less.");
+  if (kinds.length === 0) errors.push("Gets: select one box or more.");
+  if (reason.trim() === "") errors.push("Cause: type the cause. We keep it in the audit log.");
   return errors;
 }
 
@@ -142,7 +142,7 @@ export function buildEditChatRequest(chat: Pick<SalesChat, "name" | "kinds">, fo
   if (form.name.trim() !== chat.name) body.name = form.name.trim();
   const before = CHAT_KINDS.filter((k) => chat.kinds.includes(k)).join(",");
   if (form.kinds.join(",") !== before) body.kinds = [...form.kinds];
-  if (errors.length === 0 && Object.keys(body).length === 0) errors.push("Nothing changed: edit the name or what the chat hears.");
+  if (errors.length === 0 && Object.keys(body).length === 0) errors.push("No change. Edit the name or what the chat gets.");
   if (errors.length > 0) return { ok: false, errors };
   return { ok: true, reason: form.reason.trim(), request: body };
 }
@@ -151,11 +151,11 @@ export function buildEditChatRequest(chat: Pick<SalesChat, "name" | "kinds">, fo
 // Reading the list
 // ---------------------------------------------------------------------------
 
-/** "Connected", "Waiting for /connect", "Bot removed from the group", "Off". */
+/** "Connected", "Needs /connect", "Bot removed from the group", "Off". */
 export function chatState(chat: Pick<SalesChat, "allowed" | "bot_removed_at" | "connected_at" | "chat_id">): { label: string; tone: "good" | "warn" | "bad" | "muted" } {
   if (chat.bot_removed_at != null) return { label: "Bot removed from the group", tone: "bad" };
   if (!chat.allowed) return { label: "Off", tone: "muted" };
-  if (chat.connected_at == null && (chat.chat_id === "" || chat.chat_id == null)) return { label: "Waiting for /connect", tone: "warn" };
+  if (chat.connected_at == null && (chat.chat_id === "" || chat.chat_id == null)) return { label: "Needs /connect", tone: "warn" };
   return { label: "On", tone: "good" };
 }
 
@@ -186,22 +186,22 @@ export function whenLabel(iso: string | null | undefined): string {
 // ---------------------------------------------------------------------------
 
 export function chatErrorMessage(err: unknown): string {
-  if (!(err instanceof ApiError)) return err instanceof Error ? err.message : "The request failed. Please try again.";
+  if (!(err instanceof ApiError)) return err instanceof Error ? err.message : "The request did not complete. Please try again.";
   switch (err.code) {
     case "sales_chat.invalid_kinds":
-      return "Tick at least one of Tickets, Shop sales or Delivery.";
+      return "Select Tickets, Shop sales or Delivery. Select one kind or more.";
     case "sales_chat.invalid_name":
-      return "The name is empty or longer than 200 characters.";
+      return "The name is empty or has more than 200 characters.";
     case "sales_chat.invalid_body":
-      return "The request was not understood. Reload the page and try again.";
+      return "We did not understand the request. Reload the page and try again.";
     case "sales_chat.not_found":
-      return "The chat was not found, or it was already deleted. Reload the list.";
+      return "We did not find the chat, or we deleted it before. Reload the list.";
     case "sales_chat.organization_not_found":
-      return "The organization was not found.";
+      return "We did not find the organization.";
     case "org_module.superadmin_only":
       return "Only a platform superadmin can manage the Telegram chats.";
     case "superadmin.missing_reason":
-      return "Write the reason. It is kept in the audit log.";
+      return "Type the cause. We keep it in the audit log.";
     default:
       return err.message;
   }

@@ -77,7 +77,7 @@ func TestBotE2E_TeamInvitations_OwnerResendsAndRevokes_ManagerCannot(t *testing.
 	// ── the state of every invitation on the Team screen ────────────────────
 	m := tg.mark()
 	tg.push(e2eCallbackAs(ownerTG, "team"))
-	screen := tg.waitSince(t, m, "Сотрудники: ")
+	screen := tg.waitSince(t, m, "Команда: ")
 	for _, want := range []string{
 		waitingEmail + " — менеджер, приглашение отправлено, ещё не открыто",
 		expiredEmail + " — менеджер, приглашение истекло",

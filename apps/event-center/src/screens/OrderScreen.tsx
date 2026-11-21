@@ -7,10 +7,12 @@ import { UNPAID_REASONS, orderNumber } from "@/lib/orders";
 import { BuyerContact } from "@/components/BuyerContact";
 import { OrderLetters } from "@/components/OrderLetters";
 import { OrderReferral } from "@/components/OrderReferral";
+import { OrderReissues } from "@/components/OrderReissues";
 import { OrderTickets } from "@/components/OrderTickets";
 import { CancelOrder } from "@/components/CancelOrder";
 import { RefundOrder } from "@/components/RefundOrder";
-import { ErrorBox, Loading } from "@/components/ui";
+import { ExternalRefund } from "@/components/ExternalRefund";
+import { Badge, ErrorBox, Loading } from "@/components/ui";
 import { useOrg } from "@/screens/OrgLayout";
 import { OrderStatusBadge } from "@/screens/OrdersScreen";
 
@@ -53,6 +55,7 @@ export function OrderScreen() {
           <div className="ord-title-row">
             <h1 id="order-title">{t("order.title", { number: orderNumber(o.system_id) })}</h1>
             <OrderStatusBadge status={o.status} />
+            {o.is_test && <Badge tone="wait">{t("orders.testOrder")}</Badge>}
             <strong className="ord-total">{money(o.total)}</strong>
           </div>
           {o.event_name !== "" && (
@@ -97,10 +100,12 @@ export function OrderScreen() {
             canCreate={access.can("refund.create") && access.can("refund.read")}
             canApprove={access.can("refund.approve")}
           />
+          <ExternalRefund key={`ext:${orgId}:${o.id}`} orgId={orgId} order={o} canCreate={access.can("refund.create")} />
         </div>
       </section>
 
       <OrderLetters orgId={orgId} order={o} can={access.can} />
+      <OrderReissues orgId={orgId} order={o} />
 
       <section className="ord-card" aria-labelledby="order-payment">
         <h2 id="order-payment">{t("order.payment")}</h2>

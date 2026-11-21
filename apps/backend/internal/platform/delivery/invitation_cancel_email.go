@@ -181,19 +181,18 @@ func (h *invitationCancelEmail) buildMessage(
 	contactEmail, contactForm, contactName := first.OrgContactEmail, first.ContactFormURL, ""
 	if c, err := sessionchange.ResolveContact(ctx, h.opts.DB, eventID, orgID); err == nil && c.Complete() {
 		contactName = c.Name
-		if c.Source == "promoter" {
-			contactEmail, contactForm = strings.TrimSpace(c.Email), ""
-		}
+		contactEmail, contactForm = strings.TrimSpace(c.Email), ""
 	}
 
 	data := templates.Data{
 		TicketID:       strings.Join(numbers, ", "),
 		RecipientEmail: to,
 		HolderName:     first.HolderName,
-		EventName:      defaultStr(first.EventName, "Arena Event"),
+		EventName:      defaultStr(first.EventName, "ArenaSoldOut.com Event"),
 		SessionStart:   formatSessionForEmail(first.SessionStart, first.SessionTZ),
 		VenueName:      joinNonEmpty(", ", first.VenueName, first.VenueCity),
 		Branding:       branding,
+		Contact:        templates.BuyerContact{Email: contactEmail, OrderNumber: first.OrderNumber},
 		WhiteLabel:     whiteLabelForEvent(ctx, whiteLabelResolver(h.opts.DB), h.logger, eventID),
 		Change: templates.ChangeData{
 			Invitation:     true,
@@ -212,6 +211,6 @@ func (h *invitationCancelEmail) buildMessage(
 	}
 	first.OrgContactEmail, first.ContactFormURL = contactEmail, contactForm
 	msg := ticketEmailMessage(first, to, out.Subject, out.HTMLBody, out.TextBody)
-	applyWhiteLabelSender(&msg, data.WhiteLabel, brandSenderName(first))
+	applyBrandSender(&msg, brandSenderName(first))
 	return msg, nil
 }

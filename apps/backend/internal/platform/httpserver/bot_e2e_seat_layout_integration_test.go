@@ -418,3 +418,272 @@ func slContains(list []string, v string) bool {
 	}
 	return false
 }
+
+const (
+	slSplitOwnerTG   = int64(91611)
+	slSplitManagerTG = int64(91612)
+)
+
+// TestBotE2E_SeatLayoutSplitOneCategory proves the bot's split of a date that
+// has ONE category (spec 64 section 2.4): the owner answers 3 categories and
+// the top and bottom price, looks at the preview (nothing is written), applies,
+// and the same batch creates the categories and repaints the free seats while
+// the sold and the held seat keep the old category, with one seat status
+// version bump; the undo puts the seats back and the new categories stay. A
+// manager (no tier.create) is refused with a clear word and nothing changes.
+func TestBotE2E_SeatLayoutSplitOneCategory(t *testing.T) {
+	pool := onboardingIntegrationPool(t)
+	f := newBotInviteFixture(t, pool)
+	srv := buildBotIntegrationServer(t, pool)
+	api := httptest.NewServer(srv.router)
+	defer api.Close()
+	linkECBotUser(t, f, srv, slSplitOwnerTG, "owner")
+	linkECBotUser(t, f, srv, slSplitManagerTG, "manager")
+	ctx := context.Background()
+	suffix := uuid.NewString()[:6]
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, sql, args...); err != nil {
+			t.Fatalf("fixture %s: %v", sql, err)
+		}
+	}
+
+	raw, err := os.ReadFile(filepath.Join("..", "..", "domain", "seating", "testdata", "Palac_Akropolis.svg"))
+	if err != nil {
+		t.Fatalf("read plan: %v", err)
+	}
+	g, _, verrs := seating.ImportSVG(raw)
+	if len(verrs) != 0 {
+		t.Fatalf("import plan: %v", verrs)
+	}
+	geometry := seating.Canonicalize(g)
+	geoJSON, _ := seating.CanonicalJSON(geometry)
+	checksum, _ := seating.Checksum(geometry)
+	seats := layoutgen.Seats(geometry)
+	y := map[string]float64{}
+	for _, s := range seats {
+		y[s.Key] = s.Y
+	}
+
+	venue, event, channel := uuid.New(), uuid.New(), uuid.New()
+	plan, version, session := uuid.New(), uuid.New(), uuid.New()
+	stalls := uuid.New()
+	start := time.Now().UTC().Add(96 * time.Hour).Truncate(time.Hour)
+	t.Cleanup(func() {
+		c := context.Background()
+		for _, st := range []string{
+			`DELETE FROM bot_dialogs WHERE org_id = $1`,
+			`DELETE FROM audit_events WHERE metadata->>'session_id' = '` + session.String() + `'`,
+			`DELETE FROM session_seat_batches WHERE session_id = '` + session.String() + `'`,
+			`DELETE FROM session_seats WHERE session_id = '` + session.String() + `'`,
+			`DELETE FROM reservations WHERE org_id = $1`,
+			`DELETE FROM ticket_tiers WHERE session_id = '` + session.String() + `'`,
+			`DELETE FROM sessions WHERE event_id IN (SELECT id FROM events WHERE org_id = $1)`,
+			`DELETE FROM events WHERE org_id = $1`,
+			`DELETE FROM seating_plan_versions WHERE seating_plan_id IN (SELECT id FROM seating_plans WHERE owner_org_id = $1)`,
+			`DELETE FROM seating_plans WHERE owner_org_id = $1`,
+			`DELETE FROM sales_channels WHERE org_id = $1`,
+			`DELETE FROM venues WHERE org_id = $1`,
+		} {
+			args := []any{f.orgID}
+			if !strings.Contains(st, "$1") {
+				args = nil
+			}
+			if _, err := pool.Exec(c, st, args...); err != nil {
+				t.Logf("seat layout split cleanup %q: %v", st, err)
+			}
+		}
+	})
+	exec(`INSERT INTO venues (id, org_id, name, timezone) VALUES ($1, $2, $3, 'Europe/Prague')`, venue, f.orgID, "Akropolis "+suffix)
+	exec(`INSERT INTO events (id, org_id, name, status, visibility) VALUES ($1, $2, $3, 'draft', 'public')`, event, f.orgID, "Split Show "+suffix)
+	exec(`INSERT INTO sales_channels (id, org_id, name) VALUES ($1, $2, $3)`, channel, f.orgID, "Split Channel "+suffix)
+	exec(`INSERT INTO seating_plans (id, venue_id, owner_org_id, name, plan_type, status) VALUES ($1, $2, $3, $4, 'assigned_seats', 'active')`,
+		plan, venue, f.orgID, "Akropolis "+suffix)
+	exec(`INSERT INTO seating_plan_versions (id, seating_plan_id, version_number, geometry, geometry_checksum, capacity_seated, capacity_standing)
+	      VALUES ($1, $2, 1, $3::jsonb, $4, $5, 0)`, version, plan, string(geoJSON), checksum, geometry.SeatCount())
+	exec(`INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, capacity_total, status, currency, currency_source, admission_mode, seating_plan_version_id)
+	      VALUES ($1, $2, $3, $4, $4::timestamptz + interval '2 hours', $5, 'scheduled', 'EUR', 'override', 'assigned_seats', $6)`,
+		session, event, venue, start, geometry.SeatCount(), version)
+	// ONE category holds the whole hall.
+	exec(`INSERT INTO ticket_tiers (id, session_id, name, pricing_mode, price_amount, currency, unit_seq, is_open, sort_order)
+	      VALUES ($1, $2, 'Stalls', 'fixed', 9000, 'EUR', 1, true, 1)`, stalls, session)
+	for _, s := range seats {
+		sec := geometry.Sections[s.Section]
+		exec(`INSERT INTO session_seats (session_id, seat_key, sector_name, row_name, seat_number, tier_id, kind)
+		      VALUES ($1, $2, $3, $4, $5, $6, 'seat')`, session, s.Key, sec.Name, sec.Rows[s.Row].Name, s.Number, stalls)
+	}
+	heldRes := uuid.New()
+	exec(`INSERT INTO reservations (id, org_id, channel_id, session_id, quantity, state, expires_at)
+	      VALUES ($1, $2, $3, $4, 1, 'active', now() + interval '1 hour')`, heldRes, f.orgID, channel, session)
+	soldKey, heldKey := seats[100].Key, seats[200].Key
+	exec(`UPDATE session_seats SET status = 'sold' WHERE session_id = $1 AND seat_key = $2`, session, soldKey)
+	exec(`UPDATE session_seats SET status = 'held', reservation_id = $3 WHERE session_id = $1 AND seat_key = $2`, session, heldKey, heldRes)
+
+	before := slHall(t, pool, session, y)
+	batches := func() int {
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM session_seat_batches WHERE session_id = $1`, session).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	tierCount := func() int {
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM ticket_tiers WHERE session_id = $1 AND deleted_at IS NULL`, session).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	statusVersion := func() int64 {
+		var v int64
+		if err := pool.QueryRow(ctx, `SELECT seat_status_version FROM sessions WHERE id = $1`, session).Scan(&v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	sameHall := func(a, b map[string]slSeat) bool {
+		for k, s := range a {
+			if b[k].Tier != s.Tier || b[k].Stat != s.Stat {
+				return false
+			}
+		}
+		return len(a) == len(b)
+	}
+
+	tg := newStubTelegram(t)
+	startSeatLayoutBot(t, pool, api, tg, nil)
+	owner := ecDriver{t, tg, slSplitOwnerTG}
+	manager := ecDriver{t, tg, slSplitManagerTG}
+	findData := func(d ecDriver, prefix string) string {
+		t.Helper()
+		_, _, data := tg.lastOf(d.id)
+		for _, x := range data {
+			if strings.HasPrefix(x, prefix) {
+				return x
+			}
+		}
+		t.Fatalf("no button %q on the screen, buttons: %v", prefix, data)
+		return ""
+	}
+
+	// ── the "Split seats by price" entry opens the same screen as the card ───
+	owner.press("sl:o:"+session.String(), "На этом сеансе одна категория")
+	owner.press("sl:o:"+uuid.NewString(), "Экран устарел")
+	owner.press("ses:list:"+event.String(), "Split Show")
+	owner.press("ses:o:0", "Split Show")
+	text := owner.press("ses:sl", "На этом сеансе одна категория")
+	if !strings.Contains(text, "Stalls") {
+		t.Errorf("the start screen lacks the category:\n%s", text)
+	}
+
+	// ── the questions: how many categories, the top and the bottom price ─────
+	owner.press("sl:a:desirability", "На сколько категорий")
+	findData(owner, "sl:nc:2")
+	findData(owner, "sl:nc:6")
+	owner.press("sl:nc:3", "Какая цена у лучших мест")
+	owner.say("abc", "Не понимаю цену")
+	owner.say("120", "самых дешёвых мест")
+	owner.say("200", "должна быть ниже")
+	owner.say("40", "Где сцена")
+	owner.press("sl:sd:top", "Где сцена")
+
+	// ── the preview writes nothing and shows the new categories ──────────────
+	text = owner.press("sl:go", "Предлагаемая раскладка")
+	for _, want := range []string{"Категория 1", "новая", "Реалистичная оценка", "120 EUR", "40 EUR", "продано 1", "в брони 1"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the preview lacks %q:\n%s", want, text)
+		}
+	}
+	if batches() != 0 || tierCount() != 1 || !sameHall(before, slHall(t, pool, session, y)) {
+		t.Fatal("the preview must write nothing and create no category")
+	}
+	apply := findData(owner, "sl:ap:")
+
+	// ── apply: categories and seats in ONE batch, one version bump ───────────
+	version0 := statusVersion()
+	text = owner.press(apply, "Готово")
+	for _, want := range []string{"Новые категории:", "Категория 1", "Категория 3", "Новые категории останутся"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the applied message lacks %q:\n%s", want, text)
+		}
+	}
+	if batches() != 1 || tierCount() != 4 {
+		t.Fatalf("batches = %d (want 1), categories = %d (want 4)", batches(), tierCount())
+	}
+	if got := statusVersion(); got != version0+1 {
+		t.Errorf("seat_status_version = %d, want %d (one bump)", got, version0+1)
+	}
+	after := slHall(t, pool, session, y)
+	if after[soldKey].Tier != stalls || after[soldKey].Stat != "sold" || after[heldKey].Tier != stalls || after[heldKey].Stat != "held" {
+		t.Errorf("the sold and the held seat must keep the old category: %+v %+v", after[soldKey], after[heldKey])
+	}
+	newTiers := map[uuid.UUID]int64{}
+	rows, err := pool.Query(ctx, `SELECT id, price_amount FROM ticket_tiers WHERE session_id = $1 AND id <> $2 AND deleted_at IS NULL`, session, stalls)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id uuid.UUID
+		var price int64
+		if err := rows.Scan(&id, &price); err != nil {
+			t.Fatal(err)
+		}
+		newTiers[id] = price
+	}
+	rows.Close()
+	var hi, lo int64 = 0, 1 << 60
+	for _, p := range newTiers {
+		if p > hi {
+			hi = p
+		}
+		if p < lo {
+			lo = p
+		}
+	}
+	if len(newTiers) != 3 || hi != 12000 || lo != 4000 {
+		t.Errorf("new categories = %v, want 3 from 4000 to 12000", newTiers)
+	}
+	for k, s := range after {
+		if k == soldKey || k == heldKey {
+			continue
+		}
+		if _, ok := newTiers[s.Tier]; !ok {
+			t.Errorf("free seat %s stayed in %s: it must be repainted into a new category", k, s.Tier)
+			break
+		}
+	}
+
+	// ── undo: the seats go back, the new categories stay and the text says so ─
+	undo := findData(owner, "sl:rv:")
+	text = owner.press(undo, "Отменено")
+	if !strings.Contains(text, "Новые категории остались") {
+		t.Errorf("the undo message must say that the new categories stay:\n%s", text)
+	}
+	if !sameHall(before, slHall(t, pool, session, y)) {
+		t.Error("undo must put every seat back")
+	}
+	if tierCount() != 4 {
+		t.Errorf("the new categories stay after the undo, got %d", tierCount())
+	}
+
+	// ── a manager has no tier.create: a clear refusal, nothing changes ───────
+	exec(`UPDATE ticket_tiers SET is_open = false WHERE session_id = $1 AND id <> $2`, session, stalls)
+	batches0 := batches()
+	manager.press("ses:list:"+event.String(), "Split Show")
+	manager.press("ses:o:0", "Split Show")
+	manager.press("ses:sl", "На этом сеансе одна категория")
+	manager.press("sl:a:desirability", "На сколько категорий")
+	manager.press("sl:nc:2", "Какая цена у лучших мест")
+	manager.say("100", "самых дешёвых мест")
+	manager.say("50", "Где сцена")
+	manager.press("sl:sd:bottom", "Где сцена")
+	text = manager.press("sl:go", "Предлагаемая раскладка")
+	// The old names are taken by the closed categories: the new ones get other numbers.
+	if strings.Contains(text, "Категория 1 (новая)") {
+		t.Errorf("a name that a closed category holds must not be proposed again:\n%s", text)
+	}
+	manager.press(findData(manager, "sl:ap:"), "владелец или администратор")
+	if batches() != batches0 || tierCount() != 4 {
+		t.Errorf("a refused batch must change nothing: batches %d -> %d, categories %d", batches0, batches(), tierCount())
+	}
+}

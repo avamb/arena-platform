@@ -89,6 +89,10 @@ type Capabilities struct {
 	// hosted-checkout module may honour CreateHostedCheckoutRequest.
 	// ReceiptEmail on its own; this flag is about the archive only.
 	ProviderReceipt bool
+	// ReceiptEmailUpdate: the module can move the address the provider
+	// sends its receipts to after the payment (ReceiptEmailUpdater). Used
+	// when a reissue changes the buyer's address (spec 63, decision R-17).
+	ReceiptEmailUpdate bool
 	// BuyerReturnsByPOST: the provider may bring the buyer back to the
 	// return URL with a POST, so the hosted checkout must route the return
 	// through arena's own GET|POST payment-return hop rather than straight
@@ -100,11 +104,23 @@ type Capabilities struct {
 	// per-merchant key the config alone holds. The legacy un-suffixed route
 	// refuses such a body outright.
 	WebhookConfigRouteOnly bool
+	// ReferenceIsPaymentID: the provider files a hosted payment under the
+	// reference arena chose (ClientReferenceID — AllPay's order_id), and that
+	// reference IS the provider payment id. arena can then record the payment
+	// attempt BEFORE calling the provider, and ask the provider about it by
+	// that id when the answer was lost (П-19, spec 62 §5.4 п. 2.4).
+	ReferenceIsPaymentID bool
 	// Disputes: arena can read a dispute and answer it through the
 	// provider's API (DisputeResponder). A provider without it still tells
 	// arena about a chargeback by webhook (EventDisputeOpened); the answer
 	// then goes by e-mail (spec 51.3).
 	Disputes bool
+	// MinPageLifetimeSeconds is the shortest life the provider accepts for a
+	// hosted payment page (Stripe refuses a Checkout Session that expires
+	// sooner than 30 minutes). A sales channel's own, shorter payment window
+	// (spec 62 П-3) is not applied to such a provider: the deployment-wide
+	// widget window stays its floor. Zero means no floor.
+	MinPageLifetimeSeconds int
 	// Currencies lists the ISO 4217 codes (upper case) the provider can
 	// charge in. Empty means the provider states no limit, so arena refuses
 	// nothing on its behalf (the provider's own answer is the verdict).
@@ -332,6 +348,11 @@ type NormalizedEvent struct {
 	// EventDisputeUpdated): the dispute as the delivery states it. A module
 	// with Capabilities.Disputes reads it back before arena acts on it.
 	Dispute *Dispute
+	// PaidAt is when the buyer paid, when the provider states it. It tells a
+	// payment made after the order's window from a notification that was
+	// merely late (spec 62 П-15). Nil: the provider does not say — a page
+	// that expires with the window cannot be paid after it.
+	PaidAt *time.Time
 	// Raw is the body as received, for the audit trail.
 	Raw json.RawMessage
 }
@@ -552,6 +573,14 @@ type Receipt struct {
 // ErrReceiptNotReady, so the caller retries later.
 type ReceiptFetcher interface {
 	FetchReceipt(ctx context.Context, paymentRef string) (Receipt, error)
+}
+
+// ReceiptEmailUpdater moves the address a paid payment's provider receipts go
+// to. paymentRef is what arena stored as payment_intents.provider_charge_ref,
+// else provider_payment_id. The provider may send a new receipt to the new
+// address at once (Stripe does). idempotencyKey makes a retry safe.
+type ReceiptEmailUpdater interface {
+	UpdateReceiptEmail(ctx context.Context, paymentRef, email, idempotencyKey string) error
 }
 
 // ErrReceiptNotReady means the provider has no receipt for the payment yet.

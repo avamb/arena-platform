@@ -385,6 +385,10 @@ func TestNegotiateLocale(t *testing.T) {
 		{"ru;q=0.9, en;q=0.1", "ru"},
 		{"ru;q=0.5, en;q=0.5", "ru"},
 		{"de, ja, ru;q=0.2", "ru"},
+		{"uk", "uk"},
+		{"uk-UA", "uk"},
+		{"uk;q=0.9, en;q=0.1", "uk"},
+		{"en;q=0.9, uk;q=0.1", "en"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.in, func(t *testing.T) {
@@ -399,6 +403,23 @@ func TestNegotiateLocale(t *testing.T) {
 // ---------------------------------------------------------------------------
 // translateAuthCode
 // ---------------------------------------------------------------------------
+
+func TestTranslateAuthCode_Ukrainian(t *testing.T) {
+	m := translateAuthCode("auth.missing_token", negotiateLocale("uk"))
+	if !strings.Contains(m, "Потрібна автентифікація") {
+		t.Fatalf("uk lookup wrong: %q", m)
+	}
+	for code, msgs := range authMessages {
+		uk, ok := msgs["uk"]
+		if !ok || uk == "" {
+			t.Errorf("code %s has no uk message", code)
+			continue
+		}
+		if uk == msgs["en"] || uk == msgs["ru"] {
+			t.Errorf("code %s: uk message equals en/ru: %q", code, uk)
+		}
+	}
+}
 
 func TestTranslateAuthCode_FallbacksAreSafe(t *testing.T) {
 	// Known code, known locale.

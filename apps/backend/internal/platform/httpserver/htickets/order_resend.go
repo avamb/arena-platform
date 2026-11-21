@@ -51,8 +51,7 @@ const (
 	// OneTimeAddressTTL is how long a one-time address stays valid.
 	OneTimeAddressTTL = 24 * time.Hour
 
-	orderSourceGateway = "bil24_gateway"
-	maxEmailLen        = 254
+	maxEmailLen = 254
 )
 
 type orderResendRequest struct {
@@ -97,16 +96,16 @@ func (h *Handler) HandleResendOrderTickets(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// A selling site writes its own letters: the same decision a session
-	// change makes (sessionchange.ChannelHasSite), plus the gateway source.
-	site := order.Source == orderSourceGateway
-	if !site {
-		if site, err = sessionchange.ChannelHasSite(ctx, h.ticketQueries.DB(), order.ChannelID); err != nil {
-			h.logger.Error("order_resend: site route lookup failed", slog.Any("error", err))
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"order_resend.internal", "failed to check the sales channel", r))
-			return
-		}
+	// A selling site writes its own letters while it is live: the same
+	// decision a session change makes (sessionchange.ChannelHasSite). The
+	// order's source does not decide it: once the site is switched off arena
+	// writes to its buyers (spec 63, decision R-8).
+	site, err := sessionchange.ChannelHasSite(ctx, h.ticketQueries.DB(), order.ChannelID)
+	if err != nil {
+		h.logger.Error("order_resend: site route lookup failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"order_resend.internal", "failed to check the sales channel", r))
+		return
 	}
 	if site {
 		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(

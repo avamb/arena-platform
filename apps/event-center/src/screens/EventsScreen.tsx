@@ -1,3 +1,5 @@
+import { HelpPopover } from "@/components/HelpPopover";
+import { ScreenHelp } from "@/components/ScreenHelp";
 import { useMemo } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQueries, useQuery } from "@tanstack/react-query";
@@ -10,6 +12,8 @@ import { useI18n } from "@/lib/i18n";
 import type { Tone } from "@/lib/orders";
 import { Badge, Empty, ErrorBox, Loading } from "@/components/ui";
 import { SalesFigures } from "@/components/SalesFigures";
+import { ConnectTelegram } from "@/components/ConnectTelegram";
+import { FirstSteps } from "@/components/FirstSteps";
 import { useOrg } from "@/screens/OrgLayout";
 
 export const EVENTS_PAGE_SIZE = 10;
@@ -96,15 +100,23 @@ export function EventsScreen() {
 
   return (
     <section aria-labelledby="events-title">
-      <h1 id="events-title">{t("events.title")}</h1>
-      {/* 6-1c: same gate as the menu entry and the wizard screen: the build flag and the import permission. */}
-      {wizardGate(access.can) === "ok" && (
-        <p>
+      <FirstSteps orgId={orgId} access={access} />
+      {/* The one "create" entry of the event center: the header carries none (owner, 2026-11-08). */}
+      <div className="events-head">
+        <div className="screen-head">
+          <h1 id="events-title">
+            {t("events.title")}
+            <HelpPopover textKey="help.eventsStatus" testId="help-events" />
+          </h1>
+          <ScreenHelp screenId="events" />
+        </div>
+        {/* 6-1c: same gate as the wizard screen: the build flag and the import permission. */}
+        {wizardGate(access.can) === "ok" && (
           <Link to="/o/$orgId/events/new" params={{ orgId }} className="btn btn-primary" data-testid="events-create">
             {t("wizard.events.create")}
           </Link>
-        </p>
-      )}
+        )}
+      </div>
       <div className="tabs" role="group" aria-label={t("events.title")}>
         {(["run", "arc"] as const).map((f) => (
           <button
@@ -136,9 +148,13 @@ export function EventsScreen() {
         <Empty>
           {query.length > 0
             ? t("events.empty.search", { query })
-            : t(filter === "run" ? "events.empty.run" : "events.empty.arc")}
+            : filter === "run"
+              ? t(wizardGate(access.can) === "ok" ? "events.empty.runWizard" : "events.empty.run")
+              : t("events.empty.arc")}
         </Empty>
       )}
+      {/* F-007: an organization with no event yet is where a new person starts: offer the bot here. */}
+      {events.data !== undefined && all.length === 0 && <ConnectTelegram orgId={orgId} variant="card" />}
       <ul className="cards" data-testid="event-list">
         {visible.map((e, i) => (
           <EventRow key={e.id} orgId={orgId} event={e} summary={summaries[i]?.data} />

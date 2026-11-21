@@ -6,6 +6,7 @@ package gen
 
 import (
 	"context"
+	"sort"
 
 	"github.com/google/uuid"
 )
@@ -135,6 +136,61 @@ func (q *Queries) InsertGAUnitsForTier(
 		return 0, err
 	}
 	return tag.RowsAffected(), nil
+}
+
+const insertSoldUpstreamGAUnitsForTier = `-- name: InsertSoldUpstreamGAUnitsForTier :many
+INSERT INTO session_seats
+    (session_id, seat_key, sector_name, row_name, seat_number,
+     tier_id, status, kind, status_version)
+SELECT $1,
+       $2 || '|' || lpad((gs + $3)::text, 6, '0'),
+       '', '', '',
+       $4::uuid,
+       'sold',
+       'ga_unit',
+       $6::bigint
+FROM generate_series(1, $5::int) gs
+RETURNING id, seat_key`
+
+// GAUnitKey is one GA place a query created: its row id and seat_key.
+type GAUnitKey struct {
+	ID      uuid.UUID `json:"id"`
+	SeatKey string    `json:"seat_key"`
+}
+
+// InsertSoldUpstreamGAUnitsForTier adds quantity places to one category that
+// were sold in the system the session was imported from (status 'sold',
+// reservation_id NULL), under the category's own key prefix starting at
+// startIndex+1, stamped with the caller's freshly bumped
+// sessions.seat_status_version. Returns the new places in seat_key order.
+func (q *Queries) InsertSoldUpstreamGAUnitsForTier(
+	ctx context.Context,
+	sessionID uuid.UUID,
+	keyPrefix string,
+	startIndex int32,
+	tierID uuid.UUID,
+	quantity int32,
+	statusVersion int64,
+) ([]GAUnitKey, error) {
+	rows, err := q.db.Query(ctx, insertSoldUpstreamGAUnitsForTier,
+		sessionID, keyPrefix, startIndex, tierID, quantity, statusVersion)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []GAUnitKey
+	for rows.Next() {
+		var k GAUnitKey
+		if err := rows.Scan(&k.ID, &k.SeatKey); err != nil {
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].SeatKey < out[j].SeatKey })
+	return out, nil
 }
 
 const countDeletableGAUnitsForTier = `-- name: CountDeletableGAUnitsForTier :one

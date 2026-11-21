@@ -304,6 +304,6 @@ func (h *Handler) notFound(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, op string, err error) {
 	h.logger.Error("contact: "+op+" failed", slog.String("error", err.Error()))
-	httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+	httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 		"contact.send_failed", "We could not send your message. Try again in a minute.", r))
 }

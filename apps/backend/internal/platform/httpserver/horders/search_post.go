@@ -31,8 +31,11 @@ type searchBody struct {
 	EventID   string `json:"event_id"`
 	From      string `json:"from"`
 	To        string `json:"to"`
-	Limit     *int   `json:"limit"`
-	Offset    *int   `json:"offset"`
+	// SessionFrom / SessionTo: the range of the session start (EC-V3).
+	SessionFrom string `json:"session_from"`
+	SessionTo   string `json:"session_to"`
+	Limit       *int   `json:"limit"`
+	Offset      *int   `json:"offset"`
 }
 
 // values turns the body into the query parameters HandleList reads, so the
@@ -51,6 +54,8 @@ func (b searchBody) values() url.Values {
 	set("event_id", b.EventID)
 	set("from", b.From)
 	set("to", b.To)
+	set("session_from", b.SessionFrom)
+	set("session_to", b.SessionTo)
 	if b.Limit != nil {
 		v.Set("limit", strconv.Itoa(*b.Limit))
 	}

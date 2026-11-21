@@ -26,6 +26,10 @@ func (s *Server) mountOrderRoutes(r chi.Router) {
 		// Every open and click of the order's letters with the reader's
 		// browser string (U-7): dispute evidence, same audience as consents.
 		pr.Get("/organizations/{org_id}/orders/{order_id}/letter-interactions", s.handleOrderLetterInteractions)
+		// The order's ticket reissues with both addresses (spec 63): members only.
+		pr.Get("/organizations/{org_id}/orders/{order_id}/reissues", s.handleReissueHistory)
+		// The same for an invitation without an order (spec 63 R-5).
+		pr.Get("/organizations/{org_id}/complimentary/{id}/reissues", s.handleInvitationReissueHistory)
 		// One-screen session overview: places, categories, money, tickets, refunds.
 		pr.Get("/organizations/{org_id}/sessions/{session_id}/summary", s.handleSessionSummary)
 		// The tickets of a session with their entry at the door, filterable to
@@ -36,6 +40,9 @@ func (s *Server) mountOrderRoutes(r chi.Router) {
 		// The sales figures of a list of events in one request (WEB-LIST): the
 		// same numbers as the event summary's top level, up to 50 ids.
 		pr.Get("/organizations/{org_id}/events/sales-summary", s.handleEventSalesSummaries)
+		// The whole organization in a date range: a card per session and
+		// currency with the price x category breakdown (EC-V1).
+		pr.Get("/organizations/{org_id}/summary", s.handleOrgSummary)
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "order.write", "orders")
@@ -44,10 +51,25 @@ func (s *Server) mountOrderRoutes(r chi.Router) {
 		pr.Post("/organizations/{org_id}/orders/{id}/cancel", s.handleCancelOrder)
 	})
 	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "refund.create", "refunds")
+		pr.Use(s.requireWebStepUp) // money: the web asks for the password again
+		// Money the organizer returned in the provider's own cabinet (WordPress-era orders):
+		// cancels the tickets and books the final amount per ticket (spec 62 14.6).
+		pr.Post("/organizations/{org_id}/orders/{order_id}/external-refund", s.handleExternalRefundOrder)
+	})
+	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "ticket.update", "orders")
 		// Send an order's tickets again, to its own address or a one-time one (EC-13).
 		pr.Post("/organizations/{org_id}/orders/{order_id}/resend-tickets", s.handleResendOrderTickets)
 		// The organizer's private VIP mark of one ticket (V1).
 		pr.Patch("/organizations/{org_id}/tickets/{ticket_id}/vip", s.handleSetTicketVIP)
+		// Replace every ticket of an order sent to a wrong address (spec 63):
+		// the check screen, the replacement, and the letter again.
+		pr.Get("/organizations/{org_id}/orders/{order_id}/reissue-options", s.handleReissueOptions)
+		pr.Post("/organizations/{org_id}/orders/{order_id}/reissue-tickets", s.handleReissueTickets)
+		pr.Post("/organizations/{org_id}/orders/{order_id}/reissues/{reissue_id}/resend", s.handleReissueResend)
+		pr.Get("/organizations/{org_id}/complimentary/{id}/reissue-options", s.handleInvitationReissueOptions)
+		pr.Post("/organizations/{org_id}/complimentary/{id}/reissue-tickets", s.handleInvitationReissue)
+		pr.Post("/organizations/{org_id}/complimentary/{id}/reissues/{reissue_id}/resend", s.handleInvitationReissueResend)
 	})
 }

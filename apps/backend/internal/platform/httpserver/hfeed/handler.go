@@ -31,6 +31,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/mytickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesfunnel"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesubscribe"
@@ -73,8 +74,10 @@ type RateLimiter interface {
 
 // Handler holds the shared dependencies for all feed-domain HTTP handlers.
 type Handler struct {
-	feedTokenQueries   *gen.Queries
-	publicFeedQueries  *gen.Queries
+	feedTokenQueries  *gen.Queries
+	publicFeedQueries *gen.Queries
+	// apiPublicBase returns the API public origin; see WithAPIPublicBase.
+	apiPublicBase      func() string
 	sessionQueries     *gen.Queries
 	tierQueries        *gen.Queries
 	checkoutQueries    *gen.Queries
@@ -101,7 +104,16 @@ type Handler struct {
 	trustedProxies int
 	// saleSubscribe / saleSubscribeSalt serve "notify me when sales open"
 	// (WithSaleSubscriptions, sale_subscribe.go); nil answers 503.
-	saleSubscribe     *salesubscribe.Service
+	saleSubscribe *salesubscribe.Service
+	// myTickets / myTicketsSalt serve "my tickets by link" (my_tickets.go).
+	myTickets     *mytickets.Service
+	myTicketsSalt string
+	// myTicketsCaptcha is the Turnstile gate of the link request (hsite,
+	// action my_tickets); nil leaves the route on its rate limits only.
+	myTicketsCaptcha MyTicketsCaptcha
+	// myTicketsPage decides whether the link request's page_url lies on the
+	// feed token's own site (settings.site.origins); nil never accepts one.
+	myTicketsPage     MyTicketsPageCheck
 	saleSubscribeSalt string
 	// paymentStarter creates the provider-hosted payment page after the
 	// checkout transaction has committed. Nil means this deployment cannot
@@ -144,11 +156,28 @@ type Handler struct {
 	// accessLog records ticket downloads and views (migration 0184,
 	// WithTicketAccessLog); nil = off.
 	accessLog TicketAccessRecorder
+
+	// checkoutIdem is the Idempotency-Key middleware of checkout/start
+	// (П-19). It must be built ONCE per process (its singleflight group is
+	// what coalesces two identical requests in flight), never per request:
+	// the Server builds a fresh Handler for every request.
+	checkoutIdem func(http.Handler) http.Handler
+
+	// paymentApplier runs a payment the provider reports as paid through
+	// the webhook's own state machine (the buyer-cancel pre-check, П-2).
+	paymentApplier ConfirmedPaymentApplier
 }
 
 // WithContactForm configures the hosted page's "Write to the organizer" form:
 // whether it is offered, its Turnstile site key and the privacy policy its
 // consent links to.
+// WithCheckoutIdempotency installs the process-wide Idempotency-Key
+// middleware of checkout/start. nil leaves the route without it.
+func (h *Handler) WithCheckoutIdempotency(mw func(http.Handler) http.Handler) *Handler {
+	h.checkoutIdem = mw
+	return h
+}
+
 func (h *Handler) WithContactForm(ready bool, siteKey, privacyURL string) *Handler {
 	h.contactFormReady = ready
 	h.contactFormSiteKey = siteKey

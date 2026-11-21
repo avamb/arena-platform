@@ -131,7 +131,7 @@ function rememberHost(host: string, slug: string): void {
 
 // ---- rendering ------------------------------------------------------------------
 
-/** The cart, the checkout and an order page are private: tell crawlers not to index them (robots.txt only stops crawling). */
+/** The cart, the checkout, an order page and a not-found page are not for the index: tell crawlers so (robots.txt only stops crawling). */
 function setRobots(noindex: boolean): void {
   let m = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
   if (!noindex) {
@@ -219,6 +219,9 @@ async function renderRoute(route: Route, fresh = false): Promise<void> {
   let kind: Route['kind'] = route.kind;
   let title = shopName;
   let description: string | undefined;
+  // An address of a route that names nothing (no such product, page or policy): the status stays 200 because
+  // nginx cannot know the catalog, so the page tells crawlers not to index it (a soft 404, F-SH-05).
+  let missing = false;
 
   switch (route.kind) {
     case 'home':
@@ -250,6 +253,7 @@ async function renderRoute(route: Route, fresh = false): Promise<void> {
       } else if (!p) {
         main = notFoundView(ctx);
         kind = 'not_found';
+        missing = true;
         title = `${T.notFoundTitle} – ${shopName}`;
       } else {
         main = productView(ctx, p);
@@ -315,6 +319,7 @@ async function renderRoute(route: Route, fresh = false): Promise<void> {
       } else if (!page) {
         main = notFoundView(ctx);
         kind = 'not_found';
+        missing = true;
         title = `${T.notFoundTitle} – ${shopName}`;
       } else {
         const canonical = canonicalPagePath(s.base, route.slug, page.slug, isPolicySlug(page.slug ?? ''));
@@ -330,17 +335,18 @@ async function renderRoute(route: Route, fresh = false): Promise<void> {
       break;
     default:
       main = notFoundView(ctx);
-        kind = 'not_found';
+      kind = 'not_found';
+      missing = true;
       title = `${T.notFoundTitle} – ${shopName}`;
   }
-  draw(kind, ctx, main, title, description);
+  draw(kind, ctx, main, title, description, missing);
 }
 
-function draw(kind: Route['kind'], ctx: Ctx, main: string, title: string, description?: string): void {
+function draw(kind: Route['kind'], ctx: Ctx, main: string, title: string, description?: string, missing = false): void {
   applyTheme(kind);
   root().innerHTML = layout(ctx, main, kind === 'home');
   setMeta(title, description);
-  setRobots(kind === 'cart' || kind === 'checkout' || kind === 'status');
+  setRobots(missing || kind === 'cart' || kind === 'checkout' || kind === 'status');
   showCartNotices();
   fixContentLinks(ctx.base);
   applyAgeGate();

@@ -9,8 +9,7 @@
   import type { FeedSession, Tier } from '../types.js';
   import { doorsOpenLabel, sessionChipLabel } from '../lib/session-label.js';
   import { priceLabelBesideName } from '../lib/priceLabel.js';
-  import { getCheckoutI18n } from '../lib/checkout.js';
-  import { isSessionCancelled } from '../lib/store.js';
+  import { isSessionCancelled, legendTiersOf } from '../lib/store.js';
   import { getSaleStateStrings, pausedSalesState } from '../lib/saleSubscribe.js';
 
   interface Props {
@@ -24,7 +23,6 @@
 
   const { sessions, selectedSession, onSelectSession, locale = 'en', tierColors = new Map() }: Props = $props();
 
-  const t = $derived(getCheckoutI18n(locale));
   const saleWords = $derived(getSaleStateStrings(locale));
 
   /** Format a price for the legend chip. */
@@ -34,22 +32,22 @@
     return `${amount} ${tier.currency.toUpperCase()}`;
   }
 
-  /** Categories derived from tiers of the selected session (for legend). */
+  /** A cancelled session is hidden entirely: the buyer never sees its chip. */
+  const visibleSessions = $derived(sessions.filter((s) => !isSessionCancelled(s)));
+
   /** "Doors open 19:30" of the selected session; empty when none was given. */
   const doorsLine = $derived(
     selectedSession ? doorsOpenLabel(selectedSession.doors_open_at, locale, selectedSession.timezone) : '',
   );
 
-  const legendTiers = $derived(
-    selectedSession ? [...selectedSession.tiers].sort((a, b) => a.sort_order - b.sort_order) : [],
-  );
+  const legendTiers = $derived(selectedSession ? legendTiersOf(selectedSession.tiers, tierColors) : []);
 
 </script>
 
 <div class="session-list">
   <!-- ── Date chips ── -->
   <div class="chips-row" role="tablist" aria-label="Event sessions">
-    {#each sessions as session (session.id)}
+    {#each visibleSessions as session (session.id)}
       {@const isSelected = selectedSession?.id === session.id}
       {@const label = sessionChipLabel(session.start_at, session.end_at, locale, session.timezone)}
       <button
@@ -57,17 +55,13 @@
         aria-selected={isSelected}
         class="chip"
         class:chip--selected={isSelected}
-        class:chip--cancelled={isSessionCancelled(session)}
         onclick={() => onSelectSession(session)}
-        disabled={isSessionCancelled(session)}
       >
         <span class="chip-date">{label.date}</span>
         {#if label.time}
           <span class="chip-time">{label.time}</span>
         {/if}
-        {#if isSessionCancelled(session)}
-          <span class="chip-cancelled-label" data-testid="session-cancelled-label">{t.session_cancelled}</span>
-        {:else if pausedSalesState(session)}
+        {#if pausedSalesState(session)}
           <!-- "soon" / "sold_out": the date stays selectable (its notice and the notify form are under the chips). -->
           <span class="chip-cancelled-label" data-testid="session-state-label">
             {pausedSalesState(session) === 'soon' ? saleWords.soon_label : saleWords.sold_out_label}
@@ -152,16 +146,6 @@
     background: var(--_accent, #4f46e5);
     border-color: var(--_accent, #4f46e5);
     color: #fff;
-  }
-
-  .chip--cancelled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .chip--cancelled .chip-date,
-  .chip--cancelled .chip-time {
-    text-decoration: line-through;
   }
 
   .chip-cancelled-label {

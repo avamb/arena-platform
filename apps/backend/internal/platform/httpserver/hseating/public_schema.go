@@ -234,10 +234,14 @@ func buildCategoryOverlay(
 	}
 	categories = make([]map[string]any, 0, len(geom.Categories))
 	for _, cat := range geom.Categories {
+		color := cat.Color
+		if c := res.PlanColor[cat.Index]; c != "" {
+			color = c
+		}
 		entry := map[string]any{
 			"index":         cat.Index,
 			"name":          cat.Name,
-			"color":         cat.Color,
+			"color":         color,
 			"price_hint":    cat.PriceHint,
 			"currency_hint": cat.CurrencyHint,
 		}

@@ -26,6 +26,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/geotz"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/worldgeo"
 )
 
 // iso2Pattern is the shape of a country code in a path or query.
@@ -79,6 +80,12 @@ func (h *Handler) HandleCountryTimezones(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	if len(zones) == 0 {
+		// A territory without a city in the data (Antarctica, Tokelau, ...).
+		for _, z := range worldgeo.FallbackZones(iso2) {
+			zones = append(zones, timezoneResponse{ID: z, Label: zoneLabel(iso2, z)})
+		}
+	}
+	if len(zones) == 0 {
 		writeCountryNotFound(w, r, iso2)
 		return
 	}
@@ -91,8 +98,10 @@ func (h *Handler) HandleCountryTimezones(w http.ResponseWriter, r *http.Request)
 // HandleCountryCurrency serves GET /v1/geo/countries/{iso2}/currency.
 //
 // The currency is the one stored on the platform's country row
-// (countries.currency, the base of the session currency chain), never a second
-// table: a country that has no row is 404 geo.country_not_found.
+// (countries.currency, the base of the session currency chain). A country
+// that has no row yet answers the currency of the embedded world table
+// (worldgeo), the one its row gets when a venue creates it; a code the world
+// table does not know either is 404 geo.country_not_found.
 func (h *Handler) HandleCountryCurrency(w http.ResponseWriter, r *http.Request) {
 	iso2, ok := pathISO2(w, r)
 	if !ok {
@@ -112,8 +121,12 @@ func (h *Handler) HandleCountryCurrency(w http.ResponseWriter, r *http.Request) 
 	}
 	cur, err := lookup(r.Context(), iso2)
 	if errors.Is(err, pgx.ErrNoRows) {
-		writeCountryNotFound(w, r, iso2)
-		return
+		c, ok := worldgeo.Lookup(iso2)
+		if !ok {
+			writeCountryNotFound(w, r, iso2)
+			return
+		}
+		cur, err = c.Currency, nil
 	}
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(

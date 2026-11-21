@@ -109,7 +109,7 @@ describe("buildCreateRequest", () => {
     const none = buildCreateRequest(validForm({ effectiveFromLocal: "" }), NOW);
     expect(none.ok).toBe(false);
     const bad = buildCreateRequest(validForm({ bonusShareCapBp: "3005" }), NOW);
-    expect(!bad.ok && bad.errors.join(" ")).toContain("Bonus share cap");
+    expect(!bad.ok && bad.errors.join(" ")).toContain("Bonus cap");
     const noCap = buildCreateRequest(validForm({ bonusShareCapBp: "" }), NOW);
     expect(noCap.ok).toBe(false);
   });
@@ -145,7 +145,7 @@ describe("buildCreateRequest", () => {
     const ok = buildCreateRequest(validForm({ rules: [low] }), NOW);
     expect(ok.ok && ok.request.rules[0]).toMatchObject({ sale_currency: "EUR", params: { strict_below: true, pct_bp: 300 } });
     const swapped = buildCreateRequest(validForm({ rules: [{ ...low, params: { ...low.params, min_minor: "40" } }] }), NOW);
-    expect(!swapped.ok && swapped.errors.join(" ")).toContain("smallest charge");
+    expect(!swapped.ok && swapped.errors.join(" ")).toContain("smallest fee");
     const noCur = buildCreateRequest(validForm({ rules: [{ ...low, saleCurrency: "" }] }), NOW);
     expect(noCur.ok).toBe(false);
   });

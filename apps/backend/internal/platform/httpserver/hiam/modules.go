@@ -96,3 +96,63 @@ type orgListItem struct {
 	Modules  []string `json:"modules"`
 	ShopMode *string  `json:"shop_mode"`
 }
+
+// shopReadPermission is what the shop's read routes ask of a caller
+// (mount_shop.go): holding it in an organization is what "may use the shop
+// there" means.
+const shopReadPermission = "shop.read"
+
+// withholdShopFromMembersWithoutAccess takes the shop out of the memberships
+// whose caller could not open it: `modules` loses "shop" and `shop_mode` goes
+// null where the caller's role in THAT organization (plus a platform-wide
+// bypass role, a superadmin's) lacks shop.read. Without it an agent saw
+// `shop_mode: "full"` while every shop route answered 403 and a client that
+// trusts the field offered a section the person cannot open (F-SH-02,
+// acceptance run 2026-11-09). The grants of one role are read once.
+func (h *Handler) withholdShopFromMembersWithoutAccess(ctx context.Context, rows []gen.MembershipRow, dtos []meMembershipDTO, jwtRoles []string) error {
+	var platform []string
+	for _, r := range jwtRoles {
+		if meBypassRoles[r] {
+			platform = append(platform, r)
+		}
+	}
+	allowed := map[string]bool{}
+	for i := range dtos {
+		if i >= len(rows) {
+			break
+		}
+		dto, role := &dtos[i], rows[i].Role
+		if dto.ShopMode == nil && !containsString(dto.Modules, "shop") {
+			continue
+		}
+		ok, seen := allowed[role]
+		if !seen {
+			perms, err := h.meQueries.GetPermissionsForRoles(ctx, append([]string{role}, platform...))
+			if err != nil {
+				return err
+			}
+			ok = containsString(perms, shopReadPermission)
+			allowed[role] = ok
+		}
+		if ok {
+			continue
+		}
+		kept := make([]string, 0, len(dto.Modules))
+		for _, mod := range dto.Modules {
+			if mod != "shop" {
+				kept = append(kept, mod)
+			}
+		}
+		dto.Modules, dto.ShopMode = kept, nil
+	}
+	return nil
+}
+
+func containsString(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}

@@ -599,6 +599,37 @@ func osmLink(lat, lon float64) string {
 	return fmt.Sprintf("https://www.openstreetmap.org/?mlat=%.6f&mlon=%.6f#map=17/%.6f/%.6f", lat, lon, lat, lon)
 }
 
+// googleMapsLink is the Google Maps address of a point: buyers drive to it, so
+// the organizer opens the same link to see where they will end up.
+func googleMapsLink(lat, lon float64) string {
+	return fmt.Sprintf("https://www.google.com/maps/search/?api=1&query=%.6f,%.6f", lat, lon)
+}
+
+// mapWarningText words the first advisory warning of the map point check, or
+// "" when there is none. The numbers come from the API, the sentence is the
+// bot's, in the person's language.
+func mapWarningText(texts *Texts, loc string, ws []MapPointWarning) string {
+	if len(ws) == 0 {
+		return ""
+	}
+	w := ws[0]
+	vals := map[string]any{
+		"City": Esc(w.City), "Dist": fmt.Sprintf("%.1f", w.DistanceKm), "Limit": fmt.Sprintf("%.1f", w.ThresholdKm),
+		"Other": "", "OtherKm": "",
+	}
+	if w.NearerCity != nil && w.NearerDistanceKm != nil {
+		vals["Other"], vals["OtherKm"] = Esc(*w.NearerCity), fmt.Sprintf("%.1f", *w.NearerDistanceKm)
+	}
+	key := "bot.mt.map_warn_nearer"
+	if w.Code == "venue.point_far_from_city" {
+		key = "bot.mt.map_warn_far"
+		if w.NearerCity != nil {
+			key = "bot.mt.map_warn_far_nearer"
+		}
+	}
+	return texts.T(loc, key, vals)
+}
+
 // materialsMapScreen is the map part: the point (or "none") with its buttons.
 func (b *Bot) materialsMapScreen(ctx context.Context, chatID int64, editMsgID *int, id *Identity, jwt string, st materialsDialog, sec materialSection, note string) {
 	loc := id.Locale()
@@ -623,8 +654,15 @@ func (b *Bot) materialsMapScreen(ctx context.Context, chatID int64, editMsgID *i
 	} else {
 		text = note + b.texts.T(loc, "bot.mt.map_card", map[string]any{
 			"Event": Esc(st.EventName), "Lat": fmt.Sprintf("%.6f", p.Latitude), "Lon": fmt.Sprintf("%.6f", p.Longitude),
-			"Link": Esc(osmLink(p.Latitude, p.Longitude)),
+			"Link": Esc(osmLink(p.Latitude, p.Longitude)), "Google": Esc(googleMapsLink(p.Latitude, p.Longitude)),
 		})
+		text += "\n\n" + b.texts.T(loc, "bot.mt.map_hint", nil)
+		// Advisory: a failed check shows nothing, and the point is saved anyway.
+		if ws, err := b.arena.MapPointCheck(ctx, jwt, st.OrgID, st.EventID, p.Latitude, p.Longitude); err == nil {
+			if w := mapWarningText(b.texts, loc, ws); w != "" {
+				text += "\n\n" + w
+			}
+		}
 		if canEditMaterials(id) {
 			rows = append(rows,
 				[]models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.mt.map_change_btn", nil), CallbackData: "mt:a"}},

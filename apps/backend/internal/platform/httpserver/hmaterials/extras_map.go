@@ -101,7 +101,16 @@ func (h *ExtrasHandler) HandlePutMapPoint(w http.ResponseWriter, r *http.Request
 		h.failed(w, r, "save map point", err)
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, mapPointJSON(row))
+	// The warning is advisory: the point is already stored.
+	check := h.checkFor(r, eventID, *req.Latitude, *req.Longitude)
+	httputil.WriteJSON(w, http.StatusOK, mapPointSaved{MapPoint: mapPointJSON(row), Warnings: check.Warnings})
+}
+
+// mapPointSaved is the answer of PUT: the stored point plus the advisory
+// warnings (an empty list when nothing looks wrong or nothing could be checked).
+type mapPointSaved struct {
+	MapPoint
+	Warnings []MapPointWarning `json:"warnings"`
 }
 
 // HandleDeleteMapPoint serves DELETE .../map-point.

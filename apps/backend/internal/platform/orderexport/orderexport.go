@@ -46,7 +46,10 @@ type Order struct {
 	// BuyerUserID is the platform user UUID as a string, "" for guests.
 	BuyerUserID string
 	BuyerEmail  string
-	Tickets     []Ticket
+	// IsTest marks an order that came through a test sales channel, so a
+	// webhook or MACS consumer can tell it from a real sale.
+	IsTest  bool
+	Tickets []Ticket
 }
 
 // TicketQuantity is the number of tickets in the order.

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/attribution"
 )
@@ -22,6 +23,26 @@ type orderAttribution struct {
 	// linkID is the sales link of the organization the ref names, nil when
 	// there is no ref, the code is unknown or belongs to another organization.
 	linkID *uuid.UUID
+	// buyerCtx is the cleaned buyer_context (conversions.CleanBuyerContext),
+	// nil when the request carried none. Set by the caller, stored best effort.
+	buyerCtx []byte
+}
+
+// storeBuyerContext keeps the buyer's tracking context beside the order for
+// the server-side conversions (spec 62 section 8.3). It runs behind a
+// SAVEPOINT: a failure here can never cost the buyer their order.
+func (h *Handler) storeBuyerContext(ctx context.Context, tx pgx.Tx, csID, orderID uuid.UUID, buyerCtx []byte) {
+	if len(buyerCtx) == 0 {
+		return
+	}
+	h.bestEffort(ctx, tx, "buyer context", csID, func(sp pgx.Tx) error {
+		_, err := sp.Exec(ctx, `
+			INSERT INTO checkout_buyer_contexts (checkout_session_id, order_id, context)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (checkout_session_id) DO UPDATE SET order_id = EXCLUDED.order_id, context = EXCLUDED.context`,
+			csID, orderID, buyerCtx)
+		return err
+	})
 }
 
 // resolveCheckoutAttribution cleans the client's attribution object and turns

@@ -46,6 +46,10 @@ func (s *Server) handleCountryCurrency(w http.ResponseWriter, r *http.Request) {
 	s.geoHandler().HandleCountryCurrency(w, r)
 }
 
+func (s *Server) handleListWorldCountries(w http.ResponseWriter, r *http.Request) {
+	s.geoHandler().HandleListWorldCountries(w, r)
+}
+
 // ─── admin write handler shims ────────────────────────────────────────────────
 
 func (s *Server) handleCreateCountry(w http.ResponseWriter, r *http.Request) {

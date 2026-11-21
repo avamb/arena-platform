@@ -44,11 +44,11 @@ export function DevDiagnosticsPanel() {
 
   return (
     <details style={panelStyle} data-testid="dev-diagnostics-panel">
-      <summary style={summaryStyle}>Dev diagnostics</summary>
+      <summary style={summaryStyle}>Developer information</summary>
       <div style={bodyStyle}>
         <Row label="Status" value={auth.status} />
         <Row label="Access token" value={redacted} />
-        <Row label="Access expires" value={expiresHuman} />
+        <Row label="Access ends" value={expiresHuman} />
         <Row label="Roles" value={me === null ? "(no /v1/me)" : me.roles.join(", ") || "(none)"} />
         <Row
           label="Permissions"
@@ -71,7 +71,7 @@ export function DevDiagnosticsPanel() {
           }
         />
         <Row
-          label="Assigned networks"
+          label="Networks of the user"
           value={
             me === null || me.assigned_networks.length === 0
               ? "(none)"

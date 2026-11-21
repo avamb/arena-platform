@@ -269,6 +269,10 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 	// "Write to the organizer" form of the hosted page (HP contact form).
 	// Always mounted; the handler answers 503 without a database.
 	r.Post("/public/organizer-contact/{org_slug}", s.handleOrganizerContact)
+	// The same form, the subscription without a purchase and their site guard
+	// for a static site, addressed by feed token (spec 62 section 10).
+	r.With(s.siteFormIdempotency("organizer-contact")).Post("/public/feeds/{feed_token}/organizer-contact", s.handleSiteContact)
+	r.With(s.siteFormIdempotency("marketing-subscriptions")).Post("/public/feeds/{feed_token}/marketing-subscriptions", s.handleSiteSubscribe)
 	// Funnel telemetry sink — WID-0e (feature #322).
 	// Always mounted; handler self-gates with 503 when funnelQueries is nil.
 	r.Post("/public/feeds/{feed_token}/events", s.handlePublicFeedFunnelEvents)
@@ -283,6 +287,10 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 		r.Get("/public/checkout/{checkout_token}", s.handlePublicCheckoutStatus)
 		// Hold-expiry recovery endpoint — WID-0c (feature #320).
 		r.Post("/public/checkout/{checkout_token}/recover", s.handlePublicCheckoutRecover)
+		// The buyer cancels an unpaid order and its places go back (П-2).
+		r.Post("/public/checkout/{checkout_token}/cancel", s.handlePublicCheckoutCancel)
+		// The buyer's cookie consent changed while the order is open (П-20).
+		r.Patch("/public/checkout/{checkout_token}/consent", s.handlePublicCheckoutConsent)
 		// The buyer's "Refer a friend" code and share link (spec 52).
 		r.Get("/public/checkout/{checkout_token}/referral", s.handlePublicCheckoutReferral)
 	}
@@ -300,6 +308,15 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 		r.Post("/public/feeds/{feed_token}/sessions/{session_id}/sale-subscriptions", s.handleCreateSaleSubscription)
 	}
 	r.Get("/public/sale-subscriptions/confirm", s.handleConfirmSaleSubscription)
+	// "My tickets by link" for a static organizer site (mytickets, spec 62 §7):
+	// the link request by feed token, the exchange of the e-mailed token for a
+	// 4-hour session, and the session's list, PDFs and logout.
+	// Always mounted; every handler answers 503 without a database.
+	r.Post("/public/feeds/{feed_token}/my-tickets/link", s.handleMyTicketsRequestLink)
+	r.Post("/public/my-tickets/session", s.handleMyTicketsExchange)
+	r.Delete("/public/my-tickets/session", s.handleMyTicketsLogout)
+	r.Get("/public/my-tickets/orders", s.handleMyTicketsOrders)
+	r.Get("/public/my-tickets/orders/{order_id}/tickets/{ticket_id}/pdf", s.handleMyTicketsPDF)
 	// Spec 51-1: the reminder's link back to the payment, and the two links
 	// of the marketing consent (confirm; withdraw page and its form).
 	if s.checkoutQueries != nil {

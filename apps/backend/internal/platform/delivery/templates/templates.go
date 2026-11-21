@@ -33,16 +33,25 @@ import (
 	"encoding/hex"
 	"fmt"
 	htmltemplate "html/template"
+	"net/url"
 	"sort"
 	"strings"
 	texttemplate "text/template"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/directions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventnote"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sellerinfo"
 )
 
 //go:embed *.tmpl
 var templateFS embed.FS
+
+// partialFS holds the blocks shared by several letter kinds, one file per
+// locale (partials/contact.<locale>.tmpl). They are parsed into every letter
+// of that locale, so a kind includes one with {{template "contact_html" .}}.
+//
+//go:embed partials/*.tmpl
+var partialFS embed.FS
 
 // DefaultLocale is used when the requested locale is empty or not in
 // SupportedLocales.
@@ -96,6 +105,17 @@ const (
 // letter: it names that order only and carries no other offer.
 // Data.CartReminder carries the link and the hold's end.
 const TemplateKindCheckoutReminder = "checkout_reminder"
+
+// TemplateKindMyTicketsLink carries the one-time "my tickets" link a buyer
+// asked for on the organizer's site (package mytickets, spec 62 §7).
+// Data.MyTickets carries the link.
+const TemplateKindMyTicketsLink = "my_tickets_link"
+
+// TemplateKindLatePayment tells a buyer what happened to a payment that came
+// after its order had closed (spec 62 П-15): the money goes back, or the
+// organizer returns it. Data.LatePayment carries it. A payment whose places
+// were taken again gets the ordinary ticket letter instead.
+const TemplateKindLatePayment = "late_payment"
 
 // TemplateKindMarketingConfirm asks a buyer who ticked the marketing consent
 // to confirm the address (double opt-in, package marketing). Data.Marketing
@@ -183,6 +203,16 @@ type ShopOrderData struct {
 // Data is the value passed to every template. Fields are intentionally
 // strings (not domain structs) so the template author can ignore nil checks
 // and {{with}} blocks handle the "empty means omit" presentation rule.
+// ReissueData is the explanation of a letter with replacement tickets.
+type ReissueData struct {
+	// Typo: the first letter went to a mistyped address (reason
+	// sent_to_wrong_address); otherwise the tickets were replaced at the
+	// buyer's request.
+	Typo bool
+	// OrderNumber is the buyer-facing order number, "" when unknown.
+	OrderNumber string
+}
+
 type Data struct {
 	// TicketID is the printable ticket UUID.
 	TicketID string
@@ -200,6 +230,10 @@ type Data struct {
 	DoorsOpen string
 	// VenueName may be empty if the venue is not yet resolved.
 	VenueName string
+	// Directions are the Google Maps / Waze links of the venue (built by
+	// internal/platform/directions). Zero prints no line. The ticket, change
+	// and invitation letters read it; the cancel letter does not.
+	Directions directions.Links
 	// TierName may be empty for GA / untiered tickets.
 	TierName string
 
@@ -232,8 +266,9 @@ type Data struct {
 	Change ChangeData
 
 	// Accent is the colour of the thin band under the header, a CSS hex
-	// value. Render fills DefaultAccentColor when it is empty, so a caller
-	// never has to; a later wave can drive it from the organization.
+	// value. Render fills Branding.Accent (the organization's
+	// branding.primary) and then DefaultAccentColor when it is empty, so a
+	// caller never has to.
 	Accent string
 
 	// Tickets lists every ticket the one e-mail carries (one letter per
@@ -254,14 +289,26 @@ type Data struct {
 	// SaleNotice is what the two subscriber letters say (kinds
 	// sale_subscribe_confirm and sale_open); zero for every other kind.
 	SaleNotice SaleNoticeData
+	// MyTickets is the link of the kind my_tickets_link; zero otherwise.
+	MyTickets MyTicketsLinkData
 
 	// CartReminder is what the unpaid-order reminder says (kind
 	// checkout_reminder); zero for every other kind.
 	CartReminder CartReminderData
 
+	// LatePayment is what the late-payment letter says (kind late_payment);
+	// zero for every other kind.
+	LatePayment LatePaymentData
+
 	// Marketing is what the marketing consent confirmation says (kind
 	// marketing_confirm); zero for every other kind.
 	Marketing MarketingConfirmData
+
+	// Contact is the address a buyer writes to, since the letters tell them not
+	// to reply (owner request 2026-11-08). Render fills it from
+	// Branding.ContactEmail when the sender left Contact.Email empty. Empty
+	// prints no block.
+	Contact BuyerContact
 
 	// Refund is what the refund e-mail says; nil for every other kind. The
 	// refunded tickets themselves are listed in Tickets, each with the
@@ -279,13 +326,17 @@ type Data struct {
 	// The other kinds ignore it.
 	EventNote eventnote.Block
 
+	// Reissue explains a letter with replacement tickets (spec 63 section
+	// 4.6). Only the "ticket" kind prints it; nil is an ordinary letter.
+	Reissue *ReissueData
+
 	// WithdrawalNotice prints the sentence that tickets for an event on a
 	// specific date carry no right of withdrawal (EU/EEA sellers, ticket
 	// e-mail only). The delivery worker sets it from the seller's country;
 	// it stays false for invitations and for any other seller.
 	WithdrawalNotice bool
 
-	// WhiteLabel hides the "Arena Platform" line of a buyer letter: the
+	// WhiteLabel hides the "ArenaSoldOut.com" line of a buyer letter: the
 	// brand of the event (its promoter, else the organization) or of the shop
 	// has white label today (spec 08_architecture/53). The letters to the
 	// organizer (alerts) never read it.
@@ -299,6 +350,72 @@ type Data struct {
 	// referral_cashback_sent, referral_cashback_unavailable and
 	// referral_reversal_organizer); Render fills an empty one when it is nil.
 	Referral *ReferralData
+}
+
+// BuyerContact is the "do not reply, write here" block of a buyer letter.
+type BuyerContact struct {
+	// Email is the organizer's address: the event promoter's, else the
+	// organization's contact_email. Empty prints no block (and the sender
+	// sets no Reply-To).
+	Email string
+	// OrderNumber is orders.system_id when the letter belongs to an order; it
+	// becomes the subject of the mailto link. Render fills it from the
+	// letter's own order data when the sender left it empty.
+	OrderNumber string
+	// Mailto is the mailto: link of the button. Render fills it.
+	Mailto string
+}
+
+// orderWords is the word that opens the mailto subject ("Order 9096").
+var orderWords = map[string]string{
+	"en": "Order", "ru": "Заказ", "cs": "Objednávka", "de": "Bestellung",
+	"es": "Pedido", "fr": "Commande", "he": "הזמנה",
+}
+
+// MailtoLink builds the button's link: mailto:<address>, plus ?subject= with
+// the order number when there is one.
+func MailtoLink(locale, address, orderNumber string) string {
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return ""
+	}
+	link := "mailto:" + address
+	if n := strings.TrimSpace(orderNumber); n != "" {
+		word, ok := orderWords[normalize(locale)]
+		if !ok {
+			word = orderWords[DefaultLocale]
+		}
+		link += "?subject=" + strings.ReplaceAll(url.QueryEscape(word+" "+n), "+", "%20")
+	}
+	return link
+}
+
+// fillContact completes Data.Contact: the address falls back to the footer's
+// contact e-mail, the order number to the one the letter's own data carries.
+func fillContact(d *Data, locale string) {
+	d.Contact.Email = strings.TrimSpace(d.Contact.Email)
+	if d.Contact.Email == "" {
+		d.Contact.Email = strings.TrimSpace(d.Branding.ContactEmail)
+	}
+	if d.Contact.Email == "" {
+		d.Contact.Mailto = ""
+		return
+	}
+	if d.Contact.OrderNumber == "" {
+		switch {
+		case d.Payment != nil && d.Payment.OrderNumber != "":
+			d.Contact.OrderNumber = d.Payment.OrderNumber
+		case d.Reissue != nil && d.Reissue.OrderNumber != "":
+			d.Contact.OrderNumber = d.Reissue.OrderNumber
+		case d.CartReminder.OrderNumber != "":
+			d.Contact.OrderNumber = d.CartReminder.OrderNumber
+		case d.LatePayment.OrderNumber != "":
+			d.Contact.OrderNumber = d.LatePayment.OrderNumber
+		case d.Shop != nil && d.Shop.OrderNumber != "":
+			d.Contact.OrderNumber = d.Shop.OrderNumber
+		}
+	}
+	d.Contact.Mailto = MailtoLink(locale, d.Contact.Email, d.Contact.OrderNumber)
 }
 
 // Kinds of the "Refer a friend" letters (spec 52). The first two go to the
@@ -376,6 +493,12 @@ type ScanAlertData struct {
 	Until  string
 }
 
+// MyTicketsLinkData is the content of the "my tickets" link letter.
+type MyTicketsLinkData struct {
+	// URL is the page that exchanges the one-time token for a session.
+	URL string
+}
+
 // SaleNoticeData is the content of a subscriber letter.
 type SaleNoticeData struct {
 	// URL is the confirmation link, or the page to buy on.
@@ -383,6 +506,22 @@ type SaleNoticeData struct {
 	// When is the session start on the venue's clock; Venue its venue.
 	When  string
 	Venue string
+}
+
+// LatePaymentData is the content of the late-payment letter.
+type LatePaymentData struct {
+	// BuyerCancelled: the buyer cancelled the order before the payment
+	// came; otherwise it came after the order had closed.
+	BuyerCancelled bool
+	// Refunding: arena returns the money itself; otherwise the organizer
+	// does and contacts the buyer.
+	Refunding bool
+	// Total is the amount ready to print, OrderNumber the buyer-facing
+	// number, When the session start and Venue the venue.
+	Total       string
+	OrderNumber string
+	When        string
+	Venue       string
 }
 
 // CartReminderData is the content of the unpaid-order reminder.
@@ -405,11 +544,16 @@ type CartReminderData struct {
 type MarketingConfirmData struct {
 	ConfirmURL  string
 	WithdrawURL string
+	// FromSite is a subscription left on the organization's website form
+	// (marketing.SourceSite); false is the consent ticked at checkout, which
+	// the letter's first sentence names.
+	FromSite bool
 }
 
 // SalesAlertData is the content of a sales alert.
 type SalesAlertData struct {
-	// Kind is "sold_out" or "site_stale" (salesalert.KindSoldOut / KindSiteStale).
+	// Kind is "sold_out", "site_stale" or "reissue_old_code"
+	// (salesalert.KindSoldOut / KindSiteStale / KindReissueOldCode).
 	Kind string
 	// Manual: the sell-out was set by hand; Actor names who did it.
 	Manual bool
@@ -423,6 +567,19 @@ type SalesAlertData struct {
 	// State is the new state of the change the sites did not take
 	// ("open", "soon" or "sold_out"), named by the template.
 	State string
+	// Kind "reissue_old_code" (spec 63 section 4.8): the old code of a
+	// replaced ticket was used before the replacement, or tried after it
+	// (Attempt). OrderNumber is 0 for an invitation without an order. At is
+	// the moment on the venue's clock; Source is "arena_scanner" or "macs",
+	// Gate the entrance, Admitted whether the scanner let the person in.
+	Attempt     bool
+	OrderNumber int64
+	OldNumber   int64
+	NewNumber   int64
+	At          string
+	Source      string
+	Gate        string
+	Admitted    bool
 }
 
 // RefundData is the refund e-mail's own block.
@@ -534,6 +691,10 @@ type Branding struct {
 	// OrgName is the public display name printed in the header next to
 	// the logo. Empty falls back to PlatformOrgName.
 	OrgName string
+	// Accent is the organization's brand colour (branding.primary,
+	// migration 0203) as "#rrggbb"; empty = the platform accent. Render
+	// copies it into Data.Accent when the caller left that empty.
+	Accent string
 	// WebsiteURL is the organisation website rendered as a footer link.
 	// Empty means "omit the link"; the {{with}} guards collapse the row.
 	WebsiteURL string
@@ -622,14 +783,14 @@ func fillSellerFooter(b *Branding, locale string) {
 // NULL, etc.). The templates themselves never substitute these
 // values — the renderer prints exactly what it is given.
 const (
-	PlatformOrgName = "Arena Platform"
+	PlatformOrgName = "ArenaSoldOut.com"
 	// PlatformLogoURL is empty on purpose: there is no hosted platform logo,
 	// and a placeholder address (it used to be assets.arena.example.com)
 	// made Gmail show a broken picture on every e-mail of an organization
 	// without a logo. Empty makes the {{with .Branding.LogoURL}} guards drop
 	// the <img>, and the header shows the coloured band instead.
 	PlatformLogoURL   = ""
-	PlatformLegalName = "Arena Platform"
+	PlatformLegalName = "ArenaSoldOut.com"
 	// PlatformContactEmail is a placeholder address for test fixtures only.
 	// No code path substitutes it for an organization without a contact.
 	PlatformContactEmail = "support@arena.example.com"
@@ -710,6 +871,16 @@ func New() (*Renderer, error) {
 			}
 		}
 
+		// The shared blocks of the letter's locale (partials/contact.<locale>).
+		if part, ok := partialBody(key); ok {
+			if _, err := htmlT.Parse(part); err != nil {
+				return nil, fmt.Errorf("templates: parse html partial for %s: %w", e.Name(), err)
+			}
+			if _, err := textT.Parse(part); err != nil {
+				return nil, fmt.Errorf("templates: parse text partial for %s: %w", e.Name(), err)
+			}
+		}
+
 		htmlByKey[key] = htmlT
 		textByKey[key] = textT
 		known[key] = struct{}{}
@@ -720,6 +891,19 @@ func New() (*Renderer, error) {
 	}
 
 	return &Renderer{html: htmlByKey, text: textByKey, known: known}, nil
+}
+
+// partialBody returns the contact partial of a "<kind>.<locale>" key.
+func partialBody(key string) (string, bool) {
+	dot := strings.LastIndexByte(key, '.')
+	if dot < 0 {
+		return "", false
+	}
+	b, err := partialFS.ReadFile("partials/contact." + key[dot+1:] + ".tmpl")
+	if err != nil {
+		return "", false
+	}
+	return string(b), true
 }
 
 // Version names the exact template file a (kind, locale) letter is rendered
@@ -735,6 +919,9 @@ func (r *Renderer) Version(kind, locale string) string {
 	body, err := templateFS.ReadFile(key + ".tmpl")
 	if err != nil {
 		return ""
+	}
+	if part, ok := partialBody(key); ok {
+		body = append(append([]byte{}, body...), part...)
 	}
 	sum := sha256.Sum256(body)
 	return key + "@" + hex.EncodeToString(sum[:])[:12]
@@ -774,6 +961,9 @@ func (r *Renderer) ResolveLocale(kind, locale string) string {
 // only if kind is unknown or the templates fail to execute.
 func (r *Renderer) Render(kind, locale string, data Data) (Rendered, error) {
 	if strings.TrimSpace(data.Accent) == "" {
+		data.Accent = strings.TrimSpace(data.Branding.Accent)
+	}
+	if strings.TrimSpace(data.Accent) == "" {
 		data.Accent = DefaultAccentColor
 	}
 	if data.Change.MessageHTML == "" && data.Change.Message != "" {
@@ -791,6 +981,7 @@ func (r *Renderer) Render(kind, locale string, data Data) (Rendered, error) {
 		data.Branding.SellerIDs = sellerinfo.IDsLine(resolved, data.Branding.RegistrationNumber, data.Branding.TaxID, data.Branding.TaxIDScheme)
 	}
 	fillSellerFooter(&data.Branding, resolved)
+	fillContact(&data, resolved)
 
 	if _, ok := r.known[key]; !ok {
 		return Rendered{}, fmt.Errorf(

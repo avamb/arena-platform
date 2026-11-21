@@ -18,7 +18,8 @@ import (
 
 // placeCounts are the places of a session (or of one category) by status.
 // SoldUpstream is the part of Sold that was sold in the system the session was
-// imported from: no ticket, order or money stands behind it in arena.
+// imported from: no ticket, order or money stands behind it in arena, unless
+// arena-legacy-tickets-import filed the sale as a legacy_import order.
 type placeCounts struct {
 	Total        int64 `json:"total"`
 	Available    int64 `json:"available"`
@@ -165,6 +166,10 @@ type summaryCore struct {
 	Refunds       []summaryRefunds     `json:"refunds"`
 	Promos        []summaryPromo       `json:"promos"`
 	Complimentary summaryComplimentary `json:"complimentary"`
+	// TestOrders is the number of paid orders that came through a test sales
+	// channel. They are NOT in orders, money, refunds, promos or the
+	// per-category revenue above; their tickets still occupy places.
+	TestOrders int64 `json:"test_orders"`
 }
 
 // orderWasPaid reports whether an order of this status took the buyer's money
@@ -184,6 +189,7 @@ type summaryRows struct {
 	promos        []gen.SessionSummaryPromoRow
 	complimentary []gen.SessionSummaryComplimentaryRow
 	admissions    []gen.SessionSummaryAdmissionsRow
+	testOrders    []gen.SessionSummaryTestOrdersRow
 }
 
 // loadSummaryRows runs every summary query for the given sessions. On a
@@ -237,6 +243,9 @@ func queriesSummaryRowsOpt(ctx context.Context, q *gen.Queries, sessionIDs []uui
 	if r.admissions, err = q.ListSessionSummaryAdmissions(ctx, sessionIDs); err != nil {
 		return r, "admissions", err
 	}
+	if r.testOrders, err = q.ListSessionSummaryTestOrders(ctx, sessionIDs); err != nil {
+		return r, "test_orders", err
+	}
 	return r, "", nil
 }
 
@@ -283,6 +292,11 @@ func (r summaryRows) forSession(id uuid.UUID) summaryRows {
 			out.admissions = append(out.admissions, x)
 		}
 	}
+	for _, x := range r.testOrders {
+		if x.SessionID == id {
+			out.testOrders = append(out.testOrders, x)
+		}
+	}
 	return out
 }
 
@@ -309,6 +323,9 @@ func buildSummaryCore(r summaryRows) summaryCore {
 		out.Tickets.Complimentary += t.Complimentary
 	}
 	out.Entered = summaryEntered{Used: out.Tickets.Used, Total: out.Tickets.Active, BySource: foldAdmissions(r.admissions)}
+	for _, t := range r.testOrders {
+		out.TestOrders += t.Orders
+	}
 	for _, c := range r.complimentary {
 		out.Complimentary.Orders += c.Orders
 		out.Complimentary.Tickets += c.Tickets
@@ -577,4 +594,5 @@ func (r *summaryRows) append(o summaryRows) {
 	r.promos = append(r.promos, o.promos...)
 	r.complimentary = append(r.complimentary, o.complimentary...)
 	r.admissions = append(r.admissions, o.admissions...)
+	r.testOrders = append(r.testOrders, o.testOrders...)
 }

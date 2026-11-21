@@ -104,15 +104,15 @@ func TestBotE2E_GuestList_ButtonToggleAndAutomaticSend(t *testing.T) {
 	if len(lines) != 4 {
 		t.Fatalf("guest list rows = %d, want the header and 3: %v", len(lines), lines)
 	}
-	if book.SheetName != "Гости" || strings.Join(lines[0][:4], ";") != "Гость;Категория;Место;Билет" {
+	if book.SheetName != "Гости" || strings.Join(lines[0][:4], ";") != "Фамилия;Имя;Телефон;E-mail" {
 		t.Errorf("sheet %q, header: %v", book.SheetName, lines[0])
 	}
 	// Sorted by name: the two tickets of "Buyer Name", then the invitation.
-	if lines[1][0] != "Buyer Name" || lines[3][0] != "Guest" || lines[3][11] != "yes" || lines[1][11] != "no" {
+	if lines[1][0] != "Guest" || lines[2][0] != "Name" || lines[3][0] != "Name" || lines[1][15] != "yes" || lines[2][15] != "no" {
 		t.Errorf("rows not sorted by guest, or invitation column wrong: %v", lines)
 	}
 	// Barcodes are text cells in a text column.
-	for _, ref := range []string{"E2", "E3", "E4"} {
+	for _, ref := range []string{"J2", "J3", "J4"} {
 		if c, ok := book.CellAt(ref); !ok || c.Type != "inlineStr" || len(c.Value) != 13 || !book.TextFormat(c.Style) {
 			t.Errorf("barcode %s = %+v", ref, c)
 		}

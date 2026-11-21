@@ -45,6 +45,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/storage"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/adminnotify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/backfill"
@@ -57,6 +58,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/cartreminder"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/contactform"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/conversions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/convertjob"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customerimport"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
@@ -66,15 +68,18 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventnote"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventwatch"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/guestlist"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/guestlistteam"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/issuejob"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/latepayment"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/macs"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/marketing"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/mytickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/onboarding"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/opsalert"
@@ -89,6 +94,9 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesubscribe"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/tierchain"
+	venueplangenerate "github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/generate"
+	venueplangenerator "github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/generator"
+	venueplannotify "github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/notify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
@@ -204,7 +212,7 @@ func run() error {
 	// payloads to per-org MACS webhook subscribers for ticket lifecycle events.
 	// Delivery failure returns an error so the outbox row retries (at-least-once).
 	//
-	// W1-B7c (#506): the bil24_wp dispatcher is the third member. It delivers
+	// W1-B7c (#506): the bil24_wp dispatcher is another member. It delivers
 	// order/ticket/catalog events to the migrated WordPress sites in Bil24's
 	// own webhook vocabulary, routed by the sales channel each site subscribed
 	// to. It shares the same at-least-once contract: non-2xx retries.
@@ -232,13 +240,21 @@ func run() error {
 		}, 0, logger)
 		go billingAccel.Run(rootCtx)
 	}
-	outboxDispatcher := &multiDispatcher{dispatchers: outboxLegs(
-		salesNotifier,
-		baseOutboxDispatcher,
-		macsDispatcher,
-		bil24WPDispatcher,
-		billingAccelLeg(billingAccel),
-	)}
+	// F-FC-01: every leg is called even when another one fails, and a leg
+	// that delivered an event is never called again for it (state in
+	// outbox_event_legs). The row retries only for the legs still failing.
+	outboxDispatcher, fanOutErr := outbox.NewLegFanOut(outbox.NewPGLegStateStore(pool.Pool), logger, outboxLegs(
+		outbox.Leg{Name: legSalesNotify, Dispatcher: salesNotifier},
+		// Server-side ad conversions (spec 62 8.3): queue only, never fails.
+		outbox.Leg{Name: legConversions, Dispatcher: conversions.NewDispatcher(conversions.NewPGStore(pool.Pool), logger)},
+		outbox.Leg{Name: legWebhook, Dispatcher: baseOutboxDispatcher},
+		outbox.Leg{Name: legMACS, Dispatcher: macsDispatcher},
+		outbox.Leg{Name: legBil24WP, Dispatcher: bil24WPDispatcher},
+		outbox.Leg{Name: legBillingAccel, Dispatcher: billingAccelLeg(billingAccel)},
+	)...)
+	if fanOutErr != nil {
+		return fmt.Errorf("init outbox fan-out: %w", fanOutErr)
+	}
 	outboxStore := outbox.NewPGOutboxEventStore(pool.Pool)
 	outboxEventsDisp, outboxDispErr := outbox.NewOutboxEventsDispatcher(outbox.OutboxEventsDispatcherOptions{
 		Store:           outboxStore,
@@ -293,6 +309,9 @@ func run() error {
 	registerReferralHandlers(registry, pool.Pool, cfg, metrics, salesNotifier, logger)
 	registerDisputeHandlers(registry, pool.Pool, cfg, salesNotifier, opsNotifier, buildEmailSender(cfg, logger), logger)
 	registerPaymentReceiptHandler(registry, pool.Pool, cfg, mediaRepo, logger)
+	registerVenuePlanGenerateHandler(registry, pool.Pool, cfg, mediaRepo, logger)
+	registerTicketReissueHandler(registry, pool.Pool, cfg, logger)
+	registerPaymentRecoverHandler(registry, pool.Pool, cfg, logger)
 	registerBillingReconcileHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
 	registerJobRetentionHandler(registry, pool.Pool, logger)
 	registerAnalyticsHandlers(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
@@ -323,6 +342,10 @@ func run() error {
 		logger.Info("order expire sweep job scheduled at startup")
 	}
 
+	if err := conversions.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
+		logger.Warn("could not schedule initial conversions sweep job", "error", err.Error())
+	}
+
 	// 7d. Reservation expire-sweep startup scheduling ------------------------
 	// Same cron-like pattern: seed the queue once, and every subsequent run
 	// is enqueued by the handler itself. This is the job that actually
@@ -338,6 +361,7 @@ func run() error {
 		logger.Info("reservation expire sweep job scheduled at startup")
 	}
 	scheduleRefundSweep(rootCtx, pool.Pool, logger)
+	schedulePaymentRecover(rootCtx, pool.Pool, logger)
 	scheduleAnalyticsJobs(rootCtx, pool.Pool, logger)
 	scheduleReferralSweep(rootCtx, pool.Pool, logger)
 	if err := cartreminder.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
@@ -370,6 +394,10 @@ func run() error {
 		// Non-fatal: reminders and expiry of onboarding drafts run a little later.
 		logger.Warn("could not schedule initial onboarding sweep job", "error", err.Error())
 	}
+	if err := venueplangenerate.ScheduleInitialSweep(rootCtx, pool.Pool); err != nil {
+		// Non-fatal: a stalled hall plan intake reaches an administrator later.
+		logger.Warn("could not schedule initial venue plan generate sweep job", "error", err.Error())
+	}
 	if err := contactform.ScheduleInitialPurge(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: old contact-form messages are deleted a little later.
 		logger.Warn("could not schedule initial contact form purge job", "error", err.Error())
@@ -385,6 +413,10 @@ func run() error {
 	if err := guestlist.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: the first guest list goes out a minute later.
 		logger.Warn("could not schedule initial guest list job", "error", err.Error())
+	}
+	if err := guestlistteam.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
+		// Non-fatal: the first team guest list goes out five minutes later.
+		logger.Warn("could not schedule initial team guest list job", "error", err.Error())
 	}
 
 	// 7e. Ops watchdog startup scheduling -------------------------------------
@@ -588,6 +620,14 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		Scheduler: reservationexpiry.NewPGScheduler(pool),
 	}))
 
+	// conversions.sweep sends the queued Meta CAPI / GA4 MP purchases with
+	// backoff and self-schedules (spec 62 section 8.3).
+	reg.Register(conversions.JobType, conversions.NewHandler(conversions.HandlerOptions{
+		Store:     conversions.NewPGStore(pool),
+		Scheduler: conversions.NewPGScheduler(pool),
+		Logger:    logger,
+	}))
+
 	// billing.rate turns the collected events into charges; like collect it is
 	// off (no Rater, nothing seeded) until the date X is named.
 	billingCollector, billingRater := buildBilling(pool, cfg, logger)
@@ -695,6 +735,9 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	// guest_list.schedule writes the due guest lists and mails the ones of
 	// members without the bot (package guestlist).
 	registerGuestListSchedule(reg, pool, deliveryOpts.Sender, logger)
+	// guest_list.team_send: the current list to owners, managers and the
+	// organization's sales groups 24 h and 3 h before every session.
+	registerGuestListTeamSend(reg, pool, deliveryOpts.Sender, cfg, logger)
 
 	reg.Register(salesalert.JobTypeAlertEmail, delivery.NewSalesAlertHandler(delivery.SalesAlertOptions{
 		Sender:    deliveryOpts.Sender,
@@ -715,20 +758,26 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	}
 	reg.Register(salesubscribe.JobTypeConfirmEmail, delivery.NewSaleConfirmHandler(saleLetters))
 	reg.Register(salesubscribe.JobTypeOpenEmail, delivery.NewSaleOpenHandler(saleLetters))
+	// "My tickets by link" (mytickets, spec 62 item P-7): the one-time link.
+	reg.Register(mytickets.JobTypeLinkEmail, delivery.NewMyTicketsLinkHandler(delivery.MyTicketsLinkOptions{
+		Sender:         deliveryOpts.Sender,
+		Templates:      deliveryOpts.Templates,
+		DB:             pool,
+		Media:          deliveryOpts.Media,
+		TicketsBaseURL: cfg.PublicTicketsBaseURL,
+		Logger:         logger,
+	}))
 
 	// Spec 51-1: the one reminder about an unpaid widget order (the sweep
 	// picks the orders, the letter checks them again) and the confirmation of
 	// a marketing consent ticked at checkout.
-	growthLetters := delivery.GrowthLetterOptions{
-		Sender:     deliveryOpts.Sender,
-		Templates:  deliveryOpts.Templates,
-		DB:         pool,
-		APIBaseURL: cfg.APIPublicBaseURL(),
-		Logger:     logger,
-	}
+	growthLetters := buildGrowthLetterOptions(deliveryOpts, pool, cfg, logger)
 	reg.Register(cartreminder.JobTypeSweep, cartreminder.NewSweepHandler(pool, logger))
 	reg.Register(cartreminder.JobTypeEmail, delivery.NewCartReminderHandler(growthLetters))
 	reg.Register(marketing.JobTypeConfirmEmail, delivery.NewMarketingConfirmHandler(growthLetters))
+	// Spec 62 П-15: the letter about a payment that came after its order
+	// had closed (the money goes back).
+	reg.Register(latepayment.JobTypeEmail, delivery.NewLatePaymentEmailHandler(growthLetters))
 
 	// event.email_note_test mails the organizer a sample ticket letter with
 	// the event's own note (EC-31). A preview: never recorded as a buyer letter.
@@ -847,9 +896,61 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 func registerOnboardingHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, notifier opsalert.Notifier, logger *slog.Logger) {
 	svc := onboarding.New(onboarding.Options{
 		Pool: pool, Notifier: notifier, Audit: audit.NewPGWriter(pool), Logger: logger, AdminURL: cfg.AppPublicURL,
+		AdminTelegram: cfg.EventsTelegramBotToken != "",
 	})
 	reg.Register(onboarding.JobTypeNotify, svc.HandleNotify)
+	// A new application reaches every platform admin personally through the
+	// event-center bot (arena-bot polls its token, the worker only sends).
+	var adminSender adminnotify.TelegramSender
+	if cfg.EventsTelegramBotToken != "" {
+		adminSender = salesnotify.NewTelegramSender(cfg.EventsTelegramBotToken, "")
+	} else {
+		logger.Warn("EVENTS_TELEGRAM_BOT_TOKEN is not set on arena-worker: platform admins get new applications by e-mail only")
+	}
+	tgHandler := adminnotify.NewTelegramHandler(adminSender, logger)
+	reg.Register(adminnotify.JobTypeTelegram, tgHandler)
+	// Legacy type: rows queued before the move to adminnotify have the same payload.
+	reg.Register(onboarding.JobTypeAdminTelegram, tgHandler)
+	reg.Register(adminnotify.JobTypeEmail, adminnotify.NewEmailHandler(buildEmailSender(cfg, logger), logger))
 	reg.Register(onboarding.JobTypeSweep, onboarding.NewSweepHandler(svc, pool, logger))
+	// Hall plan intake events (spec 64 section 3.2) reach the same administrators
+	// through the same admin_notify jobs.
+	reg.Register(venueplannotify.JobType, venueplannotify.NewHandler(venueplannotify.Options{
+		Pool: pool, AppURL: cfg.AppPublicURL, Telegram: cfg.EventsTelegramBotToken != "", Logger: logger,
+	}))
+}
+
+// registerVenuePlanGenerateHandler registers venue_plan.generate (spec 64 wave
+// 2): the files of a hall plan intake go to the venue SVG generator. It always
+// registers: without VENUE_GEN_URL / VENUE_GEN_TOKEN or without a media store
+// the job sends the intake to an administrator with the reason no_generator,
+// so an intake never waits in received.
+func registerVenuePlanGenerateHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, mediaRepo *mediastore.Repo, logger *slog.Logger) {
+	g := buildVenueGenerator(cfg, logger)
+	opts := venueplangenerate.Options{
+		Pool: pool, Media: mediaRepo, Generator: g, Notifier: venueplannotify.Notifier{},
+		Audit: audit.WithServiceActor(audit.NewPGWriter(pool)), Logger: logger,
+	}
+	reg.Register(venueplangenerate.JobType, venueplangenerate.NewHandler(opts))
+	// The sweep sends an intake no step moved for 30 minutes to an administrator.
+	reg.Register(venueplangenerate.JobTypeSweep, venueplangenerate.NewSweepHandler(opts))
+	logger.Info("venue_plan.generate handler registered",
+		"generator_configured", g != nil, "media_configured", mediaRepo != nil)
+}
+
+// buildVenueGenerator returns the generator client, or nil (generator off).
+// Exactly one of VENUE_GEN_URL / VENUE_GEN_TOKEN set is logged as a WARN that
+// names the missing variable (never the token); both empty is an info line.
+func buildVenueGenerator(cfg *config.Config, logger *slog.Logger) venueplangenerate.Generator {
+	if cfg.VenueGenURL != "" && cfg.VenueGenToken != "" {
+		return venueplangenerator.New(cfg.VenueGenURL, cfg.VenueGenToken)
+	}
+	if msg := cfg.VenueGenHalfConfigured(); msg != "" {
+		logger.Warn("arena-worker: " + msg)
+	} else {
+		logger.Info("venue generator is off: VENUE_GEN_URL and VENUE_GEN_TOKEN are not set")
+	}
+	return nil
 }
 
 func registerOpsWatchdogHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, notifier opsalert.Notifier, logger *slog.Logger) {
@@ -998,6 +1099,7 @@ func buildDeliveryHandlerOptions(cfg *config.Config, queries *gen.Queries, media
 		CredentialQueries:  queries,
 		Sender:             buildEmailSender(cfg, logger),
 		FromAddress:        coalesce(getEmailFrom(cfg), "tickets@arena.example.com"),
+		TicketFromAddress:  cfg.TicketEmailFrom,
 		Media:              media,
 		TicketsBaseURL:     cfg.PublicTicketsBaseURL,
 		ContactFormEnabled: cfg.ContactFormReady(),
@@ -1059,6 +1161,9 @@ func buildEmailSender(cfg *config.Config, logger *slog.Logger) email.Sender {
 			Password: cfg.SMTPPassword,
 			From:     coalesce(cfg.SMTPFrom, "tickets@arena.example.com"),
 			UseTLS:   cfg.SMTPUseTLS,
+
+			FromName:      cfg.EmailFromName,
+			PlatformFroms: []string{cfg.TicketEmailFrom},
 		})
 	}
 	logger.Info("email: EMAIL_MODE is not 'smtp'; using LogSender (emails logged, not sent)",
@@ -1120,12 +1225,6 @@ func coalesce(values ...string) string {
 	return ""
 }
 
-// outboxLegs returns the fan-out members in delivery order, leaving out any
-// leg that is explicitly disabled. OUTBOX_MODE=disabled switches off only the
-// generic OUTBOX_WEBHOOK_URL leg: kept inside the fan-out, its
-// DisabledDispatcher would answer every event with ErrDispatchDisabled, the
-// row would stay unprocessed and be claimed again, and MACS and the selling
-// sites after it would never receive anything.
 // buildBilling makes the collect and rate workers. The rater is nil, and the
 // collector disabled, until the owner names the date X.
 func buildBilling(pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger) (*billingcollect.Collector, *billingrate.Rater) {
@@ -1144,30 +1243,31 @@ func buildBilling(pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger) (
 // an inert no-op (Dispatch on a nil *Accelerator answers nil).
 func billingAccelLeg(a *billingaccel.Accelerator) outbox.Dispatcher { return a }
 
-func outboxLegs(legs ...outbox.Dispatcher) []outbox.Dispatcher {
-	out := make([]outbox.Dispatcher, 0, len(legs))
-	for _, d := range legs {
-		if dm, ok := d.(outbox.DisabledModeDispatcher); ok && dm.IsDisabled() {
+// Stable names of the outbox fan-out legs. They are stored in
+// outbox_event_legs.leg: renaming one makes every pending event call that leg
+// again.
+const (
+	legSalesNotify  = "sales_notify"
+	legConversions  = "conversions"
+	legWebhook      = "webhook"
+	legMACS         = "macs"
+	legBil24WP      = "bil24_wp"
+	legBillingAccel = "billing_accel"
+)
+
+// outboxLegs returns the fan-out members in delivery order, leaving out any
+// leg that is explicitly disabled. OUTBOX_MODE=disabled switches off only the
+// generic OUTBOX_WEBHOOK_URL leg: kept inside the fan-out, its
+// DisabledDispatcher would answer every event with ErrDispatchDisabled and
+// the outbox would leave the row unprocessed, so MACS and the selling sites
+// would never see their event marked done.
+func outboxLegs(legs ...outbox.Leg) []outbox.Leg {
+	out := make([]outbox.Leg, 0, len(legs))
+	for _, l := range legs {
+		if dm, ok := l.Dispatcher.(outbox.DisabledModeDispatcher); ok && dm.IsDisabled() {
 			continue
 		}
-		out = append(out, d)
+		out = append(out, l)
 	}
 	return out
-}
-
-// multiDispatcher fans out Dispatch calls to multiple Dispatcher implementations
-// in order. If any dispatcher returns an error, delivery stops and the error is
-// returned (causing the outbox to retry the entire row). This is at-least-once
-// delivery: on retry, all dispatchers are called again.
-type multiDispatcher struct {
-	dispatchers []outbox.Dispatcher
-}
-
-func (m *multiDispatcher) Dispatch(ctx context.Context, ev outbox.Event) error {
-	for _, d := range m.dispatchers {
-		if err := d.Dispatch(ctx, ev); err != nil {
-			return err
-		}
-	}
-	return nil
 }

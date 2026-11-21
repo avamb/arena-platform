@@ -66,6 +66,9 @@ type Row struct {
 	// OrderSource is orders.source (NULL for legacy tickets without an
 	// orders row); 'complimentary' marks an invitation.
 	OrderSource *string
+	// OrderIsTest is orders.is_test: the order came through a test sales
+	// channel. False for a legacy ticket without an orders row.
+	OrderIsTest bool
 }
 
 const sessionQuery = `
@@ -120,7 +123,8 @@ SELECT
     COALESCE(gi.unit_price, tt.price_amount, 0) AS sold_price,
     pc.code AS promo_code_name,
     v.timezone AS venue_timezone,
-    ord.source AS order_source
+    ord.source AS order_source,
+    COALESCE(ord.is_test, false) AS order_is_test
 FROM tickets t
 LEFT JOIN orders ord ON ord.id = t.order_id
 JOIN checkout_sessions cs ON cs.id = t.checkout_session_id
@@ -150,7 +154,15 @@ ORDER BY t.checkout_session_id, t.ordinal
 // carry the same Ticket shape as the export — one projection, one
 // contract). A cancelled/revoked ticket is included so ticket.refunded can
 // carry a refund status.
-var ticketQuery = strings.Replace(sessionQuery, "WHERE t.session_id = $1", "WHERE t.id = $1", 1)
+//
+// A ticket replaced by a reissue (spec 63, status 'transferred') is included
+// here, and only here: its ticket.refunded must reach MACS and the sites so
+// the old number stops admitting, while an order or session export lists
+// only the replacement.
+var ticketQuery = strings.Replace(
+	strings.Replace(sessionQuery, "WHERE t.session_id = $1", "WHERE t.id = $1", 1),
+	"AND t.status IN ('active', 'cancelled', 'revoked')",
+	"AND t.status IN ('active', 'cancelled', 'revoked', 'transferred')", 1)
 
 // orderQuery is sessionQuery scoped to ONE order aggregate (orders.id,
 // migration 0092). Tickets are linked to their order by tickets.order_id.
@@ -275,6 +287,7 @@ func query(ctx context.Context, pool *pgxpool.Pool, sql string, id uuid.UUID) ([
 			&r.PromoCodeName,
 			&r.VenueTimezone,
 			&r.OrderSource,
+			&r.OrderIsTest,
 		); err != nil {
 			return nil, fmt.Errorf("orderexport scan: %w", err)
 		}

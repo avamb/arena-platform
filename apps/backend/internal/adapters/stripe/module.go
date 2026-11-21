@@ -96,9 +96,14 @@ func ProviderDescriptor() payments.Descriptor {
 			AsyncRefund:     true,
 			RefundLookup:    true,
 			ProviderReceipt: true,
+			// A reissue to another address moves the receipt address too
+			// (spec 63, decision R-17).
+			ReceiptEmailUpdate: true,
 			// Evidence goes through the API; submit=true only after a
 			// person pressed "Submit" (spec 51.3).
 			Disputes: true,
+			// Stripe: "expires_at must be at least 30 minutes" from now.
+			MinPageLifetimeSeconds: 30 * 60,
 		},
 	}
 }

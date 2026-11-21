@@ -108,73 +108,33 @@ func (b *Bot) showEventCard(ctx context.Context, chatID int64, editMsgID *int, f
 	st, _, _ := b.loadEventsState(ctx, from.ID, orgID)
 	b.saveEventsState(ctx, from.ID, st, eventsStepCard)
 
+	url := b.eventLink(ctx, jwt, orgID, *event)
 	link := ""
-	if url := b.eventLink(ctx, jwt, orgID, *event); url != "" {
+	if url != "" {
 		link = "\n" + b.texts.T(loc, "bot.wz.link_line", map[string]any{"URL": url})
 	}
 	head := b.texts.T(loc, "bot.event_card", map[string]any{
 		"Name": Esc(event.Name), "Status": EventChip(event.SalesState) + " " + b.statusText(loc, string(event.Status)), "Link": link,
 	})
 
-	head += b.promoterEventLine(loc, *event)               // who promotes it (EC-14)
+	head += b.promoterEventLine(loc, *event)               // the event's brand (EC-14)
 	head += b.pageStatsLine(ctx, loc, jwt, orgID, eventID) // page views of the hosted page (HP-2a)
 
-	var sum *openapi.EventSummary
-	if canViewSales(id) {
-		s, err := b.arena.EventSummary(ctx, jwt, orgID, eventID)
-		if err != nil {
-			b.logger.Warn("eventbot: event summary failed", slog.String("event_id", eventID.String()), slog.String("error", err.Error()))
-		} else {
-			sum = &s
-		}
-	}
+	sum := b.cardSummary(ctx, id, jwt, eventID)
 
 	var sb strings.Builder
 	sb.WriteString(head)
-	var rows [][]models.InlineKeyboardButton
+	var dateRows [][]models.InlineKeyboardButton
 	if sum == nil {
 		b.writePlainDates(ctx, &sb, jwt, loc, orgID, eventID)
 	} else {
-		rows = b.writeCardFigures(&sb, loc, eventID, *sum, expanded)
+		dateRows = b.writeCardFigures(&sb, loc, eventID, *sum, expanded)
 	}
-	rows = append(rows,
-		[]models.InlineKeyboardButton{
-			{Text: b.texts.T(loc, "bot.wz.edit_btn", nil), CallbackData: "wz:edit:" + eventID.String()},
-			{Text: b.texts.T(loc, "bot.wz.copy_btn", nil), CallbackData: "wz:copy:" + eventID.String()},
-		},
-		[]models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.sample_btn", nil), CallbackData: "sample:" + eventID.String()}},
-	)
-	if canViewSales(id) { // the owner, the manager and the operator write the text of the letters (RT-06)
-		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.tf.event_btn", nil), CallbackData: "tf:n:" + eventID.String()}})
-	}
-	rows = append(rows, b.sessionsOrdersRow(loc, id, eventID))
-	if row := b.salesLinkEventRow(loc, id, eventID); row != nil { // QR / link of the event (spec 43, QL-8)
-		rows = append(rows, row)
-	}
-	if row := b.promoEventRow(loc, id, eventID); row != nil { // promo codes of the event (EC-11)
-		rows = append(rows, row)
-	}
-	if row := b.referralEventRow(loc, id, eventID); row != nil { // "Refer a friend" (spec 52)
-		rows = append(rows, row)
-	}
-	if row := b.promoterEventRow(loc, id, eventID); row != nil { // the event's promoter (EC-14)
-		rows = append(rows, row)
-	}
-	// The categories of an event with a single live date (EC-15); with several
-	// dates they sit on each date's card in the Sessions screen.
-	if sum != nil && len(sum.Sessions) == 1 && sum.Sessions[0].Status != "cancelled" {
-		if row := b.categoryEventRow(loc, id, eventID); row != nil {
-			rows = append(rows, row)
-		}
-	}
-	// Photos, videos, map, links and the photo report of the page (task 7-3).
-	rows = append(rows, b.materialsEventRow(loc, eventID))
-	// Publish, take off sale, archive, delete: what the status allows (EC-10).
-	rows = append(rows, b.eventStatusRows(loc, id, string(event.Status), eventID)...)
-	if canInvite(id) {
-		// Free tickets for guests (EC-12), starting at this event's dates.
-		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.inv.btn", nil), CallbackData: "iv:e:" + eventID.String()}})
-	}
+	// Five buttons: the link, and the groups Sales, Edit, Promotion, More
+	// (event_card_groups.go). The dates of an expanded card come after them.
+	rows := b.cardRows(loc, id, eventID, cardFactsOf(*event, url, sum))
+	rows = append(rows, dateRows...)
+	rows = append(rows, b.helpRow(loc, hpCard, eventID.String()))
 	rows = append(rows, []models.InlineKeyboardButton{
 		{Text: "« " + b.texts.T(loc, "bot.btn_back", nil), CallbackData: "el:b"},
 		{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"},
@@ -204,8 +164,8 @@ func (b *Bot) writePlainDates(ctx context.Context, sb *strings.Builder, jwt, loc
 	}
 }
 
-// writeCardFigures writes the figures part of the card and returns its
-// buttons (summary, export, and the dates toggle with the per-date rows).
+// writeCardFigures writes the figures part of the card and returns the
+// per-date rows of an expanded card (none otherwise).
 func (b *Bot) writeCardFigures(sb *strings.Builder, loc string, eventID uuid.UUID, sum openapi.EventSummary, expanded bool) [][]models.InlineKeyboardButton {
 	sessions := sum.Sessions
 	multi := len(sessions) > 1
@@ -231,18 +191,12 @@ func (b *Bot) writeCardFigures(sb *strings.Builder, loc string, eventID uuid.UUI
 		}
 	}
 
-	rows := [][]models.InlineKeyboardButton{{
-		{Text: b.texts.T(loc, "bot.ec.summary_btn", nil), CallbackData: "ec:es:" + eventID.String()},
-		{Text: b.texts.T(loc, "bot.ec.csv_btn", nil), CallbackData: "ec:ce:" + eventID.String()},
-	}}
-	if !multi {
-		return rows
+	// Summary, export and the dates toggle are in the Sales group; an expanded
+	// card keeps its per-date rows and the "hide dates" button.
+	if !multi || !expanded {
+		return nil
 	}
-	if !expanded {
-		return append(rows, []models.InlineKeyboardButton{{
-			Text: b.texts.T(loc, "bot.ec.dates_btn", map[string]any{"N": len(sessions)}), CallbackData: "ec:o:" + eventID.String() + ":1",
-		}})
-	}
+	var rows [][]models.InlineKeyboardButton
 	for i, s := range sessions {
 		if i >= maxSessionLines {
 			sb.WriteString("\n\n" + b.texts.T(loc, "bot.ec.more", map[string]any{"N": len(sessions) - i}))

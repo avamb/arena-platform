@@ -17,7 +17,7 @@ var materialsKeys = []string{
 	"bot.mt.caption_btn", "bot.mt.caption_clear_btn", "bot.mt.seller_btn", "bot.mt.delete_btn",
 	"bot.mt.delete_yes_btn", "bot.mt.cancel_btn", "bot.mt.done_btn", "bot.mt.del_ask_g",
 	"bot.mt.del_ask_v", "bot.mt.del_ask_p", "bot.mt.del_ask_m", "bot.mt.del_ask_r", "bot.mt.map_none",
-	"bot.mt.map_card", "bot.mt.map_set_btn", "bot.mt.map_change_btn", "bot.mt.added",
+	"bot.mt.map_card", "bot.mt.map_hint", "bot.mt.map_warn_far", "bot.mt.map_warn_far_nearer", "bot.mt.map_warn_nearer", "bot.mt.map_set_btn", "bot.mt.map_change_btn", "bot.mt.added",
 	"bot.mt.added_more", "bot.mt.saved", "bot.mt.moved", "bot.mt.deleted", "bot.mt.err_full",
 	"bot.mt.err_photo_failed", "bot.mt.err_photo_big", "bot.mt.err_photo_type",
 	"bot.mt.err_need_photo", "bot.mt.err_need_text", "bot.mt.err_caption", "bot.mt.err_video_url",

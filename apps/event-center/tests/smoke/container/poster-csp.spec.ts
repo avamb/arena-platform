@@ -8,6 +8,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { liveEnv, person, signInAs } from "../live/liveEnv";
+import { pickWizardVenue } from "../live/wizardHelpers";
 import { scriptFacts } from "../live/posterHelpers";
 
 test.describe.configure({ mode: "serial" });
@@ -76,15 +77,14 @@ test("a chosen file is previewed and a created event shows its poster, with no p
   await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`), { timeout: 20_000 });
   await page.getByTestId("events-create").click();
   await page.getByTestId("wizard-name").fill(name);
-  await page.getByTestId("wizard-venue-mode-existing").check();
-  await page.getByTestId("wizard-venue-pick").selectOption({ label: "E2E Hall" });
+  await pickWizardVenue(page, "E2E Hall");
   await page.getByTestId("wizard-currency").fill("EUR");
   const day = page.getByTestId("wizard-date-0-day");
   await day.getByTestId("wizard-date-0-day-toggle").click();
   await day.getByTestId("date-quick-week").click();
   await page.getByTestId("wizard-date-0-time").fill("19:00");
   await page.getByTestId("wizard-cat-0-0-price").fill("18,90");
-  await expect(page.getByTestId("wizard-status")).toContainText("Everything you filled in is correct", { timeout: 25_000 });
+  await expect(page.getByTestId("wizard-status")).toContainText("All data you added is correct", { timeout: 25_000 });
 
   const png = await makePng(page, 480, 640, 200);
   await page.getByTestId("wizard-poster-picker-input").setInputFiles(png);

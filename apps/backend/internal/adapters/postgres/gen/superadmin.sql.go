@@ -110,7 +110,7 @@ SELECT o.id, o.system_id, o.org_id, o.channel_id, o.event_id, o.session_id, o.cu
        o.currency, o.subtotal, o.discount, o.charge, o.total, o.charge_percent_bp,
        o.promo_code_id, o.buyer_name, o.buyer_email, o.buyer_phone, o.payment_method,
        o.paid_at, o.cancelled_at, o.expires_at, o.metadata, o.created_at, o.updated_at,
-       o.sales_link_id, o.attribution,
+       o.sales_link_id, o.attribution, o.is_test,
        COALESCE(org.name, '') AS org_name, COALESCE(ev.name, '') AS event_name
 FROM   orders o
 LEFT JOIN organizations org ON org.id = o.org_id
@@ -165,7 +165,7 @@ func (q *Queries) ListAllOrders(
 			&o.Currency, &o.Subtotal, &o.Discount, &o.Charge, &o.Total, &o.ChargePercentBP,
 			&o.PromoCodeID, &o.BuyerName, &o.BuyerEmail, &o.BuyerPhone, &o.PaymentMethod,
 			&o.PaidAt, &o.CancelledAt, &o.ExpiresAt, &o.Metadata, &o.CreatedAt, &o.UpdatedAt,
-			&o.SalesLinkID, &o.Attribution,
+			&o.SalesLinkID, &o.Attribution, &o.IsTest,
 			&a.OrgName, &a.EventName,
 		); err != nil {
 			return nil, err

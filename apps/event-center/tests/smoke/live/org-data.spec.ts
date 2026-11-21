@@ -119,7 +119,8 @@ test.describe("organization data (live)", () => {
 
     const calls = trackApi(page);
     await openScreen(page, "org_admin");
-    await page.getByRole("link", { name: "Organization data" }).click();
+    await page.getByTestId("nav-more").click();
+    await page.getByTestId("nav-org-data").click();
     await expect(page.getByTestId("org-data")).toBeVisible();
     await expect(page.getByTestId("org-data-form")).toBeVisible();
     await expect(card(page)).toBeVisible();
@@ -267,7 +268,7 @@ test.describe("organization data (live)", () => {
     seed("hide");
     await page.reload();
     await expect(card(page)).toHaveAttribute("data-seller-state", "operator_hidden");
-    await expect(card(page).getByTestId("seller-state")).toContainText("platform operator hid");
+    await expect(card(page).getByTestId("seller-state")).toContainText("platform operator does not show the seller data");
     // No control of the screen sends seller_hidden; the API refuses the owner too.
     const calls = trackApi(page);
     await card(page).getByTestId("seller-phone").fill("+34 600 111 222");
@@ -294,7 +295,8 @@ test.describe("organization data (live)", () => {
 
       const calls = trackApi(page);
       await openScreen(page, role);
-      await expect(page.getByRole("link", { name: "Organization data" })).toHaveCount(0);
+      await page.getByTestId("nav-more").click();
+      await expect(page.getByTestId("nav-org-data")).toHaveCount(0);
       await page.goto(`/o/${env.org_id}/org-data`);
       await expect(page.getByTestId("org-data-owner-only")).toContainText("Only the owner");
       await expect(page.getByTestId("org-data-form")).toHaveCount(0);

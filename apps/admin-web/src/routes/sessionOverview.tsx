@@ -290,7 +290,7 @@ export function SessionOverviewScreen({
             All tickets
           </a>
           <button type="button" onClick={refresh} style={buttonStyle} data-testid="session-overview-refresh">
-            Refresh
+            Reload
           </button>
         </div>
       </div>
@@ -298,7 +298,7 @@ export function SessionOverviewScreen({
       {summaryQuery.isLoading ? <p style={mutedStyle}>Loading…</p> : null}
       {summaryQuery.error ? (
         <div style={errorStyle} data-testid="session-overview-error">
-          Could not load the session: {summaryQuery.error.message}
+          We did not load the session: {summaryQuery.error.message}
         </div>
       ) : null}
 
@@ -395,10 +395,10 @@ function MoneySection({ money }: { money: readonly SummaryMoney[] }): JSX.Elemen
   return (
     <Section
       title="Money"
-      hint="Order totals as arena recorded them. For a site that takes payment itself, the money sits in that site's own acquiring — these are the amounts it reported."
+      hint="The totals of the orders that arena recorded. If a site takes the payment, the money is in the account of that site. The amounts here are the amounts that the site reported."
       testId="session-overview-money"
     >
-      {money.length === 0 ? <p style={mutedStyle}>No orders yet.</p> : null}
+      {money.length === 0 ? <p style={mutedStyle}>No orders.</p> : null}
       {money.map((m) => (
         <div key={m.currency} style={statRowStyle} data-testid={`session-overview-money-${m.currency}`}>
           <Stat label={`Paid · ${m.paid_orders} orders`} value={formatMoneyMinor(m.paid, m.currency)} />
@@ -412,10 +412,10 @@ function MoneySection({ money }: { money: readonly SummaryMoney[] }): JSX.Elemen
             />
           ) : null}
           <Stat label="Net" value={formatMoneyMinor(m.net, m.currency)} tone="good" testId={`session-overview-net-${m.currency}`} />
-          <Stat label="Service charge inside" value={formatMoneyMinor(m.service_charge, m.currency)} tone="muted" />
-          <Stat label="Discounts given" value={formatMoneyMinor(m.discount, m.currency)} tone="muted" />
+          <Stat label="Service fee inside" value={formatMoneyMinor(m.service_charge, m.currency)} tone="muted" />
+          <Stat label="Discounts" value={formatMoneyMinor(m.discount, m.currency)} tone="muted" />
           <Stat
-            label={`Awaiting payment · ${m.pending_orders}`}
+            label={`Pending payment · ${m.pending_orders}`}
             value={formatMoneyMinor(m.pending, m.currency)}
             tone={m.pending_orders > 0 ? "warn" : "muted"}
           />
@@ -429,7 +429,7 @@ function PlacesRow({ label, p, testId }: { label: string; p: PlaceCounts; testId
   return (
     <div data-testid={testId} style={{ marginBottom: 12 }}>
       <div style={rowLabelStyle}>
-        {label} · {soldPercent(p)}% of sellable sold
+        {label} · {soldPercent(p)}% of the seats for sale are sold
       </div>
       <div style={barStyle} aria-hidden="true">
         <BarPart value={soldHere(p)} total={p.total} color="#0369a1" />
@@ -443,8 +443,8 @@ function PlacesRow({ label, p, testId }: { label: string; p: PlaceCounts; testId
         <Stat label="Free" value={p.available} tone="good" />
         <Stat label="Held" value={p.held} tone={p.held > 0 ? "warn" : "muted"} />
         <Stat label="Sold here" value={soldHere(p)} tone="accent" />
-        <Stat label="Sold upstream" value={p.sold_upstream} tone={p.sold_upstream > 0 ? "accent" : "muted"} />
-        <Stat label="Withheld" value={p.unavailable} tone="muted" />
+        <Stat label="Sold in old system" value={p.sold_upstream} tone={p.sold_upstream > 0 ? "accent" : "muted"} />
+        <Stat label="Blocked" value={p.unavailable} tone="muted" />
       </div>
     </div>
   );
@@ -462,11 +462,11 @@ function HallSection({ places, capacity }: {
   const all = addPlaces(places.seats, places.ga);
   return (
     <Section
-      title="Hall"
-      hint={`Stated capacity ${capacity}. "Sold upstream" are places sold in the system this session was imported from: no ticket or order stands behind them here. "Withheld" are places an operator closed for sale and can reopen.`}
+      title="Seating plan"
+      hint={`Capacity in the session: ${capacity}. "Sold in old system" is the seats that the old system sold. This session was imported from that system. No ticket or order is here for these seats. "Blocked" is the seats that an operator closed for sale. The operator can open them again.`}
       testId="session-overview-hall"
     >
-      {all.total === 0 ? <p style={mutedStyle}>This session has no places yet.</p> : null}
+      {all.total === 0 ? <p style={mutedStyle}>This session has no seats.</p> : null}
       {places.seats.total > 0 ? <PlacesRow label="Seats" p={places.seats} testId="session-overview-seats-row" /> : null}
       {places.ga.total > 0 ? <PlacesRow label="General admission" p={places.ga} testId="session-overview-ga-row" /> : null}
     </Section>
@@ -486,12 +486,12 @@ function TiersSection({ tiers }: { tiers: readonly SummaryTier[] }): JSX.Element
                 <th style={thStyle}>Category</th>
                 <th style={thStyle}>Type</th>
                 <th style={thNumStyle}>Price</th>
-                <th style={thNumStyle}>Places</th>
+                <th style={thNumStyle}>Seats</th>
                 <th style={thNumStyle}>Free</th>
                 <th style={thNumStyle}>Held</th>
                 <th style={thNumStyle}>Sold here</th>
-                <th style={thNumStyle}>Sold upstream</th>
-                <th style={thNumStyle}>Withheld</th>
+                <th style={thNumStyle}>Sold in old system</th>
+                <th style={thNumStyle}>Blocked</th>
                 <th style={thNumStyle}>Paid lines</th>
                 <th style={thNumStyle}>Revenue</th>
               </tr>
@@ -503,7 +503,7 @@ function TiersSection({ tiers }: { tiers: readonly SummaryTier[] }): JSX.Element
                     {t.name}
                     {t.is_open ? null : <span style={closedStyle}> closed</span>}
                   </td>
-                  <td style={tdStyle}>{t.kind === "seated" ? "Seated" : "GA"}</td>
+                  <td style={tdStyle}>{t.kind === "seated" ? "With seats" : "No seats"}</td>
                   <td style={tdNumStyle}>{formatMoneyMinor(t.price_amount, t.currency)}</td>
                   <td style={tdNumStyle}>{t.places.total}</td>
                   <td style={tdNumStyle}>{t.places.available}</td>
@@ -527,10 +527,10 @@ function TicketsSection({ tickets }: { tickets: SessionSummary["tickets"] }): JS
   return (
     <Section title="Tickets" testId="session-overview-tickets">
       <div style={statRowStyle}>
-        <Stat label="Valid" value={tickets.active} tone="good" />
+        <Stat label="Active" value={tickets.active} tone="good" />
         <Stat label="Scanned at the door" value={tickets.used} tone={tickets.used > 0 ? "accent" : "muted"} />
         <Stat label="Invitations" value={tickets.complimentary} tone="muted" />
-        <Stat label="Cancelled" value={tickets.cancelled} tone={tickets.cancelled > 0 ? "warn" : "muted"} />
+        <Stat label="Canceled" value={tickets.cancelled} tone={tickets.cancelled > 0 ? "warn" : "muted"} />
       </div>
     </Section>
   );
@@ -540,7 +540,7 @@ function OrdersByStatusSection({ orders }: { orders: SessionSummary["orders"] })
   return (
     <Section title="Orders by status" testId="session-overview-orders">
       {orders.length === 0 ? (
-        <p style={mutedStyle}>No orders yet.</p>
+        <p style={mutedStyle}>No orders.</p>
       ) : (
         <table style={tableStyle}>
           <thead>
@@ -571,7 +571,7 @@ function RefundsSection({ refunds }: { refunds: SessionSummary["refunds"] }): JS
   return (
     <Section
       title="Refunds"
-      hint="provider — arena returns the money through its payment provider. external — the selling site returned the money itself and told arena."
+      hint="Provider: arena sends the money back with its payment provider. External: the site that sold the ticket sent the money back and told arena."
       testId="session-overview-refunds"
     >
       {refunds.length === 0 ? (
@@ -606,7 +606,7 @@ function PromosSection({ promos, orgId }: { promos: SessionSummary["promos"]; or
   return (
     <Section
       title="Promo codes"
-      hint="Codes the paid orders of this session used. Discount is what those orders did not pay; it is already inside Discounts under Money."
+      hint="The codes that the paid orders of this session used. The discount is the amount that those orders did not pay. It is in Discounts under Money."
       testId="session-overview-promos"
       action={
         <a
@@ -650,10 +650,10 @@ function LatestOrdersSection({ orders, loading, error }: {
   error: string | null;
 }): JSX.Element {
   return (
-    <Section title="Latest orders" hint="The 20 most recent. The full list with search lives in Org orders." testId="session-overview-latest-orders">
+    <Section title="Latest orders" hint="The last 20 orders. The full list with search is in Organization orders." testId="session-overview-latest-orders">
       {loading ? <p style={mutedStyle}>Loading…</p> : null}
-      {error !== null ? <div style={errorStyle}>Could not load orders: {error}</div> : null}
-      {!loading && error === null && orders.length === 0 ? <p style={mutedStyle}>No orders yet.</p> : null}
+      {error !== null ? <div style={errorStyle}>We did not load the orders: {error}</div> : null}
+      {!loading && error === null && orders.length === 0 ? <p style={mutedStyle}>No orders.</p> : null}
       {orders.length > 0 ? (
         <div style={{ overflowX: "auto" }}>
           <table style={tableStyle}>

@@ -34,6 +34,8 @@ func (s *Server) mountRefundOrgRoutes(r chi.Router) {
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "refund.read", "refunds")
 		pr.Get("/organizations/{org_id}/refunds", s.handleListOrgRefunds)
+		// Failed refunds and undelivered buyer letters in one list (EC-V5).
+		pr.Get("/organizations/{org_id}/refunds/queue", s.handleRefundQueue)
 		pr.Get("/organizations/{org_id}/refunds/{refund_id}", s.handleGetOrgRefund)
 	})
 	r.Group(func(pr chi.Router) {

@@ -40,6 +40,7 @@ type eventSalesSummary struct {
 	Refunds       []summaryRefunds     `json:"refunds"`
 	Promos        []summaryPromo       `json:"promos"`
 	Complimentary summaryComplimentary `json:"complimentary"`
+	TestOrders    int64                `json:"test_orders"`
 }
 
 type eventSalesSummaryList struct {
@@ -116,6 +117,7 @@ func buildEventSalesSummaries(requested []uuid.UUID, headers []gen.EventSummaryH
 			Refunds:       total.Refunds,
 			Promos:        total.Promos,
 			Complimentary: total.Complimentary,
+			TestOrders:    total.TestOrders,
 		})
 	}
 	return out

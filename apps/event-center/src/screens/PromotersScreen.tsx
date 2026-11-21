@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createPromoter, listPromoters, type PromoterCreateBody } from "@/lib/api/endpoints";
 import type { Promoter } from "@/lib/api/types";
 import { useI18n, type MessageKey } from "@/lib/i18n";
+import { ScreenHelp } from "@/components/ScreenHelp";
 import {
   filterPromoters,
   parseField,
@@ -159,8 +160,14 @@ export function PromotersScreen() {
 
   return (
     <section aria-labelledby="promoters-title">
-      <h1 id="promoters-title">{t("promoters.title")}</h1>
+      <div className="screen-head">
+        <h1 id="promoters-title">{t("promoters.title")}</h1>
+        <ScreenHelp screenId="promoters" />
+      </div>
       <p className="muted">{t("promoters.intro")}</p>
+      <p className="muted" data-testid="promoters-brand-note">
+        {t("promoters.brandNote")}
+      </p>
       {!canManage && (
         <p className="notice" role="status" data-testid="promoters-read-only">
           {t("promoters.readOnly")}

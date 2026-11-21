@@ -12,6 +12,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/screens/OrgLayout", () => ({
   useOrg: () => ({ orgId: "11111111-1111-4111-8111-111111111111", access: { can: () => true, data: { platform_superadmin: false } } }),
 }));
+// "What is here?" reads /v1/me, which this unit test has no client for. It has its own test.
+vi.mock("@/components/ScreenHelp", () => ({ ScreenHelp: () => null }));
 vi.mock("@/lib/api/shopApi", () => ({
   listShopProducts: vi.fn(),
   fetchShopSettings: vi.fn(),
@@ -87,14 +89,14 @@ describe("the products list (SB-14)", () => {
     });
     await idle(el);
     expect(byId(el, "error")).toBeNull();
-    expect(el.textContent).toContain("There are no products yet.");
+    expect(el.textContent).toContain("There are no products. Press «+ Product» to add the first one.");
   });
 
   it("does not print what the address says was deleted", async () => {
     vi.mocked(listShopProducts).mockResolvedValue({ products: [] } as never);
     const el = await mount("?deleted=Your%20account%20is%20closed");
     const notice = byId(el, "shop-products-notice");
-    expect(notice.textContent).toBe("The product is deleted.");
+    expect(notice.textContent).toBe("We deleted the product.");
     expect(el.textContent).not.toContain("account is closed");
   });
 });

@@ -1,0 +1,44 @@
+{
+  "generated_at": "2026-11-08T09:00:00Z",
+  "base_language": "ru",
+  "events": [
+    {
+      "product_id": 4101,
+      "bil24_action_id": "3300001",
+      "title": "Wine night",
+      "status": "publish",
+      "languages": {
+        "ru": {
+          "media_custom": true,
+          "gallery": ["https://wp.example.test/uploads/a1.jpg", "https://wp.example.test/uploads/a2.jpg", "https://wp.example.test/uploads/a1.jpg"],
+          "videos": ["https://www.youtube.com/watch?v=abcdefghijk"],
+          "report_custom": true,
+          "report_text": "Thank you all for coming.",
+          "report_photos": ["https://wp.example.test/uploads/r1.jpg"],
+          "report_videos": ["https://vimeo.com/123456"]
+        },
+        "en": {
+          "media_custom": false, "gallery": [], "videos": [],
+          "report_custom": false, "report_text": "", "report_photos": [], "report_videos": []
+        },
+        "he": {
+          "media_custom": true, "gallery": ["https://wp.example.test/uploads/he1.jpg"], "videos": [],
+          "report_custom": false, "report_text": "", "report_photos": [], "report_videos": []
+        }
+      },
+      "partner_links": [{"name": "Partner shop", "url": "https://partner.example.test/e/1"}]
+    },
+    {
+      "product_id": 4102,
+      "bil24_action_id": "3300002",
+      "title": "Empty event",
+      "status": "publish",
+      "languages": {
+        "ru": {"media_custom": true, "gallery": [], "videos": [], "report_custom": true, "report_text": "", "report_photos": [], "report_videos": []},
+        "en": {"media_custom": false, "gallery": [], "videos": [], "report_custom": false, "report_text": "", "report_photos": [], "report_videos": []},
+        "he": {"media_custom": false, "gallery": [], "videos": [], "report_custom": false, "report_text": "", "report_photos": [], "report_videos": []}
+      },
+      "partner_links": []
+    }
+  ]
+}

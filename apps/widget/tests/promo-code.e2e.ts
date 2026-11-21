@@ -188,7 +188,6 @@ async function openCartWithTwoTickets(page: Page): Promise<void> {
   const plus = widget.getByRole('button', { name: 'Increase quantity for Standard' });
   await plus.waitFor({ timeout: 15_000 });
   await plus.click();
-  await plus.click();
   await widget.locator('.mini-cart-btn').click();
   await expect(widget.locator('.sheet')).toBeVisible();
   await widget.locator('.sheet').getByRole('button', { name: 'Have a promo code?' }).click();
@@ -200,7 +199,6 @@ async function openCartWithTwoLines(page: Page): Promise<void> {
   const widget = page.locator('#widget-promo');
   const standard = widget.getByRole('button', { name: 'Increase quantity for Standard' });
   await standard.waitFor({ timeout: 15_000 });
-  await standard.click();
   await standard.click();
   await widget.getByRole('button', { name: 'Increase quantity for VIP' }).click();
   await widget.locator('.mini-cart-btn').click();
@@ -508,7 +506,6 @@ test.describe('promo code in the cart sheet', () => {
     const widget = page.locator('#widget-promo');
     const plus = widget.getByRole('button', { name: 'Increase quantity for Standard' });
     await plus.waitFor({ timeout: 15_000 });
-    await plus.click();
     await widget.locator('.mini-cart-btn').click();
     const sheet = widget.locator('.sheet');
 
@@ -529,7 +526,6 @@ test.describe('promo code in the cart sheet', () => {
     const widget = page.locator('#widget-promo');
     const plus = widget.getByRole('button', { name: 'Increase quantity for Standard' });
     await plus.waitFor({ timeout: 15_000 });
-    await plus.click();
     await plus.click();
     await widget.locator('.mini-cart-btn').click();
     const sheet = widget.locator('.sheet');
@@ -571,7 +567,6 @@ test.describe('promo code in the cart sheet', () => {
     const widget = page.locator('#widget-promo');
     const plus = widget.getByRole('button', { name: 'Increase quantity for Standard' });
     await plus.waitFor({ timeout: 15_000 });
-    await plus.click();
     await widget.locator('.mini-cart-btn').click();
     const sheet = widget.locator('.sheet');
     await sheet.locator('.cta-btn').click();
@@ -604,7 +599,6 @@ test.describe('promo code in the cart sheet', () => {
     const widget = page.locator('#widget-promo');
     const plus = widget.getByRole('button', { name: 'Increase quantity for Standard' });
     await plus.waitFor({ timeout: 15_000 });
-    await plus.click();
     await widget.locator('.mini-cart-btn').click();
     const sheet = widget.locator('.sheet');
     await expect(sheet.locator('.promo-link')).toHaveText('Есть промокод?');
@@ -627,7 +621,6 @@ test.describe('promo code in the cart sheet', () => {
       const widget = page.locator('#widget-promo');
       const plus = widget.getByRole('button', { name: 'Increase quantity for Standard' });
       await plus.waitFor({ timeout: 15_000 });
-      await plus.click();
       await widget.locator('.mini-cart-btn').click();
       const sheet = widget.locator('.sheet');
       await expect(sheet.locator('.promo-link')).toHaveText(link);
@@ -644,7 +637,6 @@ test.describe('promo code in the cart sheet', () => {
     const widget = page.locator('#widget-promo');
     const plus = widget.getByRole('button', { name: 'Increase quantity for Standard' });
     await plus.waitFor({ timeout: 15_000 });
-    await plus.click();
     await plus.click();
     await widget.locator('.mini-cart-btn').click();
     const sheet = widget.locator('.sheet');
@@ -675,7 +667,6 @@ test.describe('promo code in the cart sheet', () => {
     const widget = page.locator('#widget-promo');
     const plus = widget.getByRole('button', { name: 'Increase quantity for Standard' });
     await plus.waitFor({ timeout: 15_000 });
-    await plus.click();
     await plus.click();
     await widget.locator('.mini-cart-btn').click();
     const sheet = widget.locator('.sheet');

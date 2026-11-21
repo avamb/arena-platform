@@ -136,7 +136,7 @@ describe("mapServerError", () => {
     const r = mapServerError(
       envelopeError("orders.invalid_transition", "cannot cancel a paid order"),
     );
-    expect(r.form).toBe("This order can no longer be cancelled.");
+    expect(r.form).toBe("You cannot cancel this order in its current status.");
   });
 
   it("maps dependency.database_unavailable onto a form-level error", () => {
@@ -148,7 +148,7 @@ describe("mapServerError", () => {
 
   it("maps permissions.denied with operator-readable copy", () => {
     const r = mapServerError(envelopeError("permissions.denied", "forbidden"));
-    expect(r.form).toMatch(/missing the required permission/i);
+    expect(r.form).toMatch(/necessary permission/i);
   });
 
   it("falls back to form-level for unknown codes", () => {

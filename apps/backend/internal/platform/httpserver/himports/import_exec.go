@@ -24,6 +24,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	catalogdomain "github.com/abhteam/arena_new/apps/backend/internal/domain/catalog"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/citymatch"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/egress"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/geoslug"
@@ -31,6 +32,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
+	venueplannotify "github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/notify"
 )
 
 // defaultSessionDuration is applied to end_at because the Bil24 payload never
@@ -294,6 +296,11 @@ func (h *Handler) resolveVenue(ctx context.Context, q *gen.Queries, tx pgx.Tx, p
 	if err := registerExternal(ctx, tx, compatids.KindVenue, created.ID, v.VenueID); err != nil {
 		return uuid.Nil, err
 	}
+	if !plan.Mode.DryRun {
+		if err := venueplannotify.EnqueueVenueCreated(ctx, tx, created.ID); err != nil {
+			return uuid.Nil, err
+		}
+	}
 	return created.ID, nil
 }
 
@@ -349,9 +356,18 @@ func (h *Handler) resolveGeography(ctx context.Context, q *gen.Queries, tx pgx.T
 	if citySlug == "" {
 		return nil, &iso2, nil
 	}
-	city, err := q.GetCityBySlug(ctx, citySlug)
-	if errors.Is(err, pgx.ErrNoRows) {
-		city, err = q.InsertCity(ctx, countryRow.ID, citySlug)
+	// The city is looked for in the country by slug, by any stored name in any
+	// locale and by the same place ("Praha" finds "Prague") before a row is
+	// inserted: a slug-only lookup made a second Prague.
+	var city gen.CityRow
+	found, hit, err := citymatch.FindInCountry(ctx, tx, countryRow.ID, iso2, v.CityName)
+	if err == nil && hit {
+		city, err = q.GetCityBySlug(ctx, found.Slug)
+	} else if err == nil {
+		city, err = q.GetCityBySlug(ctx, citySlug)
+		if errors.Is(err, pgx.ErrNoRows) {
+			city, err = q.InsertCity(ctx, countryRow.ID, citySlug)
+		}
 	}
 	if err != nil {
 		warnings.add(WarnCityUnresolved,

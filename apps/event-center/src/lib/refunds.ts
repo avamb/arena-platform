@@ -9,8 +9,10 @@
  * - Nothing is ticked at the start (owner decision 2026-10-13).
  * - The amount of EVERY selected ticket is sent explicitly, so the number on
  *   the screen is the number sent.
- * - A part of the amount is possible for ONE ticket, and only when the
- *   provider can return a part (`partial_refund`).
+ * - A part of the amount is possible for ANY selected ticket, several in one
+ *   action (EC-V4), and only when the provider can return a part
+ *   (`partial_refund`). "Refund the whole order" ticks every refundable
+ *   ticket at its full refundable amount.
  * - The tickets always stop being valid, even for a part of their price
  *   (`cancel_tickets` is left at its default, true), exactly as in the bot.
  * - One operation has one Idempotency-Key. It is minted for a plan and kept
@@ -99,10 +101,11 @@ export function providerName(provider: string): string {
 export interface RefundDraft {
   /** Ticket ids the person ticked. */
   selected: string[];
-  /** True when the person returns only a part of ONE ticket. */
-  partial: boolean;
-  /** The typed part, as typed. */
-  partText: string;
+  /**
+   * The amount typed for a ticket, as typed, by ticket id. A ticket with no
+   * entry (or a blank one) returns everything that is left of it.
+   */
+  parts: Record<string, string>;
   reason: RefundReasonChoice | null;
   /** The person's own reason when `reason` is "other". */
   reasonText: string;
@@ -111,23 +114,39 @@ export interface RefundDraft {
 }
 
 export function emptyRefundDraft(): RefundDraft {
-  return { selected: [], partial: false, partText: "", reason: null, reasonText: "", notifyBuyer: true };
+  return { selected: [], parts: {}, reason: null, reasonText: "", notifyBuyer: true };
 }
 
-/** Ticks or unticks one ticket. Leaving a single ticket keeps a typed part; more drops it. */
+/** Ticks or unticks one ticket. Unticking drops the amount typed for it. */
 export function toggleTicket(d: RefundDraft, ticketId: string): RefundDraft {
-  const selected = d.selected.includes(ticketId) ? d.selected.filter((x) => x !== ticketId) : [...d.selected, ticketId];
-  return { ...d, selected, partial: selected.length === 1 ? d.partial : false };
+  if (d.selected.includes(ticketId)) {
+    const { [ticketId]: _dropped, ...parts } = d.parts;
+    return { ...d, selected: d.selected.filter((x) => x !== ticketId), parts };
+  }
+  return { ...d, selected: [...d.selected, ticketId] };
 }
 
-/** "Select all": every refundable ticket, and no part of an amount. */
+/** Types the amount for one ticket ("" = everything that is left of it). */
+export function setPart(d: RefundDraft, ticketId: string, text: string): RefundDraft {
+  return { ...d, parts: { ...d.parts, [ticketId]: text } };
+}
+
+/** "Select all": every refundable ticket, at its full refundable amount. */
 export function selectAll(d: RefundDraft, o: OrderRefundOptions): RefundDraft {
-  return { ...d, selected: refundableTickets(o).map((t) => t.ticket_id), partial: false };
+  return { ...d, selected: refundableTickets(o).map((t) => t.ticket_id), parts: {} };
 }
 
-/** True when the screen may offer "part of the amount". */
+/**
+ * "Refund the whole order" (EC-V4): the same as select-all, spelled for the
+ * button that returns every active ticket at its full price in one press.
+ */
+export function wholeOrder(d: RefundDraft, o: OrderRefundOptions): RefundDraft {
+  return selectAll(d, o);
+}
+
+/** True when the screen may offer a part of the amount for a ticket. */
 export function partialAllowed(d: RefundDraft, o: OrderRefundOptions): boolean {
-  return o.partial_refund && d.selected.length === 1;
+  return o.partial_refund && d.selected.length > 0;
 }
 
 /** The reason text that goes to the server, or "" when none is chosen yet. */
@@ -175,11 +194,16 @@ export function planRefund(
   chosen.sort((a, b) => o.tickets.indexOf(a) - o.tickets.indexOf(b));
 
   const tickets: PlannedTicket[] = chosen.map((tk) => ({ ticket: tk, amount: tk.refundable }));
-  const partial = d.partial && partialAllowed(d, o);
-  if (partial) {
-    const part = parseAmountMinor(d.partText, o.currency);
-    if (!part.ok || part.value > tickets[0].ticket.refundable) return { ok: false, error: "refund.err.part" };
-    tickets[0] = { ...tickets[0], amount: part.value };
+  let partial = false;
+  if (o.partial_refund) {
+    for (let i = 0; i < tickets.length; i++) {
+      const text = (d.parts[tickets[i].ticket.ticket_id] ?? "").trim();
+      if (text === "") continue;
+      const part = parseAmountMinor(text, o.currency);
+      if (!part.ok || part.value > tickets[i].ticket.refundable) return { ok: false, error: "refund.err.part" };
+      if (part.value < tickets[i].ticket.refundable) partial = true;
+      tickets[i] = { ...tickets[i], amount: part.value };
+    }
   }
   const reason = reasonText(d, t);
   if (reason === "" || [...reason].length > MAX_REFUND_REASON) return { ok: false, error: "refund.err.reason" };

@@ -17,6 +17,7 @@ import { OrgsScreen } from "@/screens/OrgsScreen";
 import { OrgLayout } from "@/screens/OrgLayout";
 import { EventsScreen } from "@/screens/EventsScreen";
 import { EventScreen } from "@/screens/EventScreen";
+import { EventEditScreen } from "@/screens/EventEditScreen";
 import { EventFunnelScreen } from "@/screens/EventFunnelScreen";
 import { SessionScreen } from "@/screens/SessionScreen";
 import { SessionInvitationsScreen } from "@/screens/SessionInvitationsScreen";
@@ -25,15 +26,22 @@ import { parseSeatsSearch } from "@/lib/seatManager/embed";
 import { OrdersScreen } from "@/screens/OrdersScreen";
 import { OrderScreen } from "@/screens/OrderScreen";
 import { NotificationsScreen } from "@/screens/NotificationsScreen";
+import { SummaryScreen } from "@/screens/SummaryScreen";
+import { RefundQueueScreen } from "@/screens/RefundQueueScreen";
 import { GrowthScreen } from "@/screens/GrowthScreen";
 import { BillingBalanceScreen } from "@/screens/BillingBalanceScreen";
 import { BillingInvoicesScreen } from "@/screens/BillingInvoicesScreen";
 import { BillingScreen } from "@/screens/BillingScreen";
 import { InvitationsScreen } from "@/screens/InvitationsScreen";
 import { PromotersScreen } from "@/screens/PromotersScreen";
+import { VenuesScreen } from "@/screens/VenuesScreen";
+import { VenuePlanIntakeScreen } from "@/screens/VenuePlanIntakeScreen";
+import { parseIntakeSearch } from "@/lib/venuePlan/intakeState";
 import { PromoterScreen } from "@/screens/PromoterScreen";
 import { NotFoundScreen } from "@/screens/NotFoundScreen";
 import { OrgDataScreen } from "@/screens/OrgDataScreen";
+import { EntranceScreen } from "@/screens/EntranceScreen";
+import { HelpScreen } from "@/screens/HelpScreen";
 import { parseEventsSearch, parseLoginSearch, parseOrdersSearch, parsePromotersSearch } from "@/lib/search";
 import { parseBalanceSearch } from "@/lib/billingPacks";
 import { PromoListScreen } from "@/screens/PromoListScreen";
@@ -159,6 +167,13 @@ const eventFunnelRoute = createRoute({
   component: EventFunnelScreen,
 });
 
+// The "Edit" button of the event card: name, description, poster and the text of the buyer letters.
+const eventEditRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/events/$eventId/edit",
+  component: EventEditScreen,
+});
+
 const sessionRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/events/$eventId/sessions/$sessionId",
@@ -191,6 +206,34 @@ const orderRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/orders/$orderId",
   component: OrderScreen,
+});
+
+// EC-V5: "Refunds" of the bottom bar, the queue of what needs a person.
+const refundQueueRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/refunds",
+  component: RefundQueueScreen,
+});
+
+// Spec 62 §12.1: "Summary" of the bottom bar, the organization-wide summary and the accounting workbook (EC-V1, EC-V2).
+const summaryRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/summary",
+  component: SummaryScreen,
+});
+
+// The «Entrance» item of the bar: the scanner app and where the guest list is.
+const entranceRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/entrance",
+  component: EntranceScreen,
+});
+
+// What each section of the menu is for.
+const helpRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/help",
+  component: HelpScreen,
 });
 
 const notificationsRoute = createRoute({
@@ -248,6 +291,17 @@ const promoterRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/promoters/$promoterId",
   component: PromoterScreen,
+});
+
+// Spec 64 section 2.1.1: the venue chooser and the venue card.
+const venuesRoute = createRoute({ getParentRoute: () => orgRoute, path: "/venues", component: VenuesScreen });
+const venueRoute = createRoute({ getParentRoute: () => orgRoute, path: "/venues/$venueId", component: VenuesScreen });
+// Spec 64: one seating plan upload. ?event=<id>&session=<id> sends the next step back to that date.
+const venuePlanIntakeRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/venues/$venueId/plan-intakes/$intakeId",
+  validateSearch: parseIntakeSearch,
+  component: VenuePlanIntakeScreen,
 });
 
 // 4-3: promo codes. "new" is listed before "$codeId" so it is never read as an id.
@@ -383,11 +437,16 @@ export const routeTree = rootRoute.addChildren([
     eventsRoute,
     eventRoute,
     eventFunnelRoute,
+    eventEditRoute,
     sessionRoute,
     sessionSeatsRoute,
     sessionInvitationsRoute,
     ordersRoute,
     orderRoute,
+    refundQueueRoute,
+    summaryRoute,
+    entranceRoute,
+    helpRoute,
     notificationsRoute,
     growthRoute,
     invitationsRoute,
@@ -396,6 +455,9 @@ export const routeTree = rootRoute.addChildren([
     billingInvoicesRoute,
     promotersRoute,
     promoterRoute,
+    venuesRoute,
+    venueRoute,
+    venuePlanIntakeRoute,
     promoRoute,
     promoNewRoute,
     promoCodeRoute,

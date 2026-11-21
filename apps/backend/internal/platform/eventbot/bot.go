@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/analytics"
 )
@@ -124,6 +125,8 @@ type Bot struct {
 
 	selfOnboarding bool
 	noticeEvery    time.Duration
+	// noticeSeam replaces planNoticeTo in tests.
+	noticeSeam     func(context.Context, int64, openapi.BotVenuePlanNotice)
 	siteButton     bool
 	miniappEditor  bool
 	miniappInvites bool
@@ -132,6 +135,9 @@ type Bot struct {
 	onb            *onbDialogs
 	onbForms       *onbFormCache
 
+	// linkLocks serializes "find or make the sales link of an event" per event
+	// (event_card_groups.go): a double press never makes two links.
+	linkLocks keyedMutex
 	// serial runs one account's updates one at a time, in order (serial.go).
 	serial *userSerial
 	// route handles one admitted update inside its sender's turn; tests
@@ -348,6 +354,7 @@ func (b *Bot) Run(ctx context.Context) error {
 		go b.onbNoticeLoop(ctx)
 	}
 	go b.webNoticeLoop(ctx)
+	go b.planNoticeLoop(ctx)
 	go b.invPDFLoop(ctx)
 	go b.guestListLoop(ctx)
 	go b.dialogSweepLoop(ctx)
@@ -499,8 +506,10 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		}
 		if b.menuCommand(ctx, cmd, strings.TrimSpace(arg), from) {
 			// /menu and a plain /start leave every dialog themselves, and
-			// ask first when a refund waits for its confirmation.
-			b.openMenu(ctx, chatID, from, cmd == "/start")
+			// ask first when a refund waits for its confirmation. Both send the
+			// "☰ Menu" keyboard again (a deleted note, a client that lost it).
+			// The typed button itself never does.
+			b.openMenu(ctx, chatID, from, true)
 			return
 		}
 		// Every command ends every dialog (dialog_owners.go): a word typed
@@ -509,6 +518,11 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		switch cmd {
 		case "/start":
 			arg = strings.TrimSpace(arg)
+			if strings.HasPrefix(arg, connectStartPrefix) {
+				// "Connect Telegram" from the web event center (F-007).
+				b.startConnect(ctx, chatID, from, strings.TrimPrefix(arg, connectStartPrefix))
+				return
+			}
 			if strings.HasPrefix(arg, "inv_") {
 				b.startInvitation(ctx, chatID, from, strings.TrimPrefix(arg, "inv_"))
 				return
@@ -559,7 +573,7 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		return
 	}
 	if m.Document != nil || len(m.Photo) > 0 {
-		if b.wizardPlanFile(ctx, chatID, from, m) || b.wizardPoster(ctx, chatID, from, m) {
+		if b.planIntakeFile(ctx, chatID, from, m) || b.wizardPoster(ctx, chatID, from, m) {
 			return
 		}
 	} else if text != "" && b.wizardText(ctx, chatID, from, text) {
@@ -629,8 +643,14 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.seatLayoutCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "sl:"))
 	case "og":
 		b.orgDataCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "og:"))
+	case "pi":
+		b.planIntakeCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "pi:"))
 	case "ql":
 		b.salesLinkCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ql:"))
+	case menuSectionPrefix:
+		b.menuSectionCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, menuSectionPrefix+":"))
+	case helpPrefix:
+		b.helpCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, helpPrefix+":"))
 	case "home":
 		b.showHome(ctx, chatID, &msgID, from, "")
 	case menuCallback:
@@ -682,6 +702,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		}
 	case "onb":
 		b.onbCallback(ctx, chatID, msgID, from, cq.Data)
+	case "con":
+		b.connectCallback(ctx, chatID, from, cq.Data)
 	case "ses":
 		b.sessionsCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ses:"))
 	case "tf":
@@ -804,69 +826,9 @@ func (b *Bot) showHome(ctx context.Context, chatID int64, editMsgID *int, from *
 		b.showOrgChooserFor(ctx, chatID, editMsgID, id)
 		return
 	}
-	text := prefix + b.texts.T(id.Locale(), "bot.menu_title", map[string]any{"Org": Esc(id.Current.OrgName)}) + b.paymentsNote(ctx, id, jwt) + b.archivedNote(id)
-	b.reply(ctx, chatID, editMsgID, text, b.homeKeyboard(ctx, id, jwt))
-}
-
-// homeKeyboard is the main menu. An owner who is still alone in the
-// organization sees "+ Team member" (straight into the invite dialog)
-// instead of a "Team" screen that would list only themselves; once a
-// colleague exists the button opens the team screen.
-func (b *Bot) homeKeyboard(ctx context.Context, id *Identity, jwt string) *models.InlineKeyboardMarkup {
-	loc := id.Locale()
-	rows := [][]models.InlineKeyboardButton{
-		{{Text: b.texts.T(loc, "bot.wz.new_event_btn", nil), CallbackData: "wz:new"}},
-		{{Text: b.texts.T(loc, "bot.btn_events", nil), CallbackData: "el:new"}},
-	}
-	if canViewSales(id) {
-		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.ord.btn", nil), CallbackData: "or:new"}})
-	}
-	if row := b.shopMenuRow(loc, id); row != nil { // the shop (spec 61, stage M3)
-		rows = append(rows, row)
-	}
-	if row := b.queueMenuRow(loc, id); row != nil { // refunds (EC-23)
-		rows = append(rows, row)
-	}
-	if row := b.disputeMenuRow(loc, id); row != nil { // disputes (spec 51.3, DS-11)
-		rows = append(rows, row)
-	}
-	if canInvite(id) {
-		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.inv.btn", nil), CallbackData: "iv:new"}})
-	}
-	if row := b.promoMenuRow(loc, id); row != nil { // promo codes (EC-11)
-		rows = append(rows, row)
-	}
-	if row := b.promoterMenuRow(loc, id); row != nil { // promoters (EC-14)
-		rows = append(rows, row)
-	}
-	if row := b.salesLinkMenuRow(loc, id); row != nil { // links and QR codes (spec 43, QL-8)
-		rows = append(rows, row)
-	}
-	if row := b.orgDataMenuRow(loc, id); row != nil { // organization data (HP-4a)
-		rows = append(rows, row)
-	}
-	if isOwner(id) {
-		if b.ownerIsAlone(ctx, id, jwt) {
-			rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_team_add", nil), CallbackData: "team:invite"}})
-		} else {
-			rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_team", nil), CallbackData: "team"}})
-		}
-	} else if isTeamReader(id) { // the manager reads the team, never changes it (V-11)
-		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_team", nil), CallbackData: "team"}})
-	}
-	if len(id.Memberships) > 1 {
-		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_org", nil), CallbackData: "org"}})
-	}
-	if row := b.webMenuRow(loc, id); row != nil { // the web event center (spec 37 §4.3)
-		rows = append(rows, row)
-	}
-	rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.ec.notif_btn", nil), CallbackData: "ec:nt"}})
-	rows = append(rows, b.scannerRow(loc))
-	rows = append(rows, []models.InlineKeyboardButton{
-		{Text: b.texts.T(loc, "bot.btn_lang", nil), CallbackData: "lang"},
-		{Text: b.texts.T(loc, "bot.btn_help", nil), CallbackData: "help"},
-	})
-	return &models.InlineKeyboardMarkup{InlineKeyboard: rows}
+	gs := b.firstSteps(ctx, id, jwt)
+	text := prefix + b.texts.T(id.Locale(), "bot.menu_title", map[string]any{"Org": Esc(id.Current.OrgName)}) + b.firstStepsText(id.Locale(), gs) + b.archivedNote(id)
+	b.reply(ctx, chatID, editMsgID, text, b.homeKeyboardFor(id, gs))
 }
 
 func (b *Bot) showHelp(ctx context.Context, chatID int64, editMsgID *int, from *models.User) {
@@ -957,6 +919,7 @@ func languageRow() *models.InlineKeyboardMarkup {
 		{Text: "English", CallbackData: "lang:en"},
 		{Text: "Русский", CallbackData: "lang:ru"},
 		{Text: "Español", CallbackData: "lang:es"},
+		{Text: "Українська", CallbackData: "lang:uk"},
 	}}}
 }
 
@@ -986,7 +949,7 @@ func (b *Bot) replyIdentityError(ctx context.Context, chatID int64, from *models
 			b.onbWelcome(ctx, chatID, from)
 			return
 		}
-		b.send(ctx, chatID, b.texts.T(locale, "bot.not_invited", nil), nil)
+		b.send(ctx, chatID, b.texts.T(locale, "bot.not_invited", nil), inline(b.connectHaveRow(locale)))
 		return
 	}
 	b.logger.Error("eventbot: resolve identity failed", slog.Int64("telegram_user_id", from.ID), slog.String("error", err.Error()))

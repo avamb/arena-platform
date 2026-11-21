@@ -14,6 +14,7 @@
  * The events list is the only route that carries the text (the single-event
  * route does not hydrate it), so after a write the list is read again.
  */
+import { HelpPopover } from "@/components/HelpPopover";
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConfirmPressDialog } from "@/components/ConfirmPressDialog";
@@ -118,7 +119,10 @@ export function EmailNoteSection({ orgId, eventId, note, noteFormat, canEdit, on
 
   return (
     <section aria-labelledby="email-note-title" data-testid="email-note">
-      <h2 id="email-note-title">{t("emailNote.title")}</h2>
+      <h2 id="email-note-title">
+        {t("emailNote.title")}
+        <HelpPopover textKey="help.letterText" testId="help-letter-text" />
+      </h2>
       <p>{t("emailNote.intro")}</p>
       {saved === "" && !dirty && (
         <p className="muted" data-testid="email-note-none">

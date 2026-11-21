@@ -24,7 +24,6 @@
 package hgeo
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -40,6 +39,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/worldgeo"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -769,35 +769,10 @@ func (h *Handler) HandleUpdateCity(w http.ResponseWriter, r *http.Request) {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-// geoUpsertI18nName inserts or updates i18n_text rows for the given namespace+key
-// within the provided transaction. Only non-empty name values are written — if
-// nameEn is empty the English row is not touched.
-//
-// SQL pattern:
-//
-//	INSERT INTO i18n_text (namespace, key, locale, value)
-//	VALUES ($1, $2, $3, $4)
-//	ON CONFLICT (namespace, key, locale)
-//	DO UPDATE SET value = EXCLUDED.value, updated_at = now()
-const geoUpsertI18nSQL = `
-INSERT INTO i18n_text (namespace, key, locale, value)
-VALUES ($1, $2, $3, $4)
-ON CONFLICT (namespace, key, locale)
-DO UPDATE SET value = EXCLUDED.value, updated_at = now()`
-
-func geoUpsertI18nName(ctx context.Context, tx pgx.Tx, namespace, key, nameEn, nameRu string) error {
-	if nameEn != "" {
-		if _, err := tx.Exec(ctx, geoUpsertI18nSQL, namespace, key, "en", nameEn); err != nil {
-			return err
-		}
-	}
-	if nameRu != "" {
-		if _, err := tx.Exec(ctx, geoUpsertI18nSQL, namespace, key, "ru", nameRu); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+// geoUpsertI18nName inserts or updates the English and Russian i18n_text rows
+// of namespace + key on tx; an empty name leaves its row untouched. The SQL
+// lives in worldgeo, which creates countries from the world table the same way.
+var geoUpsertI18nName = worldgeo.UpsertI18nName
 
 // currencyPattern is the ISO-4217 shape check mirrored from the DB CHECK
 // constraint countries_currency_iso4217 (migration 0081).

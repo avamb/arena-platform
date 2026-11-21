@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * A-02: the guard of the product card. While the form is dirty, closing the tab asks the browser to confirm and a
- * move to another screen asks first ("There are unsaved changes. Leave?"). A clean form is never stopped, and a
+ * move to another screen asks first ("You have changes that are not saved. Close the page?"). A clean form is never stopped, and a
  * move the form makes itself (after a create or a delete) is not asked about.
  */
 import { act, type MutableRefObject } from "react";
@@ -65,7 +65,7 @@ describe("UnsavedChangesGuard", () => {
     await go(router, "/other");
     expect(router.state.location.pathname).toBe("/");
     const dialog = el.querySelector('[data-testid="unsaved-dialog"]');
-    expect(dialog?.textContent).toContain("There are unsaved changes. Leave?");
+    expect(dialog?.textContent).toContain("You have changes that are not saved. Close the page?");
     await act(async () => {
       (el.querySelector('[data-testid="unsaved-stay"]') as HTMLElement).click();
       await sleep(20);
@@ -117,7 +117,7 @@ describe("UnsavedChangesGuard", () => {
     await go(withSave.router, "/other");
     const buttons = Array.from(withSave.el.querySelectorAll('[data-testid="unsaved-dialog"] button')).map((b) => b.getAttribute("data-testid"));
     expect(buttons).toEqual(["unsaved-stay", "unsaved-save-leave", "unsaved-leave"]);
-    expect(withSave.el.querySelector('[data-testid="unsaved-save-leave"]')?.textContent).toBe("Save and leave");
+    expect(withSave.el.querySelector('[data-testid="unsaved-save-leave"]')?.textContent).toBe("Save and close");
   });
 
   it("tells the screen while the question is open, so it can hide the Save bar", async () => {

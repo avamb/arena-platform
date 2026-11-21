@@ -133,10 +133,22 @@ func (c *ArenaClient) CreateCity(ctx context.Context, jwt string, orgID uuid.UUI
 func (c *ArenaClient) CreateVenue(ctx context.Context, jwt string, orgID uuid.UUID, v VenueCreate) (VenueRef, error) {
 	body := map[string]any{
 		"name":     v.Name,
-		"city_id":  v.CityID,
 		"country":  strings.ToUpper(v.CountryISO2),
 		"timezone": v.Timezone,
 		"status":   "active",
+	}
+	path := "/v1/organizations/" + orgID.String() + "/venues"
+	if v.CityID == "" && v.CityName != "" {
+		// A city that is only a name (a country outside the reference, or a
+		// city the person typed): the server finds or creates the city, and the
+		// country when the reference lacks it, in the venue's own transaction.
+		body["country_iso2"] = strings.ToUpper(v.CountryISO2)
+		body["city_name"] = v.CityName
+		if v.Lang != "" {
+			path += "?lang=" + url.QueryEscape(NormalizeLocale(v.Lang))
+		}
+	} else {
+		body["city_id"] = v.CityID
 	}
 	if v.Address != "" {
 		body["address_line1"] = v.Address
@@ -145,12 +157,24 @@ func (c *ArenaClient) CreateVenue(ctx context.Context, jwt string, orgID uuid.UU
 		body["capacity_default"] = v.Capacity
 	}
 	var out struct {
-		Venue openapi.VenueItem `json:"venue"`
+		Venue          openapi.VenueItem            `json:"venue"`
+		City           *openapi.VenueCreatedCity    `json:"city"`
+		CreatedCountry *openapi.VenueCreatedCountry `json:"created_country"`
 	}
-	if err := c.do(ctx, http.MethodPost, "/v1/organizations/"+orgID.String()+"/venues", jwt, body, &out); err != nil {
+	if err := c.do(ctx, http.MethodPost, path, jwt, body, &out); err != nil {
 		return VenueRef{}, err
 	}
-	return venueRefFrom(out.Venue), nil
+	ref := venueRefFrom(out.Venue)
+	if out.City != nil {
+		ref.NewCity = &RefItem{ID: out.City.Id.String(), Name: out.City.Name, ISO2: out.City.CountryIso2}
+	}
+	if out.CreatedCountry != nil {
+		ref.NewCountry = &RefItem{ID: out.CreatedCountry.Id.String(), Name: out.CreatedCountry.Name,
+			ISO2: out.CreatedCountry.Iso2, Currency: out.CreatedCountry.Currency, Region: out.CreatedCountry.Region}
+		// The world list says "in reference" for this country from now on.
+		c.world.drop()
+	}
+	return ref, nil
 }
 
 // CreatePromoter adds a promoter of the organization.

@@ -5,7 +5,7 @@ see the NOTICE next to the data file). Usage:
 
     python ops/geotz/build_cities.py path/to/cities15000.zip
 
-The output has two kinds of line (tab separated):
+The output has four kinds of line (tab separated):
 
   Z  CC  zone  city      each zone of a country with its largest city, the
                          label of the zone's button; largest first
@@ -15,6 +15,12 @@ The output has two kinds of line (tab separated):
                          city first, so the lookup lets the biggest city win a
                          name clash inside one country
 
+  P  CC  lat  lon  kpop  display  names
+                         every city of the file (the map point check): its
+                         point to 2 decimals (about 1 km), its population in
+                         thousands, its ASCII name for messages and its
+                         normalised names (name, ASCII name, one Hebrew and
+                         one Cyrillic alias) joined by '|'; largest first
   T  CC  city  pop       one of the largest cities of a country the bot offers
                          as a button on the city question (TOP_PER_COUNTRY of
                          them, largest first)
@@ -70,12 +76,14 @@ def main(zip_path):
     skip = single_zone_countries()
     rows = []
     every = []
+    places = []
     with zipfile.ZipFile(zip_path) as z:
         with z.open("cities15000.txt") as f:
             for line in io.TextIOWrapper(f, encoding="utf-8"):
                 p = line.rstrip("\n").split("\t")
                 cc, tz, pop = p[8], p[17], int(p[14] or 0)
                 every.append((pop, cc, p[1]))
+                places.append((pop, cc, p[1], p[2], p[3].split(","), p[4], p[5]))
                 if cc in skip or not tz:
                     continue
                 rows.append((pop, cc, tz, p[1], p[2], p[3].split(",")))
@@ -96,6 +104,20 @@ def main(zip_path):
             if n and n not in names:
                 names.append(n)
         out.append("C\t%s\t%s\t%s\n" % (cc, tz, "|".join(names)))
+    # P: every city of the file with its point, for the map point check.
+    # P CC lat lon kpop display names
+    places.sort(key=lambda r: -r[0])
+    for pop, cc, name, ascii_name, alts, lat, lon in places:
+        names = []
+        he = [a for a in alts if re.match("^[\u0590-\u05ff .'-]+$", a)][:1]
+        ru = [a for a in alts if re.match("^[\u0400-\u04ff .'-]+$", a)][:1]
+        for raw in [name, ascii_name] + he + ru:
+            n = normalize(raw)
+            if n and n not in names:
+                names.append(n)
+            if len(names) >= 5:
+                break
+        out.append("P\t%s\t%.2f\t%.2f\t%d\t%s\t%s\n" % (cc, float(lat), float(lon), pop // 1000, ascii_name or name, "|".join(names)))
     every.sort(key=lambda r: -r[0])
     taken = {}
     for pop, cc, name in every:

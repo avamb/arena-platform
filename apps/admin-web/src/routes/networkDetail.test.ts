@@ -41,19 +41,19 @@ describe("validateUuid", () => {
   });
 
   test("rejects malformed string", () => {
-    expect(validateUuid("not-a-uuid")).toMatch(/must be a valid UUID/);
+    expect(validateUuid("not-a-uuid")).toMatch(/must be a correct UUID/);
   });
 
   test("rejects UUID with too few segments", () => {
     expect(validateUuid("0190a8b0-7d31-7a3c-9c4e")).toMatch(
-      /must be a valid UUID/,
+      /must be a correct UUID/,
     );
   });
 
   test("uses the provided label in the error", () => {
     expect(validateUuid("", "user_id")).toBe("user_id is required");
     expect(validateUuid("xx", "organization_id")).toMatch(
-      /^organization_id must be a valid UUID/,
+      /^organization_id must be a correct UUID/,
     );
   });
 });

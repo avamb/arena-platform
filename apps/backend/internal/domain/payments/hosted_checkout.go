@@ -139,6 +139,29 @@ type HostedCheckoutProvider interface {
 	CreateCheckoutSession(ctx context.Context, req CreateHostedCheckoutRequest) (*CreateHostedCheckoutResponse, error)
 }
 
+// HostedCheckoutRefusalInvalidEmail is HostedCheckoutRefusedError.Reason
+// when the provider refused the buyer's e-mail address (Stripe email_invalid).
+const HostedCheckoutRefusalInvalidEmail = "invalid_email"
+
+// HostedCheckoutRefusedError is returned (wrapped) by CreateCheckoutSession
+// when the provider ANSWERED and refused for good: no page was created and
+// repeating the same request cannot change that (Stripe: a 4xx with its own
+// error object, not 409, 429 or an idempotency error). Any other error is an
+// unknown outcome: the provider may have created the page.
+type HostedCheckoutRefusedError struct {
+	// Reason is the provider-neutral cause arena acts on
+	// (HostedCheckoutRefusalInvalidEmail), or "" for any other refusal.
+	Reason string
+	// Code is the provider's own machine-readable reason ("email_invalid").
+	Code string
+	// Message is the provider's human text, for the operator.
+	Message string
+}
+
+func (e *HostedCheckoutRefusedError) Error() string {
+	return "payments: the provider refused the hosted checkout: " + e.Code + ": " + e.Message
+}
+
 // HostedCheckoutExpirer is implemented by providers that can close a hosted
 // page before its own expiry, so a buyer who still has it open can no longer
 // pay (Stripe: POST /v1/checkout/sessions/{id}/expire). Callers type-assert
@@ -149,4 +172,44 @@ type HostedCheckoutExpirer interface {
 	// means the provider did not confirm it (the session may already be
 	// paid, expired, or the call failed); callers treat it as best effort.
 	ExpireCheckoutSession(ctx context.Context, sessionID string) error
+}
+
+// HostedPaymentState is what a provider says about one hosted payment arena
+// asks it about by reference (HostedPaymentLookup).
+type HostedPaymentState int
+
+const (
+	// HostedPaymentUnknown: the provider holds no payment under that
+	// reference — the page was never created.
+	HostedPaymentUnknown HostedPaymentState = iota
+	// HostedPaymentUnpaid: the payment exists and nothing was charged; the
+	// page may still be paid.
+	HostedPaymentUnpaid
+	// HostedPaymentSettled: the provider reports an outcome arena must act
+	// on. HostedPaymentLookupResult.Event carries it, normalized exactly as
+	// the provider's verified webhook would have been (a paid order, or one
+	// a human has to review).
+	HostedPaymentSettled
+	// HostedPaymentPending: anything else (an authorization, a status the
+	// provider is still settling). Left alone; asked again later.
+	HostedPaymentPending
+)
+
+// HostedPaymentLookupResult is one answer of HostedPaymentLookup.
+type HostedPaymentLookupResult struct {
+	State HostedPaymentState
+	// Event is set for HostedPaymentSettled only.
+	Event NormalizedEvent
+	// URL is the payment page of an existing order, when the provider's
+	// status answer carries it (HostedPaymentUnpaid). Empty when the
+	// provider does not say; AllPay's paymentstatus never does.
+	URL string
+}
+
+// HostedPaymentLookup is implemented by a provider with
+// Capabilities.ReferenceIsPaymentID: it reads one hosted payment back by the
+// reference arena filed it under. The checkout.payment_recover job uses it
+// when arena lost the provider's answer to CreateCheckoutSession.
+type HostedPaymentLookup interface {
+	LookupHostedPayment(ctx context.Context, reference string) (HostedPaymentLookupResult, error)
 }

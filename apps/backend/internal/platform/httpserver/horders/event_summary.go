@@ -76,6 +76,7 @@ type eventSummary struct {
 	Refunds       []summaryRefunds      `json:"refunds"`
 	Promos        []summaryPromo        `json:"promos"`
 	Complimentary summaryComplimentary  `json:"complimentary"`
+	TestOrders    int64                 `json:"test_orders"`
 	Sessions      []eventSummarySession `json:"sessions"`
 }
 
@@ -110,6 +111,7 @@ func buildEventSummary(header gen.EventSummaryHeaderRow, sessions []gen.EventSum
 		Refunds:       total.Refunds,
 		Promos:        total.Promos,
 		Complimentary: total.Complimentary,
+		TestOrders:    total.TestOrders,
 		Sessions:      make([]eventSummarySession, 0, len(sessions)),
 	}
 	for _, s := range sessions {

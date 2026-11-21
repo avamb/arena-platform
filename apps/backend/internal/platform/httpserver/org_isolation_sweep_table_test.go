@@ -58,8 +58,15 @@ type sweepIDs struct {
 	Alloc       uuid.UUID
 	Issuance    uuid.UUID
 	PlanVersion uuid.UUID
+	PlanVenue   uuid.UUID // the venue of PlanVersion's plan (not verified)
 	PartnerOrg  uuid.UUID // partner of Alloc
 	SalesLink   uuid.UUID // a tracked sales link of the event (QL-4)
+
+	// A hall plan intake of the world's venue (spec 64): in review with draft
+	// 1 (a source SVG), one source file and one open question of that draft.
+	Intake         uuid.UUID
+	IntakeSource   uuid.UUID
+	IntakeQuestion uuid.UUID
 }
 
 // sweepRow is one hole x one method.
@@ -242,6 +249,45 @@ func sweepRows() []sweepRow {
 		{hole: "H8", name: "seat block", route: "PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}/seats", perm: "session.seats.manage",
 			path: func(id sweepIDs) string { return sessionBase(id, id.Event, id.Session3) + "/seats" },
 			body: func(_ sweepIDs) string { return `{"action":"block","seat_keys":["S|A|1","S|A|2"]}` }},
+		// Spec 64 §3.4: the templates of a venue the path organization neither
+		// owns nor may use (not verified) are not listed.
+		{hole: "V64", name: "venue plan templates", route: "GET /v1/organizations/{org_id}/venues/{venue_id}/plan-templates", perm: "seating_plan.read",
+			path: func(id sweepIDs) string { return orgPath(id) + "/venues/" + id.PlanVenue.String() + "/plan-templates" }},
+
+		// -- Spec 64 hall plan intakes (hvenueplan): the intake is read by
+		// (id, org_id) and its files and drafts by (child, intake), so a foreign
+		// intake is 404 before anything else (an API key is refused only after
+		// that). The create row names a venue of A that is not verified.
+		{hole: "VPI", name: "plan intake create on a foreign venue", route: "POST /v1/organizations/{org_id}/venues/{venue_id}/plan-intakes", perm: "seating_plan.create",
+			path:       func(id sweepIDs) string { return orgPath(id) + "/venues/" + id.PlanVenue.String() + "/plan-intakes" },
+			body:       func(_ sweepIDs) string { return `{}` },
+			attackOnly: true},
+		{hole: "VPI", name: "plan intake get", route: "GET /v1/organizations/{org_id}/plan-intakes/{intake_id}", perm: "seating_plan.read",
+			path: func(id sweepIDs) string { return orgPath(id) + "/plan-intakes/" + id.Intake.String() }},
+		{hole: "VPI", name: "plan intake source", route: "GET /v1/organizations/{org_id}/plan-intakes/{intake_id}/sources/{source_id}", perm: "seating_plan.read",
+			path: func(id sweepIDs) string {
+				return orgPath(id) + "/plan-intakes/" + id.Intake.String() + "/sources/" + id.IntakeSource.String()
+			}},
+		{hole: "VPI", name: "plan intake draft svg", route: "GET /v1/organizations/{org_id}/plan-intakes/{intake_id}/drafts/{n}/svg", perm: "seating_plan.read",
+			path: func(id sweepIDs) string { return orgPath(id) + "/plan-intakes/" + id.Intake.String() + "/drafts/1/svg" }},
+		{hole: "VPI", name: "plan intake answers", route: "POST /v1/organizations/{org_id}/plan-intakes/{intake_id}/answers", perm: "seating_plan.create",
+			path: func(id sweepIDs) string { return orgPath(id) + "/plan-intakes/" + id.Intake.String() + "/answers" },
+			body: func(id sweepIDs) string {
+				return fmt.Sprintf(`{"draft":1,"answers":[{"question_id":%q,"answer":"left_to_right"}]}`, id.IntakeQuestion)
+			}},
+		{hole: "VPI", name: "plan intake corrections text", route: "POST /v1/organizations/{org_id}/plan-intakes/{intake_id}/corrections-text", perm: "seating_plan.create",
+			path: func(id sweepIDs) string {
+				return orgPath(id) + "/plan-intakes/" + id.Intake.String() + "/corrections-text"
+			},
+			body: func(_ sweepIDs) string { return `{"draft":1,"text":"Row 5 has 22 seats"}` }},
+		{hole: "VPI", name: "plan intake escalate", route: "POST /v1/organizations/{org_id}/plan-intakes/{intake_id}/escalate", perm: "seating_plan.create",
+			path: func(id sweepIDs) string { return orgPath(id) + "/plan-intakes/" + id.Intake.String() + "/escalate" },
+			body: func(_ sweepIDs) string { return `{"text":"please help"}` }},
+		{hole: "VPI", name: "plan intake cancel", route: "POST /v1/organizations/{org_id}/plan-intakes/{intake_id}/cancel", perm: "seating_plan.create",
+			path: func(id sweepIDs) string { return orgPath(id) + "/plan-intakes/" + id.Intake.String() + "/cancel" }},
+		{hole: "VPI", name: "plan intake approve", route: "POST /v1/organizations/{org_id}/plan-intakes/{intake_id}/approve", perm: "seating_plan.create",
+			path: func(id sweepIDs) string { return orgPath(id) + "/plan-intakes/" + id.Intake.String() + "/approve" },
+			body: func(_ sweepIDs) string { return `{"draft":1}` }},
 
 		// -- QL-4 sales links: {id} is a link; every query is scoped by (id, org_id).
 		{hole: "QL4", name: "sales link get", route: "GET /v1/organizations/{org_id}/sales-links/{id}", perm: "sales_link.read",
@@ -424,6 +470,7 @@ var orgIsolationAuditedSafe = map[string]string{
 	"PATCH /v1/organizations/{org_id}/events/{event_id}/partner-links/{link_id}":  "hmaterials",
 	"DELETE /v1/organizations/{org_id}/events/{event_id}/partner-links/{link_id}": "hmaterials",
 	"GET /v1/organizations/{org_id}/events/{event_id}/map-point":                  "hmaterials",
+	"GET /v1/organizations/{org_id}/events/{event_id}/map-point/check":            "hmaterials",
 	"PUT /v1/organizations/{org_id}/events/{event_id}/map-point":                  "hmaterials",
 	"DELETE /v1/organizations/{org_id}/events/{event_id}/map-point":               "hmaterials",
 	"GET /v1/organizations/{org_id}/events/{event_id}/photo-report":               "hmaterials",
@@ -457,36 +504,46 @@ var orgIsolationAuditedSafe = map[string]string{
 	"PATCH /v1/organizations/{org_id}/venues/{id}":  "venues",
 
 	// horders, hcustomers, hexport, hreports: queries scoped by org_id.
-	"GET /v1/organizations/{org_id}/customers/{id}":                             "hcustomers",
-	"GET /v1/organizations/{org_id}/events/{event_id}/sales.csv":                "hexport",
-	"GET /v1/organizations/{org_id}/events/{event_id}/summary":                  "horders",
-	"GET /v1/organizations/{org_id}/orders/{id}":                                "horders",
-	"GET /v1/organizations/{org_id}/sessions/{session_id}/sales.csv":            "hexport",
-	"GET /v1/organizations/{org_id}/sessions/{session_id}/summary":              "horders",
-	"GET /v1/organizations/{org_id}/sessions/{session_id}/summary.csv":          "horders",
-	"GET /v1/organizations/{org_id}/sessions/{session_id}/guest-list.csv":       "hexport",
-	"GET /v1/organizations/{org_id}/sessions/{session_id}/guest-list.xlsx":      "hexport",
-	"POST /v1/organizations/{org_id}/orders/{id}/cancel":                        "horders",
-	"POST /v1/organizations/{org_id}/orders/{order_id}/resend-tickets":          "horders",
-	"GET /v1/organizations/{org_id}/orders/{order_id}/consents":                 "horders.HandleConsents (GetOrderByID(order, path org), then the consents by (path org, the order's checkout session); covered by TestCheckoutConsent_OrderConsentsStayInsideTheOrganization)",
-	"GET /v1/organizations/{org_id}/sessions/{session_id}/tickets":              "horders.HandleSessionTickets (GetSessionSummaryHeader(session, path org), then the tickets of that session; an API key is refused; covered by TestSessionTickets_ScansTwinSources)",
-	"GET /v1/organizations/{org_id}/orders/{order_id}/letter-interactions":      "horders.HandleLetterInteractions (GetOrderByID(order, path org), then the letters by (order, path org); covered by TestBrevoWebhook_LetterInteractionsCarryUserAgentAndStayInsideTheOrganization)",
-	"GET /v1/organizations/{org_id}/orders/{order_id}/refund-options":           "refunds.Engine.Options (order loaded inside the path org; covered by TestRefundOrgRoutes_OptionsCreateReplayAndIsolation)",
-	"POST /v1/organizations/{org_id}/orders/{order_id}/refunds":                 "refunds.Engine.CreateBatch (order loaded inside the path org; covered by TestRefundOrgRoutes_OptionsCreateReplayAndIsolation)",
-	"GET /v1/organizations/{org_id}/disputes/{dispute_id}":                      "disputes.Service (dispute loaded with org_id = path org; covered by TestDisputeRoutes_StayInsideTheOrganization)",
-	"GET /v1/organizations/{org_id}/disputes/{dispute_id}/files/{file_id}":      "disputes.Service (dispute loaded with org_id = path org; covered by TestDisputeRoutes_StayInsideTheOrganization)",
-	"POST /v1/organizations/{org_id}/disputes/{dispute_id}/package":             "disputes.Service (dispute loaded with org_id = path org; covered by TestDisputeRoutes_StayInsideTheOrganization)",
-	"POST /v1/organizations/{org_id}/disputes/{dispute_id}/submit":              "disputes.Service (dispute loaded with org_id = path org; covered by TestDisputeRoutes_StayInsideTheOrganization)",
-	"POST /v1/organizations/{org_id}/disputes/{dispute_id}/accept":              "disputes.Service (dispute loaded with org_id = path org; covered by TestDisputeRoutes_StayInsideTheOrganization)",
-	"POST /v1/organizations/{org_id}/disputes/{dispute_id}/deadline":            "disputes.Service (dispute loaded with org_id = path org; covered by TestDisputeRoutes_StayInsideTheOrganization)",
-	"POST /v1/organizations/{org_id}/disputes/{dispute_id}/sent-by-organizer":   "disputes.Service (dispute loaded with org_id = path org; covered by TestDisputeRoutes_StayInsideTheOrganization)",
-	"GET /v1/organizations/{org_id}/refunds/{refund_id}":                        "refunds.Engine.Get (refund loaded inside the path org; covered by TestRefundOrgRoutes_QueueAndDetailStayInsideTheOrganization)",
-	"POST /v1/organizations/{org_id}/refunds/{refund_id}/retry":                 "refunds.Engine.Retry (refund loaded inside the path org; covered by TestRefundOrgRoutes_RetryAndResolve)",
-	"POST /v1/organizations/{org_id}/refunds/{refund_id}/resolve":               "refunds.Engine.Resolve (refund loaded inside the path org; covered by TestRefundOrgRoutes_RetryAndResolve)",
-	"POST /v1/organizations/{org_id}/tickets/{ticket_id}/scan-refund-exception": "platform superadmin only; the ticket must belong to the path org, checked inside refunds.Engine.GrantScanException (covered by TestScanException_SuperadminOnlyInsideTheOrganization)",
-	"POST /v1/organizations/{org_id}/tickets/{ticket_id}/review-hold/clear":     "platform superadmin only; the ticket's organization (GetTicketOrgID) must be the path org (covered by TestReviewHoldClear_SuperadminOnlyInsideTheOrganization)",
-	"PATCH /v1/organizations/{org_id}/tickets/{ticket_id}/vip":                  "the ticket's organization (GetTicketOrgID) must be the path org (covered by TestTicketVIP_StaysInsideTheOrganization)",
-	"GET /v1/organizations/{org_id}/sessions/{session_id}/sample-ticket":        "hsample",
+	"GET /v1/organizations/{org_id}/customers/{id}":                                   "hcustomers",
+	"GET /v1/organizations/{org_id}/events/{event_id}/sales.csv":                      "hexport",
+	"GET /v1/organizations/{org_id}/events/{event_id}/summary":                        "horders",
+	"GET /v1/organizations/{org_id}/orders/{id}":                                      "horders",
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/sales.csv":                  "hexport",
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/summary":                    "horders",
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/summary.csv":                "horders",
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/guest-list.csv":             "hexport",
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/guest-list.xlsx":            "hexport",
+	"GET /v1/organizations/{org_id}/events/{event_id}/guest-list.xlsx":                "hexport",
+	"POST /v1/organizations/{org_id}/orders/{id}/cancel":                              "horders",
+	"POST /v1/organizations/{org_id}/orders/{order_id}/resend-tickets":                "horders",
+	"GET /v1/organizations/{org_id}/complimentary/{id}/reissue-options":               "ticketreissue.LoadInvitationOptions (issuance loaded WHERE id AND org_id = path org; covered by TestReissue_InvitationWithoutOrder)",
+	"POST /v1/organizations/{org_id}/complimentary/{id}/reissue-tickets":              "ticketreissue.Reissue (issuance locked WHERE id AND org_id = path org; covered by TestReissue_InvitationWithoutOrder)",
+	"GET /v1/organizations/{org_id}/complimentary/{id}/reissues":                      "htickets.HandleInvitationReissueHistory (LoadInvitationOptions(path org) first, then the journal by (path org, issuance); covered by TestReissue_InvitationWithoutOrder)",
+	"POST /v1/organizations/{org_id}/complimentary/{id}/reissues/{reissue_id}/resend": "htickets.HandleInvitationReissueResend (ticketreissue.GetInvitation by (path org, issuance, reissue); covered by TestReissue_InvitationWithoutOrder)",
+	"GET /v1/organizations/{org_id}/orders/{order_id}/reissue-options":                "ticketreissue.LoadOptions (order loaded WHERE id AND org_id = path org; covered by TestReissue_StaysInsideTheOrganization)",
+	"POST /v1/organizations/{org_id}/orders/{order_id}/reissue-tickets":               "ticketreissue.Reissue (order locked WHERE id AND org_id = path org; covered by TestReissue_StaysInsideTheOrganization)",
+	"GET /v1/organizations/{org_id}/orders/{order_id}/reissues":                       "htickets.HandleReissueHistory (GetOrderByID(order, path org), then the journal by (path org, order); covered by TestReissue_StaysInsideTheOrganization)",
+	"POST /v1/organizations/{org_id}/orders/{order_id}/reissues/{reissue_id}/resend":  "htickets.HandleReissueResend (ticketreissue.Get by (path org, order, reissue); covered by TestReissue_StaysInsideTheOrganization)",
+	"GET /v1/organizations/{org_id}/orders/{order_id}/consents":                       "horders.HandleConsents (GetOrderByID(order, path org), then the consents by (path org, the order's checkout session); covered by TestCheckoutConsent_OrderConsentsStayInsideTheOrganization)",
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/tickets":                    "horders.HandleSessionTickets (GetSessionSummaryHeader(session, path org), then the tickets of that session; an API key is refused; covered by TestSessionTickets_ScansTwinSources)",
+	"GET /v1/organizations/{org_id}/orders/{order_id}/letter-interactions":            "horders.HandleLetterInteractions (GetOrderByID(order, path org), then the letters by (order, path org); covered by TestBrevoWebhook_LetterInteractionsCarryUserAgentAndStayInsideTheOrganization)",
+	"GET /v1/organizations/{org_id}/orders/{order_id}/refund-options":                 "refunds.Engine.Options (order loaded inside the path org; covered by TestRefundOrgRoutes_OptionsCreateReplayAndIsolation)",
+	"POST /v1/organizations/{org_id}/orders/{order_id}/refunds":                       "refunds.Engine.CreateBatch (order loaded inside the path org; covered by TestRefundOrgRoutes_OptionsCreateReplayAndIsolation)",
+	"POST /v1/organizations/{org_id}/orders/{order_id}/external-refund":               "htickets.ExternalRefundOrder (LockOrderForUpdate(order, path org); covered by TestExternalRefund_FinalAmountPerTicket)",
+	"GET /v1/organizations/{org_id}/disputes/{dispute_id}":                            "disputes.Service (dispute loaded with org_id = path org; covered by TestDisputeRoutes_StayInsideTheOrganization)",
+	"GET /v1/organizations/{org_id}/disputes/{dispute_id}/files/{file_id}":            "disputes.Service (dispute loaded with org_id = path org; covered by TestDisputeRoutes_StayInsideTheOrganization)",
+	"POST /v1/organizations/{org_id}/disputes/{dispute_id}/package":                   "disputes.Service (dispute loaded with org_id = path org; covered by TestDisputeRoutes_StayInsideTheOrganization)",
+	"POST /v1/organizations/{org_id}/disputes/{dispute_id}/submit":                    "disputes.Service (dispute loaded with org_id = path org; covered by TestDisputeRoutes_StayInsideTheOrganization)",
+	"POST /v1/organizations/{org_id}/disputes/{dispute_id}/accept":                    "disputes.Service (dispute loaded with org_id = path org; covered by TestDisputeRoutes_StayInsideTheOrganization)",
+	"POST /v1/organizations/{org_id}/disputes/{dispute_id}/deadline":                  "disputes.Service (dispute loaded with org_id = path org; covered by TestDisputeRoutes_StayInsideTheOrganization)",
+	"POST /v1/organizations/{org_id}/disputes/{dispute_id}/sent-by-organizer":         "disputes.Service (dispute loaded with org_id = path org; covered by TestDisputeRoutes_StayInsideTheOrganization)",
+	"GET /v1/organizations/{org_id}/refunds/{refund_id}":                              "refunds.Engine.Get (refund loaded inside the path org; covered by TestRefundOrgRoutes_QueueAndDetailStayInsideTheOrganization)",
+	"POST /v1/organizations/{org_id}/refunds/{refund_id}/retry":                       "refunds.Engine.Retry (refund loaded inside the path org; covered by TestRefundOrgRoutes_RetryAndResolve)",
+	"POST /v1/organizations/{org_id}/refunds/{refund_id}/resolve":                     "refunds.Engine.Resolve (refund loaded inside the path org; covered by TestRefundOrgRoutes_RetryAndResolve)",
+	"POST /v1/organizations/{org_id}/tickets/{ticket_id}/scan-refund-exception":       "platform superadmin only; the ticket must belong to the path org, checked inside refunds.Engine.GrantScanException (covered by TestScanException_SuperadminOnlyInsideTheOrganization)",
+	"POST /v1/organizations/{org_id}/tickets/{ticket_id}/review-hold/clear":           "platform superadmin only; the ticket's organization (GetTicketOrgID) must be the path org (covered by TestReviewHoldClear_SuperadminOnlyInsideTheOrganization)",
+	"PATCH /v1/organizations/{org_id}/tickets/{ticket_id}/vip":                        "the ticket's organization (GetTicketOrgID) must be the path org (covered by TestTicketVIP_StaysInsideTheOrganization)",
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/sample-ticket":              "hsample",
 
 	// S1c seat batches: seatBatchShim runs requireSessionInPathOrg, and
 	// seatlayout / the batch queries are scoped by (session, path org)

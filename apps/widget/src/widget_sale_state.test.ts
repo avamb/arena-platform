@@ -96,10 +96,11 @@ describe('SessionList: the chip of a soon / sold out date', () => {
     expect(html).toContain('Sold out');
   });
 
-  it('keeps the cancelled label on a cancelled date, whatever sales_state says', () => {
+  it('hides a cancelled date entirely, whatever sales_state says', () => {
     const html = listHtml([session('s1', 'cancelled', 'cancelled')]);
-    expect(html).toContain('data-testid="session-cancelled-label"');
+    expect(html).not.toContain('session-cancelled-label');
     expect(html).not.toContain('session-state-label');
+    expect(html).not.toContain('<button');
   });
 
   it.each([['open'], ['ended'], ['mystery'], [undefined]])('prints no state label for %s (older API behaves as before)', (state) => {

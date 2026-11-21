@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -167,6 +168,8 @@ func (w *PGEventsWriter) Append(ctx context.Context, tx pgx.Tx, event Event) err
 	if err != nil {
 		return err
 	}
+	orderRef, ticketRef := testOrderRefs(event)
+	args = append(args, orderRef, ticketRef)
 	if _, err := tx.Exec(ctx, insertEventsSQL, args...); err != nil {
 		return fmt.Errorf("outbox: insert outbox_events: %w", err)
 	}
@@ -176,12 +179,62 @@ func (w *PGEventsWriter) Append(ctx context.Context, tx pgx.Tx, event Event) err
 // insertEventsSQL writes one row to outbox_events. aggregate_id is a text
 // column there (unlike the uuid column on the legacy outbox table), so no cast
 // is needed.
+//
+// P-13: when the event names an order ($6) or a ticket ($7) of a TEST order
+// (orders.is_test, a test sales channel), the stored payload gains
+// "is_test": true, so the outward legs (MACS, the selling site's webhook)
+// can skip it without a lookup of their own (IsTestEvent). It is decided
+// here, on the publisher's own transaction, so every publisher of an order
+// or ticket event gets it without knowing about test channels.
 const insertEventsSQL = `
 	INSERT INTO outbox_events
 	    (aggregate_type, aggregate_id, event_type, payload, occurred_at)
-	VALUES
-	    ($1, $2, $3, $4::jsonb, COALESCE($5, now()))
+	SELECT $1, $2, $3,
+	       CASE WHEN EXISTS (
+	                SELECT 1 FROM orders o
+	                WHERE  o.is_test
+	                  AND  (o.id = $6::uuid
+	                        OR o.id = (SELECT t.order_id FROM tickets t WHERE t.id = $7::uuid)))
+	            THEN $4::jsonb || jsonb_build_object('` + PayloadIsTest + `', true)
+	            ELSE $4::jsonb
+	       END,
+	       COALESCE($5, now())
 `
+
+// PayloadIsTest is the payload key that marks an event of a test order.
+const PayloadIsTest = "is_test"
+
+// IsTestEvent reports whether the event belongs to a test order (P-13). The
+// MACS and selling-site legs skip such an event; the Telegram sales leg
+// still delivers it with its TEST prefix.
+func IsTestEvent(ev Event) bool {
+	v, _ := ev.Payload[PayloadIsTest].(bool)
+	return v
+}
+
+// testOrderRefs is the order and ticket an event names, for the test-order
+// stamp of insertEventsSQL: the payload's order_id / ticket_id, else the
+// aggregate id of an "order" / "ticket" aggregate. Untyped nil when absent
+// or not a UUID, and both nil when the publisher already decided is_test.
+func testOrderRefs(ev Event) (orderRef, ticketRef any) {
+	if _, decided := ev.Payload[PayloadIsTest]; decided {
+		return nil, nil
+	}
+	pick := func(key, aggregate string) any {
+		if s, ok := ev.Payload[key].(string); ok {
+			if id, err := uuid.Parse(s); err == nil {
+				return id
+			}
+		}
+		if ev.AggregateType == aggregate {
+			if id, err := uuid.Parse(ev.AggregateID); err == nil {
+				return id
+			}
+		}
+		return nil
+	}
+	return pick("order_id", "order"), pick("ticket_id", "ticket")
+}
 
 // -----------------------------------------------------------------------------
 // Compile-time interface guard

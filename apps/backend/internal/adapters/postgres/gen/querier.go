@@ -29,13 +29,14 @@ type Querier interface {
 	InsertRefreshToken(ctx context.Context, token string, userID uuid.UUID, expiresAt time.Time) error
 	GetRefreshToken(ctx context.Context, token string) (GetRefreshTokenRow, error)
 	RevokeRefreshToken(ctx context.Context, token string) error
+	RotateRefreshToken(ctx context.Context, token string) (int64, error)
 	RevokeAllUserRefreshTokens(ctx context.Context, userID uuid.UUID) error
 	GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByEmailRow, error)
 
 	// Password reset tokens — one-time reset flow (feature #116)
 	InsertPasswordResetToken(ctx context.Context, token string, userID uuid.UUID, expiresAt time.Time) error
 	GetPasswordResetToken(ctx context.Context, token string) (GetPasswordResetTokenRow, error)
-	MarkPasswordResetTokenUsed(ctx context.Context, token string) error
+	ConsumePasswordResetToken(ctx context.Context, token string) (uuid.UUID, error)
 
 	// UpdateUserPassword — used by password reset confirm (feature #116)
 	UpdateUserPassword(ctx context.Context, id uuid.UUID, passwordHash string) error
@@ -121,7 +122,10 @@ type Querier interface {
 	SoftDeleteVenue(ctx context.Context, id, orgID uuid.UUID) (VenueRow, error)
 	// ListActionVenuesByOrg: Bil24 compat GET_ALL_ACTIONS aggregation
 	// (feature #476 W1-A2b slice 14, spec §7.1)
-	ListActionVenuesByOrg(ctx context.Context, orgID uuid.UUID, locale string) ([]ActionVenueRow, error)
+	ListActionVenuesByOrg(ctx context.Context, orgID uuid.UUID, locale string, excludeEventIDs []uuid.UUID) ([]ActionVenueRow, error)
+	// ListTestOnlyEventIDsByOrg: published events published ONLY into test
+	// channels (sales_channels.is_test); a non-test channel's catalogue hides them.
+	ListTestOnlyEventIDsByOrg(ctx context.Context, orgID uuid.UUID) ([]uuid.UUID, error)
 
 	// Bil24 session import — POST /v1/organizations/{org_id}/imports/bil24-session
 	// (feature #517 W1-C3c, spec §13.2). source: imports_bil24.sql
@@ -248,6 +252,11 @@ type Querier interface {
 	// Payment intents — SCA-aware payment state machine (feature #137)
 	InsertPaymentIntent(ctx context.Context, checkoutSessionID *uuid.UUID, orgID uuid.UUID, provider string, providerPaymentID *string, amount int64, currency string, initialState string, scaRedirectURL *string, clientSecret *string) (PaymentIntentRow, error)
 	InsertHostedPaymentIntent(ctx context.Context, checkoutSessionID *uuid.UUID, orgID uuid.UUID, provider string, providerPaymentID string, amount int64, currency string, hostedCheckoutURL string) (PaymentIntentRow, error)
+	// П-19: a hosted payment attempt recorded before the provider call, its
+	// page filled once known, and the attempts that never got one.
+	InsertHostedPaymentAttempt(ctx context.Context, checkoutSessionID *uuid.UUID, orgID uuid.UUID, provider string, providerPaymentID string, amount int64, currency string) (PaymentIntentRow, error)
+	SetPaymentIntentHostedURL(ctx context.Context, id uuid.UUID, hostedCheckoutURL string) (bool, error)
+	ListStalledHostedPaymentAttempts(ctx context.Context, provider string, createdBefore time.Time, limit int32) ([]StalledHostedPaymentAttemptRow, error)
 	GetPaymentIntentByID(ctx context.Context, id uuid.UUID) (PaymentIntentRow, error)
 	// GetPaymentIntentByIDForUpdate is the row-locking variant; call inside a tx (feature #361).
 	GetPaymentIntentByIDForUpdate(ctx context.Context, id uuid.UUID) (PaymentIntentRow, error)

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/prometheus/client_golang/prometheus"
@@ -420,3 +421,29 @@ func slog_noop() *slog.Logger {
 type discardWriter struct{}
 
 func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
+
+func TestIsTestEventAndRefs(t *testing.T) {
+	oid := "00000000-0000-0000-0000-0000000000aa"
+	tid := "00000000-0000-0000-0000-0000000000bb"
+	if IsTestEvent(Event{Payload: map[string]any{"order_id": oid}}) {
+		t.Error("an event without the flag is not a test event")
+	}
+	if !IsTestEvent(Event{Payload: map[string]any{PayloadIsTest: true}}) {
+		t.Error("is_test true must mark a test event")
+	}
+	if IsTestEvent(Event{Payload: map[string]any{PayloadIsTest: "true"}}) {
+		t.Error("only a JSON boolean marks a test event")
+	}
+
+	o, tk := testOrderRefs(Event{AggregateType: "ticket", AggregateID: tid, Payload: map[string]any{"order_id": oid}})
+	if o == nil || o.(uuid.UUID).String() != oid || tk == nil || tk.(uuid.UUID).String() != tid {
+		t.Errorf("refs = %v %v; want the payload order and the ticket aggregate", o, tk)
+	}
+	o, tk = testOrderRefs(Event{AggregateType: "order", AggregateID: oid, Payload: map[string]any{"ticket_id": "not-a-uuid"}})
+	if o == nil || o.(uuid.UUID).String() != oid || tk != nil {
+		t.Errorf("refs = %v %v; want the order aggregate and no ticket", o, tk)
+	}
+	if o, tk = testOrderRefs(Event{Payload: map[string]any{"order_id": oid, PayloadIsTest: false}}); o != nil || tk != nil {
+		t.Errorf("a publisher's own decision must not be looked up: %v %v", o, tk)
+	}
+}

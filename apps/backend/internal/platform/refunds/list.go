@@ -34,9 +34,26 @@ type ListFilter struct {
 	State string
 	// EventID, when set, keeps refunds of orders of that event.
 	EventID *uuid.UUID
-	Limit   int
-	Offset  int
+	// Queue keeps only the refunds a person has to look at (EC-V5): failed
+	// ones nobody retried yet, refunds parked for review, and refunds the
+	// provider accepted but never settled within StuckAfter. It combines with
+	// the other filters (AND).
+	Queue  bool
+	Limit  int
+	Offset int
 }
+
+// QueueStuckAfter is how long a refund may stay with the provider (provider_pending)
+// before the queue calls it stuck.
+const QueueStuckAfter = 30 * time.Minute
+
+// queueWhere is the extra predicate of ListFilter.Queue. StuckAfter is
+// spelled in minutes (30) in the SQL; TestQueueStuckAfterMatchesSQL keeps the
+// two equal.
+const queueWhere = `
+			  AND (r.state = 'manual_review'
+			       OR (r.state = 'failed' AND NOT ` + replacedColumn + `)
+			       OR (r.state = 'provider_pending' AND r.updated_at < now() - interval '30 minutes'))`
 
 // ListItem is one queue row: the refund plus what a person needs to place it.
 type ListItem struct {
@@ -152,6 +169,9 @@ func (e *Engine) List(ctx context.Context, orgID uuid.UUID, f ListFilter) (ListP
 			WHERE r.org_id = $1
 			  AND ($2::text = '' OR r.state = $2)
 			  AND ($3::uuid IS NULL OR o.event_id = $3)`
+		if f.Queue {
+			where += queueWhere
+		}
 		if err := tx.QueryRow(ctx, `SELECT count(*)`+from+where, orgID, f.State, f.EventID).Scan(&page.Total); err != nil {
 			return err
 		}

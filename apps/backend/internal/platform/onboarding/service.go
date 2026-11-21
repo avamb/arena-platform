@@ -71,6 +71,9 @@ type Service struct {
 	termsURL   string
 	privacyURL string
 	now        func() time.Time
+	// adminTelegram: the worker holds the event-center bot token, so personal
+	// Telegram messages to platform admins can be queued.
+	adminTelegram bool
 }
 
 // Options configures a Service.
@@ -90,13 +93,16 @@ type Options struct {
 	TermsURL   string
 	PrivacyURL string
 	Now        func() time.Time
+	// AdminTelegram is true when the worker has EVENTS_TELEGRAM_BOT_TOKEN.
+	AdminTelegram bool
 }
 
 // New builds a Service.
 func New(o Options) *Service {
 	s := &Service{pool: o.Pool, notifier: o.Notifier, audit: o.Audit, logger: o.Logger,
 		adminURL: strings.TrimRight(o.AdminURL, "/"), siteURL: strings.TrimRight(o.SiteURL, "/"),
-		termsURL: strings.TrimSpace(o.TermsURL), privacyURL: strings.TrimSpace(o.PrivacyURL), now: o.Now}
+		termsURL: strings.TrimSpace(o.TermsURL), privacyURL: strings.TrimSpace(o.PrivacyURL), now: o.Now,
+		adminTelegram: o.AdminTelegram}
 	if s.logger == nil {
 		s.logger = slog.Default()
 	}
@@ -354,12 +360,9 @@ func (s *Service) saveAnswers(ctx context.Context, k appKey, patch map[string]an
 		}
 		return contains(app.RequestedFields, key)
 	}
+	// A country outside the settings list is no longer refused here: it is a
+	// warning of the country_allowed check (spec 64 section 2.1.1).
 	clean, ferrs := ValidatePatch(patch, allowed)
-	if ferrs == nil {
-		if c, ok := clean["country"].(string); ok && !set.allowedCountry(c) {
-			ferrs = FieldErrors{"country": "not_allowed"}
-		}
-	}
 	if ferrs != nil {
 		return nil, &FieldsError{Code: "invalid_field", Fields: ferrs}
 	}
@@ -581,9 +584,6 @@ func (s *Service) submit(ctx context.Context, k appKey) (*Application, error) {
 			errs[k] = "required"
 		}
 		return nil, &FieldsError{Code: "incomplete", Fields: errs}
-	}
-	if c := app.Answers.String("country"); !set.allowedCountry(c) {
-		return nil, &FieldsError{Code: "invalid_field", Fields: FieldErrors{"country": "not_allowed"}}
 	}
 	resubmitted := app.Status == StatusInfoRequested
 	now := s.now()

@@ -116,6 +116,11 @@ func Run(t *testing.T, c Case) {
 				t.Error("Capabilities.ProviderReceipt is true but the module is not a ReceiptFetcher")
 			}
 		}
+		if d.Capabilities.ReceiptEmailUpdate {
+			if _, ok := c.Module.(payments.ReceiptEmailUpdater); !ok {
+				t.Error("Capabilities.ReceiptEmailUpdate is true but the module is not a ReceiptEmailUpdater")
+			}
+		}
 		if (d.Capabilities.PartialRefund || d.Capabilities.AsyncRefund) && !d.Capabilities.Refund {
 			t.Error("PartialRefund/AsyncRefund without Refund makes no sense")
 		}

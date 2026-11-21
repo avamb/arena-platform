@@ -81,20 +81,20 @@ export function buildWhiteLabelRequest(form: WhiteLabelForm, now: Date = new Dat
   const endsOn = form.endsOn.trim();
   const price = form.monthlyPrice.trim().replace(",", ".");
   const currency = form.currency.trim().toUpperCase();
-  if (!UUID_RE.test(orgId)) errors.push("Organization: choose an organization.");
-  if (promoterId !== "" && !UUID_RE.test(promoterId)) errors.push("Promoter: paste the promoter's id, or leave it empty for the organization itself.");
-  if (!DATE_RE.test(startsOn)) errors.push("First day: pick a date.");
-  else if (startsOn < todayUTC(now)) errors.push("First day: pick today or a later day (UTC).");
+  if (!UUID_RE.test(orgId)) errors.push("Organization: select an organization.");
+  if (promoterId !== "" && !UUID_RE.test(promoterId)) errors.push("Promoter: paste the ID of the promoter. If the organization is the promoter, keep this field empty.");
+  if (!DATE_RE.test(startsOn)) errors.push("First day: select a date.");
+  else if (startsOn < todayUTC(now)) errors.push("First day: select today or a day after today (UTC).");
   if (endsOn !== "") {
-    if (!DATE_RE.test(endsOn)) errors.push("Last day: pick a date, or leave it empty.");
-    else if (DATE_RE.test(startsOn) && endsOn < startsOn) errors.push("Last day: pick the first day or a later day.");
+    if (!DATE_RE.test(endsOn)) errors.push("Last day: select a date, or keep this field empty.");
+    else if (DATE_RE.test(startsOn) && endsOn < startsOn) errors.push("Last day: select the first day or a day after it.");
   }
   let monthly: number | undefined;
   if (price !== "") {
-    if (!/^\d{1,7}(\.\d{1,2})?$/.test(price)) errors.push("Monthly price: type an amount such as 45 or 0, or leave it empty for the price list.");
+    if (!/^\d{1,7}(\.\d{1,2})?$/.test(price)) errors.push("Monthly price: type a number such as 45 or 0. To use the price list, keep this field empty.");
     else monthly = Math.round(Number(price) * 100);
   }
-  if (currency !== "" && !/^[A-Z]{3}$/.test(currency)) errors.push("Currency: type a code such as EUR or USD, or leave it empty.");
+  if (currency !== "" && !/^[A-Z]{3}$/.test(currency)) errors.push("Currency: type a code such as EUR or USD, or keep this field empty.");
   if (errors.length > 0) return { ok: false, errors };
   const request: CreateWhiteLabelRequest = { org_id: orgId, starts_on: startsOn };
   if (promoterId !== "") request.promoter_id = promoterId;
@@ -115,7 +115,7 @@ export function canEndWhiteLabel(p: WhiteLabelPeriod, now: Date = new Date()): b
 export function whiteLabelStatusLabel(status: string): string {
   switch (status) {
     case "scheduled":
-      return "Starts later";
+      return "Starts after today";
     case "in_force":
       return "On";
     case "ended":

@@ -32,6 +32,8 @@ export interface BundleAction {
   age: string;
   /** "" = the organization itself promotes the event (the bot sends it too). */
   promoterId: string;
+  /** The event the first date created: the second and later dates join it (the bot sends its action id). */
+  arenaEventId?: string;
 }
 
 export interface BundleActionEvent {
@@ -57,6 +59,8 @@ export interface BundleVenue {
   cityName?: string;
   /** ISO 3166-1 alpha-2; the import reads a two-letter country name as a code. */
   countryName?: string;
+  /** The street address of a new venue (the check only; the save creates the venue first). */
+  address?: string;
 }
 
 export interface BundlePriceWindow {
@@ -103,6 +107,8 @@ export interface BuildOptions {
   /** The date's idempotency key; the default names the draft (`web:<org>:<draft>:<n>`). */
   externalRef?: string;
   orgId: string;
+  /** The event an earlier date of this draft created (F-004): a later date joins it. */
+  eventId?: string;
 }
 
 /** The wire form of a day, the bot's `DisplayDate`: DD.MM.YYYY. */
@@ -206,6 +212,7 @@ function venueBlock(draft: WizardDraft): BundleVenue {
     if (v.timezone !== "") venue.timezone = v.timezone;
     if (v.cityName.trim() !== "") venue.cityName = v.cityName.trim();
     if (v.countryIso2 !== "") venue.countryName = v.countryIso2;
+    if (v.address.trim() !== "") venue.address = v.address.trim();
   }
   return venue;
 }
@@ -247,6 +254,7 @@ export function buildBundle(draft: WizardDraft, opts: BuildOptions, index = 0): 
       descriptionFormat: "art",
       age: e.age,
       promoterId: e.promoterId,
+      ...(opts.eventId !== undefined && opts.eventId !== "" ? { arenaEventId: opts.eventId } : {}),
     },
     actionEvent,
     venue: venueBlock(draft),

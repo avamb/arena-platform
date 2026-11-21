@@ -30,8 +30,8 @@ import { mobileFormStyles } from "./login";
 const inviteSchema = z.object({
   password: z
     .string()
-    .min(8, { message: "Password must be at least 8 characters." })
-    .max(72, { message: "Password must be 72 characters or fewer." }),
+    .min(8, { message: "The password must have 8 characters or more." })
+    .max(72, { message: "The password must have 72 characters or less." }),
 });
 
 interface AcceptInviteSearch {
@@ -63,11 +63,10 @@ function AcceptInviteRoute() {
         data-testid="invite-missing-token"
       >
         <h1 id="invite-missing-heading" style={headingStyle}>
-          Invitation link incomplete
+          The invitation link is not complete
         </h1>
         <p style={subStyle}>
-          The invitation link is missing its token. Please use the exact link
-          from your invitation email, or ask an administrator to re-send it.
+          The invitation link has no token. Please use the link from your invitation e-mail. Or tell an administrator to send it again.
         </p>
         <p style={hintStyle}>
           <Link to="/login" style={mobileFormStyles.linkStyle}>
@@ -91,7 +90,7 @@ function InviteForm(props: { readonly token: string; readonly email: string | un
     setError(null);
     const parsed = inviteSchema.safeParse({ password });
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "Invalid password.");
+      setError(parsed.error.issues[0]?.message ?? "The password is not correct.");
       return;
     }
     setSubmitting(true);
@@ -111,7 +110,7 @@ function InviteForm(props: { readonly token: string; readonly email: string | un
       }
       setDone(true);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Network request failed");
+      setError(cause instanceof Error ? cause.message : "The network request did not complete.");
     } finally {
       setSubmitting(false);
     }
@@ -128,8 +127,8 @@ function InviteForm(props: { readonly token: string; readonly email: string | un
       </h1>
       <p style={subStyle}>
         {props.email !== undefined
-          ? `Set a password for ${props.email} to activate your operator account.`
-          : "Set a password to activate your operator account."}
+          ? `Make a password for ${props.email} to activate your operator account.`
+          : "Make a password to activate your operator account."}
       </p>
       {error !== null ? (
         <div role="alert" aria-live="assertive" style={mobileFormStyles.alertStyle} data-testid="invite-error">
@@ -138,7 +137,7 @@ function InviteForm(props: { readonly token: string; readonly email: string | un
       ) : null}
       {done ? (
         <div role="status" aria-live="polite" style={successStyle} data-testid="invite-done">
-          Your account is ready. You can now{" "}
+          Your account is active. You can{" "}
           <Link to="/login" style={mobileFormStyles.linkStyle}>
             sign in
           </Link>
@@ -148,7 +147,7 @@ function InviteForm(props: { readonly token: string; readonly email: string | un
         <form onSubmit={onSubmit} style={formStyle} noValidate>
           {props.email !== undefined ? (
             <label style={labelStyle}>
-              <span>Email</span>
+              <span>E-mail</span>
               <input
                 type="email"
                 inputMode="email"
@@ -164,7 +163,7 @@ function InviteForm(props: { readonly token: string; readonly email: string | un
             </label>
           ) : null}
           <label style={labelStyle}>
-            <span>Choose a password</span>
+            <span>Password</span>
             <input
               type="password"
               inputMode="text"
@@ -183,7 +182,7 @@ function InviteForm(props: { readonly token: string; readonly email: string | un
             style={mobileFormStyles.submitStyle}
             data-testid="invite-submit"
           >
-            {submitting ? "Activating…" : "Activate account"}
+            {submitting ? "Activating" : "Activate account"}
           </button>
         </form>
       )}

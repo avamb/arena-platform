@@ -217,6 +217,22 @@ func TestRate_FreeAndJournalOnly(t *testing.T) {
 	}
 }
 
+// An approved hall plan intake is free on every plan and fee mode, individual
+// rate or not (spec 64 section 4.7): 0, reason free, no rule.
+func TestRate_VenuePlanIntakeIsFree(t *testing.T) {
+	for name, spec := range map[string]termsSpec{
+		"standard":   {},
+		"venue plan": {plan: billing.PlanVenue},
+		"individual": {override: lampyrisOverride()},
+	} {
+		terms := buildTerms(t, spec)
+		c := mustRate(t, terms, billing.Event{Kind: billing.KindVenuePlanIntake, OccurredAt: saleAt})
+		if c.AmountMinor != 0 || c.Reason != billing.ReasonFree || c.RuleType != "" || c.RuleID != nil || c.OverrideID != nil {
+			t.Errorf("%s: %d %q rule %q, want 0 free without a rule", name, c.AmountMinor, c.Reason, c.RuleType)
+		}
+	}
+}
+
 func TestRate_FixedPerEventWhenTheListHasOne(t *testing.T) {
 	extra := gen.PriceListRuleRow{ID: uuid.New(), RuleType: "fixed_per_event", Line: "standard",
 		EventKind: "event_published", Params: []byte(`{"amount_minor":250}`)}

@@ -416,6 +416,7 @@ func renderWithSpec(t Ticket, spec layoutSpec) ([]byte, error) {
 func renderPagesWithSpec(ts []Ticket, spec layoutSpec) ([]byte, error) {
 	doc := newDoc(ts[0], spec)
 	for _, t := range ts {
+		t = fitDirections(t, spec)
 		pageSpec := distributeFlowSlack(t, spec)
 		doc.AddPage()
 
@@ -691,10 +692,62 @@ func drawWhenWhere(doc *gofpdf.Fpdf, t Ticket, spec layoutSpec, y float64) float
 		}
 	}
 
+	drawDirections(doc, t, spec, textX, textW)
+
 	if ty := doc.GetY(); ty > bottom {
 		bottom = ty
 	}
 	return bottom
+}
+
+// hasDirections reports whether the page carries the map-links line.
+func hasDirections(t Ticket) bool {
+	return t.DirectionsGoogleURL != "" && t.DirectionsWazeURL != ""
+}
+
+// drawDirections prints "Directions: Google Maps Waze" as a muted line under
+// the venue address; the two names are underlined clickable links. It writes
+// with the left margin moved to the text column so a wrapped second line never
+// slides under the poster.
+func drawDirections(doc *gofpdf.Fpdf, t Ticket, spec layoutSpec, textX, textW float64) {
+	if !hasDirections(t) {
+		return
+	}
+	s := stringsFor(t.Locale)
+	lineH := spec.whereFS * spec.whereLineH
+	left, top, right, _ := doc.GetMargins()
+	doc.SetMargins(textX, top, spec.pageW-textX-textW)
+	defer doc.SetMargins(left, top, right)
+
+	doc.SetXY(textX, doc.GetY()+spec.whereGap/2)
+	setText(doc, colorMuted)
+	doc.SetFont(fontFamily, "", spec.whereFS)
+	doc.Write(lineH, s.Directions+": ")
+	doc.SetFont(fontFamily, "U", spec.whereFS)
+	doc.WriteLinkString(lineH, "Google\u00a0Maps", t.DirectionsGoogleURL)
+	doc.SetFont(fontFamily, "", spec.whereFS)
+	doc.Write(lineH, " · ")
+	doc.SetFont(fontFamily, "U", spec.whereFS)
+	doc.WriteLinkString(lineH, "Waze", t.DirectionsWazeURL)
+	doc.SetFont(fontFamily, "", spec.whereFS)
+	doc.Ln(lineH)
+}
+
+// fitDirections drops the directions line from a ticket whose flowing block
+// would reach into the code block's gutter even with every gap compressed to
+// its floor. The link is a convenience; the code block is not to be crowded.
+func fitDirections(t Ticket, spec layoutSpec) Ticket {
+	if !hasDirections(t) {
+		return t
+	}
+	tight := scaleFlowGaps(spec, flowGapMinScale)
+	scratch := newDoc(t, tight)
+	scratch.AddPage()
+	end := drawFlow(scratch, t, tight, stringsFor(t.Locale), accentColor(t))
+	if end > spec.bottomTop-flowGutterMin {
+		t.DirectionsGoogleURL, t.DirectionsWazeURL = "", ""
+	}
+	return t
 }
 
 // infoCell is one label/value pair in the info row.

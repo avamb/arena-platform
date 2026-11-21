@@ -58,6 +58,10 @@ const (
 	SourcePublicFeed    = "public_feed"
 	SourceCheckoutAPI   = "checkout_api"
 	SourceComplimentary = "complimentary"
+	// SourceLegacyImport is an order sold before the platform (in Bil24) and
+	// filed by cmd/arena-legacy-tickets-import. It is never delivered, billed
+	// or announced: see migration 0212.
+	SourceLegacyImport = "legacy_import"
 )
 
 // order_events.type values written by this package (spec §3.3 lists the full

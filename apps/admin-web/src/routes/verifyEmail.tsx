@@ -42,16 +42,16 @@ function VerifyEmailRoute() {
   }, [search.token]);
 
   const message = status === "missing"
-    ? "This verification link is missing its token. Please use the exact link from your email."
+    ? "This verification link has no token. Please use the link from your e-mail without changes."
     : status === "verifying"
-      ? "Verifying your email address…"
+      ? "Verifying your e-mail address…"
       : status === "verified"
-        ? "Your email address is verified. You can now sign in."
-        : "This verification link is invalid, expired, or has already been used.";
+        ? "Your e-mail address is verified. You can sign in."
+        : "This verification link does not work. It is not correct, it expired, or you used it before. Ask for a new link.";
 
   return (
     <section aria-labelledby="verify-email-heading" style={mobileFormStyles.pageStyle} data-testid="verify-email">
-      <h1 id="verify-email-heading" style={headingStyle}>Verify your email</h1>
+      <h1 id="verify-email-heading" style={headingStyle}>Verify your e-mail</h1>
       <p role={status === "failed" || status === "missing" ? "alert" : "status"} aria-live="polite" style={messageStyle}>
         {message}
       </p>

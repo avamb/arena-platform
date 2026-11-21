@@ -64,7 +64,8 @@ func (s *PGStore) SaleByOrder(ctx context.Context, orderID string) (Sale, error)
 		                  ORDER BY ci.last_seen_at DESC NULLS LAST LIMIT 1), ''),
 		       COALESCE(NULLIF(o.buyer_phone, ''), (SELECT ci.value_normalized FROM customer_identities ci
 		                  WHERE ci.customer_id = o.customer_id AND ci.kind = 'phone'
-		                  ORDER BY ci.last_seen_at DESC NULLS LAST LIMIT 1), '')
+		                  ORDER BY ci.last_seen_at DESC NULLS LAST LIMIT 1), ''),
+		       o.is_test
 		  FROM orders o
 		  JOIN organizations org ON org.id = o.org_id
 		  JOIN events ev ON ev.id = o.event_id
@@ -76,7 +77,7 @@ func (s *PGStore) SaleByOrder(ctx context.Context, orderID string) (Sale, error)
 		 WHERE o.id = $1`, id).Scan(&sale.OrgID, &sale.OrgName, &sale.EventName,
 		&sale.VenueName, &sale.StartAt, &sale.TimeZone, &sale.OrderNumber, &sale.Source,
 		&sale.ChannelName, &sale.Currency, &sale.Total, &sale.PromoCode, &cats,
-		&sale.Buyer.Name, &sale.Buyer.Email, &sale.Buyer.Phone)
+		&sale.Buyer.Name, &sale.Buyer.Email, &sale.Buyer.Phone, &sale.IsTest)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Sale{}, ErrNotFound
 	}
@@ -117,7 +118,7 @@ func (s *PGStore) RefundByTicket(ctx context.Context, ticketID string) (Refund, 
 		       COALESCE(NULLIF(o.buyer_phone, ''), (SELECT ci.value_normalized FROM customer_identities ci
 		                  WHERE ci.customer_id = o.customer_id AND ci.kind = 'phone'
 		                  ORDER BY ci.last_seen_at DESC NULLS LAST LIMIT 1), ''),
-		       t.order_id
+		       t.order_id, COALESCE(o.is_test, false)
 		  FROM tickets t
 		  JOIN sessions s ON s.id = t.session_id
 		  JOIN events ev ON ev.id = s.event_id
@@ -127,7 +128,7 @@ func (s *PGStore) RefundByTicket(ctx context.Context, ticketID string) (Refund, 
 		  LEFT JOIN customers c ON c.id = o.customer_id
 		 WHERE t.id = $1`, id).Scan(&r.OrgID, &r.OrgName, &r.EventName, &r.VenueName,
 		&r.StartAt, &r.TimeZone, &r.OrderNumber, &r.TicketNumber, &r.Currency, &r.Amount,
-		&r.Buyer.Name, &r.Buyer.Email, &r.Buyer.Phone, &orderID)
+		&r.Buyer.Name, &r.Buyer.Email, &r.Buyer.Phone, &orderID, &r.IsTest)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Refund{}, ErrNotFound
 	}

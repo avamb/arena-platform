@@ -30,6 +30,7 @@ import (
 	paymodules "github.com/abhteam/arena_new/apps/backend/internal/app/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/contactform"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
@@ -54,8 +55,14 @@ type ChannelResponse struct {
 	FeePercent             string          `json:"fee_percent"`
 	ReservationTTLOverride *int32          `json:"reservation_ttl_override"`
 	Settings               json.RawMessage `json:"settings"`
-	CreatedAt              string          `json:"created_at"`
-	UpdatedAt              string          `json:"updated_at"`
+	IsTest                 bool            `json:"is_test"`
+	CollectName            bool            `json:"collect_name"`
+	CollectPhone           bool            `json:"collect_phone"`
+	// PaymentWindowSeconds is the channel's own payment window (spec 62
+	// П-3); null means the deployment default WIDGET_PAYMENT_WINDOW_SECONDS.
+	PaymentWindowSeconds *int32 `json:"payment_window_seconds"`
+	CreatedAt            string `json:"created_at"`
+	UpdatedAt            string `json:"updated_at"`
 }
 
 // SettingsForResponse normalizes a raw channel-settings payload for API
@@ -107,6 +114,10 @@ func ChannelFromRow(ch gen.SalesChannelRow) ChannelResponse {
 		FeePercent:             ch.FeePercent,
 		ReservationTTLOverride: ch.ReservationTTLOverride,
 		Settings:               SettingsForResponse(ch.Settings),
+		IsTest:                 ch.IsTest,
+		CollectName:            ch.CollectName,
+		CollectPhone:           ch.CollectPhone,
+		PaymentWindowSeconds:   ch.PaymentWindowSeconds,
 		CreatedAt:              ch.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:              ch.UpdatedAt.UTC().Format(time.RFC3339),
 	}
@@ -186,8 +197,17 @@ func NormalizeChannelSettings(raw json.RawMessage) (json.RawMessage, string) {
 	if err := json.Unmarshal(raw, &probe); err != nil {
 		return nil, "settings must be a valid JSON object"
 	}
-	if _, ok := probe.(map[string]any); !ok {
+	obj, ok := probe.(map[string]any)
+	if !ok {
 		return nil, "settings must be a JSON object (not an array or scalar)"
+	}
+	if cf, ok := obj["contact_form"].(map[string]any); ok {
+		if rec, present := cf["recipients"]; present {
+			b, _ := json.Marshal(rec)
+			if msg := contactform.ValidateRecipients(b); msg != "" {
+				return nil, msg
+			}
+		}
 	}
 	return raw, ""
 }
@@ -205,6 +225,25 @@ func ValidateReservationTTLOverride(v *int32) string {
 	return ""
 }
 
+// Bounds of sales_channels.payment_window_seconds (migration 0205).
+const (
+	minPaymentWindowSeconds = 120
+	maxPaymentWindowSeconds = 86400
+)
+
+// ValidatePaymentWindowSeconds enforces the column's CHECK before the
+// database does, with a readable message. nil (the deployment default) is
+// always valid.
+func ValidatePaymentWindowSeconds(v *int32) string {
+	if v == nil {
+		return ""
+	}
+	if *v < minPaymentWindowSeconds || *v > maxPaymentWindowSeconds {
+		return fmt.Sprintf("payment_window_seconds must be between %d and %d seconds", minPaymentWindowSeconds, maxPaymentWindowSeconds)
+	}
+	return ""
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/organizations/{org_id}/channels
 // ─────────────────────────────────────────────────────────────────────────────
@@ -217,6 +256,10 @@ type createChannelRequest struct {
 	FeePercent             string          `json:"fee_percent"`
 	ReservationTTLOverride *int32          `json:"reservation_ttl_override"`
 	Settings               json.RawMessage `json:"settings"`
+	IsTest                 bool            `json:"is_test"`
+	CollectName            bool            `json:"collect_name"`
+	CollectPhone           bool            `json:"collect_phone"`
+	PaymentWindowSeconds   *int32          `json:"payment_window_seconds"`
 }
 
 func (h *Handler) HandleCreateChannel(w http.ResponseWriter, r *http.Request) {
@@ -296,6 +339,14 @@ func (h *Handler) HandleCreateChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if msg := ValidatePaymentWindowSeconds(req.PaymentWindowSeconds); msg != "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"channel.invalid_payment_window", msg, r,
+			map[string]any{"field": "payment_window_seconds"},
+		))
+		return
+	}
+
 	var providerAccountID *string
 	if req.ProviderAccountID != "" {
 		s := req.ProviderAccountID
@@ -312,9 +363,10 @@ func (h *Handler) HandleCreateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	settings = keepSellerDisplayKeys(settings, nil) // set only through seller-display
 
-	ch, err := h.channelQueries.InsertSalesChannel(ctx,
+	ch, err := h.channelQueries.InsertSalesChannelWithWindow(ctx,
 		orgID, req.Name, req.PaymentMode, req.Provider,
 		providerAccountID, req.FeePercent, req.ReservationTTLOverride, settings,
+		req.IsTest, req.CollectName, req.CollectPhone, req.PaymentWindowSeconds,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -437,6 +489,12 @@ type updateChannelRequest struct {
 	FeePercent             *string         `json:"fee_percent"`
 	ReservationTTLOverride optionalInt32   `json:"reservation_ttl_override"`
 	Settings               json.RawMessage `json:"settings"`
+	IsTest                 *bool           `json:"is_test"`
+	CollectName            *bool           `json:"collect_name"`
+	CollectPhone           *bool           `json:"collect_phone"`
+	// PaymentWindowSeconds is tri-state like ReservationTTLOverride: absent
+	// keeps, null clears to the deployment default, a number sets.
+	PaymentWindowSeconds optionalInt32 `json:"payment_window_seconds"`
 }
 
 func (h *Handler) HandleUpdateChannel(w http.ResponseWriter, r *http.Request) {
@@ -573,11 +631,22 @@ func (h *Handler) HandleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	updated, err := h.channelQueries.UpdateSalesChannel(ctx,
+	if req.PaymentWindowSeconds.Present {
+		if msg := ValidatePaymentWindowSeconds(req.PaymentWindowSeconds.Value); msg != "" {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"channel.invalid_payment_window", msg, r,
+				map[string]any{"field": "payment_window_seconds"},
+			))
+			return
+		}
+	}
+
+	updated, err := h.channelQueries.UpdateSalesChannelWithWindow(ctx,
 		chID, orgID, req.Name, req.PaymentMode, req.Provider,
 		req.ProviderAccountID, req.FeePercent,
 		req.ReservationTTLOverride.Value, req.ReservationTTLOverride.Present,
-		settings,
+		settings, req.IsTest, req.CollectName, req.CollectPhone,
+		req.PaymentWindowSeconds.Value, req.PaymentWindowSeconds.Present,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

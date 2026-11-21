@@ -256,6 +256,13 @@ func (b *Bot) wizardCallback(ctx context.Context, chatID int64, msgID int, from 
 		b.wizardSave(ctx, chatID, &msgID, from, ws, d, row.ID.String(), false)
 	case "publish:force":
 		b.wizardSave(ctx, chatID, &msgID, from, ws, d, row.ID.String(), true)
+	case "plan:skip":
+		if d.Step == stSPlanFile && d.PlanIntakeID != "" {
+			// An open request is asked about once before the draft goes on.
+			b.planSkipAsk(ctx, chatID, &msgID, from, ws, d)
+			return
+		}
+		b.wizardApply(ctx, chatID, &msgID, from, ws, d, WizInput{Data: data})
 	default:
 		b.wizardApply(ctx, chatID, &msgID, from, ws, d, WizInput{Data: data})
 	}
@@ -454,6 +461,12 @@ func PosterCheck(w, h int) string {
 }
 
 func (b *Bot) downloadTelegramFile(ctx context.Context, fileID string) ([]byte, error) {
+	return b.downloadTelegramFileMax(ctx, fileID, posterMaxBytes)
+}
+
+// downloadTelegramFileMax reads a Telegram file; a longer file comes back one
+// byte past limit, so the caller can tell it is too big.
+func (b *Bot) downloadTelegramFileMax(ctx context.Context, fileID string, limit int64) ([]byte, error) {
 	f, err := b.tg.GetFile(ctx, &tgbot.GetFileParams{FileID: fileID})
 	if err != nil {
 		return nil, err
@@ -477,7 +490,7 @@ func (b *Bot) downloadTelegramFile(ctx context.Context, fileID string) ([]byte, 
 	if res.StatusCode != http.StatusOK {
 		return nil, errors.New("telegram file download: " + res.Status)
 	}
-	return io.ReadAll(io.LimitReader(res.Body, posterMaxBytes+1))
+	return io.ReadAll(io.LimitReader(res.Body, limit+1))
 }
 
 // wizardApply feeds one answer, stores the draft and shows the next screen.
@@ -522,6 +535,11 @@ func (b *Bot) wizardRender(ctx context.Context, chatID int64, editMsgID *int, ws
 			return
 		}
 	}
+	if d.Step == stSPlanFile && d.PlanIntakeID != "" {
+		// The draft shows the waiting screen only while the intake is open; a
+		// stale id (final or gone) is forgotten and the plan question is asked.
+		b.syncDraftIntake(ctx, chatID, ws, d)
+	}
 	screen, err := b.wizard.Render(ctx, ws, d)
 	if err != nil {
 		b.wizardFail(ctx, chatID, editMsgID, ws.Locale, err)
@@ -565,7 +583,11 @@ func wizardKeyboard(s Screen) *models.InlineKeyboardMarkup {
 	for _, r := range s.Buttons {
 		row := make([]models.InlineKeyboardButton, 0, len(r))
 		for _, btn := range r {
-			row = append(row, models.InlineKeyboardButton{Text: btn.Label, CallbackData: "wz:" + btn.Data})
+			data := "wz:" + btn.Data
+			if strings.HasPrefix(btn.Data, planDataPrefix) {
+				data = btn.Data // a press of the plan intake, not of the wizard
+			}
+			row = append(row, models.InlineKeyboardButton{Text: btn.Label, CallbackData: data})
 		}
 		rows = append(rows, row)
 	}
@@ -682,7 +704,7 @@ func (b *Bot) sendPaintHint(ctx context.Context, chatID int64, loc string, ws Wi
 		}
 		row = append(row, models.InlineKeyboardButton{Text: b.texts.T(loc, "bot.wz.saved_dates_btn", nil), CallbackData: "ses:list:" + eventID.String()})
 		b.send(ctx, chatID, b.texts.T(loc, "bot.wz.saved_paint_hint", nil),
-			&models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{row}})
+			&models.InlineKeyboardMarkup{InlineKeyboard: append([][]models.InlineKeyboardButton{row}, b.intakeSplitRows(loc, d)...)})
 		return
 	}
 }

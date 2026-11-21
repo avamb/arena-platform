@@ -87,12 +87,12 @@ describe("DryRunBody", () => {
   it("shows the reason when the change is blocked", () => {
     const html = render(<DryRunBody result={{ blocked: "Write to support." }} />);
     expect(html).toContain('data-testid="dry-run-blocked"');
-    expect(html).toContain("This cannot be done yet");
+    expect(html).toContain("We cannot do this at this time");
     expect(html).toContain("Write to support.");
   });
 
   it("says nothing will change when the result is empty", () => {
-    expect(render(<DryRunBody result={{}} />)).toContain("Nothing will change.");
+    expect(render(<DryRunBody result={{}} />)).toContain("No data will change.");
   });
 
   it("speaks Russian and Spanish", () => {

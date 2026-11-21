@@ -81,9 +81,9 @@ const shipButton = (el: HTMLElement) => el.querySelector('[data-testid="shop-ord
 describe("the ship button across status and shipped_at", () => {
   const cases: Array<[string, string | null, string | null]> = [
     // status, shipped_at, label of the button (null: no button)
-    ["paid", null, "Handed to courier"],
-    ["manual_review", null, "Handed to courier"],
-    ["partially_refunded", null, "Handed to courier"],
+    ["paid", null, "Given to courier"],
+    ["manual_review", null, "Given to courier"],
+    ["partially_refunded", null, "Given to courier"],
     ["shipped", SHIPPED, "Change the note"],
     ["partially_refunded", SHIPPED, "Change the note"],
     ["refunded", SHIPPED, null],

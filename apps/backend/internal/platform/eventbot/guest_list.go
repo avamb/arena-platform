@@ -22,6 +22,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	tgbot "github.com/go-telegram/bot"
@@ -205,6 +206,9 @@ func (b *Bot) guestListCallback(ctx context.Context, chatID int64, msgID int, fr
 		b.send(ctx, chatID, b.texts.T(loc, "bot.gl.private_only", nil), nil)
 		return
 	}
+	// "on" and "off" come from the Notifications screen, "on:mn" and "off:mn"
+	// from the guest list screen of the menu (menu_sections.go).
+	data, fromMenu := strings.CutSuffix(data, ":"+menuSectionPrefix)
 	want := data == "on"
 	if data != "on" && data != "off" {
 		return
@@ -212,6 +216,12 @@ func (b *Bot) guestListCallback(ctx context.Context, chatID int64, msgID int, fr
 	if _, err := b.arena.SetGuestListSubscription(ctx, jwt, id.Current.OrgID, want); err != nil {
 		b.logger.Warn("eventbot: guest list subscription change failed", slog.String("error", err.Error()))
 		b.send(ctx, chatID, b.texts.T(loc, "bot.gl.toggle_failed", nil), nil)
+		return
+	}
+	if fromMenu {
+		text, rows := b.guestListSection(ctx, chatID, loc, id, jwt)
+		rows = append(rows, b.mnHomeRow(loc))
+		b.reply(ctx, chatID, &msgID, text, &models.InlineKeyboardMarkup{InlineKeyboard: rows})
 		return
 	}
 	b.showNotifications(ctx, chatID, &msgID, id, jwt)

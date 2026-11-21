@@ -205,7 +205,7 @@ describe("computeCategoryCounters", () => {
     });
   });
 
-  it("surfaces an Uncategorised bucket for orphaned seats", () => {
+  it("surfaces an No category bucket for orphaned seats", () => {
     const orphan: SeatingGeometry = {
       canvas: { width: 100, height: 100 },
       categories: [{ index: 1, name: "VIP", color: "#ff0000" }],
@@ -235,7 +235,7 @@ describe("computeCategoryCounters", () => {
     const counters = computeCategoryCounters(orphan, { "A|1|1": "available" });
     expect(counters[counters.length - 1]).toMatchObject({
       index: 0,
-      name: "Uncategorised",
+      name: "No category",
       total: 1,
     });
   });

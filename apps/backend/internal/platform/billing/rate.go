@@ -27,6 +27,10 @@ const (
 	// KindShopModuleMonth is one calendar month (UTC) of an organization's
 	// paid shop module period (spec 08_architecture/61 section 3.2).
 	KindShopModuleMonth EventKind = "shop_module_month"
+	// KindVenuePlanIntake is one approved hall plan intake (spec
+	// 08_architecture/64 section 4.7): building a plan is free, so it is
+	// rated 0 with the reason free, but it is counted.
+	KindVenuePlanIntake EventKind = "venue_plan_intake"
 )
 
 // Pricing classes a sale is snapshotted with (ClassifyLowPrice).
@@ -178,6 +182,10 @@ type Charge struct {
 //     does not apply: it is a ticket rate, not a subscription.
 //   - shop_module_month: the same, with the subscription rule for
 //     shop_module_month (a zero price is a zero charge, never "no charge").
+//   - venue_plan_intake: 0, free (owner decision 2026-11-09, spec 64 section
+//     4.7). No price-list rule is read: the fact is only counted, so it shows
+//     in the organization's reports and in the reconciliation, never on an
+//     invoice.
 //
 // A line that carries a rule type Rate cannot compute yet
 // (volume_above_baseline, subscription, generator_run) for the event kind
@@ -215,6 +223,9 @@ func Rate(terms Terms, ev Event) (Charge, error) {
 		return rateSubscriptionMonth(terms, ev, c, "white label")
 	case KindShopModuleMonth:
 		return rateSubscriptionMonth(terms, ev, c, "shop module")
+	case KindVenuePlanIntake:
+		c.Reason = ReasonFree
+		return c, nil
 	default:
 		return Charge{}, fmt.Errorf("%w: %q", ErrUnknownEventKind, ev.Kind)
 	}

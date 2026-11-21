@@ -12,9 +12,9 @@
   <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">אושר החזר עבור כרטיס שכבר נוצל</h1>
   <p style="margin:0 0 12px 0;">מפעיל הפלטפורמה התיר החזר אחד עבור כרטיס <strong>מס׳ {{.Alert.TicketNumber}}</strong> לאירוע <strong>{{.EventName}}</strong>{{with .Alert.OrderNumber}} (הזמנה מס׳ {{.}}){{end}}, אף שהכרטיס כבר נסרק בכניסה. החריגה תקפה עד {{.Alert.Until}} ולהחזר אחד בלבד.</p>
   {{with .Alert.Reason}}<p style="margin:0 0 12px 0;">הערה: <strong>{{.}}</strong></p>{{end}}
-  <p style="margin:0 0 12px 0;">עדיין לא הוחזר דבר: ההחזר מתבצע ב-Arena כרגיל.</p>
+  <p style="margin:0 0 12px 0;">עדיין לא הוחזר דבר: ההחזר מתבצע ב-ArenaSoldOut.com כרגיל.</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">Arena Platform — הודעה אוטומטית</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">ArenaSoldOut.com — הודעה אוטומטית</td></tr>
 </table>
 </td></tr></table>
 </body>
@@ -28,7 +28,7 @@
 {{with .Alert.Reason}}
 הערה: {{.}}
 {{end}}
-עדיין לא הוחזר דבר: ההחזר מתבצע ב-Arena כרגיל.
+עדיין לא הוחזר דבר: ההחזר מתבצע ב-ArenaSoldOut.com כרגיל.
 
-Arena Platform — הודעה אוטומטית
+ArenaSoldOut.com — הודעה אוטומטית
 {{end}}

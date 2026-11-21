@@ -34,7 +34,7 @@ describe("ShopProductsTable", () => {
     const html = await renderInRouter(<ShopProductsTable orgId="org1" currency="ILS" canViewMedia products={[product({ images: [img(0), img(1), img(2)] })]} />);
     expect(html).toContain('data-testid="shop-product-thumb"');
     expect(html).toContain('data-testid="shop-product-picture-count"');
-    expect(html).toContain('title="Pictures: 3"');
+    expect(html).toContain('title="Images: 3"');
     expect(html).toMatch(/shop-product-picture-count"[^>]*>3</);
   });
 

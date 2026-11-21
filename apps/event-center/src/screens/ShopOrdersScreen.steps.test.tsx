@@ -96,8 +96,8 @@ describe("the delivery step on the list", () => {
     vi.mocked(searchShopOrders).mockResolvedValue({ orders: [o(3, "waiting", old), o(2, "packed", fresh), o(1, null, null)], next_offset: null } as never);
     const el = await mount();
     const cells = [...el.querySelectorAll('[data-testid="shop-order-step-cell"]')].map((c) => c.textContent);
-    expect(cells[0]).toContain("Waiting to be packed");
-    expect(cells[0]).toContain("waiting 5 days");
+    expect(cells[0]).toContain("Not packed");
+    expect(cells[0]).toContain("wait time: 5 days");
     expect(cells[1]).toContain("Packed");
     expect(cells[1]).not.toContain("days");
     expect(cells[2]).toBe("—");
@@ -109,10 +109,10 @@ describe("the delivery step on the list", () => {
     const el = await mount();
     const select = byId(el, "shop-orders-step") as HTMLSelectElement;
     expect([...select.options].map((x) => x.textContent)).toEqual([
-      "Any step",
-      "Waiting to be packed (3)",
+      "All steps",
+      "Not packed (3)",
       "Packed (2)",
-      "Handed to courier (1)",
+      "Given to courier (1)",
       "Delivered (0)",
       "Not delivered (4)",
     ]);

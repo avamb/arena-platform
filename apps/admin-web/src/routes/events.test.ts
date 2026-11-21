@@ -732,26 +732,26 @@ describe("mapSessionError", () => {
       mapSessionError(
         new ApiError(400, { code: "session.invalid_capacity", message: "x" }),
       ),
-    ).toMatch(/greater than zero/i);
+    ).toMatch(/more than zero/i);
     expect(
       mapSessionError(
         new ApiError(404, { code: "session.not_found", message: "x" }),
       ),
-    ).toMatch(/no longer exists/i);
+    ).toMatch(/not in the system/i);
   });
   it("maps the AB-36/AB-38 wave-4 error codes", () => {
     const cases: ReadonlyArray<[string, RegExp]> = [
-      ["session.missing_venue_id", /venue is required/i],
-      ["session.invalid_venue_id", /valid uuid/i],
-      ["session.venue_not_found", /no longer exists/i],
+      ["session.missing_venue_id", /select the venue/i],
+      ["session.invalid_venue_id", /correct uuid/i],
+      ["session.venue_not_found", /not in the system/i],
       ["session.venue_org_mismatch", /different organization/i],
       ["session.invalid_admission_mode", /admission mode/i],
       ["session.missing_seating_plan_version", /seating plan version/i],
       ["session.invalid_seating_plan_version", /seating plan version/i],
       ["session.seating_plan_not_applicable", /general-admission/i],
       ["session.invalid_currency", /iso 4217/i],
-      ["session.currency_unresolvable", /explicit currency/i],
-      ["session.invalid_capacity_override", /greater than zero/i],
+      ["session.currency_unresolvable", /type a currency/i],
+      ["session.invalid_capacity_override", /more than zero/i],
       ["session.capacity_unresolvable", /capacity/i],
       ["session.capacity_override_not_applicable", /seating plan/i],
     ];
@@ -769,7 +769,7 @@ describe("mapSessionError", () => {
       mapSessionError(
         new ApiError(403, { code: "permissions.denied", message: "x" }),
       ),
-    ).toMatch(/missing the permission/i);
+    ).toMatch(/necessary permission/i);
   });
   it("uses the message + code on unrecognised codes", () => {
     expect(
@@ -1053,7 +1053,7 @@ describe("mapTierError", () => {
   it("translates the known tier.* codes", () => {
     expect(
       mapTierError(new ApiError(400, { code: "tier.missing_name", message: "" })),
-    ).toMatch(/name is required/i);
+    ).toMatch(/type a name/i);
     expect(
       mapTierError(
         new ApiError(400, { code: "tier.invalid_pricing_mode", message: "" }),
@@ -1088,7 +1088,7 @@ describe("mapTierError", () => {
     ).toMatch(/sign in again/i);
     expect(
       mapTierError(new ApiError(403, { code: "x.y", message: "" })),
-    ).toMatch(/forbidden/i);
+    ).toMatch(/not permitted/i);
   });
 });
 
@@ -1286,7 +1286,7 @@ describe("mapPublicationError", () => {
     ["publication.invalid_event_id", /event id/i],
     ["publication.invalid_feed_token_id", /feed token id/i],
     ["publication.invalid_city_id", /city id/i],
-    ["publication.feed_token_id_required", /required/i],
+    ["publication.feed_token_id_required", /necessary/i],
     ["publication.body_required", /body/i],
     ["publication.content_type_required", /json/i],
     ["publication.invalid_json", /json/i],
@@ -1317,7 +1317,7 @@ describe("mapPublicationError", () => {
   it("handles 403 fallback", () => {
     expect(
       mapPublicationError(new ApiError(403, { code: "x.y", message: "" })),
-    ).toMatch(/forbidden/i);
+    ).toMatch(/not permitted/i);
   });
   it("falls back to message + code on unknown codes", () => {
     expect(

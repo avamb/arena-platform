@@ -12,6 +12,7 @@ import { listSalesLinks } from "@/lib/api/endpoints";
 import type { EventItem, SalesLink } from "@/lib/api/types";
 import { formatNumber } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
+import { ScreenHelp } from "@/components/ScreenHelp";
 import { linksFilter, placementKey, type LinksFilter } from "@/lib/salesLinks";
 import { Badge, Empty, ErrorBox, Loading } from "@/components/ui";
 import { NoLinksAccess } from "@/screens/LinksNoAccess";
@@ -98,7 +99,10 @@ export function LinksScreen() {
 
   return (
     <section aria-labelledby="links-title">
-      <h1 id="links-title">{t("links.title")}</h1>
+      <div className="screen-head">
+        <h1 id="links-title">{t("links.title")}</h1>
+        <ScreenHelp screenId="links" />
+      </div>
       <p className="muted">{t("links.intro")}</p>
       {access.can("sales_link.manage") && (
         <div className="actions">

@@ -59,6 +59,9 @@ type seatCategoryResolution struct {
 	// SeatIndex maps seat_key to the effective category index, ONLY for
 	// seats whose effective category differs from the plan one.
 	SeatIndex map[string]int
+	// PlanColor maps a plan category index to the colour its home tier has
+	// (ticket_tiers.color). Set by withTierColors; absent means the plan's own.
+	PlanColor map[int]string
 }
 
 // resolveSeatCategories computes the resolution from the live seats and the
@@ -179,17 +182,30 @@ func resolveSeatCategories(
 // category in the seat manager and the event wizard), so a buyer sees the
 // seat in the colour the organizer painted it. Tiers without a colour keep
 // the palette swatch.
+//
+// A PLAN category takes the colour of its home tier by the same rule (one
+// colour of a category for the organizer and the buyer): PlanColor maps the
+// plan index to that colour; a home tier without a colour keeps the plan's.
 func (r seatCategoryResolution) withTierColors(colors map[uuid.UUID]string) seatCategoryResolution {
-	if len(colors) == 0 || len(r.Extra) == 0 {
+	if len(colors) == 0 {
 		return r
 	}
-	extra := append([]extraCategory(nil), r.Extra...)
-	for i := range extra {
-		if c := colors[extra[i].Tier.ID]; c != "" {
-			extra[i].Color = c
+	if len(r.Extra) > 0 {
+		extra := append([]extraCategory(nil), r.Extra...)
+		for i := range extra {
+			if c := colors[extra[i].Tier.ID]; c != "" {
+				extra[i].Color = c
+			}
+		}
+		r.Extra = extra
+	}
+	plan := make(map[int]string, len(r.Home))
+	for idx, t := range r.Home {
+		if c := colors[t.ID]; c != "" {
+			plan[idx] = c
 		}
 	}
-	r.Extra = extra
+	r.PlanColor = plan
 	return r
 }
 
@@ -219,6 +235,11 @@ func (r seatCategoryResolution) CategoryTiers() map[int]gen.TicketTierRow {
 // ordered by index, so a renderer can walk one list.
 func (r seatCategoryResolution) Categories(g seating.Geometry) []seating.Category {
 	out := append([]seating.Category(nil), g.Categories...)
+	for i := range out {
+		if c := r.PlanColor[out[i].Index]; c != "" {
+			out[i].Color = c
+		}
+	}
 	for _, e := range r.Extra {
 		out = append(out, seating.Category{Index: e.Index, Name: e.Tier.Name, Color: e.Color})
 	}

@@ -159,9 +159,9 @@ func TestDisputeCard_TextAndButtonsByRole(t *testing.T) {
 
 	text := b.disputeCardText("en", owner, true, card)
 	for _, want := range []string{
-		"№1000000777", "Swan Lake", "50 EUR", "The cardholder says they did not pay", "Evidence ready",
+		"№1000000777", "Swan Lake", "50 EUR", "The cardholder tells us that they did not pay", "Evidence is prepared",
 		"Anna Buyer", "anna@example.test", "an estimate", "Madrid time", "venue time (Asia/Jerusalem)",
-		"We found no entry scan", "acceptance of the terms", "gap_made_up", "receipt.pdf", "full copy for you", "small-amount limit of 20 EUR",
+		"We found no entry scan", "acceptance of the terms", "gap_made_up", "receipt.pdf", "full copy for you", "your limit for small disputes (20 EUR)",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the owner's card lacks %q:\n%s", want, text)

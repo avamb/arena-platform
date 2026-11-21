@@ -100,8 +100,8 @@ function BillingPaymentFeesPage(): JSX.Element {
         <div>
           <h1 style={headingStyle}>Payment fees</h1>
           <p style={subheadingStyle}>
-            The average card fee added to an invoice that is paid by card: a percentage plus a fixed part, per currency. A new
-            version starts in the future, so no issued invoice changes. Every change asks for a reason and is written to the
+            This is the average card fee that we add to an invoice when the organizer pays by card. It is a percent plus a fixed amount for each currency. A new
+            version starts after today, so no issued invoice changes. For each change, you give a cause. We write each change to the
             audit log. Times are in UTC.
           </p>
         </div>

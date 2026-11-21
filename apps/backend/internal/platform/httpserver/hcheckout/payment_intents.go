@@ -1465,13 +1465,30 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 				checkoutCompleted = true
 			default:
 				// Money captured but the session can no longer transition to
-				// 'completed' normally (expired/abandoned/manual_review/
-				// created/payment_started). Park it — and the order, when
-				// one exists — for an operator instead of pretending success.
+				// 'completed' normally. A buyer's cancel or an expired hold is
+				// a LATE PAYMENT (spec 62 П-15, late_payment.go): the places
+				// are taken again or the money goes back, and the buyer is
+				// told. Any other state (manual_review, created,
+				// payment_started) is parked for an operator as before.
 				// Best-effort writes inside the money transaction MUST sit behind a
 				// SAVEPOINT (AGENTS.md): a failing statement would otherwise abort
 				// the whole tx and the COMMIT would silently roll back the
 				// succeeded payment intent.
+				var paidAt *time.Time
+				if route.Event != nil {
+					paidAt = route.Event.PaidAt
+				}
+				late, lateErr := h.settleLatePaymentTx(ctx, tx, txQ, updated, cur, paidAt)
+				if lateErr != nil {
+					h.logger.Error("webhook: late payment handling failed; parking for manual review",
+						slog.String("checkout_session_id", csID.String()),
+						slog.String("error", lateErr.Error()),
+					)
+				}
+				if late.handled {
+					checkoutCompleted = late.completed
+					break
+				}
 				if spErr := h.parkCheckoutForManualReview(ctx, tx, csID); spErr != nil {
 					h.logger.Error("webhook: park checkout for manual_review failed; payment state kept",
 						slog.String("checkout_session_id", csID.String()),

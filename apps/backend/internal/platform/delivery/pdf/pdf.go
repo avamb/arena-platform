@@ -174,6 +174,13 @@ type Ticket struct {
 	VenueAddress string
 	VenueCity    string
 
+	// DirectionsGoogleURL / DirectionsWazeURL are the two map links printed
+	// under the venue address (built by internal/platform/directions). Both
+	// empty prints no line; the line is also dropped when a crowded page has
+	// no room for it (see fitDirections).
+	DirectionsGoogleURL string
+	DirectionsWazeURL   string
+
 	// TierName is the price tier / category name ("VIP", "Stalls"). Empty
 	// drops the Category info cell.
 	TierName string

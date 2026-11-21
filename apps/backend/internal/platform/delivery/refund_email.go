@@ -28,7 +28,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -325,15 +324,12 @@ func (h *refundEmail) buildMessage(ctx context.Context, orderID, orgID uuid.UUID
 	anyCancel = voidCount > 0
 	// The contact the letter prints and its Reply-To are the same one, so it
 	// is settled before the branding is built. Replies go to the event's
-	// promoter when it has an e-mail. Otherwise the payload already carries
-	// the ticket letter's rule (ContactRoute): the
-	// sales page's public e-mail, or - for a hosted page without one - no
-	// Reply-To at all, or - without a hosted page - the organization's address.
-	if orderEvents != uuid.Nil {
-		if contact, cerr := sessionchange.ResolveContact(ctx, h.opts.DB, orderEvents, orgID); cerr == nil && contact.Complete() && contact.Source == "promoter" {
-			first.OrgContactEmail = strings.TrimSpace(contact.Email)
-			first.ContactFormURL = ""
-		}
+	// promoter when it has an e-mail, else to the organization's contact
+	// address. With neither, the payload keeps the ticket letter's rule
+	// (ContactRoute).
+	if email := buyerContactEmail(ctx, h.opts.DB, orderEvents, orgID, h.logger); email != "" {
+		first.OrgContactEmail = email
+		first.ContactFormURL = ""
 	}
 	branding := resolveBranding(ctx, h.opts.Media, first, h.logger).Branding
 	branding.PaymentProvider = orderPaymentProvider(ctx, h.opts.DB, orderID, h.logger)
@@ -341,10 +337,11 @@ func (h *refundEmail) buildMessage(ctx context.Context, orderID, orgID uuid.UUID
 	data := templates.Data{
 		RecipientEmail: recipient.Email,
 		HolderName:     first.HolderName,
-		EventName:      defaultStr(first.EventName, "Arena Event"),
+		EventName:      defaultStr(first.EventName, "ArenaSoldOut.com Event"),
 		SessionStart:   formatSessionForEmail(first.SessionStart, first.SessionTZ),
 		VenueName:      joinNonEmpty(", ", first.VenueName, first.VenueCity),
 		Branding:       branding,
+		Contact:        templates.BuyerContact{Email: first.OrgContactEmail, OrderNumber: orderSystemID(ctx, h.opts.DB, orderID)},
 		Tickets:        lines,
 		Refund: &templates.RefundData{Total: formatMoney(total, currency),
 			TicketsCancelled: allVoid, SomeTicketsCancelled: anyCancel && !allVoid},
@@ -359,6 +356,6 @@ func (h *refundEmail) buildMessage(ctx context.Context, orderID, orgID uuid.UUID
 		return email.Message{}, fmt.Errorf("delivery: render refund e-mail: %w", err)
 	}
 	msg := ticketEmailMessage(first, recipient.Email, out.Subject, out.HTMLBody, out.TextBody)
-	applyWhiteLabelSender(&msg, data.WhiteLabel, brandSenderName(first))
+	applyBrandSender(&msg, brandSenderName(first))
 	return msg, nil
 }

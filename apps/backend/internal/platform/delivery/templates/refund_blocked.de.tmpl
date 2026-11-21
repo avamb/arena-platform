@@ -12,9 +12,9 @@
   <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">Eine Rückerstattung wurde blockiert</h1>
   <p style="margin:0 0 12px 0;">Jemand hat versucht, Ticket <strong>Nr. {{.Alert.TicketNumber}}</strong> für <strong>{{.EventName}}</strong>{{with .Alert.OrderNumber}} (Bestellung Nr. {{.}}){{end}} zu erstatten, aber das Ticket wurde am Eingang bereits gescannt. Es wurde nichts erstattet und das Ticket ist unverändert.</p>
   {{with .Alert.Actor}}<p style="margin:0 0 12px 0;">Versuch von: <strong>{{.}}</strong></p>{{end}}
-  <p style="margin:0 0 12px 0;">Wenn Sie das waren, ist nichts weiter zu tun. Wenn Sie den Versuch nicht kennen, prüfen Sie in Arena, wer Zugriff auf Ihre Organisation hat.</p>
+  <p style="margin:0 0 12px 0;">Wenn Sie das waren, ist nichts weiter zu tun. Wenn Sie den Versuch nicht kennen, prüfen Sie in ArenaSoldOut.com, wer Zugriff auf Ihre Organisation hat.</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">Arena Platform — automatische Nachricht</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">ArenaSoldOut.com — automatische Nachricht</td></tr>
 </table>
 </td></tr></table>
 </body>
@@ -28,7 +28,7 @@ Jemand hat versucht, Ticket Nr. {{.Alert.TicketNumber}} für {{.EventName}}{{wit
 {{with .Alert.Actor}}
 Versuch von: {{.}}
 {{end}}
-Wenn Sie das waren, ist nichts weiter zu tun. Wenn Sie den Versuch nicht kennen, prüfen Sie in Arena, wer Zugriff auf Ihre Organisation hat.
+Wenn Sie das waren, ist nichts weiter zu tun. Wenn Sie den Versuch nicht kennen, prüfen Sie in ArenaSoldOut.com, wer Zugriff auf Ihre Organisation hat.
 
-Arena Platform — automatische Nachricht
+ArenaSoldOut.com — automatische Nachricht
 {{end}}

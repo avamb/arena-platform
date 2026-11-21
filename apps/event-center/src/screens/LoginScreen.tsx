@@ -7,18 +7,64 @@ import { LanguageSelect } from "@/screens/LanguageSelect";
 
 export function LoginScreen() {
   const { t } = useI18n();
-  const { login, status } = useAuth();
+  const { login, logout, status } = useAuth();
   const navigate = useNavigate();
   const search = useSearch({ from: "/login" });
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(search.email ?? "");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<MessageKey | null>(null);
+  const [signedHere, setSignedHere] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const target = search.redirect ?? "/orgs";
+  // A letter's link names the account to sign in with. A session already
+  // open in this browser is then never entered silently: the person chooses
+  // (2026-11-07, an invitation to Vino&Co opened the inviter's own
+  // organization because the inviter was signed in in the same browser).
+  const askFirst = search.email !== undefined && !signedHere;
 
   useEffect(() => {
-    if (status === "signedIn") void navigate({ to: target });
-  }, [status, navigate, target]);
+    if (status === "signedIn" && !askFirst) void navigate({ to: target });
+  }, [status, navigate, target, askFirst]);
+
+  if (status === "signedIn" && askFirst && search.email !== undefined) {
+    const leave = async () => {
+      setLeaving(true);
+      try {
+        await logout();
+      } finally {
+        setLeaving(false);
+      }
+    };
+    return (
+      <main id="main" className="auth-page">
+        <div className="auth-card" data-testid="login-other-session">
+          <p className="brand">{t("app.name")}</p>
+          <h1>{t("login.title")}</h1>
+          <p className="notice" role="status">
+            {t("login.otherSession", { email: search.email })}
+          </p>
+          <p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={leaving}
+              onClick={() => void leave()}
+              data-testid="login-other-signout"
+            >
+              {t("login.otherSession.signOut")}
+            </button>
+          </p>
+          <p>
+            <button type="button" className="btn btn-link" disabled={leaving} onClick={() => void navigate({ to: target })}>
+              {t("login.otherSession.continue")}
+            </button>
+          </p>
+          <LanguageSelect />
+        </div>
+      </main>
+    );
+  }
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -29,8 +75,10 @@ export function LoginScreen() {
     setBusy(true);
     setError(null);
     try {
+      setSignedHere(true);
       await login(email.trim(), password);
     } catch (err) {
+      setSignedHere(false);
       setError(loginErrorKey(err));
       setBusy(false);
     }

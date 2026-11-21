@@ -24,11 +24,14 @@ package httpserver
 // Run against a migrated database (AGENTS.md CI-Integration recipe).
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -41,6 +44,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/apikeys"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salelinks"
 )
 
@@ -57,6 +61,9 @@ type sweepEnv struct {
 
 	owner, manager, key string
 	managerPerms        map[string]bool
+
+	// media stores the bytes of the world's hall plan intake (spec 64).
+	media *mediastore.Repo
 }
 
 type sweepCaller struct {
@@ -82,7 +89,7 @@ func newSweepEnv(t *testing.T) *sweepEnv {
 	pool := srv.pgxPool
 	q := gen.New(pool)
 	ctx := context.Background()
-	e := &sweepEnv{ts: ts, pool: pool, q: q, secret: secret, managerPerms: map[string]bool{}}
+	e := &sweepEnv{ts: ts, pool: pool, q: q, secret: secret, managerPerms: map[string]bool{}, media: srv.media}
 
 	e.orgB = e.newOrg(t, "B")
 	e.orgC = e.newOrg(t, "C")
@@ -196,6 +203,7 @@ type sweepWorld struct {
 	s1, s2, s3, s4                                uuid.UUID
 	alloc, issuance, planID, planVersion, orderID uuid.UUID
 	salesLink                                     uuid.UUID
+	intake, intakeSource, intakeQuestion          uuid.UUID
 }
 
 func sweepGAGeometry() seating.Geometry {
@@ -288,7 +296,52 @@ func (e *sweepEnv) newWorld(t *testing.T, org, partner uuid.UUID) *sweepWorld {
 		w.orderID, org, w.channel, w.event, w.s4, cs, res, "sweep-buyer-"+suffix+"@example.test")
 	e.exec(t, `INSERT INTO tickets (checkout_session_id, session_id, tier_id, holder_email, status, order_id, ordinal)
 	           VALUES ($1, $2, $3, $4, 'active', $5, 0)`, cs, w.s4, w.tier, "sweep-buyer-"+suffix+"@example.test", w.orderID)
+	e.newPlanIntake(t, w)
 	return w
+}
+
+// newPlanIntake gives the world a hall plan intake (spec 64) in review: a
+// source SVG that is draft 1, and one open question of that draft.
+func (e *sweepEnv) newPlanIntake(t *testing.T, w *sweepWorld) {
+	t.Helper()
+	ctx := context.Background()
+	svg := sweepPlanSVG(t)
+	key, err := mediastore.NewStorageKey(mediastore.OwnerVenuePlanSource)
+	if err != nil {
+		t.Fatalf("NewStorageKey: %v", err)
+	}
+	sha, size, err := e.media.PutAndStream(ctx, key, "image/svg+xml", bytes.NewReader(svg))
+	if err != nil {
+		t.Fatalf("PutAndStream: %v", err)
+	}
+	w.intake, w.intakeSource, w.intakeQuestion = uuid.New(), uuid.New(), uuid.New()
+	obj, err := e.media.Insert(ctx, mediastore.InsertInput{
+		OrgID: &w.org, OwnerType: mediastore.OwnerVenuePlanSource, OwnerID: &w.intake, StorageBackend: e.media.Backend(),
+		StorageKey: key, ContentType: "image/svg+xml", ByteSize: size, ChecksumSHA256: sha,
+	})
+	if err != nil {
+		t.Fatalf("media insert: %v", err)
+	}
+	draft := uuid.New()
+	e.exec(t, `INSERT INTO venue_plan_intakes (id, org_id, venue_id, channel, state) VALUES ($1, $2, $3, 'event_center_web', 'review')`,
+		w.intake, w.org, w.venue)
+	e.exec(t, `INSERT INTO venue_plan_intake_sources (id, intake_id, media_id, sha256, kind, file_name, byte_size, position)
+	           VALUES ($1, $2, $3, $4, 'svg', 'plan.svg', $5, 0)`, w.intakeSource, w.intake, obj.ID, sha, size)
+	e.exec(t, `INSERT INTO venue_plan_drafts (id, intake_id, n, author, svg_media_id) VALUES ($1, $2, 1, 'source_svg', $3)`,
+		draft, w.intake, obj.ID)
+	e.exec(t, `INSERT INTO venue_plan_questions (id, draft_id, kind, options) VALUES ($1, $2, 'numbering', '["left_to_right"]')`,
+		w.intakeQuestion, draft)
+	e.exec(t, `UPDATE venue_plan_intakes SET current_draft = 1 WHERE id = $1`, w.intake)
+}
+
+// sweepPlanSVG is a hall plan SVG the importer takes (the bot's test file).
+func sweepPlanSVG(t *testing.T) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "domain", "seating", "testdata", "Palac_Akropolis_GA.svg"))
+	if err != nil {
+		t.Fatalf("read plan svg: %v", err)
+	}
+	return raw
 }
 
 func (e *sweepEnv) cleanupWorld(w *sweepWorld) {
@@ -321,6 +374,12 @@ func (e *sweepEnv) cleanupWorld(w *sweepWorld) {
 		{`DELETE FROM events WHERE id = $1`, w.event},
 		{`DELETE FROM agent_feed_tokens WHERE sales_channel_id = $1`, w.channel},
 		{`DELETE FROM sales_channels WHERE id = $1`, w.channel},
+		// The hall plan intake (spec 64) and a plan its approval made.
+		{`DELETE FROM venue_plan_intakes WHERE venue_id = $1`, w.venue},
+		{`UPDATE seating_plans SET current_version_id = NULL WHERE venue_id = $1 AND id <> '` + w.planID.String() + `'`, w.venue},
+		{`DELETE FROM seating_plan_versions WHERE seating_plan_id IN (SELECT id FROM seating_plans WHERE venue_id = $1 AND id <> '` + w.planID.String() + `')`, w.venue},
+		{`DELETE FROM seating_plans WHERE venue_id = $1 AND id <> '` + w.planID.String() + `'`, w.venue},
+		{`DELETE FROM media_objects WHERE owner_type IN ('venue_plan_source', 'seating_plan_svg') AND org_id = $1`, w.org},
 		{`UPDATE seating_plans SET current_version_id = NULL WHERE id = $1`, w.planID},
 		{`DELETE FROM seating_plan_versions WHERE seating_plan_id = $1`, w.planID},
 		{`DELETE FROM seating_plans WHERE id = $1`, w.planID},
@@ -343,7 +402,8 @@ func (w *sweepWorld) ids(e *sweepEnv, pathOrg uuid.UUID) sweepIDs {
 		Org: pathOrg, OwnVenue: e.venueB, EventOther: e.eventB,
 		Event: w.event, Session1: w.s1, Session2: w.s2, Session3: w.s3, Session4: w.s4,
 		Tier: w.tier, Channel: w.channel, FeedToken: w.feedToken, Alloc: w.alloc, Issuance: w.issuance,
-		PlanVersion: w.planVersion, PartnerOrg: w.partner, SalesLink: w.salesLink,
+		PlanVersion: w.planVersion, PlanVenue: w.venue, PartnerOrg: w.partner, SalesLink: w.salesLink,
+		Intake: w.intake, IntakeSource: w.intakeSource, IntakeQuestion: w.intakeQuestion,
 	}
 }
 
@@ -379,6 +439,13 @@ func (e *sweepEnv) snapshot(t *testing.T, w *sweepWorld) map[string]string {
 		{"session change journal", `SELECT count(*)::text FROM session_changes WHERE org_id = $1`, w.org},
 		{"session change mail jobs", `SELECT count(*)::text FROM worker_jobs WHERE job_type = 'session.change_email'
 		   AND payload->>'order_id' IN (SELECT id::text FROM orders WHERE org_id = $1)`, w.org},
+		{"plan intakes", `SELECT COALESCE(string_agg(i.id||':'||i.state||':'||COALESCE(i.current_draft, 0)||':'||i.updated_at
+		   ||':'||(SELECT count(*) FROM venue_plan_corrections c WHERE c.intake_id = i.id)
+		   ||':'||(SELECT count(*) FROM venue_plan_drafts d WHERE d.intake_id = i.id), ',' ORDER BY i.id), '')
+		   FROM venue_plan_intakes i WHERE i.org_id = $1`, w.org},
+		{"plan intake answers", `SELECT count(*)::text FROM venue_plan_questions q JOIN venue_plan_drafts d ON d.id = q.draft_id
+		   JOIN venue_plan_intakes i ON i.id = d.intake_id WHERE i.org_id = $1 AND q.answer IS NOT NULL`, w.org},
+		{"venue plans", `SELECT count(*)::text FROM seating_plans WHERE venue_id = $1`, w.venue},
 	}
 	out := map[string]string{}
 	for _, q := range queries {

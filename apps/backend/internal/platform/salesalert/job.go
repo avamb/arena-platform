@@ -128,7 +128,7 @@ func (w *Watcher) RunOnce(ctx context.Context, now time.Time) (int, error) {
 	// After the sold-out pass, so a category whose sell-out ended the whole
 	// date is recorded without a second message (more_alerts.go).
 	for _, pass := range []func(context.Context, time.Time, bool) (int, error){
-		w.categoriesSoldOut, w.salesEnded, w.manualChanges,
+		w.categoriesSoldOut, w.salesEnded, w.manualChanges, w.reissueOldCodes,
 	} {
 		n, err := pass(ctx, now, !seeded)
 		told += n

@@ -161,7 +161,7 @@ test.describe("the hall of a seated date (live, three roles)", () => {
 
     // A tap on a SOLD seat is refused, and the screen says so.
     await seatNode(page, "P|1|1").click();
-    await expect(page.getByTestId("seat-note")).toContainText("skipped");
+    await expect(page.getByTestId("seat-note")).toContainText("We did not change");
     await expect(trayCount(page)).toContainText("1 seats changed");
 
     // A whole row from the list: row 3 of the Parter (12 seats, all Standard).
@@ -181,7 +181,7 @@ test.describe("the hall of a seated date (live, three roles)", () => {
 
     await page.getByTestId("seat-apply").click();
     await expect(page.getByTestId("seat-note")).toContainText("Applied. 13 seats changed");
-    await expect(trayCount(page)).toContainText("No changes yet");
+    await expect(trayCount(page)).toContainText("No changes.");
 
     const after = hall();
     expect(after.batches).toBe(1);
@@ -197,7 +197,7 @@ test.describe("the hall of a seated date (live, three roles)", () => {
     await expect(page.getByTestId("seat-history-item")).toHaveCount(1);
     await expect(page.getByTestId("seat-history-item")).toHaveAttribute("data-kind", "paint");
     await page.getByTestId("seat-revert").click();
-    await expect(page.getByTestId("seat-note")).toContainText("Undone");
+    await expect(page.getByTestId("seat-note")).toContainText("Canceled");
     const reverted = hall();
     expect(reverted.batches).toBe(2);
     expect(reverted.seats["P|3|1"].tier).toBe(STANDARD);
@@ -254,7 +254,7 @@ test.describe("the hall of a seated date (live, three roles)", () => {
     // A buyer takes seat P|5|2 while the organizer is still thinking.
     seed("sell", "P|5|2");
     await page.getByTestId("seat-apply").click();
-    await expect(page.getByTestId("seat-note")).toContainText("skipped");
+    await expect(page.getByTestId("seat-note")).toContainText("We did not change");
     const h = hall();
     expect(h.seats["P|5|2"]).toEqual({ tier: STANDARD, status: "sold" });
     expect(h.seats["P|5|3"].tier).toBe(ECONOMY);
@@ -333,5 +333,52 @@ test.describe("the hall of a seated date (live, three roles)", () => {
     // A finger-sized control: every brush is at least 44 px tall.
     const tall = await page.getByTestId("seat-brush").first().boundingBox();
     expect(tall?.height ?? 0).toBeGreaterThanOrEqual(44);
+  });
+
+  // Kept LAST: it leaves new categories on the date, and the tests above count three.
+  // The seed date has three categories (not one), so the test asks for five layout categories: the two slots that
+  // find no category of the date become NEW ones. With a date of one category the same path gives "one -> three".
+  test("owner: suggest more categories than the date has -> transfer -> ONE apply creates them", async ({ page }) => {
+    test.setTimeout(90_000);
+    seed("reset");
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await openHall(page, "org_admin", "?tab=layout");
+    await expect(page.getByTestId("seat-tab-layout")).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("seat-layout")).toBeVisible();
+
+    // The stage once, as in the layout test above.
+    await page.getByTestId("layout-stage-btn").click();
+    const map = page.getByTestId("seat-map");
+    const box = await map.boundingBox();
+    if (box === null) throw new Error("the map has no box");
+    await map.click({ position: { x: box.width / 2, y: 12 } });
+
+    // Five categories: the list of prices of the three categories is cleared so the algorithm chooses the prices.
+    await page.getByTestId("param-prices").fill("");
+    await page.getByTestId("param-categories").fill("5");
+    await expect(page.getByTestId("layout-proposal")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("layout-table-row")).toHaveCount(5);
+    await expect(page.getByTestId("layout-realistic")).toContainText("Realistic estimate");
+    const fresh = page.getByTestId("layout-new-tier");
+    expect(await fresh.count()).toBeGreaterThanOrEqual(2);
+    const newOnes = await fresh.count();
+    expect(hall().batches).toBe(0);
+
+    await page.getByTestId("layout-transfer").click();
+    await expect(page.getByTestId("seat-pending-tier")).toHaveCount(newOnes);
+    expect(hall().batches).toBe(0); // nothing reaches the server before Apply
+
+    const requests: string[] = [];
+    page.on("request", (r) => {
+      if (r.method() === "POST" && r.url().endsWith("/seat-batches")) requests.push(r.postData() ?? "");
+    });
+    await page.getByTestId("seat-apply").click();
+    await expect(page.getByTestId("seat-note")).toContainText("Applied");
+    expect(requests).toHaveLength(1);
+    expect((JSON.parse(requests[0]!) as { new_tiers: unknown[] }).new_tiers).toHaveLength(newOnes);
+    expect(hall().batches).toBe(1);
+
+    await page.getByTestId("seat-tab-brush").click();
+    await expect(page.getByTestId("seat-brush")).toHaveCount(3 + newOnes);
   });
 });

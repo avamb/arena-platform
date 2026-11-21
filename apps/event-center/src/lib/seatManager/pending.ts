@@ -54,12 +54,83 @@ export interface StrokeResult {
   readonly unchanged: number;
 }
 
+/**
+ * A category the organizer made in the tray and the server does not know yet. It lives in the tray (and in its
+ * storage) until "Apply", when it goes in the same request as the seats painted with it.
+ */
+export interface PendingTier {
+  /** The client's id of the category: `[A-Za-z0-9_-]{1,40}`, the `key` of `new_tiers`. */
+  readonly key: string;
+  readonly name: string;
+  /** Minor units. */
+  readonly price: number;
+  /** `#rrggbb`. */
+  readonly color: string;
+}
+
+/** A pending category is used as a category id with this prefix, so strokes, counters and colours need no second path. */
+export const PENDING_PREFIX = "new:";
+export const pendingTierId = (key: string): string => PENDING_PREFIX + key;
+export const isPendingTierId = (id: string): boolean => id.startsWith(PENDING_PREFIX);
+
 export interface Tray {
   readonly strokes: readonly Stroke[];
   readonly nextId: number;
+  readonly pendingTiers: readonly PendingTier[];
 }
 
-export const EMPTY_TRAY: Tray = { strokes: [], nextId: 1 };
+export const EMPTY_TRAY: Tray = { strokes: [], nextId: 1, pendingTiers: [] };
+
+/** The next free key for a pending category ("n1", "n2", ...). */
+export function nextPendingKey(existing: readonly PendingTier[]): string {
+  let max = 0;
+  for (const p of existing) {
+    const m = /^n(\d+)$/.exec(p.key);
+    if (m !== null) max = Math.max(max, Number(m[1]));
+  }
+  return `n${max + 1}`;
+}
+
+export function addPendingTiers(tray: Tray, tiers: readonly PendingTier[]): Tray {
+  if (tiers.length === 0) return tray;
+  return { ...tray, pendingTiers: [...tray.pendingTiers, ...tiers] };
+}
+
+/** Removes a pending category and every stroke painted with it. */
+export function removePendingTier(tray: Tray, key: string): Tray {
+  const id = pendingTierId(key);
+  return {
+    ...tray,
+    pendingTiers: tray.pendingTiers.filter((p) => p.key !== key),
+    strokes: tray.strokes.filter((s) => !(s.brush.kind === "tier" && s.brush.tierId === id)),
+  };
+}
+
+/** The category of the answer replaces the pending one: its strokes (made while the request was on its way) follow it. */
+function renameTierInStroke(s: Stroke, from: string, to: string): Stroke {
+  const brush: Brush = s.brush.kind === "tier" && s.brush.tierId === from ? { kind: "tier", tierId: to } : s.brush;
+  const targets = new Map<string, Target>();
+  for (const [k, t] of s.targets) targets.set(k, t.tierId === from ? { ...t, tierId: to } : t);
+  return { id: s.id, brush, targets };
+}
+
+/**
+ * The tray after a successful apply: the strokes the request carried are gone, and every category the server
+ * created replaces its pending twin in the strokes that stay.
+ */
+export function settleApplied(
+  tray: Tray,
+  sentStrokeIds: ReadonlySet<number>,
+  created: readonly { readonly key: string; readonly tier_id: string }[],
+): Tray {
+  let strokes = tray.strokes.filter((x) => !sentStrokeIds.has(x.id));
+  for (const c of created) {
+    const from = pendingTierId(c.key);
+    strokes = strokes.map((s) => renameTierInStroke(s, from, c.tier_id));
+  }
+  const gone = new Set(created.map((c) => c.key));
+  return { strokes, nextId: tray.nextId, pendingTiers: tray.pendingTiers.filter((p) => !gone.has(p.key)) };
+}
 
 export type Merged = ReadonlyMap<string, Target>;
 
@@ -143,16 +214,17 @@ export function makeStroke(
 }
 
 export function pushStroke(tray: Tray, stroke: Stroke): Tray {
-  return { strokes: [...tray.strokes, stroke], nextId: Math.max(tray.nextId, stroke.id + 1) };
+  return { ...tray, strokes: [...tray.strokes, stroke], nextId: Math.max(tray.nextId, stroke.id + 1) };
 }
 
 export function undoStroke(tray: Tray): Tray {
   if (tray.strokes.length === 0) return tray;
-  return { strokes: tray.strokes.slice(0, -1), nextId: tray.nextId };
+  return { ...tray, strokes: tray.strokes.slice(0, -1) };
 }
 
+/** "Clear": the strokes and the categories that were not created yet. */
 export function clearTray(tray: Tray): Tray {
-  return { strokes: [], nextId: tray.nextId };
+  return { strokes: [], nextId: tray.nextId, pendingTiers: [] };
 }
 
 export interface BatchChange {
@@ -199,6 +271,71 @@ export function batchKind(changes: readonly BatchChange[]): BatchKind {
   if (!paints && closes && !opens) return "close";
   if (!paints && !closes && opens) return "open";
   return "apply_layout";
+}
+
+export interface BatchRequestChange {
+  readonly seat_key: string;
+  readonly tier_id?: string;
+  readonly new_tier_key?: string;
+  readonly status?: "available" | "unavailable";
+}
+
+export interface BatchRequestNewTier {
+  readonly key: string;
+  readonly name: string;
+  readonly price_amount: number;
+  readonly color: string;
+}
+
+export interface BatchRequestBody {
+  readonly kind: BatchKind;
+  readonly changes: BatchRequestChange[];
+  /** Only when a change names a category made in the tray. */
+  readonly new_tiers?: BatchRequestNewTier[];
+}
+
+export interface BuiltBatch {
+  readonly body: BatchRequestBody;
+  /** Categories of the tray that no seat is painted with: they stay in the tray and are not sent. */
+  readonly unsent: readonly PendingTier[];
+}
+
+/**
+ * The ONE request of "Apply" (the tray is never split: it is one atomic batch, at most MAX_BATCH_CHANGES seats).
+ * A category of the tray travels in the same request as every change that names it, once: it is in `new_tiers`
+ * when at least one change uses it (the server refuses a new category nobody uses), and those changes carry
+ * `new_tier_key` instead of `tier_id`.
+ */
+export function buildBatchRequest(changes: readonly BatchChange[], pending: readonly PendingTier[]): BuiltBatch {
+  const byKey = new Map(pending.map((p) => [p.key, p] as const));
+  const usedKeys = new Set<string>();
+  const out: BatchRequestChange[] = [];
+  for (const c of changes) {
+    if (c.tier_id !== undefined && isPendingTierId(c.tier_id)) {
+      const key = c.tier_id.slice(PENDING_PREFIX.length);
+      if (!byKey.has(key)) {
+        // The tray names a category it does not hold (a damaged storage): that part of the change is dropped.
+        if (c.status !== undefined) out.push({ seat_key: c.seat_key, status: c.status });
+        continue;
+      }
+      usedKeys.add(key);
+      const next: { seat_key: string; new_tier_key: string; status?: "available" | "unavailable" } = { seat_key: c.seat_key, new_tier_key: key };
+      if (c.status !== undefined) next.status = c.status;
+      out.push(next);
+    } else {
+      const next: { seat_key: string; tier_id?: string; status?: "available" | "unavailable" } = { seat_key: c.seat_key };
+      if (c.tier_id !== undefined) next.tier_id = c.tier_id;
+      if (c.status !== undefined) next.status = c.status;
+      out.push(next);
+    }
+  }
+  const sent = pending.filter((p) => usedKeys.has(p.key));
+  const body: BatchRequestBody = {
+    kind: batchKind(changes),
+    changes: out,
+    ...(sent.length > 0 ? { new_tiers: sent.map((p) => ({ key: p.key, name: p.name, price_amount: p.price, color: p.color })) } : {}),
+  };
+  return { body, unsent: pending.filter((p) => !usedKeys.has(p.key)) };
 }
 
 export interface TrayTotals {

@@ -470,7 +470,7 @@ describe("buildCreateVersionBody (AB-25b / AB-40)", () => {
 describe("gaCategoryIssues (AB-40 C1)", () => {
   it("requires at least one active row", () => {
     expect(gaCategoryIssues([emptyGADraft])).toEqual([
-      "Add at least one general-admission category (name + capacity).",
+      "Add one general-admission category or more. Each one needs a name and a capacity.",
     ]);
   });
 
@@ -512,7 +512,7 @@ describe("gaCategoryIssues (AB-40 C1)", () => {
       capacity: "5",
       price: "",
     }));
-    expect(gaCategoryIssues(rows).some((m) => m.includes("At most 15"))).toBe(
+    expect(gaCategoryIssues(rows).some((m) => m.includes("15 categories at most"))).toBe(
       true,
     );
   });

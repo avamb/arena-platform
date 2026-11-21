@@ -33,6 +33,9 @@ const (
 	OnboardingKindRejected      = "rejected"
 	// OnboardingKindCode carries the six-digit code of the Telegram channel.
 	OnboardingKindCode = "code"
+	// OnboardingKindAdminNewApplication tells a platform admin about a new or
+	// re-submitted application. Its Russian text lives in code, not in the catalogs.
+	OnboardingKindAdminNewApplication = "admin_new_application"
 )
 
 // OnboardingEmailPayload is the JSON payload of an onboarding.email job.
@@ -52,6 +55,11 @@ type OnboardingEmailPayload struct {
 	// Code is the six-digit e-mail confirmation code of the Telegram channel. NOT logged.
 	Code   string   `json:"code,omitempty"`
 	Fields []string `json:"fields,omitempty"`
+	// Title, Details and Link are used by the admin_new_application kind only:
+	// the headline, the plain-text lines and the application's admin link.
+	Title   string   `json:"title,omitempty"`
+	Details []string `json:"details,omitempty"`
+	Link    string   `json:"link,omitempty"`
 }
 
 // onboardingKindNeedsLink lists the kinds whose button opens the form.
@@ -84,6 +92,8 @@ func (h *Handler) HandleOnboardingEmail(ctx context.Context, payload []byte) err
 			return fmt.Errorf("authemail: onboarding e-mail needs ONBOARDING_SITE_URL")
 		}
 		link = h.siteURL + "/start/confirm?token=" + url.QueryEscape(p.Token) + "&lang=" + url.QueryEscape(normalizeOnboardingLocale(p.Locale))
+	case p.Kind == OnboardingKindAdminNewApplication:
+		link = p.Link
 	case p.Kind == OnboardingKindApproved:
 		// Same decision as the password letters (recipient.go): an organizer
 		// works only in the event center, platform staff in the console.
@@ -122,6 +132,7 @@ var eventCenterButton = map[string]string{
 	"en": "Open the event center",
 	"ru": "Открыть ивент-центр",
 	"es": "Abrir el centro de eventos",
+	"uk": "Відкрити івент-центр",
 }
 
 func normalizeOnboardingLocale(l string) string {
@@ -130,6 +141,8 @@ func normalizeOnboardingLocale(l string) string {
 		return "ru"
 	case "es":
 		return "es"
+	case "uk":
+		return "uk"
 	}
 	return "en"
 }
@@ -143,40 +156,53 @@ type onboardingText struct {
 // onboardingTexts[locale][kind]. {name} {org} {message} are replaced.
 var onboardingTexts = map[string]map[string]onboardingText{
 	"en": {
-		OnboardingKindConfirm:       {"Confirm your e-mail to continue your Arena application", "Hello{name}, thank you for starting an application to sell tickets with Arena. Confirm your e-mail address with the button below. You can leave and come back later: your answers are saved, and this link brings you back to the form.", "Confirm and continue"},
-		OnboardingKindResume:        {"Continue your Arena application", "Hello{name}, here is the link to continue your application. Your answers are saved.", "Continue the application"},
-		OnboardingKindReminder:      {"Your Arena application is waiting for you", "Hello{name}, you started an application to sell tickets with Arena but have not finished it. Your answers are saved and it takes only a few minutes to complete.", "Finish the application"},
-		OnboardingKindReceived:      {"We received your Arena application", "Hello{name}, we received the application{org}. Our team checks every organizer by hand, usually within one or two working days. We will write to you as soon as there is a decision or a question.", ""},
-		OnboardingKindInfoRequested: {"We need a few details for your Arena application", "Hello{name}, to continue with your application we need some details:\n\n{message}\n\nOpen the form with the button below and update the highlighted answers.", "Update the application"},
-		OnboardingKindApproved:      {"Your Arena application is approved", "Hello{name}, good news: your application{org} is approved and your workspace is ready. If this is your first Arena account, a separate e-mail brings a link to set your password. Then sign in to create your first event.", "Sign in to Arena"},
-		OnboardingKindCode:          {"Your Arena confirmation code", "Hello{name}, enter this code in the Telegram chat to confirm your e-mail address. It is valid for 15 minutes. If you did not start an application, ignore this e-mail.", ""},
-		OnboardingKindRejected:      {"About your Arena application", "Hello{name}, thank you for your interest in Arena. We are not able to approve the application{org} at this time.{message} If you think this is a mistake, simply reply to this e-mail.", ""},
+		OnboardingKindConfirm:       {"Confirm your e-mail to continue your ArenaSoldOut.com application", "Hello{name}, thank you for starting an application to sell tickets with ArenaSoldOut.com. Confirm your e-mail address with the button below. You can leave and come back later: your answers are saved, and this link brings you back to the form.", "Confirm and continue"},
+		OnboardingKindResume:        {"Continue your ArenaSoldOut.com application", "Hello{name}, here is the link to continue your application. Your answers are saved.", "Continue the application"},
+		OnboardingKindReminder:      {"Your ArenaSoldOut.com application is waiting for you", "Hello{name}, you started an application to sell tickets with ArenaSoldOut.com but have not finished it. Your answers are saved and it takes only a few minutes to complete.", "Finish the application"},
+		OnboardingKindReceived:      {"We received your ArenaSoldOut.com application", "Hello{name}, we received the application{org}. Our team checks every organizer by hand, usually within one or two working days. We will write to you as soon as there is a decision or a question.", ""},
+		OnboardingKindInfoRequested: {"We need a few details for your ArenaSoldOut.com application", "Hello{name}, to continue with your application we need some details:\n\n{message}\n\nOpen the form with the button below and update the highlighted answers.", "Update the application"},
+		OnboardingKindApproved:      {"Your ArenaSoldOut.com application is approved", "Hello{name}, good news: your application{org} is approved and your workspace is ready. If this is your first ArenaSoldOut.com account, a separate e-mail brings a link to set your password. Then sign in to create your first event.", "Sign in to ArenaSoldOut.com"},
+		OnboardingKindCode:          {"Your ArenaSoldOut.com confirmation code", "Hello{name}, enter this code in the Telegram chat to confirm your e-mail address. It is valid for 15 minutes. If you did not start an application, ignore this e-mail.", ""},
+		OnboardingKindRejected:      {"About your ArenaSoldOut.com application", "Hello{name}, thank you for your interest in ArenaSoldOut.com. We are not able to approve the application{org} at this time.{message} If you think this is a mistake, simply reply to this e-mail.", ""},
 	},
 	"ru": {
-		OnboardingKindConfirm:       {"Подтвердите e-mail, чтобы продолжить заявку в Arena", "Здравствуйте{name}, спасибо, что начали заявку на продажу билетов через Arena. Подтвердите адрес кнопкой ниже. Заявку можно оставить и вернуться позже: ответы сохранены, а эта ссылка возвращает вас в анкету.", "Подтвердить и продолжить"},
-		OnboardingKindResume:        {"Продолжить заявку в Arena", "Здравствуйте{name}, вот ссылка, чтобы продолжить заявку. Ваши ответы сохранены.", "Продолжить заявку"},
-		OnboardingKindReminder:      {"Ваша заявка в Arena ждёт вас", "Здравствуйте{name}, вы начали заявку на продажу билетов через Arena, но не закончили её. Ответы сохранены, осталось несколько минут.", "Закончить заявку"},
-		OnboardingKindReceived:      {"Мы получили вашу заявку в Arena", "Здравствуйте{name}, мы получили заявку{org}. Команда проверяет каждого организатора вручную, обычно за один-два рабочих дня. Мы напишем вам, как только будет решение или вопрос.", ""},
-		OnboardingKindInfoRequested: {"Нужны уточнения по вашей заявке в Arena", "Здравствуйте{name}, чтобы продолжить с заявкой, нам нужны уточнения:\n\n{message}\n\nОткройте анкету кнопкой ниже и обновите отмеченные ответы.", "Обновить заявку"},
-		OnboardingKindApproved:      {"Ваша заявка в Arena одобрена", "Здравствуйте{name}, хорошие новости: заявка{org} одобрена, рабочее пространство готово. Если это ваш первый аккаунт в Arena, отдельным письмом придёт ссылка для создания пароля. После этого войдите и создайте первое мероприятие.", "Войти в Arena"},
-		OnboardingKindCode:          {"Код подтверждения Arena", "Здравствуйте{name}, введите этот код в чате Telegram, чтобы подтвердить адрес e-mail. Код действует 15 минут. Если вы не подавали заявку, просто проигнорируйте письмо.", ""},
-		OnboardingKindRejected:      {"О вашей заявке в Arena", "Здравствуйте{name}, спасибо за интерес к Arena. Сейчас мы не можем одобрить заявку{org}.{message} Если вы считаете, что это ошибка, просто ответьте на это письмо.", ""},
+		OnboardingKindConfirm:       {"Подтвердите e-mail, чтобы продолжить заявку в ArenaSoldOut.com", "Здравствуйте{name}, спасибо, что начали заявку на продажу билетов через ArenaSoldOut.com. Подтвердите адрес кнопкой ниже. Заявку можно оставить и вернуться позже: ответы сохранены, а эта ссылка возвращает вас в анкету.", "Подтвердить и продолжить"},
+		OnboardingKindResume:        {"Продолжить заявку в ArenaSoldOut.com", "Здравствуйте{name}, вот ссылка, чтобы продолжить заявку. Ваши ответы сохранены.", "Продолжить заявку"},
+		OnboardingKindReminder:      {"Ваша заявка в ArenaSoldOut.com ждёт вас", "Здравствуйте{name}, вы начали заявку на продажу билетов через ArenaSoldOut.com, но не закончили её. Ответы сохранены, осталось несколько минут.", "Закончить заявку"},
+		OnboardingKindReceived:      {"Мы получили вашу заявку в ArenaSoldOut.com", "Здравствуйте{name}, мы получили заявку{org}. Команда проверяет каждого организатора вручную, обычно за один-два рабочих дня. Мы напишем вам, как только будет решение или вопрос.", ""},
+		OnboardingKindInfoRequested: {"Нужны уточнения по вашей заявке в ArenaSoldOut.com", "Здравствуйте{name}, чтобы продолжить с заявкой, нам нужны уточнения:\n\n{message}\n\nОткройте анкету кнопкой ниже и обновите отмеченные ответы.", "Обновить заявку"},
+		OnboardingKindApproved:      {"Ваша заявка в ArenaSoldOut.com одобрена", "Здравствуйте{name}, хорошие новости: заявка{org} одобрена, рабочее пространство готово. Если это ваш первый аккаунт в ArenaSoldOut.com, отдельным письмом придёт ссылка для создания пароля. После этого войдите и создайте первое мероприятие.", "Войти в ArenaSoldOut.com"},
+		OnboardingKindCode:          {"Код подтверждения ArenaSoldOut.com", "Здравствуйте{name}, введите этот код в чате Telegram, чтобы подтвердить адрес e-mail. Код действует 15 минут. Если вы не подавали заявку, просто проигнорируйте письмо.", ""},
+		OnboardingKindRejected:      {"О вашей заявке в ArenaSoldOut.com", "Здравствуйте{name}, спасибо за интерес к ArenaSoldOut.com. Сейчас мы не можем одобрить заявку{org}.{message} Если вы считаете, что это ошибка, просто ответьте на это письмо.", ""},
+	},
+	"uk": {
+		OnboardingKindConfirm:       {"Підтвердьте e-mail, щоб продовжити заявку в ArenaSoldOut.com", "Вітаємо{name}, дякуємо, що почали заявку на продаж квитків через ArenaSoldOut.com. Підтвердьте адресу кнопкою нижче. Заявку можна залишити й повернутися пізніше: відповіді збережено, а це посилання повертає вас до анкети.", "Підтвердити й продовжити"},
+		OnboardingKindResume:        {"Продовжити заявку в ArenaSoldOut.com", "Вітаємо{name}, ось посилання, щоб продовжити заявку. Ваші відповіді збережено.", "Продовжити заявку"},
+		OnboardingKindReminder:      {"Ваша заявка в ArenaSoldOut.com чекає на вас", "Вітаємо{name}, ви почали заявку на продаж квитків через ArenaSoldOut.com, але не завершили її. Відповіді збережено, лишилося кілька хвилин.", "Завершити заявку"},
+		OnboardingKindReceived:      {"Ми отримали вашу заявку в ArenaSoldOut.com", "Вітаємо{name}, ми отримали заявку{org}. Команда перевіряє кожного організатора вручну, зазвичай за один-два робочі дні. Ми напишемо вам, щойно буде рішення або запитання.", ""},
+		OnboardingKindInfoRequested: {"Потрібні уточнення щодо вашої заявки в ArenaSoldOut.com", "Вітаємо{name}, щоб продовжити із заявкою, нам потрібні уточнення:\n\n{message}\n\nВідкрийте анкету кнопкою нижче й оновіть позначені відповіді.", "Оновити заявку"},
+		OnboardingKindApproved:      {"Вашу заявку в ArenaSoldOut.com схвалено", "Вітаємо{name}, добра новина: заявку{org} схвалено, робочий простір готовий. Якщо це ваш перший акаунт в ArenaSoldOut.com, окремим листом прийде посилання для створення пароля. Після цього увійдіть і створіть перший захід.", "Увійти в ArenaSoldOut.com"},
+		OnboardingKindCode:          {"Код підтвердження ArenaSoldOut.com", "Вітаємо{name}, введіть цей код у чаті Telegram, щоб підтвердити адресу e-mail. Код діє 15 хвилин. Якщо ви не подавали заявку, просто проігноруйте лист.", ""},
+		OnboardingKindRejected:      {"Щодо вашої заявки в ArenaSoldOut.com", "Вітаємо{name}, дякуємо за інтерес до ArenaSoldOut.com. Зараз ми не можемо схвалити заявку{org}.{message} Якщо ви вважаєте, що це помилка, просто дайте відповідь на цей лист.", ""},
 	},
 	"es": {
-		OnboardingKindConfirm:       {"Confirma tu correo para continuar con tu solicitud en Arena", "Hola{name}, gracias por iniciar una solicitud para vender entradas con Arena. Confirma tu correo con el botón de abajo. Puedes dejarlo y volver más tarde: tus respuestas quedan guardadas y este enlace te devuelve al formulario.", "Confirmar y continuar"},
-		OnboardingKindResume:        {"Continúa tu solicitud en Arena", "Hola{name}, aquí tienes el enlace para continuar con tu solicitud. Tus respuestas están guardadas.", "Continuar la solicitud"},
-		OnboardingKindReminder:      {"Tu solicitud en Arena te está esperando", "Hola{name}, empezaste una solicitud para vender entradas con Arena pero no la terminaste. Tus respuestas están guardadas y solo faltan unos minutos.", "Terminar la solicitud"},
-		OnboardingKindReceived:      {"Hemos recibido tu solicitud en Arena", "Hola{name}, hemos recibido la solicitud{org}. Nuestro equipo revisa a cada organizador a mano, normalmente en uno o dos días laborables. Te escribiremos en cuanto haya una decisión o una pregunta.", ""},
-		OnboardingKindInfoRequested: {"Necesitamos algunos datos para tu solicitud en Arena", "Hola{name}, para continuar con tu solicitud necesitamos algunos datos:\n\n{message}\n\nAbre el formulario con el botón de abajo y actualiza las respuestas marcadas.", "Actualizar la solicitud"},
-		OnboardingKindApproved:      {"Tu solicitud en Arena está aprobada", "Hola{name}, buenas noticias: la solicitud{org} está aprobada y tu espacio de trabajo está listo. Si es tu primera cuenta en Arena, otro correo te enviará un enlace para crear tu contraseña. Después entra y crea tu primer evento.", "Entrar en Arena"},
-		OnboardingKindCode:          {"Tu código de confirmación de Arena", "Hola{name}, introduce este código en el chat de Telegram para confirmar tu correo. Es válido durante 15 minutos. Si no iniciaste una solicitud, ignora este correo.", ""},
-		OnboardingKindRejected:      {"Sobre tu solicitud en Arena", "Hola{name}, gracias por tu interés en Arena. Por ahora no podemos aprobar la solicitud{org}.{message} Si crees que es un error, responde a este correo.", ""},
+		OnboardingKindConfirm:       {"Confirma tu correo para continuar con tu solicitud en ArenaSoldOut.com", "Hola{name}, gracias por iniciar una solicitud para vender entradas con ArenaSoldOut.com. Confirma tu correo con el botón de abajo. Puedes dejarlo y volver más tarde: tus respuestas quedan guardadas y este enlace te devuelve al formulario.", "Confirmar y continuar"},
+		OnboardingKindResume:        {"Continúa tu solicitud en ArenaSoldOut.com", "Hola{name}, aquí tienes el enlace para continuar con tu solicitud. Tus respuestas están guardadas.", "Continuar la solicitud"},
+		OnboardingKindReminder:      {"Tu solicitud en ArenaSoldOut.com te está esperando", "Hola{name}, empezaste una solicitud para vender entradas con ArenaSoldOut.com pero no la terminaste. Tus respuestas están guardadas y solo faltan unos minutos.", "Terminar la solicitud"},
+		OnboardingKindReceived:      {"Hemos recibido tu solicitud en ArenaSoldOut.com", "Hola{name}, hemos recibido la solicitud{org}. Nuestro equipo revisa a cada organizador a mano, normalmente en uno o dos días laborables. Te escribiremos en cuanto haya una decisión o una pregunta.", ""},
+		OnboardingKindInfoRequested: {"Necesitamos algunos datos para tu solicitud en ArenaSoldOut.com", "Hola{name}, para continuar con tu solicitud necesitamos algunos datos:\n\n{message}\n\nAbre el formulario con el botón de abajo y actualiza las respuestas marcadas.", "Actualizar la solicitud"},
+		OnboardingKindApproved:      {"Tu solicitud en ArenaSoldOut.com está aprobada", "Hola{name}, buenas noticias: la solicitud{org} está aprobada y tu espacio de trabajo está listo. Si es tu primera cuenta en ArenaSoldOut.com, otro correo te enviará un enlace para crear tu contraseña. Después entra y crea tu primer evento.", "Entrar en ArenaSoldOut.com"},
+		OnboardingKindCode:          {"Tu código de confirmación de ArenaSoldOut.com", "Hola{name}, introduce este código en el chat de Telegram para confirmar tu correo. Es válido durante 15 minutos. Si no iniciaste una solicitud, ignora este correo.", ""},
+		OnboardingKindRejected:      {"Sobre tu solicitud en ArenaSoldOut.com", "Hola{name}, gracias por tu interés en ArenaSoldOut.com. Por ahora no podemos aprobar la solicitud{org}.{message} Si crees que es un error, responde a este correo.", ""},
 	},
 }
 
 // renderOnboardingEmail returns the subject and both bodies, ok=false for an
 // unknown kind.
 func renderOnboardingEmail(p OnboardingEmailPayload, link string, eventCenterLink bool) (subject, htmlBody, textBody string, ok bool) {
+	if p.Kind == OnboardingKindAdminNewApplication {
+		return renderAdminNewApplication(p, link)
+	}
 	locale := normalizeOnboardingLocale(p.Locale)
 	t, found := onboardingTexts[locale][p.Kind]
 	if !found {
@@ -208,7 +234,7 @@ func renderOnboardingEmail(p OnboardingEmailPayload, link string, eventCenterLin
 		codeBlock = `<p style="font-size:30px;letter-spacing:8px;font-weight:bold;margin:24px 0">` + html.EscapeString(p.Code) + `</p>`
 	}
 	var b strings.Builder
-	b.WriteString(`<!DOCTYPE html><html lang="` + locale + `"><head><meta charset="UTF-8"><title>Arena</title></head>`)
+	b.WriteString(`<!DOCTYPE html><html lang="` + locale + `"><head><meta charset="UTF-8"><title>ArenaSoldOut.com</title></head>`)
 	b.WriteString(`<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">`)
 	b.WriteString(`<h1 style="color:#1a1a2e;font-size:20px">` + html.EscapeString(t.Subject) + `</h1>`)
 	for _, para := range strings.Split(body, "\n\n") {
@@ -220,7 +246,7 @@ func renderOnboardingEmail(p OnboardingEmailPayload, link string, eventCenterLin
 			html.EscapeString(t.Button) + `</a></p>`)
 		b.WriteString(`<p style="font-size:12px;color:#666;word-break:break-all">` + html.EscapeString(link) + `</p>`)
 	}
-	b.WriteString(`<hr><p style="font-size:11px;color:#999">Arena Platform</p></body></html>`)
+	b.WriteString(`<hr><p style="font-size:11px;color:#999">ArenaSoldOut.com</p></body></html>`)
 
 	text := []string{t.Subject, "", body}
 	if p.Code != "" {
@@ -229,6 +255,6 @@ func renderOnboardingEmail(p OnboardingEmailPayload, link string, eventCenterLin
 	if t.Button != "" && link != "" {
 		text = append(text, "", t.Button+": "+link)
 	}
-	text = append(text, "", "Arena Platform")
+	text = append(text, "", "ArenaSoldOut.com")
 	return t.Subject, b.String(), strings.Join(text, "\n"), true
 }

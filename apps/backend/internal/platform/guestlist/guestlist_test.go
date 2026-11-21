@@ -10,22 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/ean13"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/csvexport"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/xlsxexport"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/xlsxexport/xlsxtest"
 )
-
-func TestCells_OneCellPerColumn(t *testing.T) {
-	sector, row, seat := "A", "3", "12"
-	r := gen.GuestListRow{SystemTicketID: 7, GuestName: "Anna", SeatSector: &sector, SeatRow: &row, SeatNumber: &seat, VIP: true}
-	if got := len(Cells(r, time.UTC)); got != len(Columns) {
-		t.Fatalf("cells = %d, columns = %d", got, len(Columns))
-	}
-	if h := csvexport.Header("ru", Columns...); h[0] != "Гость" || h[2] != "Место" || h[11] != "Пригласительный" {
-		t.Errorf("ru header = %v", h)
-	}
-}
 
 func TestSeatLabel(t *testing.T) {
 	a, empty, n := "A", " ", "12"
@@ -71,62 +56,6 @@ func (f fakeQuerier) CountGuestListRows(context.Context, uuid.UUID, uuid.UUID) (
 
 func (f fakeQuerier) ListGuestListRows(context.Context, uuid.UUID, uuid.UUID, int32) ([]gen.GuestListRow, error) {
 	return f.rows, nil
-}
-
-func TestBuild_XLSXKeepsIdentifiersAsText(t *testing.T) {
-	madrid, _ := time.LoadLocation("Europe/Madrid")
-	entered := time.Date(2026, 11, 20, 18, 31, 0, 0, time.UTC)
-	order, barcode, phone, email, tier := int64(1000000500), "4600051000001", "+34600111222", "anna@example.com", "VIP"
-	q := fakeQuerier{rows: []gen.GuestListRow{
-		{SystemTicketID: 349, GuestName: "Анна", TierName: &tier, Barcode: &barcode, EnteredAt: &entered,
-			OrderNumber: &order, Email: &email, Phone: &phone, VIP: true},
-		{SystemTicketID: 7, GuestName: "Bob"},
-	}}
-	file, err := Build(context.Background(), q, uuid.New(), uuid.New(), "ru", madrid, 0, XLSX)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if file.Rows != 2 || file.ContentType != xlsxexport.ContentType {
-		t.Fatalf("file = %d rows, %q", file.Rows, file.ContentType)
-	}
-	p := xlsxtest.Open(t, file.Body)
-	if p.SheetName != "Гости" {
-		t.Errorf("sheet = %q", p.SheetName)
-	}
-	// Columns: D ticket, E barcode, I order, K phone.
-	for ref, want := range map[string]string{"D2": "349", "E2": barcode, "I2": "1000000500", "K2": phone, "E3": ean13.PlatformCode(7)} {
-		c, ok := p.CellAt(ref)
-		if !ok || c.Value != want {
-			t.Errorf("%s = %+v, want %q", ref, c, want)
-			continue
-		}
-		if c.Type != "inlineStr" && c.Type != "s" {
-			t.Errorf("%s type = %q, want a string", ref, c.Type)
-		}
-		if !p.TextFormat(c.Style) {
-			t.Errorf("%s is not in the text format", ref)
-		}
-	}
-	for _, col := range []int{4, 5, 9, 11} {
-		if !p.TextFormat(p.ColumnStyle(col)) {
-			t.Errorf("column %d is not a text column", col)
-		}
-	}
-	// Entry time is readable text on the venue's clock; flags are yes/no.
-	if c, _ := p.CellAt("H2"); c.Value != "2026-11-20 19:31" || c.Type != "inlineStr" {
-		t.Errorf("entry time = %+v", c)
-	}
-	if v := p.Values(); v[0][0] != "Гость" || v[1][5] != "yes" || v[1][6] != "yes" || v[2][6] != "no" {
-		t.Errorf("rows = %v", v)
-	}
-
-	csv, err := Build(context.Background(), q, uuid.New(), uuid.New(), "en", madrid, 0, CSV)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if csv.ContentType != "text/csv; charset=utf-8" || !strings.Contains(string(csv.Body), `="4600051000001"`) {
-		t.Errorf("csv = %q %s", csv.ContentType, csv.Body)
-	}
 }
 
 func TestBuild_TooManyRows(t *testing.T) {

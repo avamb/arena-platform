@@ -109,7 +109,7 @@ export function versionStatusLabel(status: string): string {
     case "in_force":
       return "In force";
     case "superseded":
-      return "Superseded";
+      return "Replaced";
     case "revoked":
       return "Revoked";
     default:
@@ -241,7 +241,7 @@ export interface RuleShape {
 export const RULE_SHAPES: readonly RuleShape[] = [
   {
     type: "fixed_per_ticket",
-    label: "Fixed per ticket",
+    label: "Fixed amount for each ticket",
     lines: ["standard"],
     eventKind: "ticket_sold",
     needsSaleCurrency: false,
@@ -252,26 +252,26 @@ export const RULE_SHAPES: readonly RuleShape[] = [
   },
   {
     type: "low_price_formula",
-    label: "Low-price formula",
+    label: "Formula for a low price",
     lines: ["standard"],
     eventKind: "ticket_sold",
     needsSaleCurrency: true,
     params: [
-      { key: "threshold_minor", label: "Price threshold", kind: "amount" },
-      { key: "strict_below", label: "Strictly below the threshold", kind: "bool" },
-      { key: "pct_bp", label: "Share of the price (basis points)", kind: "bp" },
-      { key: "min_minor", label: "Smallest charge", kind: "amount" },
-      { key: "max_minor", label: "Largest charge", kind: "amount" },
-      { key: "seated_surcharge_minor", label: "Surcharge for a seated ticket", kind: "amount" },
+      { key: "threshold_minor", label: "Price limit", kind: "amount" },
+      { key: "strict_below", label: "Only below the limit", kind: "bool" },
+      { key: "pct_bp", label: "Percent of the price (basis points)", kind: "bp" },
+      { key: "min_minor", label: "Smallest fee", kind: "amount" },
+      { key: "max_minor", label: "Largest fee", kind: "amount" },
+      { key: "seated_surcharge_minor", label: "Extra fee for a ticket with a seat", kind: "amount" },
     ],
   },
   {
     type: "credit_pack",
-    label: "Credit pack surcharge",
+    label: "Extra fee for a credit pack",
     lines: ["standard"],
     eventKind: "ticket_sold",
     needsSaleCurrency: false,
-    params: [{ key: "seated_surcharge_minor", label: "Surcharge for a seated ticket", kind: "amount" }],
+    params: [{ key: "seated_surcharge_minor", label: "Extra fee for a ticket with a seat", kind: "amount" }],
   },
   {
     type: "percent_of_price_with_cap",
@@ -280,17 +280,17 @@ export const RULE_SHAPES: readonly RuleShape[] = [
     eventKind: "ticket_sold",
     needsSaleCurrency: false,
     params: [
-      { key: "pct_bp", label: "Share of the price (basis points)", kind: "bp" },
-      { key: "cap_minor", label: "Largest charge per ticket", kind: "amount" },
+      { key: "pct_bp", label: "Percent of the price (basis points)", kind: "bp" },
+      { key: "cap_minor", label: "Largest fee for each ticket", kind: "amount" },
     ],
   },
   {
     type: "fixed_per_event",
-    label: "Fixed per published event",
+    label: "Fixed amount for each published event",
     lines: ["standard", "venue"],
     eventKind: "event_published",
     needsSaleCurrency: false,
-    params: [{ key: "amount_minor", label: "Amount per event", kind: "amount" }],
+    params: [{ key: "amount_minor", label: "Amount for each event", kind: "amount" }],
   },
 ];
 
@@ -426,21 +426,21 @@ export type BuildResult<T> =
 export function buildCreateRequest(form: VersionForm, now: Date = new Date()): BuildResult<CreatePriceListRequest> {
   const errors: string[] = [];
   if (!/^[a-z0-9][a-z0-9._-]{1,63}$/.test(form.code)) {
-    errors.push("Code: 2-64 characters, lower-case letters, digits, dot, dash or underscore.");
+    errors.push("Code: use 2 to 64 characters. Use small letters, digits, dot, dash or underscore.");
   }
   if (!/^[A-Z]{3}$/.test(form.currency)) errors.push("Currency: three capital letters, for example EUR.");
   const from = localInputToIso(form.effectiveFromLocal);
-  if (from === null) errors.push("Start: pick the date and time the version starts.");
-  else if (new Date(from).getTime() <= now.getTime()) errors.push("Start: it must be in the future.");
+  if (from === null) errors.push("Start: select the date and time when the version starts.");
+  else if (new Date(from).getTime() <= now.getTime()) errors.push("Start: the time must be in the future.");
   const cap = parseMinor(form.bonusShareCapBp);
   if (cap === null || cap > 10000 || cap % 10 !== 0) {
-    errors.push("Bonus share cap: basis points, 0-10000, a multiple of 10.");
+    errors.push("Bonus cap: basis points. Use a multiple of 10 from 0 to 10000.");
   }
   const free = form.freeLimit.trim() === "" ? null : parseMinor(form.freeLimit);
-  if (form.freeLimit.trim() !== "" && free === null) errors.push("Free tickets per year: a whole number, or empty.");
+  if (form.freeLimit.trim() !== "" && free === null) errors.push("Free tickets for each year: a whole number, or keep it empty.");
   const floor = form.floorMinor.trim() === "" ? null : parseMinor(form.floorMinor);
-  if (form.floorMinor.trim() !== "" && floor === null) errors.push("Floor per ticket: whole minor units, or empty.");
-  if (form.rules.length === 0) errors.push("Add at least one rule.");
+  if (form.floorMinor.trim() !== "" && floor === null) errors.push("Lowest fee for each ticket: whole minor units, or keep it empty.");
+  if (form.rules.length === 0) errors.push("Add one rule or more.");
 
   const rules: CreatePriceListRequest["rules"] = [];
   const slots = new Set<string>();
@@ -448,12 +448,12 @@ export function buildCreateRequest(form: VersionForm, now: Date = new Date()): B
     const n = i + 1;
     const shape = ruleShape(r.ruleType);
     if (shape === undefined) {
-      errors.push(`Rule ${n}: pick a rule type.`);
+      errors.push(`Rule ${n}: select a rule type.`);
       return;
     }
     if (!shape.lines.includes(r.line)) errors.push(`Rule ${n}: ${shape.label} is not used on the ${r.line} line.`);
     const slot = [r.ruleType, r.line, shape.eventKind, shape.needsSaleCurrency ? r.saleCurrency : ""].join("|");
-    if (slots.has(slot)) errors.push(`Rule ${n}: another rule already covers the same type, line and currency.`);
+    if (slots.has(slot)) errors.push(`Rule ${n}: a different rule has the same type, line and currency.`);
     slots.add(slot);
     if (shape.needsSaleCurrency && !/^[A-Z]{3}$/.test(r.saleCurrency)) {
       errors.push(`Rule ${n}: the sale currency is three capital letters.`);
@@ -470,12 +470,12 @@ export function buildCreateRequest(form: VersionForm, now: Date = new Date()): B
         errors.push(`Rule ${n}: ${p.label} must be a whole number, 0 or more.`);
         continue;
       }
-      if (p.kind === "bp" && v > 10000) errors.push(`Rule ${n}: ${p.label} is at most 10000.`);
+      if (p.kind === "bp" && v > 10000) errors.push(`Rule ${n}: ${p.label} must be 10000 or less.`);
       params[p.key] = v;
     }
     if (shape.type === "low_price_formula" && typeof params.min_minor === "number" &&
         typeof params.max_minor === "number" && params.min_minor > params.max_minor) {
-      errors.push(`Rule ${n}: the smallest charge is above the largest.`);
+      errors.push(`Rule ${n}: the smallest fee is more than the largest fee.`);
     }
     rules.push({
       rule_type: r.ruleType,
@@ -494,12 +494,12 @@ export function buildCreateRequest(form: VersionForm, now: Date = new Date()): B
     const face = parseMinor(p.faceMinor);
     const unseated = parseMinor(p.unseatedRateMinor);
     const surcharge = parseMinor(p.seatedSurchargeMinor);
-    if (tier === null || tier < 1) errors.push(`Pack ${n}: the tier is 1 or more.`);
-    else if (tiers.has(tier)) errors.push(`Pack ${n}: tier ${tier} is used twice.`);
+    if (tier === null || tier < 1) errors.push(`Pack ${n}: the pack number must be 1 or more.`);
+    else if (tiers.has(tier)) errors.push(`Pack ${n}: pack number ${tier} is used two times.`);
     else tiers.add(tier);
-    if (face === null || face < 1) errors.push(`Pack ${n}: the face value is more than 0.`);
-    if (unseated === null) errors.push(`Pack ${n}: the rate without a seat is a whole number.`);
-    if (surcharge === null) errors.push(`Pack ${n}: the seated surcharge is a whole number.`);
+    if (face === null || face < 1) errors.push(`Pack ${n}: the face value must be more than 0.`);
+    if (unseated === null) errors.push(`Pack ${n}: the rate without a seat must be a whole number.`);
+    if (surcharge === null) errors.push(`Pack ${n}: the extra fee for a seat must be a whole number.`);
     if (tier !== null && face !== null && unseated !== null && surcharge !== null) {
       packs.push({
         tier,
@@ -557,22 +557,22 @@ export function emptyRateForm(): RateForm {
 
 export function buildRateRequest(form: RateForm, now: Date = new Date()): BuildResult<CreateRateOverrideRequest> {
   const errors: string[] = [];
-  if (form.orgId === "") errors.push("Organization: pick one.");
+  if (form.orgId === "") errors.push("Organization: select one.");
   if (!/^[A-Z]{3}$/.test(form.currency)) errors.push("Currency: three capital letters, for example EUR.");
   const unseated = parseMinor(form.unseatedMinor);
   const seated = parseMinor(form.seatedMinor);
-  if (unseated === null) errors.push("Rate without a seat: a whole number of minor units.");
-  if (seated === null) errors.push("Rate of a seated ticket: a whole number of minor units.");
+  if (unseated === null) errors.push("Rate without a seat: use a whole number of minor units.");
+  if (seated === null) errors.push("Rate of a ticket with a seat: use a whole number of minor units.");
   const from = localInputToIso(form.effectiveFromLocal);
-  if (from === null) errors.push("Start: pick the date and time the rate starts.");
-  else if (new Date(from).getTime() <= now.getTime()) errors.push("Start: it must be in the future.");
+  if (from === null) errors.push("Start: select the date and time when the rate starts.");
+  else if (new Date(from).getTime() <= now.getTime()) errors.push("Start: the time must be in the future.");
   let to: string | null = null;
   if (form.effectiveToLocal.trim() !== "") {
     to = localInputToIso(form.effectiveToLocal);
-    if (to === null) errors.push("End: not a date.");
-    else if (from !== null && new Date(to).getTime() <= new Date(from).getTime()) errors.push("End: it must be after the start.");
+    if (to === null) errors.push("End: this is not a date.");
+    else if (from !== null && new Date(to).getTime() <= new Date(from).getTime()) errors.push("End: the time must be after the start.");
   }
-  if (form.note.length > 500) errors.push("Note: 500 characters at most.");
+  if (form.note.length > 500) errors.push("Note: use 500 characters or less.");
   if (errors.length > 0 || unseated === null || seated === null || from === null) return { ok: false, errors };
   return {
     ok: true,
@@ -620,24 +620,24 @@ export function termsFormFrom(current: AccountTerms | undefined): TermsForm {
 
 /** How staff invitations are billed (spec 46, section 3.6). */
 export const COMPLIMENTARY_BILLING_MODES: readonly { value: ComplimentaryBilling; label: string }[] = [
-  { value: "free", label: "Free (within the yearly free limit)" },
-  { value: "standard", label: "Standard per-ticket rate" },
+  { value: "free", label: "Free (inside the free limit for each year)" },
+  { value: "standard", label: "Standard rate for each ticket" },
 ];
 
 export const COMPLIMENTARY_BILLING_EXPLANATION =
-  "Invitations issued by staff. A CSV upload is always charged at the standard rate. A cancelled invitation keeps its charge. The change applies from the date these terms start.";
+  "Invitations that staff issue. We charge a CSV upload at the standard rate each time. A canceled invitation keeps its charge. The change applies from the date when these terms start.";
 
 export const FEE_MODES: readonly { value: FeeMode; label: string; explanation: string }[] = [
   {
     value: "organizer_pays",
     label: "Organizer pays",
-    explanation: "The organizer pays the platform rate from its own money, as invoices or credits.",
+    explanation: "The organizer pays the platform rate with invoices or credits.",
   },
   {
     value: "buyer_pays",
     label: "Buyer pays",
     explanation:
-      "The organizer receives the net ticket price. The buyer's service charge is the platform commission, so the organizer is charged nothing for the tickets.",
+      "The organizer receives the net ticket price. The buyer pays a service fee. This fee is the income of the platform. The organizer pays no platform fee for the tickets.",
   },
 ];
 
@@ -653,8 +653,8 @@ export const BILLING_CYCLES: readonly { value: string; label: string }[] = [
 ];
 
 export const SHORTFALL_POLICIES: readonly { value: string; label: string }[] = [
-  { value: "invoice_postpaid", label: "Invoice the shortfall" },
-  { value: "block_publishing", label: "Block publishing" },
+  { value: "invoice_postpaid", label: "Send an invoice for the missing amount" },
+  { value: "block_publishing", label: "Do not publish" },
 ];
 
 export function buildTermsRequest(
@@ -664,14 +664,14 @@ export function buildTermsRequest(
 ): BuildResult<CreateAccountTermsRequest> {
   const errors: string[] = [];
   const from = localInputToIso(form.effectiveFromLocal);
-  if (from === null) errors.push("Start: pick the date and time the terms start.");
-  else if (new Date(from).getTime() <= now.getTime()) errors.push("Start: it must be in the future.");
-  if (form.priceListCode.trim() === "") errors.push("Price list: pick one.");
-  if (accountKind === "tools" && form.billingCycle !== "prepaid") errors.push("A tools account is prepaid only.");
+  if (from === null) errors.push("Start: select the date and time when the terms start.");
+  else if (new Date(from).getTime() <= now.getTime()) errors.push("Start: the time must be in the future.");
+  if (form.priceListCode.trim() === "") errors.push("Price list: select one.");
+  if (accountKind === "tools" && form.billingCycle !== "prepaid") errors.push("A tools account can only be prepaid.");
   const delay = form.invoiceDelayDays.trim() === "" ? null : parseMinor(form.invoiceDelayDays);
-  if (form.invoiceDelayDays.trim() !== "" && delay === null) errors.push("Invoice delay: whole days, or empty.");
+  if (form.invoiceDelayDays.trim() !== "" && delay === null) errors.push("Invoice delay: whole days, or keep it empty.");
   const due = form.dueDays.trim() === "" ? null : parseMinor(form.dueDays);
-  if (form.dueDays.trim() !== "" && due === null) errors.push("Days to pay: whole days, or empty.");
+  if (form.dueDays.trim() !== "" && due === null) errors.push("Days to pay: whole days, or keep it empty.");
   if (errors.length > 0 || from === null) return { ok: false, errors };
   return {
     ok: true,

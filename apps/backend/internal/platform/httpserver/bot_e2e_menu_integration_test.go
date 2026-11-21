@@ -106,6 +106,14 @@ func TestBotE2E_MenuButtonAlwaysOpensTheMenu(t *testing.T) {
 		t.Errorf("an e-mail typed after the menu created %d invitation(s)", got-before)
 	}
 
+	// ── /menu sends the keyboard AGAIN: the note may be deleted, or the client
+	// may have lost the keyboard. The typed button above did not.
+	m = tg.mark()
+	d.say("/menu", "Что будем делать?")
+	if _, _, again := tg.replyKeyboardSince(m); !again {
+		t.Error("/menu must send the persistent keyboard again")
+	}
+
 	// ── an event draft is paused, not taken over by later texts
 	d.press("wz:new", "Как называется мероприятие?")
 	d.say("☰ Меню", "Что будем делать?")

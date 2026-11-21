@@ -73,7 +73,7 @@ function PlaceholderBody({
       <header style={headerStyle}>
         <div>
           <p style={eyebrowStyle}>
-            Legacy-derived module placeholder (SAUI-12)
+            Placeholder for a module from the old apps (SAUI-12)
           </p>
           <h1 id={h1Id} style={headingStyle}>
             {module.label}
@@ -98,19 +98,19 @@ function PlaceholderBody({
       </header>
 
       <div style={statusBoxStyle} role="status">
-        Shell only. No tables, counts, or mocked rows are rendered here.
-        SAUI-12 deliberately ships this surface as a placeholder so the
-        unified admin navigation matches the legacy_admin_reference_map
-        plan WITHOUT pretending the module is live. A follow-up SAUI-*
-        task will replace this route with a real module.
+        This page is a shell. It shows no tables, counts, or made-up
+        rows. SAUI-12 gives this page as a placeholder. The admin
+        navigation then matches the legacy_admin_reference_map plan, and
+        the page does not say that the module works. A later SAUI-*
+        task will replace this route with the real module.
       </div>
 
       <section aria-labelledby={`${h1Id}-source`} style={sectionStyle}>
         <h2 id={`${h1Id}-source`} style={sectionTitleStyle}>
-          Legacy source reference
+          Reference to the old app
         </h2>
         <dl style={metaListStyle}>
-          <dt style={metaKeyStyle}>Legacy map module id</dt>
+          <dt style={metaKeyStyle}>Old map module ID</dt>
           <dd
             style={metaValStyle}
             data-testid={`legacy-module-${module.id}-mapid`}
@@ -120,11 +120,11 @@ function PlaceholderBody({
               09_autoforge/admin_ui/legacy_admin_reference_map.yaml
             </code>
           </dd>
-          <dt style={metaKeyStyle}>Supersedes legacy apps</dt>
+          <dt style={metaKeyStyle}>Replaces these old apps</dt>
           <dd style={metaValStyle}>
             {module.sourceReference.legacyApps.join(", ")}
           </dd>
-          <dt style={metaKeyStyle}>Legacy screenshots</dt>
+          <dt style={metaKeyStyle}>Old screenshots</dt>
           <dd style={metaValStyle}>
             <ul style={screenListStyle}>
               {module.sourceReference.legacyScreens.map((s) => (
@@ -141,7 +141,7 @@ function PlaceholderBody({
 
       <section aria-labelledby={`${h1Id}-future`} style={sectionStyle}>
         <h2 id={`${h1Id}-future`} style={sectionTitleStyle}>
-          Expected future scope
+          Planned scope
         </h2>
         <ul
           style={bulletListStyle}
@@ -157,7 +157,7 @@ function PlaceholderBody({
 
       <section aria-labelledby={`${h1Id}-deferral`} style={sectionStyle}>
         <h2 id={`${h1Id}-deferral`} style={sectionTitleStyle}>
-          Reason for deferral
+          Cause of the delay
         </h2>
         <p
           style={deferralStyle}

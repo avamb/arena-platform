@@ -80,6 +80,7 @@ func orderSummary(o gen.OrderRow) map[string]any {
 		"buyer_phone":         o.BuyerPhone,
 		"payment_method":      o.PaymentMethod,
 		"external_ref":        o.ExternalRef,
+		"is_test":             o.IsTest,
 		"created_at":          o.CreatedAt.Format(time.RFC3339),
 		"updated_at":          o.UpdatedAt.Format(time.RFC3339),
 	}
@@ -114,8 +115,8 @@ func orderSummary(o gen.OrderRow) map[string]any {
 // HandleList serves GET /v1/organizations/{org_id}/orders (EC-04, spec 35
 // §5.5). Filters: q (one value classified into barcode / order number /
 // e-mail / phone / name similarity — see classifyQuery), tab (recent |
-// paid | unpaid — see tabFilter), status, session_id, event_id, from/to
-// (RFC3339 created_at range), plus limit/offset paging with total_count.
+// paid | unpaid | refunds — see tabFilter), status, session_id, event_id, from/to
+// (RFC3339 created_at range), session_from/session_to (RFC3339 range of the session start), plus limit/offset paging with total_count.
 func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 	if h.queries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable,
@@ -139,7 +140,7 @@ func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 	tab, ok := tabFilter(r.URL.Query().Get("tab"))
 	if !ok {
 		httputil.WriteJSON(w, http.StatusBadRequest,
-			httputil.ErrorEnvelope("orders.invalid_tab", "tab must be recent, paid or unpaid", r))
+			httputil.ErrorEnvelope("orders.invalid_tab", "tab must be recent, paid, unpaid or refunds", r))
 		return
 	}
 	params := gen.OrderSearchParams{
@@ -161,6 +162,13 @@ func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if params.To, ok = parseTimeParam(w, r, "to"); !ok {
+		return
+	}
+	// EC-V3: the show's date range, next to the order-date range above.
+	if params.SessionFrom, ok = parseTimeParam(w, r, "session_from"); !ok {
+		return
+	}
+	if params.SessionTo, ok = parseTimeParam(w, r, "session_to"); !ok {
 		return
 	}
 
@@ -185,6 +193,7 @@ func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 	}
 	letters := h.listDeliveryStates(r.Context(), ids) // letters.go
 	failedLetters := h.failedLetterOrders(r.Context(), rows)
+	cards := h.listTicketCards(r.Context(), ids) // list_cards.go
 	out := make([]map[string]any, 0, len(rows))
 	for _, o := range rows {
 		m := orderSummary(o.OrderRow)
@@ -193,6 +202,7 @@ func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 			m["delivery_state"] = st
 		}
 		m["letter_failed"] = failedLetters[o.ID]
+		m["tickets"] = cards[o.ID]
 		m["event_name"] = o.EventName
 		m["session_start_at"] = o.SessionStartAt.UTC().Format(time.RFC3339)
 		m["session_timezone"] = o.SessionTimezone

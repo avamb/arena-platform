@@ -162,22 +162,22 @@ func TestOrganizerLetter_ExplainsEveryStepInEachLanguage(t *testing.T) {
 		subject  string
 		contains []string
 	}{
-		{"en", "Teatro <Sol> invites you to the Arena event center", []string{
+		{"en", "Teatro <Sol> invites you to the ArenaSoldOut.com event center", []string{
 			"1. Press the \u201cChoose a password\u201d button below.",
 			"4. Sign in. Your e-mail is anna@example.test.",
 			"It is valid for 7 days, until October 21, 2026, 10:00 UTC.",
 		}},
-		{"ru-RU", "Teatro <Sol> приглашает вас в ивент-центр Arena", []string{
+		{"ru-RU", "Teatro <Sol> приглашает вас в ивент-центр ArenaSoldOut.com", []string{
 			"1. Нажмите кнопку «Задать пароль» ниже.",
 			"4. Войдите. Ваш адрес: anna@example.test.",
 			"Она действует 7 дней, до 21 октября 2026, 10:00 по UTC.",
 		}},
-		{"es", "Teatro <Sol> te invita al centro de eventos de Arena", []string{
+		{"es", "Teatro <Sol> te invita al centro de eventos de ArenaSoldOut.com", []string{
 			"1. Pulsa el botón «Elegir contraseña» de abajo.",
 			"4. Entra. Tu correo es anna@example.test.",
 			"Es válido durante 7 días, hasta el 21 de octubre de 2026, 10:00 UTC.",
 		}},
-		{"he", "Teatro <Sol> invites you to the Arena event center", nil}, // falls back to English
+		{"he", "Teatro <Sol> invites you to the ArenaSoldOut.com event center", nil}, // falls back to English
 	}
 	for _, tc := range cases {
 		subject, htmlBody, text := renderOrganizerPasswordEmail(tc.locale, PurposeOrgInvitation,

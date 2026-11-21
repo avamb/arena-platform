@@ -418,6 +418,7 @@ SELECT DISTINCT
 FROM   venues v
 JOIN   sessions s ON s.venue_id = v.id AND s.deleted_at IS NULL
 JOIN   events   e ON e.id       = s.event_id AND e.status = 'published'
+      AND e.id <> ALL($3::uuid[])
 LEFT JOIN cities    ci      ON ci.id       = v.city_id
 LEFT JOIN countries co_city ON co_city.id  = ci.country_id
 LEFT JOIN countries co_vn   ON co_vn.iso2  = v.country
@@ -449,8 +450,15 @@ ORDER BY country_iso2 NULLS LAST, city_slug NULLS LAST, v.display_number`
 // 'en' → key fallback chain. Country is resolved from cities.country_id
 // first (when a city_id is set), then from venues.country ISO2 as a
 // fallback — a venue with neither reference gets nil country fields.
-func (q *Queries) ListActionVenuesByOrg(ctx context.Context, orgID uuid.UUID, locale string) ([]ActionVenueRow, error) {
-	rows, err := q.db.Query(ctx, listActionVenuesByOrg, orgID, locale)
+//
+// excludeEventIDs drops those events from the venue set (a venue that hosts
+// only excluded events disappears); nil or empty excludes nothing. The
+// gateway passes the events a non-test channel must not see.
+func (q *Queries) ListActionVenuesByOrg(ctx context.Context, orgID uuid.UUID, locale string, excludeEventIDs []uuid.UUID) ([]ActionVenueRow, error) {
+	if excludeEventIDs == nil {
+		excludeEventIDs = []uuid.UUID{}
+	}
+	rows, err := q.db.Query(ctx, listActionVenuesByOrg, orgID, locale, excludeEventIDs)
 	if err != nil {
 		return nil, err
 	}

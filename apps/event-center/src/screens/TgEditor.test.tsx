@@ -460,7 +460,7 @@ describe("a save refused for a translation", () => {
     await press(el.querySelector('[data-testid="tg-description-save"]'));
     const text = el.querySelector('[data-testid="tg-description-error"]')?.textContent ?? "";
     expect(text).toContain("ru");
-    expect(text).toContain("Nothing was saved");
+    expect(text).toContain("We saved no changes");
     expect(text).toContain("web event center");
   });
 

@@ -28,6 +28,8 @@ func sourceLabel(source string) string {
 		return "widget"
 	case "complimentary":
 		return "complimentary"
+	case "legacy_import":
+		return "bil24 legacy"
 	default:
 		return source
 	}

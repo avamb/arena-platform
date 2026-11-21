@@ -103,7 +103,7 @@ export const LEGACY_MODULE_PLACEHOLDERS: readonly LegacyModulePlaceholder[] = [
     label: "Reports",
     path: "/reports",
     purpose:
-      "Unified reporting by platform, network, organizer, agent, event, and period. Requires network.view_reports or superadmin.read.",
+      "One report for platform, network, organizer, agent, event and period. You must have network.view_reports or superadmin.read.",
     permission: {
       anyOf: [
         "superadmin.read",
@@ -122,12 +122,12 @@ export const LEGACY_MODULE_PLACEHOLDERS: readonly LegacyModulePlaceholder[] = [
       ],
     },
     futureScope: [
-      "Saved report presets with role-scoped data visibility.",
-      "Sales / refunds / reconciliation aggregates by period and scope.",
-      "Export (CSV/JSON) when the backend exposes a query layer.",
+      "Saved report settings. Each role sees only its own data.",
+      "Totals of sales, refunds and reconciliation for each period and scope.",
+      "Export (CSV/JSON) when the backend has a query layer.",
     ],
     deferralReason:
-      "Guardrail: this milestone explicitly skips full reports per the SAUI-12 description ('Do not implement full POS/seating/reports here'). Backend gap: the legacy TixReporter merged multiple sub-workflows (mailings, quotas, MACS, work shifts, statistics) without a coherent modern aggregation contract.",
+      "We do not build full reports in this release. The SAUI-12 description says: 'Do not implement full POS/seating/reports here'. The backend does not have the necessary parts. The old TixReporter joined many sub-workflows (mailings, quotas, MACS, work shifts, statistics) and had no clear contract for totals.",
     workflowShape: [
       "table/list view",
       "detail drawer",
@@ -140,7 +140,7 @@ export const LEGACY_MODULE_PLACEHOLDERS: readonly LegacyModulePlaceholder[] = [
     label: "Notifications and Content",
     path: "/content",
     purpose:
-      "Notifications, news, subscriptions, widget and content configuration. Requires superadmin.read.",
+      "Notifications, news, subscriptions, widget and content settings. You must have superadmin.read.",
     permission: { anyOf: ["superadmin.read"] },
     scopeKinds: ["global", "platform", "network", "organization"],
     sourceReference: {
@@ -154,12 +154,12 @@ export const LEGACY_MODULE_PLACEHOLDERS: readonly LegacyModulePlaceholder[] = [
       ],
     },
     futureScope: [
-      "Templates and campaigns by scope.",
+      "Templates and campaigns for each scope.",
       "Preview and delivery status.",
-      "Subscriptions and widget settings as scoped submodules.",
+      "Subscriptions and widget settings as submodules for each scope.",
     ],
     deferralReason:
-      "Guardrail: the legacy map flags this as MVP priority P2 -- the screenshot evidence is thin and some areas overlap with widget/subscription configuration. Backend gap: no notifications/content configuration endpoint is in the admin contract yet.",
+      "The old map gives this module priority P2. The screenshots show little, and some areas are the same as the widget and subscription settings. The admin contract has no notifications or content settings endpoint.",
     workflowShape: ["settings page", "deferred/later feature"],
     mvpPriority: "P2",
   },
@@ -168,7 +168,7 @@ export const LEGACY_MODULE_PLACEHOLDERS: readonly LegacyModulePlaceholder[] = [
     label: "POS Mode",
     path: "/pos",
     purpose:
-      "Cash desk mode: shifts, event selection, cart, payment, fiscal, printing, returns. Shell only -- POS execution explicitly out of scope this milestone.",
+      "Cash desk mode: work shifts, event selection, cart, payment, fiscal data, printing and returns. This release has an empty page only. POS work is not in this release.",
     permission: { anyOf: ["superadmin.read", "pos.execute"] },
     scopeKinds: ["global", "platform", "network"],
     sourceReference: {
@@ -184,12 +184,12 @@ export const LEGACY_MODULE_PLACEHOLDERS: readonly LegacyModulePlaceholder[] = [
       ],
     },
     futureScope: [
-      "Separate POS workspace inside the same app shell (NOT a separate app).",
-      "Keyboard-friendly dense layout.",
-      "Shift state always visible; event select, cart, payment, fiscal, printing, returns.",
+      "A POS workspace in the same app shell. It is NOT a different app.",
+      "Dense layout for use with a keyboard.",
+      "The work shift status is always visible. Event selection, cart, payment, fiscal data, printing and returns.",
     ],
     deferralReason:
-      "Guardrail: the SAUI-12 description explicitly excludes full POS ('Do not implement full POS/seating/reports here'). The legacy map also flags POS as MVP priority P2 and the project guardrails state 'Do not implement full POS/seating editor before RBAC and admin shell foundation' -- this placeholder satisfies the navigation contract without overbuilding.",
+      "We do not build full POS in this release. The SAUI-12 description says: 'Do not implement full POS/seating/reports here'. The old map gives POS priority P2. The project rules say: 'Do not implement full POS/seating editor before RBAC and admin shell foundation'. This placeholder keeps the navigation and adds nothing more.",
     workflowShape: ["pos mode", "table/list view", "detail drawer"],
     mvpPriority: "P2",
   },

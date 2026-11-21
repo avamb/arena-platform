@@ -129,7 +129,7 @@ func TestSeatBatches_ApplyListHistoryRevert(t *testing.T) {
 	}
 
 	if code, resp := f.do(t, http.MethodPost, base+"/seat-batches", x.manager,
-		`{"kind":"paint","changes":[{"seat_key":"S|A|1","tier_id":"`+x.tier1.String()+`"}],"new_tiers":[{"name":"VIP"}]}`); code != http.StatusUnprocessableEntity || prom0113Code(resp) != "seat_batch.new_tiers_unsupported" {
+		`{"kind":"paint","changes":[{"seat_key":"S|A|1","tier_id":"`+x.tier1.String()+`"}],"new_tiers":[{"name":"VIP"}]}`); code != http.StatusBadRequest || prom0113Code(resp) != "seat_batch.invalid_new_tier" {
 		t.Fatalf("new_tiers = %d %v", code, resp)
 	}
 	if code, resp := f.do(t, http.MethodPost, base+"/seat-batches", x.manager,

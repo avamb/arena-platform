@@ -83,46 +83,41 @@ func TestDeliverySellerIDs_PublicContactAndNumbers(t *testing.T) {
 	p := sellerPayload(b, seed.TicketID)
 	p.OrgContactEmail = personalEmail
 	raw := runDeliveryWithPayload(ctx, t, pool, p)
-	if strings.Contains(raw, personalEmail) {
-		t.Error("the letter of a hosted page without a public e-mail carries the organization's own address")
-	}
-	if strings.Contains(raw, "tickets@teatro-own.example") {
-		t.Error("a letter that points to the contact form must go from the platform address")
-	}
-	if hasHeader(raw, "Reply-To") {
-		t.Error("a letter that points to the contact form must have no Reply-To")
+	// Since 2026-11-08 (owner decision) the organization's contact e-mail is
+	// the buyer contact of every buyer letter, hosted page or not: the letter
+	// names it, replies go to it, and it links no contact form.
+	if !hasHeader(raw, "Reply-To") {
+		t.Error("the letter must carry the organization's address as Reply-To")
 	}
 	text := emailTextBody(t, raw)
-	for _, want := range []string{"Registration no. B12345678 · VAT ID ESB12345678", formURL} {
+	if !strings.Contains(text, personalEmail) || strings.Contains(text, formURL) {
+		t.Errorf("letter must name %q and link no form:\n%s", personalEmail, text)
+	}
+	for _, want := range []string{"Registration no. B12345678 · VAT ID ESB12345678"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("letter misses %q:\n%s", want, text)
 		}
 	}
 	doc := pdfDrawnText(storedTicketPDF(ctx, t, pool, seed.TicketID))
-	if strings.Contains(doc, personalEmail) || !strings.Contains(doc, "#contact") {
-		t.Errorf("PDF contact: want the form link, never the personal address:\n%s", doc)
+	if !strings.Contains(doc, personalEmail) || strings.Contains(doc, "#contact") {
+		t.Errorf("PDF contact: want the organization's address, no form link:\n%s", doc)
 	}
 
-	// ── the same page while the form is not shown (no captcha keys on the
-	// worker): no form link, no address, no Reply-To. The letter goes from the
-	// organization's verified sender, which names no person.
+	// ── the same page while the form is not shown: the same address, replies
+	// go to it, and the letter goes from the organization's verified sender.
 	resetDelivery(ctx, t, pool, seed.TicketID)
 	raw = runDeliveryWithForm(ctx, t, pool, p, nil, false)
-	if strings.Contains(raw, personalEmail) {
-		t.Error("without the form the letter carries the organization's own address")
+	if !strings.Contains(raw, personalEmail) {
+		t.Error("without the form the letter must still name the organization's address")
 	}
 	if strings.Contains(raw, "#contact") || strings.Contains(raw, `href=""`) {
 		t.Error("without the form the letter links a contact form that the page does not show")
 	}
-	if hasHeader(raw, "Reply-To") {
-		t.Error("a letter with no organizer contact must have no Reply-To")
+	if !hasHeader(raw, "Reply-To") {
+		t.Error("replies must go to the organization's address")
 	}
 	if !strings.Contains(raw, "tickets@teatro-own.example") {
-		t.Error("a letter with no form and no contact goes from the organization's verified sender")
-	}
-	doc = pdfDrawnText(storedTicketPDF(ctx, t, pool, seed.TicketID))
-	if strings.Contains(doc, personalEmail) || strings.Contains(doc, "#contact") {
-		t.Errorf("PDF without the form: no address and no form link:\n%s", doc)
+		t.Error("the letter goes from the organization's verified sender")
 	}
 
 	// ── with a public e-mail the letter names it, and replies go there ────────

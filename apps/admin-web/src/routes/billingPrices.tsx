@@ -118,7 +118,7 @@ type Modal =
 
 function messageOf(err: unknown): string {
   if (err instanceof ApiError) return err.message;
-  return err instanceof Error ? err.message : "The request failed. Please try again.";
+  return err instanceof Error ? err.message : "We did not complete the request. Please try again.";
 }
 
 function BillingPricesPage(): JSX.Element {
@@ -183,24 +183,24 @@ function BillingPricesPage(): JSX.Element {
     onSuccess: (r) =>
       done(
         r.closed_rate_ids && r.closed_rate_ids.length > 0
-          ? "The individual rate is saved. The earlier open rate ends when this one starts."
-          : "The individual rate is saved.",
+          ? "We saved the individual rate. The open rate before it ends when this rate starts."
+          : "We saved the individual rate.",
       ),
     onError: failed,
   });
   const endRate = useMutation({
     mutationFn: (v: { id: string; to: string }) => closeRateOverride(v.id, v.to),
-    onSuccess: () => done("The end of the individual rate is saved."),
+    onSuccess: () => done("We saved the end of the individual rate."),
     onError: failed,
   });
   const removeRate = useMutation({
     mutationFn: (id: string) => deleteRateOverride(id),
-    onSuccess: () => done("The individual rate is removed."),
+    onSuccess: () => done("We removed the individual rate."),
     onError: failed,
   });
   const addTerms = useMutation({
     mutationFn: (v: { id: string; req: Parameters<typeof createAccountTerms>[1] }) => createAccountTerms(v.id, v.req),
-    onSuccess: () => done("The new terms are saved. They start at the time you picked."),
+    onSuccess: () => done("We saved the new terms. They start at the time that you selected."),
     onError: failed,
   });
 
@@ -261,7 +261,7 @@ function BillingPricesPage(): JSX.Element {
   const submitEnd = (rate: RateOverride, endLocal: string): void => {
     const iso = localInputToIso(endLocal);
     if (iso === null || new Date(iso).getTime() <= Date.now()) {
-      setFormErrors(["End: pick a date and time in the future."]);
+      setFormErrors(["End: select a date and time after now."]);
       return;
     }
     setFormErrors([]);
@@ -278,13 +278,13 @@ function BillingPricesPage(): JSX.Element {
           <h1 style={headingStyle}>Price lists and rates</h1>
           <p style={subheadingStyle}>
             Versions of the price lists, the individual rates of organizations, and the terms of billing accounts. A new
-            price is always a new version that starts in the future. Every change asks for a reason and is written to the
+            price is always a new version that starts after now. Each change needs a reason. The platform saves it in the
             audit log. Times are in UTC.
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button type="button" style={buttonStyle} onClick={refresh} data-testid="billing-refresh">
-            Refresh
+            Reload
           </button>
           {tab === "lists" ? (
             <button type="button" style={primaryButtonStyle} onClick={() => openNewVersion()} data-testid="billing-new-version">
@@ -449,8 +449,8 @@ function BillingPricesPage(): JSX.Element {
         >
           <p style={{ margin: 0, lineHeight: 1.5 }}>
             {modal.version.code} v{modal.version.version} ({modal.version.currency}) is {versionStatusLabel(modal.version.status).toLowerCase()}{" "}
-            and starts {modal.version.effective_from}. After you revoke it, events are rated by the version before it. A
-            version that has started cannot be revoked: publish a new version instead.
+            and starts {modal.version.effective_from}. If you revoke it, the platform rates events by the version before it.
+            You cannot revoke a version that started. Publish a new version.
           </p>
           {serverError ? <div style={errorStyle}>{serverError}</div> : null}
         </Dialog>

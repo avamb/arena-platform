@@ -197,6 +197,11 @@ type FeedTokenBuyerFlagsRow struct {
 	AddressCity       *string
 	AddressPostalCode *string
 	PublicContact     []byte
+	// Provider and PaymentWindowSeconds are the channel's payment provider and
+	// its own payment window (migration 0205, spec 62 П-3); the feed derives
+	// the window the buyer gets from them (hfeed.EffectivePaymentWindow).
+	Provider             string
+	PaymentWindowSeconds *int32
 }
 
 const getFeedTokenBuyerFlags = `-- name: GetFeedTokenBuyerFlags :one
@@ -214,7 +219,8 @@ SELECT
           AND (p.valid_from  IS NULL OR p.valid_from  <= now())
           AND (p.valid_until IS NULL OR p.valid_until >  now())
           AND (p.max_uses IS NULL
-               OR p.max_uses > (SELECT COUNT(*) FROM promo_code_redemptions r WHERE r.promo_code_id = p.id))
+               OR p.max_uses > (SELECT COUNT(*) FROM promo_code_redemptions r WHERE r.promo_code_id = p.id
+                                   AND NOT EXISTS (SELECT 1 FROM orders t WHERE t.id = r.order_id AND t.is_test)))
     ) AS promo_codes_available,
     COALESCE(sc.settings #>> '{hosted_page,consent_required}', '') = 'true' AS consent_required,
     o.name,
@@ -223,7 +229,9 @@ SELECT
     o.legal_address_line1,
     o.legal_address_city,
     o.legal_address_postal_code,
-    sc.settings #> '{hosted_page,public_contact}' AS public_contact
+    sc.settings #> '{hosted_page,public_contact}' AS public_contact,
+    sc.provider,
+    sc.payment_window_seconds
 FROM agent_feed_tokens ft
 JOIN sales_channels sc ON sc.id = ft.sales_channel_id
 JOIN organizations o ON o.id = sc.org_id
@@ -242,6 +250,7 @@ func (q *Queries) GetFeedTokenBuyerFlags(ctx context.Context, feedToken string) 
 	var r FeedTokenBuyerFlagsRow
 	err := row.Scan(&r.CollectName, &r.CollectPhone, &r.FeePercent, &r.PromoCodesAvailable,
 		&r.ConsentRequired, &r.OrgName, &r.LegalName, &r.TaxID,
-		&r.AddressLine1, &r.AddressCity, &r.AddressPostalCode, &r.PublicContact)
+		&r.AddressLine1, &r.AddressCity, &r.AddressPostalCode, &r.PublicContact,
+		&r.Provider, &r.PaymentWindowSeconds)
 	return r, err
 }

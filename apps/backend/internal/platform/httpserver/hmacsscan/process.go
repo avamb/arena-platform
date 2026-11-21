@@ -15,6 +15,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/ticketreissue"
 )
 
 // TicketScannedEventType is the outbox event of a recorded scan. arena's own
@@ -115,7 +116,26 @@ func (h *Handler) processOne(ctx context.Context, subID, orgID uuid.UUID, s scan
 	}
 
 	first := false
-	if s.storedResult == "admitted" && t.Status == "active" && t.UsedAt == nil {
+	if s.storedResult == "admitted" && t.BarcodeRevoked {
+		// MACS admitted a code the platform took back (a replaced or cancelled
+		// ticket, spec 63 R-1): kept as a fact, never a first admission.
+		h.logger.Warn("macs_scan_events: admitted a revoked barcode",
+			slog.String("scan_id", id), slog.String("ticket_id", t.TicketID.String()))
+	}
+	if t.Status == "transferred" {
+		// The code of a replaced ticket (spec 63 section 4.8): the organizer
+		// is told once by the sales alert watch. Same transaction as the
+		// scan row, so a stored scan is never left untold.
+		gate := s.in.Gate
+		if strings.TrimSpace(gate) == "" {
+			gate = s.in.ScannerName
+		}
+		if _, err := ticketreissue.RecordOldCodeAttempt(ctx, tx, t.TicketID, s.scannedAt,
+			ticketreissue.AttemptSourceMACS, s.storedResult, gate); err != nil {
+			return h.unavailable(id, "old code attempt", err)
+		}
+	}
+	if s.storedResult == "admitted" && t.Status == "active" && t.UsedAt == nil && !t.BarcodeRevoked {
 		// The ticket row is locked (FOR UPDATE in resolveTicket), so "used_at
 		// was empty" is exact. Only a valid ticket is stamped: an offline
 		// scanner may admit a ticket cancelled meanwhile, which is recorded as
@@ -200,6 +220,9 @@ func resolveTicket(ctx context.Context, q *gen.Queries, s scan, orgID uuid.UUID)
 	if !haveID {
 		t = byCode
 	}
+	// A taken-back code stays taken back even when MACS also named the
+	// ticket by its number.
+	t.BarcodeRevoked = byCode.BarcodeRevoked
 	if t.OrgID != orgID {
 		return gen.MACSScanTicketRow{}, errNotFound
 	}
@@ -266,5 +289,6 @@ func scannedPayload(s scan, row gen.ScanEventRow, t gen.MACSScanTicketRow, orgID
 		"macs_result":      s.in.Result,
 		"system_ticket_id": t.SystemTicketID,
 		"first_admission":  first,
+		"barcode_revoked":  t.BarcodeRevoked,
 	}
 }

@@ -29,14 +29,23 @@ package eventbot
 //	sl:ap:<fp>         apply the one shown
 //	sl:rv:<batch>      undo a batch       sl:st          the start screen
 //	sl:back            up to the date     sl:home        the main menu
+//	sl:nc:<n>          n categories       sl:nq          ask the split again
+//	sl:o:<session>     open the screen of a date (splitSeatsByPriceButton)
+//
+// A date with exactly ONE open seated category cannot be cut by itself, so
+// after the way is chosen the person is asked (steps "cats", "top", "bottom":
+// buttons for the number of categories, then two typed prices) and the slots
+// of the proposal become NEW categories, created by the same batch.
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/go-telegram/bot/models"
@@ -53,6 +62,10 @@ const (
 	loStepOptions = "options"
 	loStepPreview = "preview"
 	loStepDone    = "done"
+	// The questions of a date with one category.
+	loStepCats   = "cats"
+	loStepTop    = "top"
+	loStepBottom = "bottom"
 )
 
 // seatLayoutDialog is the screens' state, stored as the bot_dialogs row's JSON.
@@ -77,6 +90,22 @@ type seatLayoutDialog struct {
 	Fingerprint string `json:"fingerprint,omitempty"`
 	// Batch is the batch just applied, for the result's "Undo".
 	Batch string `json:"batch,omitempty"`
+	// MadeTiers is the batch that created categories: its undo keeps them.
+	MadeTiers string `json:"made_tiers,omitempty"`
+	// Cur is the date's currency, Cats, Top and Bottom the answers of a date
+	// with one category (the prices in minor units; 0 while unanswered).
+	Cur    string `json:"cur,omitempty"`
+	Cats   int    `json:"cats,omitempty"`
+	Top    int64  `json:"top,omitempty"`
+	Bottom int64  `json:"bottom,omitempty"`
+}
+
+// split is the answers of a date with one category.
+func (st seatLayoutDialog) split() loNew { return loNew{Cats: st.Cats, Top: st.Top, Bottom: st.Bottom} }
+
+// splitReady reports whether the three answers are given and consistent.
+func (st seatLayoutDialog) splitReady() bool {
+	return st.Cats >= loMinCats && st.Cats <= loMaxCats && st.Top > 0 && st.Bottom > 0 && st.Bottom < st.Top
 }
 
 // canSeatLayout reports whether the person may re-categorise seats: the owner,
@@ -198,6 +227,7 @@ func (b *Bot) seatLayoutShowStart(ctx context.Context, chatID int64, editMsgID *
 	}
 	targets, closed := loTargets(tiers)
 	st.Algo, st.Side, st.Choice, st.Fingerprint, st.Batch = "", "", nil, "", ""
+	st.Cats, st.Top, st.Bottom, st.Cur = 0, 0, 0, tierCurrency(tiers)
 	if editMsgID != nil {
 		st.MsgID = *editMsgID
 	}
@@ -206,14 +236,26 @@ func (b *Bot) seatLayoutShowStart(ctx context.Context, chatID int64, editMsgID *
 	sb.WriteString(note + b.loHead(loc, st))
 	var rows [][]Button
 	switch {
-	case len(targets) < 2:
-		sb.WriteString("\n\n" + b.texts.T(loc, "bot.sl.need_two", nil))
+	case len(targets) < 1:
+		sb.WriteString("\n\n" + b.texts.T(loc, "bot.sl.need_one", nil))
 	default:
-		sb.WriteString("\n\n" + b.texts.T(loc, "bot.sl.intro", nil))
+		intro := "bot.sl.intro"
+		if len(targets) == 1 {
+			intro = "bot.sl.intro_one"
+		}
+		sb.WriteString("\n\n" + b.texts.T(loc, intro, nil))
 		for _, t := range targets {
 			sb.WriteString("\n" + b.texts.T(loc, "bot.sl.cat_line", map[string]any{
 				"Name": Esc(t.Name), "Price": Esc(FormatMoney(t.Price, tierCurrency(tiers), loc)),
 			}))
+		}
+		if len(targets) == 1 {
+			// Empty open categories a split may fill instead of making new ones.
+			for _, t := range loEmptyOpen(tiers) {
+				sb.WriteString("\n" + b.texts.T(loc, "bot.sl.cat_line", map[string]any{
+					"Name": Esc(t.Name), "Price": Esc(FormatMoney(t.Price, tierCurrency(tiers), loc)),
+				}))
+			}
 		}
 		if closed > 0 {
 			sb.WriteString("\n\n" + b.texts.T(loc, "bot.sl.closed_note", map[string]any{"Count": closed}))
@@ -272,6 +314,10 @@ func (b *Bot) seatLayoutCallback(ctx context.Context, chatID int64, msgID int, f
 		b.showHome(ctx, chatID, &msgID, from, "")
 		return
 	}
+	if kind == "o" {
+		b.loOpenByPress(ctx, chatID, &msgID, id, jwt, arg)
+		return
+	}
 	st, step, found, expired := b.loadSeatLayoutState(ctx, from.ID, id.Current.OrgID)
 	if !found {
 		key := "bot.sl.gone"
@@ -291,6 +337,20 @@ func (b *Bot) seatLayoutCallback(ctx context.Context, chatID int64, msgID int, f
 		b.seatLayoutShowStart(ctx, chatID, &msgID, id, jwt, st, "")
 	case "a":
 		b.loChooseAlgorithm(ctx, chatID, &msgID, id, jwt, st, arg)
+	case "nq":
+		if st.Algo == "" {
+			b.seatLayoutShowStart(ctx, chatID, &msgID, id, jwt, st, "")
+			return
+		}
+		b.loAskCats(ctx, chatID, &msgID, id, st, "")
+	case "nc":
+		n, err := strconv.Atoi(arg)
+		if st.Algo == "" || err != nil || n < loMinCats || n > loMaxCats {
+			b.seatLayoutShowStart(ctx, chatID, &msgID, id, jwt, st, "")
+			return
+		}
+		st.Cats, st.Top, st.Bottom = n, 0, 0
+		b.loAskTop(ctx, chatID, &msgID, id, st, "")
 	case "sd":
 		if step != loStepOptions && step != loStepPreview {
 			b.seatLayoutShowStart(ctx, chatID, &msgID, id, jwt, st, "")
@@ -359,12 +419,191 @@ func (b *Bot) loChooseAlgorithm(ctx context.Context, chatID int64, msgID *int, i
 		b.seatLayoutShowStart(ctx, chatID, msgID, id, jwt, st, b.texts.T(id.Locale(), "bot.sl.algorithm_gone", nil)+"\n\n")
 		return
 	}
-	// Nothing to ask: the proposal is shown at once.
+	st.Cats, st.Top, st.Bottom = 0, 0, 0
+	tiers, err := b.arena.ListTiers(ctx, jwt, st.OrgID, st.EventID, st.SessionID)
+	if err != nil {
+		b.ecError(ctx, chatID, msgID, id, err, "home")
+		return
+	}
+	targets, _ := loTargets(tiers)
+	switch len(targets) {
+	case 0:
+		b.seatLayoutShowStart(ctx, chatID, msgID, id, jwt, st, "")
+		return
+	case 1:
+		// One category: the person says how to cut it into several.
+		if !loSupportsNew(alg) {
+			b.seatLayoutShowStart(ctx, chatID, msgID, id, jwt, st, b.texts.T(id.Locale(), "bot.sl.err_method_one", nil)+"\n\n")
+			return
+		}
+		st.Cur = tierCurrency(tiers)
+		b.loAskCats(ctx, chatID, msgID, id, st, "")
+		return
+	}
+	b.loAfterQuestions(ctx, chatID, msgID, id, jwt, st, alg)
+}
+
+// loAfterQuestions goes on from the way chosen (and, for one category, the
+// split answered): the options when the algorithm asks something, else the
+// proposal at once.
+func (b *Bot) loAfterQuestions(ctx context.Context, chatID int64, msgID *int, id *Identity, jwt string, st seatLayoutDialog, alg openapi.SeatLayoutAlgorithm) {
 	if !loNeedsStage(alg) && len(loAsked(alg)) == 0 {
 		b.loPreview(ctx, chatID, msgID, id, jwt, st, "")
 		return
 	}
 	b.loShowOptions(ctx, chatID, msgID, id, jwt, st, "")
+}
+
+// ─── the split of one category ────────────────────────────────────────────────
+
+func (b *Bot) loSaveReply(ctx context.Context, chatID int64, msgID *int, id *Identity, st seatLayoutDialog, step, text string, rows [][]Button) {
+	if msgID != nil {
+		st.MsgID = *msgID
+	}
+	st.Fingerprint = ""
+	b.saveSeatLayoutState(ctx, id.Link.TelegramUserID, st, step)
+	b.reply(ctx, chatID, msgID, clipMessage(text, maxMessageRunes), loKeyboard(rows))
+}
+
+// loAskCats asks into how many categories the seats are cut (buttons).
+func (b *Bot) loAskCats(ctx context.Context, chatID int64, msgID *int, id *Identity, st seatLayoutDialog, note string) {
+	loc := id.Locale()
+	st.Cats, st.Top, st.Bottom = 0, 0, 0
+	var line []Button
+	for n := loMinCats; n <= loMaxCats; n++ {
+		line = append(line, Button{Label: strconv.Itoa(n), Data: "nc:" + strconv.Itoa(n)})
+	}
+	rows := [][]Button{line}
+	rows = append(rows, b.loNavRows(loc, "st")...)
+	text := note + b.loHead(loc, st) + "\n\n" + b.texts.T(loc, "bot.sl.q_cats", nil)
+	b.loSaveReply(ctx, chatID, msgID, id, st, loStepCats, text, rows)
+}
+
+func (b *Bot) loQuestionNav(loc string) [][]Button {
+	return [][]Button{
+		{{Label: "« " + b.texts.T(loc, "bot.btn_back", nil), Data: "nq"}},
+		{{Label: b.texts.T(loc, "bot.btn_home", nil), Data: "home"}},
+	}
+}
+
+// loAskTop asks the price of the best seats (a typed answer).
+func (b *Bot) loAskTop(ctx context.Context, chatID int64, msgID *int, id *Identity, st seatLayoutDialog, note string) {
+	loc := id.Locale()
+	text := note + b.loHead(loc, st) + "\n\n" + b.texts.T(loc, "bot.sl.q_top", map[string]any{
+		"Cats": st.Cats, "Currency": Esc(strings.ToUpper(st.Cur)),
+	})
+	b.loSaveReply(ctx, chatID, msgID, id, st, loStepTop, text, b.loQuestionNav(loc))
+}
+
+// loAskBottom asks the price of the cheapest seats (a typed answer).
+func (b *Bot) loAskBottom(ctx context.Context, chatID int64, msgID *int, id *Identity, st seatLayoutDialog, note string) {
+	loc := id.Locale()
+	text := note + b.loHead(loc, st) + "\n\n" + b.texts.T(loc, "bot.sl.q_bottom", map[string]any{
+		"Top": Esc(FormatMoney(st.Top, st.Cur, loc)), "Currency": Esc(strings.ToUpper(st.Cur)),
+	})
+	b.loSaveReply(ctx, chatID, msgID, id, st, loStepBottom, text, b.loQuestionNav(loc))
+}
+
+// loOpenByPress opens the screen of the date named by "sl:o:<session>", the
+// press of splitSeatsByPriceButton. The date's event and name are read from the
+// session's summary, which answers 404 for a date of another organization.
+func (b *Bot) loOpenByPress(ctx context.Context, chatID int64, msgID *int, id *Identity, jwt, arg string) {
+	loc := id.Locale()
+	sessionID, err := uuid.Parse(arg)
+	if err != nil {
+		b.reply(ctx, chatID, msgID, b.texts.T(loc, "bot.sl.gone", nil), b.backKeyboard(loc, "events:1"))
+		return
+	}
+	sum, err := b.arena.SessionSummary(ctx, jwt, id.Current.OrgID, sessionID)
+	if err != nil {
+		if IsAPIError(err, http.StatusNotFound) {
+			b.reply(ctx, chatID, msgID, b.texts.T(loc, "bot.sl.gone", nil), b.backKeyboard(loc, "events:1"))
+			return
+		}
+		b.ecError(ctx, chatID, msgID, id, err, "home")
+		return
+	}
+	if sum.Session.OrgId != id.Current.OrgID {
+		b.reply(ctx, chatID, msgID, b.texts.T(loc, "bot.sl.gone", nil), b.backKeyboard(loc, "events:1"))
+		return
+	}
+	b.seatLayoutOpen(ctx, chatID, msgID, id, jwt, sum.Session.EventId, sessionID, sum.Session.EventName)
+}
+
+// splitSeatsByPriceButton is the entry point of the "Split seats by price"
+// step (spec 64 section 2.4): a button whose press opens the seat layout
+// screen of a date, the same screen as the "Seat layout" button of the date's
+// card. The press goes through the "sl:" router. The callback carries the
+// session only (Telegram limits it to 64 bytes, two UUIDs do not fit): the
+// event is read back from the session, so eventID is accepted for the caller's
+// convenience and not sent.
+func (b *Bot) splitSeatsByPriceButton(loc string, _, sessionID uuid.UUID) Button {
+	return Button{Label: b.texts.T(loc, "bot.sl.split_btn", nil), Data: "o:" + sessionID.String()}
+}
+
+// seatLayoutText takes the typed prices of a date with one category. It
+// reports whether the text was taken.
+func (b *Bot) seatLayoutText(ctx context.Context, chatID int64, from *models.User, text string) bool {
+	var st seatLayoutDialog
+	step, found, expired, err := b.dialogs.Load(ctx, from.ID, seatLayoutDialogKind, &st)
+	if err != nil {
+		b.logger.Error("eventbot: seat layout dialog load failed", slog.Int64("telegram_user_id", from.ID), slog.String("error", err.Error()))
+		return false
+	}
+	if expired {
+		loc := NormalizeLocale(from.LanguageCode)
+		if id, _, err := b.resolveIdentity(ctx, from.ID); err == nil {
+			loc = id.Locale()
+		}
+		b.send(ctx, chatID, b.texts.T(loc, "bot.dialog_expired", nil), &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+			{{Text: b.texts.T(loc, "bot.btn_events", nil), CallbackData: "el:new"}},
+			{{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}},
+		}})
+		return true
+	}
+	if !found || (step != loStepTop && step != loStepBottom) {
+		return false
+	}
+	id, jwt, err := b.resolveIdentity(ctx, from.ID)
+	if err != nil || id.Current == nil || id.Current.OrgID != st.OrgID || !canSeatLayout(id) {
+		b.leaveSeatLayout(ctx, from.ID)
+		return false
+	}
+	loc := id.Locale()
+	var edit *int
+	if st.MsgID != 0 {
+		edit = &st.MsgID
+	}
+	price, ok := loParsePrice(text)
+	switch {
+	case !ok:
+		note := b.texts.T(loc, "bot.sl.err_price", nil) + "\n\n"
+		if step == loStepTop {
+			b.loAskTop(ctx, chatID, edit, id, st, note)
+		} else {
+			b.loAskBottom(ctx, chatID, edit, id, st, note)
+		}
+	case step == loStepTop:
+		st.Top, st.Bottom = price, 0
+		b.loAskBottom(ctx, chatID, edit, id, st, "")
+	case price >= st.Top:
+		b.loAskBottom(ctx, chatID, edit, id, st, b.texts.T(loc, "bot.sl.err_bottom", map[string]any{
+			"Top": Esc(FormatMoney(st.Top, st.Cur, loc)),
+		})+"\n\n")
+	default:
+		st.Bottom = price
+		alg, found, err := b.loAlgorithm(ctx, jwt, st)
+		if err != nil {
+			b.ecError(ctx, chatID, edit, id, err, "home")
+			return true
+		}
+		if !found {
+			b.seatLayoutShowStart(ctx, chatID, edit, id, jwt, st, b.texts.T(loc, "bot.sl.algorithm_gone", nil)+"\n\n")
+			return true
+		}
+		b.loAfterQuestions(ctx, chatID, edit, id, jwt, st, alg)
+	}
+	return true
 }
 
 // ─── the options screen ───────────────────────────────────────────────────────
@@ -386,6 +625,9 @@ func (b *Bot) loShowOptions(ctx context.Context, chatID int64, msgID *int, id *I
 	}
 	var sb strings.Builder
 	sb.WriteString(note + b.loHead(loc, st) + "\n\n<b>" + Esc(b.loLabel(loc, alg.LabelKey, alg.Id)) + "</b>")
+	if st.splitReady() {
+		sb.WriteString("\n" + b.loSplitLine(loc, st))
+	}
 	if alg.DescriptionKey != nil {
 		if d := b.loLabel(loc, *alg.DescriptionKey, ""); d != "" {
 			sb.WriteString("\n" + Esc(d))
@@ -446,6 +688,9 @@ func (b *Bot) loShowOptions(ctx context.Context, chatID int64, msgID *int, id *I
 		}
 	}
 	rows = append(rows, []Button{{Label: b.texts.T(loc, "bot.sl.show_btn", nil), Data: "go"}})
+	if st.splitReady() {
+		rows = append(rows, []Button{{Label: b.texts.T(loc, "bot.sl.split_params_btn", nil), Data: "nq"}})
+	}
 	rows = append(rows, b.loNavRows(loc, "st")...)
 	st.Fingerprint = ""
 	if msgID != nil {
@@ -497,6 +742,25 @@ type loProposal struct {
 	Tiers   []openapi.TicketTierItem
 	Plan    loPlan
 	Print   string
+	// Split is true when the date has one category and the proposal is cut
+	// by the person's answers (new categories).
+	Split bool
+}
+
+// loSplitLine tells the answers of a date with one category.
+func (b *Bot) loSplitLine(loc string, st seatLayoutDialog) string {
+	return b.texts.T(loc, "bot.sl.split_line", map[string]any{
+		"Cats": st.Cats, "Top": Esc(FormatMoney(st.Top, st.Cur, loc)), "Bottom": Esc(FormatMoney(st.Bottom, st.Cur, loc)),
+	})
+}
+
+// loTierNames lists the names of all categories of the date.
+func loTierNames(tiers []openapi.TicketTierItem) []string {
+	out := make([]string, 0, len(tiers))
+	for _, t := range tiers {
+		out = append(out, t.Name)
+	}
+	return out
 }
 
 // loErrorKey maps the API's refusals of a proposal to the screen's words. An
@@ -524,10 +788,11 @@ func (b *Bot) loPropose(ctx context.Context, chatID int64, msgID *int, id *Ident
 		return p, false
 	}
 	targets, _ := loTargets(tiers)
-	if len(targets) < 2 {
+	if len(targets) < 1 {
 		b.seatLayoutShowStart(ctx, chatID, msgID, id, jwt, *st, "")
 		return p, false
 	}
+	split := len(targets) == 1
 	alg, found, err := b.loAlgorithm(ctx, jwt, *st)
 	if err != nil {
 		b.ecError(ctx, chatID, msgID, id, err, "home")
@@ -538,7 +803,22 @@ func (b *Bot) loPropose(ctx context.Context, chatID int64, msgID *int, id *Ident
 		return p, false
 	}
 	req := openapi.SeatLayoutSuggestRequest{Algorithm: alg.Id}
-	params := loRequestParams(alg, targets, st.Choice)
+	var params map[string]any
+	if split {
+		if !loSupportsNew(alg) {
+			b.seatLayoutShowStart(ctx, chatID, msgID, id, jwt, *st, b.texts.T(loc, "bot.sl.err_method_one", nil)+"\n\n")
+			return p, false
+		}
+		if !st.splitReady() {
+			// Answers missing (a date that lost its categories meanwhile): ask again.
+			st.Cur = tierCurrency(tiers)
+			b.loAskCats(ctx, chatID, msgID, id, *st, "")
+			return p, false
+		}
+		params = loRequestParamsNew(alg, st.split(), st.Choice)
+	} else {
+		params = loRequestParams(alg, targets, st.Choice)
+	}
 	req.Params = &params
 	if loNeedsStage(alg) {
 		if st.Side == "" {
@@ -569,14 +849,25 @@ func (b *Bot) loPropose(ctx context.Context, chatID int64, msgID *int, id *Ident
 		b.ecError(ctx, chatID, msgID, id, err, "home")
 		return p, false
 	}
-	plan, err := loBuildPlan(res, targets)
+	var plan loPlan
+	if split {
+		plan, err = loBuildPlanNew(res, targets, loEmptyOpen(tiers), loTierNames(tiers), func(n int) string {
+			return b.texts.T(loc, "bot.sl.new_cat_name", map[string]any{"N": n})
+		})
+	} else {
+		plan, err = loBuildPlan(res, targets)
+	}
 	if err != nil {
+		if errors.Is(err, errLoTooManyTiers) {
+			b.reply(ctx, chatID, msgID, b.texts.T(loc, "bot.sl.err_too_many_tiers", nil), loKeyboard(b.loNavRows(loc, "st")))
+			return p, false
+		}
 		b.logger.Error("eventbot: seat layout proposal does not fit the categories", slog.String("error", err.Error()))
 		b.reply(ctx, chatID, msgID, b.texts.T(loc, "bot.sl.err_fit", nil), loKeyboard(b.loNavRows(loc, "st")))
 		return p, false
 	}
 	return loProposal{
-		Alg: alg, Res: res, Targets: targets, Tiers: tiers, Plan: plan,
+		Alg: alg, Res: res, Targets: targets, Tiers: tiers, Plan: plan, Split: split,
 		Print: loFingerprint(res.Algorithm, plan, res.Layout.FrozenSeatKeys),
 	}, true
 }
@@ -586,7 +877,19 @@ func (b *Bot) loPreview(ctx context.Context, chatID int64, msgID *int, id *Ident
 	if !ok {
 		return
 	}
-	loc := id.Locale()
+	text, rows := b.loPreviewScreen(id.Locale(), st, p, note)
+	st.Fingerprint = p.Print
+	if msgID != nil {
+		st.MsgID = *msgID
+	}
+	b.saveSeatLayoutState(ctx, id.Link.TelegramUserID, st, loStepPreview)
+	b.reply(ctx, chatID, msgID, clipMessage(text, maxMessageRunes), loKeyboard(rows))
+}
+
+// loPreviewScreen is the text and the buttons of the proposal's preview: per
+// category the name, seats, price and the revenue at a full house (new ones
+// marked), the full house total and the realistic estimate.
+func (b *Bot) loPreviewScreen(loc string, st seatLayoutDialog, p loProposal, note string) (string, [][]Button) {
 	cur := tierCurrency(p.Tiers)
 	m := p.Res.Metrics
 	var sb strings.Builder
@@ -595,11 +898,22 @@ func (b *Bot) loPreview(ctx context.Context, chatID int64, msgID *int, id *Ident
 	for _, s := range m.BySlot {
 		bySlot[s.SlotKey] = s
 	}
+	if p.Split {
+		sb.WriteString("\n" + b.loSplitLine(loc, st) + "\n")
+	}
 	for i, s := range p.Res.Layout.Slots {
 		sm := bySlot[s.Key]
-		sb.WriteString("\n" + b.texts.T(loc, "bot.sl.preview_line", map[string]any{
-			"Name": Esc(p.Targets[i].Name), "Price": Esc(FormatMoney(p.Targets[i].Price, cur, loc)),
+		key := "bot.sl.preview_line"
+		if p.Plan.IsNew(i) {
+			if sm.Seats == 0 {
+				continue // a new category nobody sits in is not created
+			}
+			key = "bot.sl.preview_line_new"
+		}
+		sb.WriteString("\n" + b.texts.T(loc, key, map[string]any{
+			"Name": Esc(p.Plan.Name[i]), "Price": Esc(FormatMoney(p.Plan.Price[i], cur, loc)),
 			"Seats": sm.Seats, "Share": int(float64(sm.Share)*100 + 0.5),
+			"Money": Esc(FormatMoney(sm.RevenueMinor, cur, loc)),
 		}))
 	}
 	if m.SoldFrozen > 0 {
@@ -611,27 +925,32 @@ func (b *Bot) loPreview(ctx context.Context, chatID int64, msgID *int, id *Ident
 	sb.WriteString("\n\n" + b.texts.T(loc, "bot.sl.preview_estimate", map[string]any{
 		"Money": Esc(FormatMoney(m.RevenueEstimateMinor, cur, loc)),
 	}))
+	sb.WriteString("\n" + b.texts.T(loc, "bot.sl.preview_realistic", map[string]any{
+		"Money": Esc(FormatMoney(m.RealisticRevenueMinor, cur, loc)),
+	}))
 	var rows [][]Button
-	body, err := json.Marshal(openapi.SeatBatchRequest{Kind: "apply_layout", Changes: p.Plan.Changes})
+	body, err := json.Marshal(p.Plan.batchRequest())
 	switch {
 	case len(p.Plan.Changes) == 0:
 		sb.WriteString("\n\n" + b.texts.T(loc, "bot.sl.preview_nothing", nil))
 	case len(p.Plan.Changes) > loMaxChanges || err != nil || len(body) > loMaxBody:
 		sb.WriteString("\n\n" + b.texts.T(loc, "bot.sl.err_too_big", map[string]any{"Max": loMaxChanges}))
 	default:
-		sb.WriteString("\n\n" + b.texts.T(loc, "bot.sl.preview_hint", map[string]any{"Count": len(p.Plan.Changes)}))
+		if n := len(p.Plan.NewTiers); n > 0 {
+			sb.WriteString("\n\n" + b.texts.T(loc, "bot.sl.preview_hint_new", map[string]any{"Count": len(p.Plan.Changes), "Cats": n}))
+		} else {
+			sb.WriteString("\n\n" + b.texts.T(loc, "bot.sl.preview_hint", map[string]any{"Count": len(p.Plan.Changes)}))
+		}
 		rows = append(rows, []Button{{Label: b.texts.T(loc, "bot.sl.apply_btn", nil), Data: "ap:" + loFingerprintShort(p.Print)}})
 	}
 	if loNeedsStage(p.Alg) || len(loAsked(p.Alg)) > 0 {
 		rows = append(rows, []Button{{Label: b.texts.T(loc, "bot.sl.options_btn", nil), Data: "op"}})
 	}
-	rows = append(rows, b.loNavRows(loc, "st")...)
-	st.Fingerprint = p.Print
-	if msgID != nil {
-		st.MsgID = *msgID
+	if p.Split {
+		rows = append(rows, []Button{{Label: b.texts.T(loc, "bot.sl.split_params_btn", nil), Data: "nq"}})
 	}
-	b.saveSeatLayoutState(ctx, id.Link.TelegramUserID, st, loStepPreview)
-	b.reply(ctx, chatID, msgID, clipMessage(sb.String(), maxMessageRunes), loKeyboard(rows))
+	rows = append(rows, b.loNavRows(loc, "st")...)
+	return sb.String(), rows
 }
 
 // ─── apply and undo ───────────────────────────────────────────────────────────
@@ -659,7 +978,7 @@ func (b *Bot) loApply(ctx context.Context, chatID int64, msgID *int, id *Identit
 		b.loPreview(ctx, chatID, msgID, id, jwt, st, "")
 		return
 	}
-	req := openapi.SeatBatchRequest{Kind: "apply_layout", Changes: p.Plan.Changes}
+	req := p.Plan.batchRequest()
 	if body, err := json.Marshal(req); err != nil || len(body) > loMaxBody {
 		b.loPreview(ctx, chatID, msgID, id, jwt, st, "")
 		return
@@ -669,7 +988,18 @@ func (b *Bot) loApply(ctx context.Context, chatID int64, msgID *int, id *Identit
 		switch APIErrorCode(err) {
 		case seatBatchCodeTooMany:
 			b.loPreview(ctx, chatID, msgID, id, jwt, st, "")
+		case seatBatchCodeTierNameTaken:
+			// Somebody made a category of that name meanwhile: the next proposal
+			// picks other names.
+			b.loPreview(ctx, chatID, msgID, id, jwt, st, b.texts.T(loc, "bot.sl.err_name_taken", nil)+"\n\n")
+		case seatBatchCodeTooManyTiers:
+			b.seatLayoutShowStart(ctx, chatID, msgID, id, jwt, st, b.texts.T(loc, "bot.sl.err_too_many_tiers", nil)+"\n\n")
 		default:
+			if req.NewTiers != nil && IsAPIError(err, http.StatusForbidden) {
+				// New categories need tier.create, which a manager does not hold.
+				b.seatLayoutShowStart(ctx, chatID, msgID, id, jwt, st, b.texts.T(loc, "bot.sl.err_tier_forbidden", nil)+"\n\n")
+				return
+			}
 			if IsAPIError(err, http.StatusUnprocessableEntity) {
 				b.loPreview(ctx, chatID, msgID, id, jwt, st, b.texts.T(loc, "bot.sl.err_apply", nil)+"\n\n")
 				return
@@ -678,28 +1008,62 @@ func (b *Bot) loApply(ctx context.Context, chatID int64, msgID *int, id *Identit
 		}
 		return
 	}
-	unchanged := 0
-	if batch.UnchangedSeatKeys != nil {
-		unchanged = len(*batch.UnchangedSeatKeys)
-	}
-	text := b.loHead(loc, st) + "\n\n" + b.texts.T(loc, "bot.sl.applied", map[string]any{
-		"Changed": len(batch.Changes), "Same": unchanged,
-	})
-	if n := len(batch.Skipped); n > 0 {
-		text += "\n" + b.texts.T(loc, "bot.sl.applied_skipped", map[string]any{"Count": n})
-	}
-	var rows [][]Button
-	if len(batch.Changes) > 0 {
-		rows = append(rows, []Button{{Label: b.texts.T(loc, "bot.sl.undo_btn", nil), Data: "rv:" + batch.Id.String()}})
-		text += "\n\n" + b.texts.T(loc, "bot.sl.undo_hint", nil)
-	}
-	rows = append(rows, b.loNavRows(loc, "st")...)
+	text, rows, madeTiers := b.loAppliedScreen(loc, st, p, batch)
 	st.Batch, st.Fingerprint = batch.Id.String(), ""
+	if madeTiers {
+		st.MadeTiers = batch.Id.String()
+	}
 	if msgID != nil {
 		st.MsgID = *msgID
 	}
 	b.saveSeatLayoutState(ctx, id.Link.TelegramUserID, st, loStepDone)
 	b.reply(ctx, chatID, msgID, clipMessage(text, maxMessageRunes), loKeyboard(rows))
+}
+
+// loAppliedScreen is the message after an apply: how many seats moved, the
+// categories the batch created, an old category left with no seat (said, never
+// closed from here) and the hint about "Undo".
+func (b *Bot) loAppliedScreen(loc string, st seatLayoutDialog, p loProposal, batch openapi.SeatBatch) (text string, rows [][]Button, madeTiers bool) {
+	unchanged := 0
+	if batch.UnchangedSeatKeys != nil {
+		unchanged = len(*batch.UnchangedSeatKeys)
+	}
+	text = b.loHead(loc, st) + "\n\n" + b.texts.T(loc, "bot.sl.applied", map[string]any{
+		"Changed": len(batch.Changes), "Same": unchanged,
+	})
+	if n := len(batch.Skipped); n > 0 {
+		text += "\n" + b.texts.T(loc, "bot.sl.applied_skipped", map[string]any{"Count": n})
+	}
+	created := []openapi.SeatBatchCreatedTier{}
+	if batch.CreatedTiers != nil {
+		created = *batch.CreatedTiers
+	}
+	if len(created) > 0 {
+		text += "\n\n" + b.texts.T(loc, "bot.sl.created_title", nil)
+		for _, c := range created {
+			text += "\n" + b.texts.T(loc, "bot.sl.cat_line", map[string]any{
+				"Name": Esc(c.Name), "Price": Esc(FormatMoney(c.PriceAmount, tierCurrency(p.Tiers), loc)),
+			})
+		}
+		// An old category the layout left with no seat: said, never closed here.
+		if p.Res.Metrics.SoldFrozen == 0 && len(batch.Skipped) == 0 {
+			for _, t := range p.Targets {
+				if !loPlanKeeps(p.Plan, t.ID) {
+					text += "\n\n" + b.texts.T(loc, "bot.sl.old_empty", map[string]any{"Name": Esc(t.Name)})
+				}
+			}
+		}
+	}
+	if len(batch.Changes) > 0 {
+		rows = append(rows, []Button{{Label: b.texts.T(loc, "bot.sl.undo_btn", nil), Data: "rv:" + batch.Id.String()}})
+		undoHint := "bot.sl.undo_hint"
+		if len(created) > 0 {
+			undoHint = "bot.sl.undo_hint_new"
+		}
+		text += "\n\n" + b.texts.T(loc, undoHint, nil)
+	}
+	rows = append(rows, b.loNavRows(loc, "st")...)
+	return text, rows, len(created) > 0
 }
 
 // loRevert puts a batch back. The press names the batch, so an old message
@@ -729,14 +1093,14 @@ func (b *Bot) loRevert(ctx context.Context, chatID int64, msgID *int, id *Identi
 		return
 	}
 	note := b.texts.T(loc, "bot.sl.undone", map[string]any{"Count": len(batch.Changes)})
+	if st.MadeTiers != "" && st.MadeTiers == arg {
+		note += "\n" + b.texts.T(loc, "bot.sl.undone_new", nil)
+	}
 	if n := len(batch.Skipped); n > 0 {
 		note += "\n" + b.texts.T(loc, "bot.sl.undone_skipped", map[string]any{"Count": n})
 	}
 	b.seatLayoutShowStart(ctx, chatID, msgID, id, jwt, st, note+"\n\n")
 }
-
-// seatLayoutText: the dialog takes no typed text.
-func (b *Bot) seatLayoutText(_ context.Context, _ int64, _ *models.User, _ string) bool { return false }
 
 // loSchemePath is the event center path of the seat map screen of one date.
 // It is built from three UUIDs only, so it always starts with /o/ and holds no

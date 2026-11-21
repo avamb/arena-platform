@@ -193,7 +193,7 @@ test("a code works once: the second opening says the link does not work and to p
   const second = await browser.newPage();
   await second.goto(url);
   const error = second.getByTestId("tg-edit-error");
-  await expect(error).toContainText("This link does not work any more", { timeout: 20_000 });
+  await expect(error).toContainText("This link does not work", { timeout: 20_000 });
   await expect(error).toContainText("Edit in the editor");
   await expect(second.locator(".ProseMirror")).toHaveCount(0);
   await second.close();

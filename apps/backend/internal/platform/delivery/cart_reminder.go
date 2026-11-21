@@ -42,6 +42,9 @@ type GrowthLetterOptions struct {
 	// the confirmation and withdraw links point there.
 	APIBaseURL string
 	Logger     *slog.Logger
+	// Media resolves the organization's logo for the header. Nil keeps the
+	// organization's name as the header.
+	Media MediaResolver
 	// Now is time.Now when nil (tests pin it).
 	Now func() time.Time
 }
@@ -134,11 +137,17 @@ func NewCartReminderHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 			locale = in.OrgLocale
 		}
 		whiteLabel, brand := whiteLabelForSession(ctx, opts.DB, logger, o.SessionID)
+		style, err := loadOrgLetterStyle(ctx, opts.DB, o.OrgID)
+		if err != nil {
+			return err
+		}
+		contact := sessionContactEmail(ctx, opts.DB, o.OrgID, o.SessionID, logger)
 		data := templates.Data{
 			EventName:      in.EventName,
 			RecipientEmail: o.BuyerEmail,
-			Branding:       templates.Branding{OrgName: in.OrgName},
+			Branding:       style.branding(ctx, opts.Media, logger),
 			WhiteLabel:     whiteLabel,
+			Contact:        templates.BuyerContact{Email: contact, OrderNumber: strconv.FormatInt(o.SystemID, 10)},
 			CartReminder: templates.CartReminderData{
 				URL:         base + ResumePath(o.CheckoutToken),
 				When:        in.When(),
@@ -162,7 +171,9 @@ func NewCartReminderHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 			TemplateVersion: templateVersion(r, templates.TemplateKindCheckoutReminder, locale),
 		}
 		msg := email.Message{To: o.BuyerEmail, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody}
-		applyWhiteLabelSender(&msg, whiteLabel, brand)
+		style.applySender(&msg)
+		applyBrandSender(&msg, brand)
+		withReplyTo(&msg, contact)
 		// The reminder is taken before it is sent, so a retry or a second
 		// claim of this job never sends it twice (the letter says it is the
 		// only one). A refused send gives it back for the retry.
@@ -208,13 +219,13 @@ func NewMarketingConfirmHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 			return fmt.Errorf("delivery: the marketing confirmation needs the API public base URL")
 		}
 		var (
-			addr, locale, status, withdraw, orgName, orgLocale string
-			orgID                                              uuid.UUID
+			addr, locale, status, withdraw, orgName, orgLocale, source string
+			orgID                                                      uuid.UUID
 		)
 		err = opts.DB.QueryRow(ctx, `
-			SELECT s.email, s.locale, s.status, s.unsubscribe_token, o.name, COALESCE(o.default_locale, ''), s.org_id
+			SELECT s.email, s.locale, s.status, s.unsubscribe_token, o.name, COALESCE(o.default_locale, ''), s.org_id, s.source
 			FROM   marketing_subscriptions s JOIN organizations o ON o.id = s.org_id
-			WHERE  s.id = $1`, id).Scan(&addr, &locale, &status, &withdraw, &orgName, &orgLocale, &orgID)
+			WHERE  s.id = $1`, id).Scan(&addr, &locale, &status, &withdraw, &orgName, &orgLocale, &orgID, &source)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
@@ -247,20 +258,32 @@ func NewMarketingConfirmHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 		// The consent is given to the organization, so its own white label
 		// decides (a promoter's period does not cover it).
 		whiteLabel := whiteLabelForOrg(ctx, whiteLabelResolver(opts.DB), logger, orgID)
+		// The letter leaves from the organization's verified sender, under its
+		// logo and accent, like the ticket letters (and names the website when
+		// the address was left there, not at a checkout).
+		style, err := loadOrgLetterStyle(ctx, opts.DB, orgID)
+		if err != nil {
+			return err
+		}
+		contact := buyerContactEmail(ctx, opts.DB, uuid.Nil, orgID, logger)
 		out, err := r.Render(templates.TemplateKindMarketingConfirm, locale, templates.Data{
 			RecipientEmail: addr,
-			Branding:       templates.Branding{OrgName: orgName},
+			Contact:        templates.BuyerContact{Email: contact},
+			Branding:       style.branding(ctx, opts.Media, logger),
 			WhiteLabel:     whiteLabel,
 			Marketing: templates.MarketingConfirmData{
 				ConfirmURL:  base + marketing.ConfirmPath(url.QueryEscape(token)),
 				WithdrawURL: base + marketing.WithdrawPath(url.QueryEscape(withdraw)),
+				FromSite:    source == marketing.SourceSite,
 			},
 		})
 		if err != nil {
 			return err
 		}
 		msg := email.Message{To: addr, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody}
-		applyWhiteLabelSender(&msg, whiteLabel, orgName)
+		style.applySender(&msg)
+		applyBrandSender(&msg, orgName)
+		withReplyTo(&msg, contact)
 		return opts.Sender.Send(ctx, msg)
 	}
 }

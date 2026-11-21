@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -79,6 +82,36 @@ func (t *TelegramSender) Send(ctx context.Context, chatID, text string) error {
 	return err
 }
 
+// SendDocument uploads a file to chatID through sendDocument. caption is
+// plain text (cut to Telegram's 1024 characters by the caller). Like the
+// other methods it never puts the token or the file into an error.
+func (t *TelegramSender) SendDocument(ctx context.Context, chatID, filename, contentType string, data []byte, caption string) error {
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	_ = mw.WriteField("chat_id", chatID)
+	if caption != "" {
+		_ = mw.WriteField("caption", caption)
+	}
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="document"; filename="%s"`, safeFilename(filename)))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	h.Set("Content-Type", contentType)
+	part, err := mw.CreatePart(h)
+	if err != nil {
+		return fmt.Errorf("telegram: build upload failed")
+	}
+	if _, err := part.Write(data); err != nil {
+		return fmt.Errorf("telegram: build upload failed")
+	}
+	if err := mw.Close(); err != nil {
+		return fmt.Errorf("telegram: build upload failed")
+	}
+	_, err = t.postBody(ctx, "sendDocument", buf.Bytes(), mw.FormDataContentType())
+	return err
+}
+
 // inlineKeyboard is the reply_markup of rows of buttons. Empty rows still
 // send an empty keyboard, which removes the buttons of an edited message.
 func inlineKeyboard(rows [][]Button) map[string]any {
@@ -135,9 +168,15 @@ func (t *TelegramSender) post(ctx context.Context, method string, payload map[st
 	if err != nil {
 		return nil, fmt.Errorf("telegram: marshal: %w", err)
 	}
+	return t.postBody(ctx, method, body, "application/json")
+}
+
+// postBody is post with a ready body and its content type (sendDocument is
+// multipart/form-data). The retry and error rules are the same.
+func (t *TelegramSender) postBody(ctx context.Context, method string, body []byte, contentType string) (json.RawMessage, error) {
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		res, wait, err := t.attempt(ctx, method, body)
+		res, wait, err := t.attempt(ctx, method, body, contentType)
 		if err == nil {
 			return res, nil
 		}
@@ -153,12 +192,12 @@ func (t *TelegramSender) post(ctx context.Context, method string, payload map[st
 }
 
 // attempt returns (result, retry delay, error); a negative delay means final.
-func (t *TelegramSender) attempt(ctx context.Context, method string, body []byte) (json.RawMessage, time.Duration, error) {
+func (t *TelegramSender) attempt(ctx context.Context, method string, body []byte, contentType string) (json.RawMessage, time.Duration, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.baseURL+"/bot"+t.token+"/"+method, bytes.NewReader(body))
 	if err != nil {
 		return nil, -1, fmt.Errorf("telegram: build request failed")
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	resp, err := t.client.Do(req)
 	if err != nil {
 		// *url.Error embeds the URL, and with it the token: never return it.
@@ -189,4 +228,14 @@ func (t *TelegramSender) attempt(ctx context.Context, method string, body []byte
 	default:
 		return nil, time.Second, fmt.Errorf("telegram %d: %s", resp.StatusCode, r.Description)
 	}
+}
+
+// safeFilename drops what could break out of the quoted filename.
+func safeFilename(name string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '"' || r == 92 || r < 0x20 {
+			return -1
+		}
+		return r
+	}, name)
 }

@@ -140,7 +140,7 @@ describe("the product card: one Save", () => {
     expect(status(el)).toBe("");
     await typeInto(q(el, "shop-product-title"), "Riesling 2021");
     expect(q(el, "shop-product-save").disabled).toBe(false);
-    expect(status(el)).toBe("There are unsaved changes.");
+    expect(status(el)).toBe("Some changes are not saved.");
     const reader = await mount(product(), false);
     expect(reader.el.querySelector('[data-testid="shop-savebar"]')).toBeNull();
     expect(reader.el.querySelector('[data-testid="shop-product-save"]')).toBeNull();
@@ -172,7 +172,7 @@ describe("the product card: one Save", () => {
     // SA-13: the variants go with the set the person loaded.
     expect(vi.mocked(replaceShopVariants).mock.calls[0][3]).toEqual(["v1"]);
     expect(vi.mocked(attachShopImage).mock.calls[0]).toEqual([ORG, "p1", "m1", 0, "Bottle"]);
-    expect(status(el)).toBe("Everything is saved.");
+    expect(status(el)).toBe("All changes are saved.");
     expect(q(el, "shop-product-save").disabled).toBe(true);
   });
 
@@ -197,10 +197,10 @@ describe("the product card: one Save", () => {
     await save(el);
     expect(attachShopImage).not.toHaveBeenCalled();
     expect(fetchShopProduct).toHaveBeenCalledTimes(1);
-    expect(status(el)).toContain("Not everything was saved.");
-    expect(status(el)).toContain("Already saved: the product.");
+    expect(status(el)).toContain("We did not save all changes.");
+    expect(status(el)).toContain("Saved: the product.");
     expect(q(el, "shop-stock-changed")).not.toBeNull();
-    expect(q(el, "shop-stock-moved").textContent).toContain("you saw 12, now 9");
+    expect(q(el, "shop-stock-moved").textContent).toContain("you saw 12, the stock is 9");
     expect(q(el, "shop-stock-moved").textContent).toContain("You typed 20");
     // SA-04: what the person typed stays, only the number they saw moved on (12 became 9).
     expect(q(el, "shop-variant-stock-0").value).toBe("20");
@@ -241,7 +241,7 @@ describe("the product card: one Save", () => {
     await typeInto(q(el, "shop-variant-price-0"), "25.00");
     await save(el);
     expect(q(el, "shop-variants-changed")).not.toBeNull();
-    expect(q(el, "shop-variants-merged").textContent).toContain("1 versions added elsewhere");
+    expect(q(el, "shop-variants-merged").textContent).toContain("Added: 1.");
     expect(q(el, "shop-variant-price-0").value).toBe("25.00");
     expect(q(el, "shop-variant-price-1")).not.toBeNull();
     // The next Save carries the merged set.
@@ -279,7 +279,7 @@ describe("the product card: one Save", () => {
       await sleep(50);
     });
     expect(router.state.location.pathname).toBe("/");
-    expect(q(el, "unsaved-dialog").textContent).toContain("There are unsaved changes. Leave?");
+    expect(q(el, "unsaved-dialog").textContent).toContain("You have changes that are not saved. Close the page?");
   });
 });
 
@@ -330,7 +330,7 @@ describe("leaving with unsaved changes (M-09)", () => {
     expect(router.state.location.pathname).toBe("/");
     expect(q(el, "unsaved-dialog")).toBeNull();
     expect(q(el, "shop-savebar").hidden).toBe(false);
-    expect(status(el)).toContain("Not everything was saved");
+    expect(status(el)).toContain("We did not save all changes");
   });
 });
 

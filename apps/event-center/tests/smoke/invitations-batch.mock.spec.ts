@@ -14,7 +14,7 @@ async function signIn(page: Page) {
   await page.getByLabel("E-mail").fill("manager@example.test");
   await page.getByLabel("Password").fill("right-password");
   await page.getByTestId("login-submit").click();
-  await expect(page.getByRole("heading", { name: "Choose an organization" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Select an organization" })).toBeVisible();
 }
 
 const url = `/o/${ORG_A}/events/${EVENT}/sessions/${SESSION}/invitations`;
@@ -65,7 +65,7 @@ test.describe("invitations from a CSV file (mock)", () => {
     await expect(report.getByTestId("csv-problem")).toHaveCount(3);
     await expect(report.locator('[data-testid="csv-problem"][data-line="2"]')).toContainText("Write the guest's name");
     await expect(report.locator('[data-testid="csv-problem"][data-line="3"]')).toContainText("e-mail address does not look right");
-    await expect(report.locator('[data-testid="csv-problem"][data-line="4"]')).toContainText("sold or in a hold");
+    await expect(report.locator('[data-testid="csv-problem"][data-line="4"]')).toContainText("sold or held");
     // Nothing can be issued from it.
     await expect(page.getByTestId("csv-issue")).toHaveCount(0);
     expect(batch.requests).toHaveLength(1);
@@ -76,19 +76,19 @@ test.describe("invitations from a CSV file (mock)", () => {
     await expect(page.getByTestId("csv-report")).toHaveCount(0);
     await page.getByTestId("csv-check").click();
     await expect(page.getByTestId("csv-report")).toHaveAttribute("data-valid", "1");
-    await expect(page.getByTestId("csv-report-summary")).toContainText("2 guests, 5 places");
+    await expect(page.getByTestId("csv-report-summary")).toContainText("2 guests, 5 seats");
     await expect(page.getByTestId("csv-preview-guest")).toHaveCount(2);
     await expect(page.getByTestId("csv-preview-guest").first()).toContainText("Ana López");
     // The charge is built from the numbers: 5 places at 0.50 EUR.
     await expect(page.getByTestId("csv-charge")).toContainText("€2.50");
-    await expect(page.getByTestId("csv-charge")).toContainText("5 places × €0.50");
+    await expect(page.getByTestId("csv-charge")).toContainText("5 seats × €0.50");
 
     await expect(page.getByTestId("csv-issue")).toContainText("Issue invitations: 2");
     await page.getByTestId("csv-issue").click();
 
     const result = page.getByTestId("csv-result");
-    await expect(result).toContainText("The file is issued: 2 invitations.");
-    await expect(result).toContainText("Places in total: 5.");
+    await expect(result).toContainText("We issued the file: 2 invitations.");
+    await expect(result).toContainText("Seats in total: 5.");
     await expect(page.getByTestId("csv-result-order")).toHaveCount(2);
     expect(batch.requests).toHaveLength(3);
     const real = batch.requests[2];
@@ -110,7 +110,7 @@ test.describe("invitations from a CSV file (mock)", () => {
 
     // Another file starts from the beginning.
     await page.getByTestId("csv-another").click();
-    await expect(page.getByTestId("csv-file-name")).toContainText("No file chosen yet.");
+    await expect(page.getByTestId("csv-file-name")).toContainText("No file selected.");
     await expect(page.getByTestId("csv-check")).toBeDisabled();
   });
 
@@ -128,8 +128,8 @@ test.describe("invitations from a CSV file (mock)", () => {
     await expect(page.getByTestId("csv-file-problem")).toHaveCount(0);
     await page.getByTestId("csv-check").click();
     const error = page.getByTestId("csv-error");
-    await expect(error).toContainText("too big for one upload");
-    await expect(error).toContainText("Split it into several files");
+    await expect(error).toContainText("too large for one upload");
+    await expect(error).toContainText("Divide it into some files");
     await expect(page.getByTestId("csv-issue")).toHaveCount(0);
 
     // A spreadsheet is not a CSV.

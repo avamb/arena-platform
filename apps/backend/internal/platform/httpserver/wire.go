@@ -195,12 +195,12 @@ func New(opts Options) *Server {
 		logger = slog.Default()
 	}
 
-	// Build the chi router via the adapter so the canonical middleware
-	// chain is applied uniformly across every arena_new HTTP listener.
+	// The adapter router applies the canonical middleware chain to every listener.
 	r := httpadapter.NewRouter(httpadapter.Deps{
 		Logger:             logger,
 		RequestTimeout:     opts.Config.RequestTimeout,
 		BodyLimitBytes:     opts.Config.BodyLimitBytes,
+		BodyLimitOverride:  venuePlanUploadBodyLimit,
 		Metrics:            opts.Metrics,
 		AppEnv:             string(opts.Config.AppEnv),
 		CORSAllowedOrigins: opts.Config.CORSAllowedOrigins,

@@ -55,6 +55,17 @@ describe("reduceDraft", () => {
     expect(venueCapacity(d.venue)).toBe(300);
   });
 
+  it("keeps the country of the chosen existing venue, and clears it with the venue", () => {
+    const d = reduceDraft(
+      base,
+      { type: "venueExisting", venue: { id: "v1", name: "Hall", timezone: "Europe/Madrid", capacity: 300, country: "ES" } },
+      NOW,
+    );
+    expect(d.venue.existingCountry).toBe("ES");
+    const cleared = reduceDraft(d, { type: "venueExisting", venue: null }, NOW);
+    expect(cleared.venue.existingCountry).toBe("");
+  });
+
   it("keeps what was typed for a new venue when the person switches mode and back", () => {
     let d = reduceDraft(base, { type: "venueMode", mode: "new" }, NOW);
     d = reduceDraft(d, { type: "venueNew", field: "newName", value: "Palau" }, NOW);
@@ -180,5 +191,53 @@ describe("storage", () => {
     };
     expect(loadDraft("o", broken)).toBeNull();
     expect(() => saveDraft("o", filled, broken)).not.toThrow();
+  });
+});
+
+describe("venueCreated (F-004)", () => {
+  it("turns the described venue into the chosen one, and records it in the stored draft", async () => {
+    const { recordVenueCreated } = await import("@/lib/wizard/draft");
+    const m = new Map<string, string>();
+    const s = { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
+    let d = newDraft("d-1", NOW, "Admission");
+    d = reduceDraft(d, { type: "venueMode", mode: "new" }, NOW);
+    d = reduceDraft(d, { type: "venueNew", field: "newName", value: "Sala" }, NOW);
+    d = reduceDraft(d, { type: "venueNew", field: "address", value: "Calle 1" }, NOW);
+    expect(d.venue.address).toBe("Calle 1");
+    saveDraft("org-1", d, s);
+    const venue = { id: "v-9", name: "Sala", timezone: "Europe/Madrid", capacity: 120, country: "ES" };
+    recordVenueCreated("org-1", "another-draft", venue, s);
+    expect(loadDraft("org-1", s)?.venue.mode).toBe("new");
+    recordVenueCreated("org-1", "d-1", venue, s);
+    const stored = loadDraft("org-1", s);
+    expect(stored?.venue).toMatchObject({ mode: "existing", existingId: "v-9", existingTimezone: "Europe/Madrid", existingCapacity: 120 });
+  });
+
+  it("round-trips the country of the chosen existing venue, and reads a draft without it as empty", () => {
+    const store = memoryStorage();
+    const chosen = reduceDraft(
+      newDraft("d-3", NOW, "Admission"),
+      { type: "venueExisting", venue: { id: "v-shared", name: "Shared", timezone: "Europe/Madrid", capacity: 50, country: "ES" } },
+      NOW,
+    );
+    saveDraft("org-1", chosen, store);
+    expect(loadDraft("org-1", store)?.venue.existingCountry).toBe("ES");
+    const key = [...store.data.keys()][0];
+    const raw = JSON.parse(store.data.get(key) as string);
+    delete raw.venue.existingCountry;
+    store.setItem(key, JSON.stringify(raw));
+    expect(loadDraft("org-1", store)?.venue.existingCountry).toBe("");
+  });
+
+  it("reads a draft stored before the address field", () => {
+    const m = new Map<string, string>();
+    const s = { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
+    const d = reduceDraft(newDraft("d-2", NOW, "Admission"), { type: "event", field: "name", value: "Old" }, NOW);
+    saveDraft("org-1", d, s);
+    const key = [...m.keys()][0];
+    const raw = JSON.parse(m.get(key) as string);
+    delete raw.venue.address;
+    m.set(key, JSON.stringify(raw));
+    expect(loadDraft("org-1", s)?.venue.address).toBe("");
   });
 });

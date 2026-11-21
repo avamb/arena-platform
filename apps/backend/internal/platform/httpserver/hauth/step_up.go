@@ -92,6 +92,7 @@ func (h *Handler) StepUp(w http.ResponseWriter, r *http.Request) {
 	}
 	key := "step-up:" + userID.String()
 	if !h.stepUpLimiter.Allow(key) {
+		setRateLimitRetryAfter(w)
 		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelopeWithDetails(
 			"auth.rate_limited", "too many attempts; please wait before trying again", r,
 			map[string]any{"retry_after_seconds": int(loginRateLimitWindow.Seconds())},

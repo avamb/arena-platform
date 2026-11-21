@@ -302,6 +302,7 @@ func cleanupOrg(pool *pgxpool.Pool, orgID uuid.UUID, t *testing.T) {
 	ctx := context.Background()
 	steps := []string{
 		`DELETE FROM shop_stock_moves WHERE org_id = $1`,
+		`DELETE FROM shop_orders WHERE org_id = $1`,
 		`DELETE FROM shop_product_images WHERE product_id IN (SELECT id FROM shop_products WHERE org_id = $1)`,
 		`DELETE FROM shop_variants WHERE product_id IN (SELECT id FROM shop_products WHERE org_id = $1)`,
 		`DELETE FROM shop_products WHERE org_id = $1`,

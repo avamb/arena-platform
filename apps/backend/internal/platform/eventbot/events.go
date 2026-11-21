@@ -145,11 +145,12 @@ type PlaceTotals struct {
 }
 
 // SummaryPlaces adds up the summary's GA and seated places. Sold includes
-// tickets sold upstream (in the system a session was imported from).
+// tickets sold upstream (in the system a session was imported from): the
+// summary's SoldUpstream is a part of its Sold, never added on top.
 func SummaryPlaces(s openapi.SessionSummary) PlaceTotals {
 	var t PlaceTotals
 	for _, c := range []openapi.SessionPlaceCounts{s.Places.Ga, s.Places.Seats} {
-		t.Sold += c.Sold + c.SoldUpstream
+		t.Sold += c.Sold // SoldUpstream is already part of Sold
 		t.Total += c.Total
 		t.Available += c.Available
 		t.Held += c.Held

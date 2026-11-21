@@ -382,9 +382,10 @@ type ListShopOrdersParams struct {
 // The order list's tabs as SQL, over shop_orders columns; $8 is the view name.
 // to_ship: a paid (or partly refunded) order with something to hand over that
 // has not been shipped yet. A digital or service order (delivery_kind none)
-// has nothing to ship.
+// has nothing to ship, and neither has an order imported from the old store
+// (source shopify): it is a record, whatever Shopify says about its parcel.
 const shopOrderViewCondition = `$8::text = ''
-        OR ($8 = 'to_ship' AND status IN ('paid', 'partially_refunded') AND delivery_kind <> 'none' AND shipped_at IS NULL)
+        OR ($8 = 'to_ship' AND status IN ('paid', 'partially_refunded') AND delivery_kind <> 'none' AND shipped_at IS NULL AND source <> 'shopify')
         OR ($8 = 'unpaid' AND status = 'pending_payment')
         OR ($8 = 'shipped' AND status = 'shipped')
         OR ($8 = 'refunds' AND status IN ('refunded', 'partially_refunded'))`
@@ -395,7 +396,8 @@ FROM   shop_orders
 WHERE  org_id = $1
   AND  ($2::text = '' OR status = $2)
   AND  ($3::text = '' OR number::text = $3
-        OR buyer_email ILIKE '%' || $3 || '%' OR buyer_name ILIKE '%' || $3 || '%')
+        OR buyer_email ILIKE '%' || $3 || '%' OR buyer_name ILIKE '%' || $3 || '%'
+        OR (source = 'shopify' AND external_ref IN ($3, '#' || $3)))
   AND  ($4::timestamptz IS NULL OR created_at >= $4)
   AND  ($5::timestamptz IS NULL OR created_at < $5)
   AND  (` + shopOrderViewCondition + `)
@@ -727,7 +729,7 @@ const shopOrderStepOpen = `status IN ('paid', 'shipped', 'partially_refunded') A
 
 const countShopOrders = `-- name: CountShopOrders :one
 SELECT count(*),
-       count(*) FILTER (WHERE status IN ('paid', 'partially_refunded') AND delivery_kind <> 'none' AND shipped_at IS NULL),
+       count(*) FILTER (WHERE status IN ('paid', 'partially_refunded') AND delivery_kind <> 'none' AND shipped_at IS NULL AND source <> 'shopify'),
        count(*) FILTER (WHERE status = 'pending_payment'),
        count(*) FILTER (WHERE status = 'shipped'),
        count(*) FILTER (WHERE status IN ('refunded', 'partially_refunded')),

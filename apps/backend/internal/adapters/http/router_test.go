@@ -380,6 +380,9 @@ func TestNewRouter_CORSActualRequestIncludesAllowOrigin(t *testing.T) {
 	if got := rr.Header().Get("Access-Control-Allow-Origin"); got != "*" {
 		t.Fatalf("Access-Control-Allow-Origin: want *, got %q", got)
 	}
+	if got := rr.Header().Get("Access-Control-Expose-Headers"); !strings.Contains(got, "Retry-After") {
+		t.Fatalf("Access-Control-Expose-Headers must expose Retry-After, got %q", got)
+	}
 }
 
 // TestNewRouter_PrometheusMiddlewareRecordsRequest verifies that when a real

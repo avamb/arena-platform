@@ -247,7 +247,7 @@ test.describe("the mini app editor at 360 x 740", () => {
     await mockApi(page);
     const writes = await tgMocks(page, { description: "<p>Vino</p><br><b>Bring</b>", description_base: "<p>Vino</p><br><b>Bring</b>", description_format: "text" });
     await page.goto(`/tg/edit#code=good-link-code&kind=description&event=${EVENT}`);
-    await expect(page.getByTestId("tg-description-site-html")).toContainText("came from the website", { timeout: 20_000 });
+    await expect(page.getByTestId("tg-description-site-html")).toContainText("came from the site", { timeout: 20_000 });
     await expect(page.locator(".ProseMirror")).toHaveCount(0);
     await expect(page.getByTestId("tg-description-save")).toBeDisabled();
     expect(writes.patches).toEqual([]);
@@ -287,7 +287,7 @@ test.describe("the mini app editor at 360 x 740", () => {
     await tgMocks(page);
     await page.goto(`/tg/edit#code=good-link-code&kind=description&event=${EVENT}`);
     const err = page.getByTestId("tg-edit-error");
-    await expect(err).toContainText("This link does not work any more");
+    await expect(err).toContainText("This link does not work");
     await expect(err).toContainText("Edit in the editor");
     await expect(page.locator(".ProseMirror")).toHaveCount(0);
     await noHorizontalScroll(page);

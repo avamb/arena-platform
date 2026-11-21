@@ -108,6 +108,7 @@ func (h *Handler) TelegramMiniapp(w http.ResponseWriter, r *http.Request) {
 	limitKey := "telegram-miniapp:" + httputil.ClientKey(httputil.TrustedClientIP(r, h.trustedProxyCount))
 	if h.miniappLimiter != nil && !h.miniappLimiter.Allow(limitKey) {
 		h.miniappOutcome("rate_limited")
+		setRateLimitRetryAfter(w)
 		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelopeWithDetails(
 			"auth.rate_limited", "too many attempts; please wait before trying again", r,
 			map[string]any{"retry_after_seconds": int(loginRateLimitWindow.Seconds())},

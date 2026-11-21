@@ -31,7 +31,7 @@ describe("the errors of the delivery step route", () => {
 
   it("says in plain words what to do next, without the code", () => {
     const closed = describeApiError(err(409, "shop.fulfillment_order_closed"), tFor("en"));
-    expect(closed.title).toBe("This order was refunded, canceled or expired.");
+    expect(closed.title).toBe("We refunded, canceled or closed this order.");
     expect(closed.next).toContain("Do not send it");
     const invalid = describeApiError(err(409, "shop.fulfillment_invalid_step"), tFor("ru"));
     expect(invalid.next).toContain("Обновите заказ");

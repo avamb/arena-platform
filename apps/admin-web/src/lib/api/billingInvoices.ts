@@ -165,7 +165,7 @@ export function invoiceStateTone(state: string): Tone {
 export function paymentMethodLabel(method: string | null | undefined): string {
   switch (method) {
     case "bank_transfer":
-      return "Bank transfer";
+      return "Bank payment";
     case "stripe_card":
       return "Card (Stripe)";
     case null:
@@ -178,7 +178,7 @@ export function paymentMethodLabel(method: string | null | undefined): string {
 }
 
 export const PAYMENT_METHODS: readonly { value: PaymentMethod; label: string }[] = [
-  { value: "bank_transfer", label: "Bank transfer" },
+  { value: "bank_transfer", label: "Bank payment" },
   { value: "stripe_card", label: "Card (Stripe)" },
 ];
 
@@ -260,8 +260,8 @@ export interface UsageForm {
 
 export function buildUsageRequest(form: UsageForm): BuildResult<{ accountId: string; period: string }> {
   const errors: string[] = [];
-  if (form.accountId === "") errors.push("Account: pick one.");
-  if (!isPeriod(form.period.trim())) errors.push("Month: write it as YYYY-MM, for example 2026-09.");
+  if (form.accountId === "") errors.push("Account: select one.");
+  if (!isPeriod(form.period.trim())) errors.push("Month: type it as YYYY-MM, for example 2026-09.");
   if (errors.length > 0) return { ok: false, errors };
   return { ok: true, request: { accountId: form.accountId, period: form.period.trim() } };
 }
@@ -288,19 +288,19 @@ export function buildMarkPaidRequest(
   const errors: string[] = [];
   const amount = parseMinor(form.amountMinor);
   if (amount === null || amount < 1) {
-    errors.push("Amount: a whole number of minor units, more than 0.");
+    errors.push("Amount: a whole number of minor units. It must be more than 0.");
   } else if (!acceptedAmounts(inv).includes(amount)) {
     errors.push(
-      `Amount: it must be ${acceptedAmounts(inv)
+      `Amount: the amount must be ${acceptedAmounts(inv)
         .map((a) => `${a} (${formatMinor(a, inv.currency)})`)
         .join(" or ")}.`,
     );
   }
   const at = localInputToIso(form.paidAtLocal);
-  if (at === null) errors.push("Paid at: pick the date and time the money arrived.");
-  else if (new Date(at).getTime() > now.getTime() + 60_000) errors.push("Paid at: it cannot be in the future.");
+  if (at === null) errors.push("Paid at: select the date and time of the payment.");
+  else if (new Date(at).getTime() > now.getTime() + 60_000) errors.push("Paid at: the time cannot be in the future.");
   const reference = form.reference.trim();
-  if (reference === "" || reference.length > 200) errors.push("Reference: the bank statement line or other proof, 1-200 characters.");
+  if (reference === "" || reference.length > 200) errors.push("Reference: the line of the bank statement, or other proof. Use 1 to 200 characters.");
   if (errors.length > 0 || amount === null || at === null) return { ok: false, errors };
   return { ok: true, request: { amount_minor: amount, paid_at: at, reference } };
 }
@@ -311,8 +311,8 @@ export function buildMarkPaidRequest(
 
 export function buildReasonRequest(text: string, what: string): BuildResult<string> {
   const reason = text.trim();
-  if (reason === "") return { ok: false, errors: [`Reason: say why ${what}.`] };
-  if (reason.length > 500) return { ok: false, errors: ["Reason: 500 characters at most."] };
+  if (reason === "") return { ok: false, errors: [`Cause: type the cause (${what}).`] };
+  if (reason.length > 500) return { ok: false, errors: ["Cause: use 500 characters or less."] };
   return { ok: true, request: reason };
 }
 
@@ -350,16 +350,16 @@ export function buildFeeRequest(
   const currency = form.currency.trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) errors.push("Currency: three capital letters, for example EUR.");
   const pct = parseMinor(form.pctBp);
-  if (pct === null || pct > 2000) errors.push("Percentage: basis points, a whole number from 0 to 2000 (250 means 2.5%).");
+  if (pct === null || pct > 2000) errors.push("Percent: basis points. Use a whole number from 0 to 2000 (250 is 2.5%).");
   const fixed = parseMinor(form.fixedMinor);
-  if (fixed === null || fixed > 100000) errors.push("Fixed part: whole minor units, from 0 to 100000.");
+  if (fixed === null || fixed > 100000) errors.push("Fixed amount: whole minor units. Use a number from 0 to 100000.");
   const from = localInputToIso(form.effectiveFromLocal);
-  if (from === null) errors.push("Start: pick the date and time the version starts.");
-  else if (new Date(from).getTime() <= now.getTime()) errors.push("Start: it must be in the future.");
+  if (from === null) errors.push("Start: select the date and time when the version starts.");
+  else if (new Date(from).getTime() <= now.getTime()) errors.push("Start: the time must be in the future.");
   else {
     const latest = /^[A-Z]{3}$/.test(currency) ? latestFeeStart(fees, currency) : null;
     if (latest !== null && new Date(from).getTime() <= new Date(latest).getTime()) {
-      errors.push(`Start: it must be after the latest version of ${currency}, which starts ${latest}.`);
+      errors.push(`Start: the time must be after the last version of ${currency}. That version starts ${latest}.`);
     }
   }
   if (errors.length > 0 || pct === null || fixed === null || from === null) return { ok: false, errors };
@@ -403,7 +403,7 @@ export function feeStatus(fee: PaymentFee, fees: readonly PaymentFee[], at: Date
 }
 
 export function feeStatusLabel(status: FeeStatus): string {
-  return status === "in_force" ? "In force" : status === "scheduled" ? "Scheduled" : "Superseded";
+  return status === "in_force" ? "In force" : status === "scheduled" ? "Scheduled" : "Replaced";
 }
 
 export function feeStatusTone(status: FeeStatus): Tone {
@@ -415,17 +415,17 @@ export function feeStatusTone(status: FeeStatus): Tone {
 // ---------------------------------------------------------------------------
 
 export const BANK_STATUSES: readonly { value: BankStatus; label: string }[] = [
-  { value: "unmatched", label: "Waiting for you" },
-  { value: "matched", label: "Matched" },
+  { value: "unmatched", label: "Not linked" },
+  { value: "matched", label: "Linked" },
   { value: "ignored", label: "Ignored" },
 ];
 
 export function bankStatusLabel(status: string): string {
   switch (status) {
     case "unmatched":
-      return "Waiting";
+      return "Open";
     case "matched":
-      return "Matched";
+      return "Linked";
     case "ignored":
       return "Ignored";
     default:
@@ -449,19 +449,19 @@ export function unmatchedReasonText(status: string, reason: string | null | unde
   if (status === "ignored") return reason ? `Ignored: ${reason}` : "Ignored";
   switch (reason) {
     case "no_reference":
-      return "The payer wrote no payment reference.";
+      return "The person who paid gave no payment reference.";
     case "unknown_reference":
-      return "The reference does not belong to any invoice.";
+      return "The reference is not for an invoice.";
     case "invoice_not_open":
-      return "The invoice is not open for payment (paid, void or still a draft).";
+      return "The invoice is not open for payment. It is paid, void, or a draft.";
     case "amount_mismatch":
-      return "The amount is not the invoice total (or the total without the card fee).";
+      return "The amount is not the total of the invoice. It is also not the total without the card fee.";
     case "currency_mismatch":
       return "The currency is not the invoice currency.";
     case null:
     case undefined:
     case "":
-      return status === "matched" ? "" : "No reason recorded.";
+      return status === "matched" ? "" : "No cause is recorded.";
     default:
       return reason;
   }
@@ -542,18 +542,18 @@ function asAmount(v: unknown): number | null {
 function checkTransfer(raw: RawTransfer, at: string, errors: string[]): BankTransfer | null {
   const before = errors.length;
   const id = (asText(raw.id) ?? "").trim();
-  if (id === "" || id.length > 200) errors.push(`${at}: id is required, at most 200 characters.`);
+  if (id === "" || id.length > 200) errors.push(`${at}: the id is necessary. Use 200 characters or less.`);
   const bookedAt = asText(raw.booked_at);
   const booked = bookedAt === null ? null : normalizeBookedAt(bookedAt);
-  if (booked === null) errors.push(`${at}: booked_at must be a date like 2026-10-01 or 2026-10-01T09:30:00Z.`);
+  if (booked === null) errors.push(`${at}: booked_at must be a date, for example 2026-10-01 or 2026-10-01T09:30:00Z.`);
   const amount = asAmount(raw.amount_minor);
-  if (amount === null) errors.push(`${at}: amount_minor must be a whole number of minor units (no decimals).`);
+  if (amount === null) errors.push(`${at}: amount_minor must be a whole number of minor units, with no decimals.`);
   const currency = (asText(raw.currency) ?? "").trim().toUpperCase();
-  if (!/^[A-Z]{3}$/.test(currency)) errors.push(`${at}: currency is a three-letter code.`);
+  if (!/^[A-Z]{3}$/.test(currency)) errors.push(`${at}: the currency must be a code of three letters.`);
   const reference = (asText(raw.reference) ?? "").trim();
-  if (reference.length > 1000) errors.push(`${at}: reference is at most 1000 characters.`);
+  if (reference.length > 1000) errors.push(`${at}: the reference must be 1000 characters or less.`);
   const counterparty = (asText(raw.counterparty_name) ?? "").trim();
-  if (counterparty.length > 300) errors.push(`${at}: counterparty is at most 300 characters.`);
+  if (counterparty.length > 300) errors.push(`${at}: the counterparty must be 300 characters or less.`);
   if (errors.length > before || booked === null || amount === null) return null;
   return {
     id,
@@ -570,14 +570,14 @@ function parseJsonStatement(text: string): ParseResult {
   try {
     data = JSON.parse(text);
   } catch {
-    return { ok: false, errors: ["The text starts like JSON but is not valid JSON."] };
+    return { ok: false, errors: ["The text starts as JSON, but it is not correct JSON."] };
   }
   const list = Array.isArray(data)
     ? data
     : data !== null && typeof data === "object" && Array.isArray((data as { transactions?: unknown }).transactions)
       ? (data as { transactions: unknown[] }).transactions
       : null;
-  if (list === null) return { ok: false, errors: ['JSON must be a list of payments, or {"transactions": [...]}.'] };
+  if (list === null) return { ok: false, errors: ['The JSON must be a list of payments, or {"transactions": [...]}.'] };
   return finish(list.map((item, i) => ({ at: `Payment ${i + 1}`, raw: item })));
 }
 
@@ -594,7 +594,7 @@ function parseCsvStatement(text: string): ParseResult {
     if (first && (fields[0] ?? "").toLowerCase() === "id") return; // header line
     const at = `Line ${i + 1}`;
     if (fields.length < 4 || fields.length > 6) {
-      errors.push(`${at}: write id;booked_at;amount_minor;currency;reference;counterparty (reference and counterparty may be left out).`);
+      errors.push(`${at}: use id;booked_at;amount_minor;currency;reference;counterparty. You can leave out the reference and the counterparty.`);
       return;
     }
     rows.push({
@@ -615,13 +615,13 @@ function parseCsvStatement(text: string): ParseResult {
 }
 
 function finish(items: readonly { at: string; raw: unknown }[]): ParseResult {
-  if (items.length === 0) return { ok: false, errors: ["Paste at least one payment."] };
-  if (items.length > MAX_TRANSFERS) return { ok: false, errors: [`At most ${MAX_TRANSFERS} payments at a time.`] };
+  if (items.length === 0) return { ok: false, errors: ["Paste one payment or more."] };
+  if (items.length > MAX_TRANSFERS) return { ok: false, errors: [`Use ${MAX_TRANSFERS} payments or less each time.`] };
   const errors: string[] = [];
   const out: BankTransfer[] = [];
   for (const it of items) {
     if (it.raw === null || typeof it.raw !== "object" || Array.isArray(it.raw)) {
-      errors.push(`${it.at}: not a payment.`);
+      errors.push(`${it.at}: this is not a payment.`);
       continue;
     }
     const t = checkTransfer(it.raw as RawTransfer, it.at, errors);
@@ -639,6 +639,6 @@ function finish(items: readonly { at: string; raw: unknown }[]): ParseResult {
  */
 export function parseStatement(text: string): ParseResult {
   const t = text.trim();
-  if (t === "") return { ok: false, errors: ["Paste at least one payment."] };
+  if (t === "") return { ok: false, errors: ["Paste one payment or more."] };
   return t.startsWith("[") || t.startsWith("{") ? parseJsonStatement(t) : parseCsvStatement(t);
 }

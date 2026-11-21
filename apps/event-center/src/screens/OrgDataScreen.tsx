@@ -12,6 +12,8 @@
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { ConnectTelegram } from "@/components/ConnectTelegram";
+import { GuestListTeamSwitch } from "@/components/GuestListTeamSwitch";
 import { OrgDataForm } from "@/components/OrgDataForm";
 import { SellerChannelCard } from "@/components/SellerChannelCard";
 import { SellerErrorNotice } from "@/components/SellerErrorNotice";
@@ -19,6 +21,7 @@ import { ErrorBox, Loading } from "@/components/ui";
 import { fetchOrganization, fetchSellerProfile, listPaymentConfigs, patchSellerProfile } from "@/lib/api/endpoints";
 import type { SellerProfile } from "@/lib/api/types";
 import { useI18n } from "@/lib/i18n";
+import { ScreenHelp } from "@/components/ScreenHelp";
 import { missingKey, paymentsNotConnected } from "@/lib/orgData";
 import { useOrg } from "@/screens/OrgLayout";
 
@@ -32,6 +35,8 @@ export function OrgDataScreen() {
         <p className="notice" role="status">
           <strong>{t("orgData.ownerOnly.title")}</strong> {t("orgData.ownerOnly.text")}
         </p>
+        {/* F-007: connecting one's own Telegram is everybody's, not only the owner's. */}
+        <ConnectTelegram orgId={orgId} variant="section" />
         <p>
           <Link to="/o/$orgId/events" params={{ orgId }}>
             {t("common.backToList")}
@@ -58,13 +63,12 @@ function OrgDataBody({ orgId, canReadPayments }: { orgId: string; canReadPayment
   const failure = org.error ?? profile.error;
   return (
     <section aria-labelledby="org-data-title" className="org-data" data-testid="org-data">
-      <h1 id="org-data-title">{t("orgData.title")}</h1>
+      <div className="screen-head">
+        <h1 id="org-data-title">{t("orgData.title")}</h1>
+        <ScreenHelp screenId="orgData" />
+      </div>
       <p>{t("orgData.intro")}</p>
-      {canReadPayments && paymentsNotConnected(payments.data?.payment_configs) && (
-        <p className="notice" role="status" data-testid="org-data-payments">
-          {t("orgData.payments")}
-        </p>
-      )}
+      {canReadPayments && <PaymentsSection configs={payments.data?.payment_configs} />}
       {failure !== null && failure !== undefined ? (
         <ErrorBox error={failure} onRetry={() => void Promise.all([org.refetch(), profile.refetch()])} />
       ) : org.data === undefined || profile.data === undefined ? (
@@ -76,8 +80,35 @@ function OrgDataBody({ orgId, canReadPayments }: { orgId: string; canReadPayment
           <SalesPages orgId={orgId} profile={profile.data} />
           <ContactFormSwitch orgId={orgId} profile={profile.data} />
           <ProviderReceiptSwitch orgId={orgId} profile={profile.data} />
+          <GuestListTeamSwitch orgId={orgId} />
         </>
       )}
+      <ConnectTelegram orgId={orgId} variant="section" />
+    </section>
+  );
+}
+
+/**
+ * Payments from buyers, in a section of its own (`#payments` is where the
+ * menu item and the "First steps" card lead). Connected or not, from the
+ * configs this screen already reads. While the read runs, or when it fails,
+ * the section says nothing under its heading, like the bot.
+ */
+function PaymentsSection({ configs }: { configs: readonly { is_active: boolean; verification_status: string }[] | undefined }) {
+  const { t } = useI18n();
+  return (
+    <section id="payments" aria-labelledby="org-data-payments-title" data-testid="org-data-payments-section">
+      <h2 id="org-data-payments-title">{t("orgData.payments.title")}</h2>
+      {configs !== undefined &&
+        (paymentsNotConnected(configs) ? (
+          <p className="notice" role="status" data-testid="org-data-payments">
+            {t("orgData.payments")}
+          </p>
+        ) : (
+          <p className="notice notice-ok" role="status" data-testid="org-data-payments-connected">
+            {t("orgData.payments.connected")}
+          </p>
+        ))}
     </section>
   );
 }

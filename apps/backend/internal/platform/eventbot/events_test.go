@@ -72,10 +72,11 @@ func TestPageOf(t *testing.T) {
 func TestSummaryPlaces(t *testing.T) {
 	t.Parallel()
 	var s openapi.SessionSummary
-	s.Places.Ga = openapi.SessionPlaceCounts{Sold: 10, SoldUpstream: 2, Total: 50, Available: 30, Held: 8}
+	// Sold 10 includes the 2 sold upstream: 32 + 8 + 10 = 50.
+	s.Places.Ga = openapi.SessionPlaceCounts{Sold: 10, SoldUpstream: 2, Total: 50, Available: 32, Held: 8}
 	s.Places.Seats = openapi.SessionPlaceCounts{Sold: 5, Total: 20, Available: 15}
 	got := SummaryPlaces(s)
-	want := PlaceTotals{Sold: 17, Total: 70, Available: 45, Held: 8}
+	want := PlaceTotals{Sold: 15, Total: 70, Available: 47, Held: 8}
 	if got != want {
 		t.Errorf("SummaryPlaces = %+v, want %+v", got, want)
 	}

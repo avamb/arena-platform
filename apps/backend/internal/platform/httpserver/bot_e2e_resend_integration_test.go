@@ -254,9 +254,29 @@ func TestBotE2E_ResendTickets_OwnerAndManager(t *testing.T) {
 		if got := e2eResendJob(t, pool, tickets[0]); got.status != "sent" {
 			t.Fatalf("%s: a bad address moved a job: %+v", who.name, got)
 		}
+		// The order's own address typed (in another case) is no other address:
+		// no warning about a copy, no "Replace tickets" (owner decision O-8).
+		confirm = d.say(strings.ToUpper(seed.annaEmail), "Отправить билеты?")
+		_, _, kb := tg.lastOf(who.tgID)
+		if strings.Contains(confirm, "теми же штрихкодами") || hasPrefixData(kb, "or:x:s:") {
+			t.Errorf("%s: the order's own address must carry no copy warning:\n%s\n%v", who.name, confirm, kb)
+		}
+		d.press("or:r:b", "Выслать билеты")
+		d.press("or:r:o", "Другой адрес")
 		confirm = d.say(oneTime, "Отправить билеты?")
 		if !strings.Contains(confirm, oneTime) || !strings.Contains(confirm, "24 часа") {
 			t.Errorf("%s: the one-time confirmation:\n%s", who.name, confirm)
+		}
+		// Another address: the same barcodes go out, so the copy at the order's
+		// address keeps working, and the card's own "Replace tickets" press is
+		// offered next to "Send".
+		for _, w := range []string{"теми же штрихкодами", "Копия на адресе заказа", "Заменить билеты"} {
+			if !strings.Contains(confirm, w) {
+				t.Errorf("%s: the copy warning lacks %q:\n%s", who.name, w, confirm)
+			}
+		}
+		if _, _, kb := tg.lastOf(who.tgID); !hasPrefixData(kb, "or:x:s:"+seed.anna.String()) || !hasPrefixData(kb, "or:r:go") {
+			t.Errorf("%s: the confirmation must offer Send and Replace tickets: %v", who.name, kb)
 		}
 		before = len(resendWorkerPayloads(t, pool, tickets))
 		sentAt := time.Now().UTC()

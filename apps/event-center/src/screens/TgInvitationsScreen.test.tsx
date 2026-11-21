@@ -24,7 +24,7 @@ describe("TgInvitationsView", () => {
     const html = render({ phase: "error", key: "tgInv.error.invalid" }, "ru");
     expect(html).toContain('role="alert"');
     expect(html).toContain("Эта ссылка больше не работает");
-    expect(html).toContain("Нажмите кнопку пригласительных в боте ещё раз");
+    expect(html).toContain("Нажмите «🎟 Бесплатные билеты» в боте ещё раз");
   });
 
   it("says calmly that there is no access to a date the person cannot see", () => {

@@ -1,0 +1,108 @@
+{
+    "generated_at": "2026-11-08T18:00:00Z",
+    "source": "wp_bil24_legacy",
+    "orders_scanned": 6,
+    "actions": [267465, 267466],
+    "orders": [
+        {
+            "wc_order_id": "3461",
+            "status": "completed",
+            "bil24_order_id": "4518801",
+            "created_at": "2026-08-30T17:20:00Z",
+            "paid_at": "2026-08-30T17:25:00Z",
+            "currency": "ILS",
+            "total": "500.00",
+            "language": "ru",
+            "billing": {"first_name": "Dana", "last_name": " Example ", "email": "dana.buyer@example.test", "phone": "+972 50 000 0001"},
+            "live_ids": [80000001, 80000003],
+            "ticket_id_list": "80000001,80000002,80000003",
+            "items": [
+                {"item_id": "101", "product_id": "11", "name": "Премьера вина в Тель-Авиве", "quantity": 3,
+                 "bil24_action_id": 267465, "bil24_action_event_id": 1300001}
+            ],
+            "tickets": [
+                {"id": 80000001, "seatId": 9000001, "orderId": 4518801, "seatLocation": "", "category": "Входной билет",
+                 "price": 250, "discount": 0, "charge": 0, "totalPrice": 250, "barcode": "2100000000017", "barcodeFormat": "EAN13",
+                 "actionEvent": {"id": 1300001, "day": "2026-11-21"}},
+                {"id": 80000002, "seatId": 9000002, "orderId": 4518801, "seatLocation": "", "category": "Входной билет",
+                 "price": 250, "discount": 0, "charge": 0, "totalPrice": 250, "barcode": "2100000000024", "barcodeFormat": "EAN13",
+                 "actionEvent": {"id": 1300001}},
+                {"id": 80000003, "seatId": 9000003, "orderId": 4518801, "seatLocation": "", "category": "Входной билет",
+                 "price": "250.00", "discount": "25", "charge": "12.5", "totalPrice": "237.5", "barcode": "2100000000031", "barcodeFormat": "EAN13",
+                 "actionEvent": {"id": 1300001}}
+            ]
+        },
+        {
+            "wc_order_id": "3470",
+            "status": "processing",
+            "bil24_order_id": 4518877,
+            "created_at": "2026-09-02T08:00:00Z",
+            "paid_at": null,
+            "currency": "ILS",
+            "total": "180",
+            "language": "he",
+            "billing": {"first_name": "Noa", "last_name": "Sample", "email": "noa.buyer@example.test", "phone": ""},
+            "live_ids": null,
+            "items": [
+                {"item_id": "102", "product_id": "12", "name": "Beer Sheva", "quantity": 1,
+                 "bil24_action_id": "267466", "bil24_action_event_id": null}
+            ],
+            "tickets": [
+                {"id": "80000010", "orderId": 4518877, "category": {"id": 5, "name": "Входной билет"},
+                 "price": 180, "discount": 0, "charge": 0, "totalPrice": 180, "barcode": "2100000000109",
+                 "actionEvent": {"id": 1300002}}
+            ]
+        },
+        {
+            "wc_order_id": "3480",
+            "status": "cancelled",
+            "bil24_order_id": "4519000",
+            "created_at": "2026-09-03T08:00:00Z",
+            "paid_at": "2026-09-03T08:01:00Z",
+            "currency": "ILS",
+            "billing": {"first_name": "Gone", "last_name": "Buyer", "email": "gone@example.test", "phone": ""},
+            "live_ids": [],
+            "items": [],
+            "tickets": []
+        },
+        {
+            "wc_order_id": "3600",
+            "status": "completed",
+            "bil24_order_id": "1000000731",
+            "created_at": "2026-10-01T08:00:00Z",
+            "paid_at": "2026-10-01T08:01:00Z",
+            "currency": "ILS",
+            "billing": {"first_name": "Platform", "last_name": "Era", "email": "era@example.test", "phone": ""},
+            "items": [],
+            "tickets": []
+        },
+        {
+            "wc_order_id": "3490",
+            "status": "completed",
+            "bil24_order_id": "4519100",
+            "created_at": "2026-09-04T08:00:00Z",
+            "paid_at": "2026-09-04T08:01:00Z",
+            "currency": "ILS",
+            "billing": {"first_name": "All", "last_name": "Refunded", "email": "refunded@example.test", "phone": ""},
+            "live_ids": [],
+            "items": [{"item_id": "103", "product_id": "11", "bil24_action_id": 267465, "bil24_action_event_id": 1300001}],
+            "tickets": [
+                {"id": 80000020, "price": 250, "discount": 0, "charge": 0, "totalPrice": 250, "barcode": "2100000000208", "actionEvent": {"id": 1300001}}
+            ]
+        },
+        {
+            "wc_order_id": "3495",
+            "status": "completed",
+            "bil24_order_id": "4519150",
+            "created_at": "2026-09-05T08:00:00Z",
+            "paid_at": "2026-09-05T08:01:00Z",
+            "currency": "ILS",
+            "billing": {"first_name": "Bad", "last_name": "Code", "email": "bad.code@example.test", "phone": ""},
+            "live_ids": [80000030],
+            "items": [{"item_id": "104", "product_id": "11", "bil24_action_id": 267465, "bil24_action_event_id": 1300001}],
+            "tickets": [
+                {"id": 80000030, "price": 250, "discount": 0, "charge": 0, "totalPrice": 250, "barcode": "21000000003", "actionEvent": {"id": 1300001}}
+            ]
+        }
+    ]
+}

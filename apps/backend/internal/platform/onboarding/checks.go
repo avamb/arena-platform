@@ -105,12 +105,24 @@ func (s *Service) runChecks(ctx context.Context, q querier, app *Application, se
 	} else {
 		add("consents", CheckFail, "terms, privacy and authority must all be accepted")
 	}
+	// A country outside the settings list or outside the arena reference is a
+	// warning, never a refusal (spec 64 section 2.1.1): approval adds the
+	// reference row, and a warning keeps automatic approval off.
 	if c := a.String("country"); c == "" {
 		add("country_allowed", CheckFail, "no country")
-	} else if set.allowedCountry(c) {
-		add("country_allowed", CheckPass, c)
 	} else {
-		add("country_allowed", CheckFail, c+" is not in the accepted list")
+		var inReference bool
+		if err := q.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM countries WHERE iso2 = $1)`, c).Scan(&inReference); err != nil {
+			return nil, fmt.Errorf("onboarding: country lookup: %w", err)
+		}
+		switch {
+		case !set.allowedCountry(c):
+			add("country_allowed", CheckWarn, c+" is not in the accepted list")
+		case !inReference:
+			add("country_allowed", CheckWarn, c+" is a new country: approval adds it to the reference; check payments, the tax number scheme and the time zones")
+		default:
+			add("country_allowed", CheckPass, c)
+		}
 	}
 	if a.String("tax_id") == "" {
 		add("tax_id_format", CheckFail, "no tax number")

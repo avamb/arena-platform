@@ -40,6 +40,7 @@ import (
 	"fmt"
 	"html"
 	"log/slog"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -59,6 +60,80 @@ import (
 
 // JobType is the worker job that delivers one message.
 const JobType = "contact.organizer_message"
+
+// Topics of the site form (spec 62 section 10.2). The topic is also the
+// Turnstile widget action of the form.
+const (
+	TopicContact      = "contact"
+	TopicPrivateEvent = "private_event"
+)
+
+// ValidTopic reports whether t is one of the allow-listed topics.
+func ValidTopic(t string) bool { return t == TopicContact || t == TopicPrivateEvent }
+
+// MaxRecipientsPerTopic bounds how many addresses one topic of a channel's
+// contact form is mailed to. Checked when the channel settings are written
+// (ValidateRecipients) and again when they are read (RecipientsFor), so a
+// public form can never fan one message out to a mailing list.
+const MaxRecipientsPerTopic = 10
+
+// ValidateRecipients checks a channel's settings.contact_form.recipients
+// object as it is written: every topic lists at most MaxRecipientsPerTopic
+// addresses. An absent object is valid. It returns a readable message, or ""
+// when the object is acceptable.
+func ValidateRecipients(raw []byte) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var m map[string]any
+	if json.Unmarshal(raw, &m) != nil {
+		return "settings.contact_form.recipients must be an object mapping a topic to a list of addresses"
+	}
+	for topic, v := range m {
+		if list, ok := v.([]any); ok && len(list) > MaxRecipientsPerTopic {
+			return fmt.Sprintf("settings.contact_form.recipients.%s may list at most %d addresses", topic, MaxRecipientsPerTopic)
+		}
+	}
+	return ""
+}
+
+// RecipientsFor reads the addresses a topic is mailed to from a channel's
+// settings (sales_channels.settings.contact_form.recipients, a map topic ->
+// list of addresses). raw is that settings.contact_form.recipients object.
+// Only valid addresses survive, lower-cased and without duplicates; the order
+// is kept, and at most MaxRecipientsPerTopic are returned. An unmapped topic
+// gives nil, which means "the usual chain".
+func RecipientsFor(raw []byte, topic string) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var m map[string]any
+	if json.Unmarshal(raw, &m) != nil {
+		return nil
+	}
+	var list []any
+	switch v := m[topic].(type) {
+	case []any:
+		list = v
+	case string:
+		list = []any{v}
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, item := range list {
+		s, _ := item.(string)
+		to, ok := sellerinfo.NormalizeEmail(s)
+		if !ok || seen[to] {
+			continue
+		}
+		seen[to] = true
+		out = append(out, to)
+		if len(out) == MaxRecipientsPerTopic {
+			break
+		}
+	}
+	return out
+}
 
 // RetentionDays is how long a message is kept.
 const RetentionDays = 90
@@ -121,22 +196,30 @@ const (
 
 // message is one stored row plus what the job needs about its organization.
 type message struct {
-	ID             uuid.UUID
-	OrgID          uuid.UUID
-	PageSlug       string
-	SenderName     string
-	SenderEmail    string
-	Body           string
-	EmailSent      bool
-	EmailMailed    bool
-	TelegramSent   bool
-	OrgName        string
-	OrgLocale      string
-	ToTelegram     bool
-	PublicContact  []byte
-	OrgEmail       string
-	OwnerEmail     string
-	ChannelDeleted bool
+	ID              uuid.UUID
+	OrgID           uuid.UUID
+	PageSlug        string
+	SenderName      string
+	SenderEmail     string
+	Body            string
+	EmailSent       bool
+	EmailMailed     bool
+	TelegramSent    bool
+	OrgName         string
+	OrgLocale       string
+	ToTelegram      bool
+	PublicContact   []byte
+	OrgEmail        string
+	OwnerEmail      string
+	ChannelDeleted  bool
+	Topic           string
+	LastName        string
+	Phone           string
+	DoneTo          []string
+	TopicRecipients []byte
+	OrgSenderEmail  string
+	OrgSenderStatus string
+	SiteOrigins     []byte
 }
 
 const loadMessageSQL = `
@@ -144,7 +227,9 @@ SELECT m.id, m.org_id, m.page_slug, m.sender_name, m.sender_email, m.message,
        m.email_sent_at IS NOT NULL, m.email_mailed, m.telegram_sent_at IS NOT NULL,
        o.name, o.default_locale, o.contact_form_to_telegram,
        sc.settings #> '{hosted_page,public_contact}', COALESCE(o.contact_email, ''),
-       COALESCE(` + gen.OwnerRecipientSQL + `, ''), sc.deleted_at IS NOT NULL
+       COALESCE(` + gen.OwnerRecipientSQL + `, ''), sc.deleted_at IS NOT NULL,
+       m.topic, m.last_name, m.phone, m.email_done_to, sc.settings #> '{contact_form,recipients}',
+       COALESCE(o.sender_email, ''), COALESCE(o.sender_verification_status, ''), sc.settings #> '{site,origins}'
 FROM organizer_contact_messages m
 JOIN organizations o ON o.id = m.org_id
 JOIN sales_channels sc ON sc.id = m.channel_id
@@ -166,6 +251,8 @@ func (h *Handler) Handle(ctx context.Context, payload []byte) error {
 		&m.ID, &m.OrgID, &m.PageSlug, &m.SenderName, &m.SenderEmail, &m.Body,
 		&m.EmailSent, &m.EmailMailed, &m.TelegramSent, &m.OrgName, &m.OrgLocale, &m.ToTelegram,
 		&m.PublicContact, &m.OrgEmail, &m.OwnerEmail, &m.ChannelDeleted,
+		&m.Topic, &m.LastName, &m.Phone, &m.DoneTo, &m.TopicRecipients,
+		&m.OrgSenderEmail, &m.OrgSenderStatus, &m.SiteOrigins,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Purged or never committed: nothing to deliver.
@@ -185,35 +272,74 @@ func (h *Handler) Handle(ctx context.Context, payload []byte) error {
 	}
 	var sendErr error
 	if !m.EmailSent {
-		to := ""
+		var targets []string
 		switch {
 		case p.ToOwner:
 			// The owner is looked up through the organization, not the
 			// channel, so a deleted channel does not lose the message.
-			to = recipient(nil, m.OwnerEmail)
+			if to := recipient(nil, m.OwnerEmail); to != "" {
+				targets = []string{to}
+			}
 		case !m.ChannelDeleted:
-			to = recipient(m.PublicContact, m.OrgEmail, m.OwnerEmail)
+			// A topic the channel maps to addresses goes to exactly those
+			// (spec 62 section 10.2); otherwise the usual chain decides.
+			targets = RecipientsFor(m.TopicRecipients, m.Topic)
+			if len(targets) == 0 {
+				if to := recipient(m.PublicContact, m.OrgEmail, m.OwnerEmail); to != "" {
+					targets = []string{to}
+				}
+			}
 		}
+		fullName := FullName(m.SenderName, m.LastName)
 		mailed := false
-		if to == "" {
+		if len(targets) == 0 {
 			// The owner removed the address after the buyer wrote, or the
 			// stored value is not an address: nothing to mail. The Telegram
 			// leg still runs and says so.
 			h.logger.Warn("contactform: no usable address; message not mailed", slog.String("message_id", id.String()))
 		} else {
-			subject, htmlBody, textBody := RenderEmail(m.OrgLocale, m.OrgName, m.PageSlug, m.SenderName, m.SenderEmail, m.Body)
-			if err := h.sender.Send(ctx, emailadapter.Message{
-				To: to, ReplyTo: m.SenderEmail, Subject: subject, HTMLBody: htmlBody, TextBody: textBody,
-			}); err != nil {
-				sendErr = fmt.Errorf("contactform: send message %s: %w", id, err)
+			subject, htmlBody, textBody := RenderEmailTopic(m.OrgLocale, m.OrgName, pageRef(m.PageSlug, m.SiteOrigins), fullName, m.SenderEmail, m.Phone, m.Topic, m.Body)
+			from, fromName := organizerFrom(m.OrgSenderEmail, m.OrgSenderStatus, m.OrgName)
+			done := map[string]bool{}
+			for _, d := range m.DoneTo {
+				done[d] = true
+			}
+			var failed []string
+			for _, to := range targets {
+				if done[to] {
+					continue
+				}
+				if err := h.sender.Send(ctx, emailadapter.Message{
+					To: to, From: from, FromName: fromName, ReplyTo: m.SenderEmail, Subject: subject, HTMLBody: htmlBody, TextBody: textBody,
+				}); err != nil {
+					failed = append(failed, err.Error())
+					continue
+				}
+				// Recorded at once: a retry after a later address failed
+				// must not mail this one again.
+				if _, err := h.pool.Exec(ctx, `UPDATE organizer_contact_messages SET email_done_to = array_append(email_done_to, $2) WHERE id = $1`, id, to); err != nil {
+					return fmt.Errorf("contactform: record mailed address: %w", err)
+				}
+			}
+			if len(failed) > 0 {
+				sendErr = fmt.Errorf("contactform: send message %s: %d of %d addresses failed: %s", id, len(failed), len(targets), failed[0])
 			} else {
 				mailed = true
 			}
 		}
 		if sendErr != nil {
 			leg = EmailRetrying
+			// Visible to the operator: the row keeps the last failure, the log
+			// names the message (ids only), and a job that runs out of retries
+			// reaches the ops watchdog as a dead letter.
+			h.logger.Error("contactform: e-mail leg failed, the worker will retry",
+				slog.String("message_id", id.String()), slog.String("org_id", m.OrgID.String()), slog.String("topic", m.Topic))
+			if _, err := h.pool.Exec(ctx, `UPDATE organizer_contact_messages SET email_last_error = $2 WHERE id = $1`, id,
+				clipError(opsalert.ScrubEmails(sendErr.Error()))); err != nil {
+				h.logger.Warn("contactform: record e-mail failure failed", slog.String("message_id", id.String()))
+			}
 		} else {
-			if _, err := h.pool.Exec(ctx, `UPDATE organizer_contact_messages SET email_sent_at = now(), email_mailed = $2 WHERE id = $1`, id, mailed); err != nil {
+			if _, err := h.pool.Exec(ctx, `UPDATE organizer_contact_messages SET email_sent_at = now(), email_mailed = $2, email_last_error = '' WHERE id = $1`, id, mailed); err != nil {
 				return fmt.Errorf("contactform: mark e-mail sent: %w", err)
 			}
 			m.EmailMailed = mailed
@@ -227,7 +353,7 @@ func (h *Handler) Handle(ctx context.Context, payload []byte) error {
 	if !m.TelegramSent {
 		posted := false
 		if m.ToTelegram && h.announcer != nil {
-			text := FormatTelegram(m.OrgName, m.PageSlug, m.SenderName, m.SenderEmail, m.Body, leg)
+			text := FormatTelegram(m.OrgName, pageRef(m.PageSlug, m.SiteOrigins), FullName(m.SenderName, m.LastName), m.SenderEmail, m.Body, leg)
 			chats, delivered, err := h.announcer.AnnounceToOrg(ctx, m.OrgID.String(), text)
 			if err != nil {
 				return errors.Join(sendErr, fmt.Errorf("contactform: post message %s to the sales chats: %w", id, err))
@@ -392,15 +518,44 @@ func baseLang(locale string) string {
 	return l
 }
 
+// FullName joins a first and a last name.
+func FullName(first, last string) string {
+	return strings.Join(strings.Fields(first+" "+last), " ")
+}
+
+// clipError keeps an error text within the column (300 characters).
+func clipError(s string) string {
+	if r := []rune(s); len(r) > 200 {
+		return string(r[:200])
+	}
+	return s
+}
+
 // RenderEmail builds the organizer's letter in the organization's language.
 // Every buyer-typed value is HTML-escaped in the HTML body.
 func RenderEmail(locale, orgName, pageSlug, senderName, senderEmail, body string) (subject, htmlBody, textBody string) {
+	return RenderEmailTopic(locale, orgName, pageSlug, senderName, senderEmail, "", "", body)
+}
+
+// RenderEmailTopic is RenderEmail for the site form: the sender's phone and
+// the topic ride along in the sender line and the page line (symbols, not
+// words, so the letter needs no new catalog keys). An empty message prints a
+// dash.
+func RenderEmailTopic(locale, orgName, pageSlug, senderName, senderEmail, phone, topic, body string) (subject, htmlBody, textBody string) {
 	l := baseLang(locale)
 	loc := localizer(l)
 	name := strings.Join(strings.Fields(senderName), " ")
 	subject = say(loc, "contact.email.subject", map[string]string{"Name": name})
 	intro, from, page := say(loc, "contact.email.intro", nil), say(loc, "contact.email.from", nil), say(loc, "contact.email.page", nil)
 	reply, footer := say(loc, "contact.email.reply", nil), say(loc, "contact.email.footer", nil)
+	phone = strings.Join(strings.Fields(phone), " ")
+	pageTag := ""
+	if topic != "" {
+		pageTag = " \u00b7 " + topic
+	}
+	if strings.TrimSpace(body) == "" {
+		body = "\u2014"
+	}
 	dir := "ltr"
 	if l == "he" {
 		dir = "rtl"
@@ -409,14 +564,15 @@ func RenderEmail(locale, orgName, pageSlug, senderName, senderEmail, body string
 	htmlBody = `<!doctype html><html dir="` + dir + `"><body style="font-family:Arial,sans-serif;color:#222;line-height:1.5">` +
 		`<p>` + esc(intro) + `</p>` +
 		`<p><b>` + esc(from) + `:</b> ` + esc(name) + ` &lt;<span dir="ltr">` + esc(senderEmail) + `</span>&gt;<br>` +
-		`<b>` + esc(page) + `:</b> ` + esc(orgName) + ` (/` + esc(pageSlug) + `)</p>` +
+		phoneHTML(phone, esc) +
+		`<b>` + esc(page) + `:</b> ` + esc(orgName) + ` ` + esc(pageParen(pageSlug)) + esc(pageTag) + `</p>` +
 		`<div style="white-space:pre-wrap;border-left:3px solid #4f46e5;padding:8px 12px;background:#f6f6fb">` + esc(body) + `</div>` +
 		`<p>` + esc(reply) + `</p>` +
 		`<p style="font-size:12px;color:#888">` + esc(footer) + `</p></body></html>`
 	textBody = strings.Join([]string{
 		intro, "",
-		from + ": " + name + " <" + senderEmail + ">",
-		page + ": " + orgName + " (/" + pageSlug + ")", "",
+		from + ": " + name + " <" + senderEmail + ">" + phoneText(phone),
+		strings.TrimSpace(page+": "+orgName+" "+pageParen(pageSlug)) + pageTag, "",
 		body, "",
 		reply, "",
 		footer,
@@ -431,7 +587,7 @@ func RenderEmail(locale, orgName, pageSlug, senderName, senderEmail, body string
 func FormatTelegram(orgName, pageSlug, senderName, senderEmail, body string, leg EmailLeg) string {
 	esc := opsalert.EscapeHTML
 	head := "✉️ <b>Message from a buyer</b>\n" +
-		"Sales page: " + esc(orgName) + " (/" + esc(pageSlug) + ")\n" +
+		strings.TrimSpace("Sales page: "+esc(orgName)+" "+esc(pageParen(pageSlug))) + "\n" +
 		"From: " + esc(strings.Join(strings.Fields(senderName), " ")) + " &lt;" + esc(senderEmail) + "&gt;\n\n"
 	tail := "\n\nThe same message went to your e-mail. Reply to the buyer from there."
 	switch leg {
@@ -483,4 +639,63 @@ func clipEscaped(s string, max int) string {
 		b.WriteString("…")
 	}
 	return b.String()
+}
+
+func phoneHTML(phone string, esc func(string) string) string {
+	if phone == "" {
+		return ""
+	}
+	return `\u260e <span dir="ltr">` + esc(phone) + `</span><br>`
+}
+
+func phoneText(phone string) string {
+	if phone == "" {
+		return ""
+	}
+	return "\n\u260e " + phone
+}
+
+// siteFormMarker is the page_slug the static-site form stores (hsite/contact.go):
+// not a page, only a marker that the message came from the channel's site.
+const siteFormMarker = "feed-site"
+
+// pageRef turns a stored page_slug into the page reference the letters print:
+// a slug stays a slug, the site marker becomes the host of the site's first
+// origin in parentheses ("" when the channel has none). RenderEmailTopic and
+// FormatTelegram take this value in their pageSlug argument.
+func pageRef(pageSlug string, originsJSON []byte) string {
+	if pageSlug != siteFormMarker {
+		return pageSlug
+	}
+	var origins []string
+	if err := json.Unmarshal(originsJSON, &origins); err != nil {
+		return ""
+	}
+	for _, o := range origins {
+		if u, err := url.Parse(strings.TrimSpace(o)); err == nil && u.Host != "" {
+			return "(" + u.Host + ")"
+		}
+	}
+	return ""
+}
+
+// pageParen is the parenthesised page reference: "(/slug)", "(host)" or "".
+func pageParen(ref string) string {
+	switch {
+	case ref == "":
+		return ""
+	case strings.HasPrefix(ref, "("):
+		return ref
+	}
+	return "(/" + ref + ")"
+}
+
+// organizerFrom is the From of the organizer-facing letter: the organization's
+// own sender only when it is verified, like the ticket letters. An empty From
+// leaves the platform default to the e-mail adapter.
+func organizerFrom(senderEmail, status, orgName string) (from, fromName string) {
+	if status == "verified" && senderEmail != "" {
+		from = senderEmail
+	}
+	return from, orgName
 }

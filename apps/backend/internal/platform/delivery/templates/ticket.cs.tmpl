@@ -1,4 +1,4 @@
-{{define "subject"}}{{if gt (len .Tickets) 1}}Vaše vstupenky — {{.EventName}}{{else}}Vaše vstupenka — {{.EventName}}{{end}}{{end}}
+{{define "subject"}}{{with .Reissue}}Vaše nové vstupenky — {{$.EventName}}{{else}}{{if gt (len .Tickets) 1}}Vaše vstupenky — {{.EventName}}{{else}}Vaše vstupenka — {{.EventName}}{{end}}{{end}}{{end}}
 
 {{define "html"}}<!DOCTYPE html>
 <html lang="cs" dir="ltr">
@@ -9,10 +9,10 @@
   {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
   <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
   <tr><td style="padding:28px 32px 8px 32px;color:#22333D;font-size:16px;">Dobrý den{{with .HolderName}}, {{.}}{{end}}!</td></tr>
-  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">{{if gt (len .Tickets) 1}}Děkujeme za nákup. Vaše vstupenky na „{{.EventName}}“ najdete v příloze tohoto e-mailu (soubory PDF).{{else}}Děkujeme za nákup. Vaši vstupenku na „{{.EventName}}“ najdete v příloze tohoto e-mailu (PDF).{{end}}</td></tr>
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">{{with .Reissue}}{{if .Typo}}Při nákupu byl v e-mailové adrese překlep, a proto první e-mail se vstupenkami odešel na jinou adresu. Obrátili jste se na pořadatele a potvrdili své údaje. Vystavili jsme vám nové vstupenky, najdete je v příloze.<br><br>Vstupenky z prvního e-mailu už neplatí. Vstup bude povolen jen s novými vstupenkami.{{else}}Na vaši žádost jsme vystavili nové vstupenky místo původních. Najdete je v příloze.<br><br>Původní vstupenky už neplatí. Vstup bude povolen jen s novými vstupenkami.{{end}}<br><br>Místa a platba se nezměnily.{{with .OrderNumber}} Číslo objednávky: {{.}}.{{end}}{{else}}{{if gt (len .Tickets) 1}}Děkujeme za nákup. Vaše vstupenky na „{{.EventName}}“ najdete v příloze tohoto e-mailu (soubory PDF).{{else}}Děkujeme za nákup. Vaši vstupenku na „{{.EventName}}“ najdete v příloze tohoto e-mailu (PDF).{{end}}{{end}}</td></tr>
   <tr><td style="padding:8px 32px;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-left:4px solid {{.Accent}};background:#f8f9fa;"><tr><td style="padding:12px 16px;color:#22333D;font-size:14px;line-height:1.6;">
-      <strong>{{.EventName}}</strong>{{with .SessionStart}}<br>{{.}}{{end}}{{with .DoorsOpen}}<br>Vstup od {{.}}{{end}}{{with .VenueName}}<br>{{.}}{{end}}
+      <strong>{{.EventName}}</strong>{{with .SessionStart}}<br>{{.}}{{end}}{{with .DoorsOpen}}<br>Vstup od {{.}}{{end}}{{with .VenueName}}<br>{{.}}{{end}}{{with .Directions.GoogleURL}}<br>Jak se tam dostat: <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a>{{end}}
     </td></tr></table>
   </td></tr>
   <tr><td style="padding:8px 32px;">
@@ -39,8 +39,7 @@
   </td></tr>{{end}}
   {{if .WithdrawalNotice}}<tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Na vstupenky na akci konanou v určitém termínu se nevztahuje právo na odstoupení od smlouvy. Objednávka se stává závaznou okamžikem zaplacení.</td></tr>{{end}}
   <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Otevřete soubor v telefonu a u vstupu ukažte čárový kód — tisk není nutný.</td></tr>
-  {{if .Branding.ContactEmail}}<tr><td style="padding:8px 32px 16px 32px;color:#46555f;font-size:14px;line-height:1.6;">V případě dotazů jednoduše odpovězte na tento e-mail.</td></tr>{{end}}
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
     Doručeno na: {{.RecipientEmail}}<br><br>
 {{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
@@ -52,7 +51,7 @@
     {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
     {{with .Branding.ContactEmail}}<br>Kontakt: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Kontakt: <a href="{{.}}" style="color:#666">Napsat pořadateli</a>{{end}}{{end}}
   </p>
-  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}Arena Platform — automatické doručení{{end}}</p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Ticket processing by arenasoldout.com</a>{{end}}</p>
   <p style="font-size:11px;color:#999;line-height:1.5">Pokud kliknete na „Odhlásit odběr“, přestanou vám chodit e-maily s vašimi vstupenkami i důležité e-maily o vaší objednávce. Reklamní e-maily bez vašeho souhlasu neposíláme.</p>
   </td></tr>
 </table>
@@ -64,12 +63,19 @@
 
 Dobrý den{{with .HolderName}}, {{.}}{{end}}!
 
-{{if gt (len .Tickets) 1}}Děkujeme za nákup. Vaše vstupenky na „{{.EventName}}“ najdete v příloze tohoto e-mailu (soubory PDF).{{else}}Děkujeme za nákup. Vaši vstupenku na „{{.EventName}}“ najdete v příloze tohoto e-mailu (PDF).{{end}}
+{{with .Reissue}}{{if .Typo}}Při nákupu byl v e-mailové adrese překlep, a proto první e-mail se vstupenkami odešel na jinou adresu. Obrátili jste se na pořadatele a potvrdili své údaje. Vystavili jsme vám nové vstupenky, najdete je v příloze.
+
+Vstupenky z prvního e-mailu už neplatí. Vstup bude povolen jen s novými vstupenkami.{{else}}Na vaši žádost jsme vystavili nové vstupenky místo původních. Najdete je v příloze.
+
+Původní vstupenky už neplatí. Vstup bude povolen jen s novými vstupenkami.{{end}}
+
+Místa a platba se nezměnily.{{with .OrderNumber}} Číslo objednávky: {{.}}.{{end}}{{else}}{{if gt (len .Tickets) 1}}Děkujeme za nákup. Vaše vstupenky na „{{.EventName}}“ najdete v příloze tohoto e-mailu (soubory PDF).{{else}}Děkujeme za nákup. Vaši vstupenku na „{{.EventName}}“ najdete v příloze tohoto e-mailu (PDF).{{end}}{{end}}
 
 {{.EventName}}
 {{with .SessionStart}}{{.}}
 {{end}}{{with .DoorsOpen}}Vstup od {{.}}
 {{end}}{{with .VenueName}}{{.}}
+{{end}}{{with .Directions.GoogleURL}}Jak se tam dostat:: Google Maps {{.}} · Waze {{$.Directions.WazeURL}}
 {{end}}
 {{if gt (len .Tickets) 1}}Vstupenky ({{len .Tickets}}){{else}}Vstupenka{{end}}:
 {{range .Tickets}}- č. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .Price}} · {{.}}{{end}}{{with .DownloadURL}}
@@ -90,9 +96,7 @@ Platba:
 {{end}}{{if .WithdrawalNotice}}Na vstupenky na akci konanou v určitém termínu se nevztahuje právo na odstoupení od smlouvy. Objednávka se stává závaznou okamžikem zaplacení.
 
 {{end}}Otevřete soubor v telefonu a u vstupu ukažte čárový kód — tisk není nutný.
-{{if .Branding.ContactEmail}}V případě dotazů jednoduše odpovězte na tento e-mail.
-{{end}}
-Doručeno na: {{.RecipientEmail}}
+{{template "contact_text" .}}Doručeno na: {{.RecipientEmail}}
 
 --
 {{.Branding.SellerLabel}} {{.Branding.LegalName}}
@@ -106,7 +110,7 @@ Doručeno na: {{.RecipientEmail}}
 {{end}}{{with .Branding.ContactEmail}}Kontakt: {{.}}
 {{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Kontakt: {{.}}
 {{end}}{{end}}
-{{if not .WhiteLabel}}Arena Platform — automatické doručení{{end}}
+{{if not .WhiteLabel}}Ticket processing by arenasoldout.com — https://arenasoldout.com{{end}}
 
 Pokud kliknete na „Odhlásit odběr“, přestanou vám chodit e-maily s vašimi vstupenkami i důležité e-maily o vaší objednávce. Reklamní e-maily bez vašeho souhlasu neposíláme.
 {{end}}

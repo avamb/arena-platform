@@ -68,6 +68,12 @@ export interface VenueSection {
   /** The time zone of the chosen venue, read from the list. */
   existingTimezone: string;
   existingCapacity: number | null;
+  /**
+   * The country of the chosen venue (ISO 3166-1 alpha-2), "" when unknown. It decides the currency, and
+   * a shared verified venue is not in the organization's list, so it is kept here. A stored draft without
+   * it reads as "", so no version bump.
+   */
+  existingCountry: string;
   /** A new venue (mode "new"). Kept when the person switches mode and back. */
   newName: string;
   /** ISO 3166-1 alpha-2, upper case; "" = not chosen. */
@@ -77,6 +83,8 @@ export interface VenueSection {
   timezone: string;
   /** Typed as is; parsed by `parseCapacity`. */
   capacity: string;
+  /** The street address of the new venue; optional (F-004). Read leniently: an older draft has none. */
+  address: string;
 }
 
 /**
@@ -145,11 +153,13 @@ export function emptyVenue(): VenueSection {
     existingName: "",
     existingTimezone: "",
     existingCapacity: null,
+    existingCountry: "",
     newName: "",
     countryIso2: "",
     cityName: "",
     timezone: "",
     capacity: "",
+    address: "",
   };
 }
 
@@ -189,7 +199,9 @@ export type DraftAction =
   | { type: "promoter"; id: string; name: string }
   | { type: "venueMode"; mode: VenueMode }
   | { type: "venueExisting"; venue: VenueChoice | null }
-  | { type: "venueNew"; field: "newName" | "cityName" | "capacity"; value: string }
+  | { type: "venueNew"; field: "newName" | "cityName" | "capacity" | "address"; value: string }
+  /** F-004: the save created the new venue; from now on the draft names it (a retry never makes a second one). */
+  | { type: "venueCreated"; venue: VenueChoice }
   | { type: "country"; iso2: string }
   | { type: "timezone"; value: string }
   | { type: "currency"; value: string; source: "auto" | "typed" }
@@ -222,7 +234,7 @@ function apply(d: WizardDraft, a: DraftAction): WizardDraft {
       if (a.venue === null) {
         return {
           ...d,
-          venue: { ...d.venue, existingId: "", existingName: "", existingTimezone: "", existingCapacity: null },
+          venue: { ...d.venue, existingId: "", existingName: "", existingTimezone: "", existingCapacity: null, existingCountry: "" },
           seating: emptySeating(),
         };
       }
@@ -237,11 +249,25 @@ function apply(d: WizardDraft, a: DraftAction): WizardDraft {
           existingName: a.venue.name,
           existingTimezone: a.venue.timezone ?? "",
           existingCapacity: a.venue.capacity,
+          existingCountry: a.venue.country ?? "",
         },
       };
     }
     case "venueNew":
       return { ...d, venue: { ...d.venue, [a.field]: a.value } };
+    case "venueCreated":
+      return {
+        ...d,
+        venue: {
+          ...d.venue,
+          mode: "existing",
+          existingId: a.venue.id,
+          existingName: a.venue.name,
+          existingTimezone: a.venue.timezone ?? "",
+          existingCapacity: a.venue.capacity,
+          existingCountry: a.venue.country ?? "",
+        },
+      };
     case "country": {
       const iso2 = a.iso2.trim().toUpperCase();
       if (iso2 === d.venue.countryIso2) return d;
@@ -296,6 +322,7 @@ export function isBlank(d: WizardDraft): boolean {
     v.countryIso2 === "" &&
     v.cityName === "" &&
     v.capacity === "" &&
+    v.address === "" &&
     d.dates.length === 1 &&
     isBlankDate(d.dates[0])
   );
@@ -383,6 +410,23 @@ export function recordPosterProgress(
   saveDraft(orgId, { ...stored, poster: { ...stored.poster, ...patch } }, storage);
 }
 
+/**
+ * F-004: records the venue the save created in the STORED draft `draftId`,
+ * like the poster progress: a save that finishes after the screen is gone
+ * must not create the venue a second time.
+ */
+export function recordVenueCreated(
+  orgId: string,
+  draftId: string,
+  venue: VenueChoice,
+  storage: Pick<Storage, "getItem" | "setItem" | "removeItem"> | null = safeStorage(),
+): void {
+  if (storage === null) return;
+  const stored = loadDraft(orgId, storage);
+  if (stored === null || stored.id !== draftId) return;
+  saveDraft(orgId, reduceDraft(stored, { type: "venueCreated", venue }), storage);
+}
+
 export function clearDraft(orgId: string, storage: Pick<Storage, "removeItem"> | null = safeStorage()): void {
   if (storage === null) return;
   try {
@@ -455,6 +499,8 @@ export function parseDraft(raw: unknown): WizardDraft | null {
   const timezone = str(v.timezone);
   const capacity = str(v.capacity);
   const existingCapacity = v.existingCapacity;
+  // Read leniently: a draft stored before this field has none.
+  const existingCountry = typeof v.existingCountry === "string" ? v.existingCountry : "";
   if (
     existingId === null ||
     existingName === null ||
@@ -500,11 +546,13 @@ export function parseDraft(raw: unknown): WizardDraft | null {
       existingName,
       existingTimezone,
       existingCapacity,
+      existingCountry,
       newName,
       countryIso2,
       cityName,
       timezone,
       capacity,
+      address: typeof v.address === "string" ? v.address : "",
     },
     dates,
     seating: parseSeating(o.seating),

@@ -53,6 +53,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/pdf"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/directions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailstatus"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
@@ -121,7 +122,7 @@ type Payload struct {
 	// keeps control.
 	//
 	// Historical note: no production enqueuer has ever set any of these,
-	// which is why every live ticket PDF printed "Arena Event" with blank
+	// which is why every live ticket PDF printed "ArenaSoldOut.com Event" with blank
 	// Venue / Category / Holder rows and a UTC session time until the
 	// render-time resolution landed (2026-09-20).
 	EventName    string    `json:"event_name,omitempty"`
@@ -131,10 +132,15 @@ type Payload struct {
 	// migration 0128). Resolved at render time like the other hints; nil
 	// prints no doors line.
 	DoorsOpenAt *time.Time `json:"doors_open_at,omitempty"`
-	VenueName   string     `json:"venue_name,omitempty"`
-	VenueCity   string     `json:"venue_city,omitempty"`
-	TierName    string     `json:"tier_name,omitempty"`
-	HolderName  string     `json:"holder_name,omitempty"`
+	// VenueLat / VenueLng are the venue's coordinates (venues.geo_lat/geo_lng).
+	// Presentation hints like the rest: resolved at render time, never set by
+	// an enqueuer. They count only as a pair (see internal/platform/directions).
+	VenueLat   *float64 `json:"venue_lat,omitempty"`
+	VenueLng   *float64 `json:"venue_lng,omitempty"`
+	VenueName  string   `json:"venue_name,omitempty"`
+	VenueCity  string   `json:"venue_city,omitempty"`
+	TierName   string   `json:"tier_name,omitempty"`
+	HolderName string   `json:"holder_name,omitempty"`
 	// OrderNumber is the buyer-facing order reference printed in the PDF
 	// footer ("Order 9096") — orders.system_id, the same integer the Bil24
 	// wire calls orderId. Resolved at render time; empty drops the line.
@@ -217,6 +223,12 @@ type Payload struct {
 	// MediaResolver. When empty the platform fallback logo URL is used
 	// and the PDF header simply omits the logo image slot.
 	OrgLogoMediaID string `json:"org_logo_media_id,omitempty"`
+	// OrgAccentColor is the organization's branding.primary (migration
+	// 0203, spec 62 P-23), the accent of the PDF and the letter. A hint like
+	// the presentation fields: resolved at render time (resolvePresentation)
+	// when empty; only a "#rrggbb" value is used, anything else keeps the
+	// platform default.
+	OrgAccentColor string `json:"org_accent_color,omitempty"`
 	OrgName        string `json:"org_name,omitempty"`
 	// PromoterName is the event's promoter when it is not the selling
 	// organization (migration 0113). Printed as the PDF's "Organizer"
@@ -268,8 +280,12 @@ type HandlerOptions struct {
 	// to StatusSent without a real SMTP acceptance.
 	Sender email.Sender
 	// FromAddress is the envelope and header From address for outgoing emails.
-	// Example: "Arena Platform <tickets@arena.example.com>"
+	// Example: "ArenaSoldOut.com <tickets@arena.example.com>"
 	FromAddress string
+	// TicketFromAddress is the dedicated bare address ticket and invitation
+	// letters go out from (TICKET_EMAIL_FROM). Empty keeps the SMTP default.
+	// An organization's verified own sender still wins over it.
+	TicketFromAddress string
 	// Templates renders the localized email bodies (feature #289, T-2).
 	// When nil, NewHandler lazy-constructs a default Renderer from the
 	// embedded templates so callers that haven't migrated still work.
@@ -371,6 +387,12 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		// The organizer contact follows the owner rule at render time
 		// (ContactRoute): before the letter's other tickets copy the payload.
 		applyContactRoute(ctx, queriesOrNil(opts.TicketQueries), formLink{opts.TicketsBaseURL, opts.ContactFormEnabled}, ticketID, &p, logger)
+		// The organizer's own address (promoter, else organization) wins over
+		// the route: every buyer letter tells the buyer not to reply and
+		// where to write, and that address is the Reply-To.
+		if opts.TicketQueries != nil {
+			applyBuyerContact(ctx, opts.TicketQueries.DB(), ticketID, &p, logger)
+		}
 
 		// ── 2. Guard: honest sender required (PR-03) ──────────────────────────
 		// If Sender is nil or is a dev-only sender (e.g. LogSender), we cannot
@@ -597,6 +619,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 
 		lines := ticketLinesFor(kind, members, p.Locale, payment == nil)
 		attachDownloadLinks(ctx, opts, logger, kind, members, lines)
+		reissue := reissueDataFor(ctx, opts, logger, kind, ticketID)
 
 		var htmlBody, textBody, subject string
 		if renderer != nil {
@@ -604,21 +627,24 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				TicketID:       ticketNumber,
 				RecipientEmail: recipientEmail,
 				HolderName:     p.HolderName,
-				EventName:      defaultStr(p.EventName, "Arena Event"),
+				EventName:      defaultStr(p.EventName, "ArenaSoldOut.com Event"),
 				SessionStart:   formatSessionForEmail(p.SessionStart, p.SessionTZ),
 				DoorsOpen:      formatClockForEmail(p.DoorsOpenAt, p.SessionTZ),
 				VenueName:      joinNonEmpty(", ", p.VenueName, p.VenueCity),
+				Directions:     directions.Build(p.VenueLat, p.VenueLng, p.VenueAddress, p.VenueCity),
 				TierName:       p.TierName,
 				SeatSector:     p.SeatSector,
 				SeatRow:        p.SeatRow,
 				SeatNumber:     p.SeatNumber,
 				Branding:       branding,
+				Contact:        templates.BuyerContact{Email: p.OrgContactEmail, OrderNumber: p.OrderNumber},
 				Tickets:        lines,
 				Payment:        payment,
 
 				WithdrawalNotice: withdrawalNotice,
 				WhiteLabel:       whiteLabel,
 				EventNote:        ticketEventNote(kind, p.EventEmailNote, p.EventEmailNoteFormat),
+				Reissue:          reissue,
 			})
 			if rErr != nil {
 				return fail(fmt.Errorf("delivery: render templates for ticket %s: %w",
@@ -630,16 +656,17 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			case TemplateInvitation:
 				htmlBody = renderInvitationEmailHTML(ticketNumber, recipientEmail)
 				textBody = renderInvitationEmailText(ticketNumber, recipientEmail)
-				subject = "You're invited — Arena Platform"
+				subject = "You're invited — ArenaSoldOut.com"
 			default:
 				htmlBody = renderTicketEmailHTML(ticketNumber, recipientEmail)
 				textBody = renderTicketEmailText(ticketNumber, recipientEmail)
-				subject = "Your ticket — Arena Platform"
+				subject = "Your ticket — ArenaSoldOut.com"
 			}
 		}
 
 		msg := ticketEmailMessage(p, recipientEmail, subject, htmlBody, textBody)
-		applyWhiteLabelSender(&msg, whiteLabel, brandSenderName(p))
+		applyTicketFromAddress(&msg, opts.TicketFromAddress)
+		applyBrandSender(&msg, brandSenderName(p))
 		attachmentBytes := 0
 		for _, m := range members {
 			if len(m.pdf) == 0 {
@@ -704,6 +731,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			if opts.DeliveryJobQueries != nil {
 				releaseLetterMembers(context.WithoutCancel(ctx), opts.DeliveryJobQueries, members, errText, logger)
 			}
+			afterReissueLetter(context.WithoutCancel(ctx), opts, logger, members, recipientEmail, false)
 			logger.Warn("delivery: SMTP send failed; worker will retry",
 				slog.String("ticket_id", ticketID.String()),
 				slog.String("to", recipientEmail),
@@ -734,6 +762,11 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				}
 			}
 		}
+
+		// ── 12b. A letter with replacement tickets moves the order ───────────
+		// The relay accepted it, so the order's address and customer move to
+		// the new address now (spec 63, decision R-2).
+		afterReissueLetter(context.WithoutCancel(ctx), opts, logger, members, recipientEmail, true)
 
 		// ── 13. Audit log ─────────────────────────────────────────────────────
 		// SMTP credentials, barcodes, QR payloads, and signed URLs are not
@@ -775,6 +808,15 @@ func ticketEmailMessage(p Payload, recipientEmail, subject, htmlBody, textBody s
 	}
 }
 
+// applyTicketFromAddress sends a ticket or invitation letter from the
+// dedicated ticket address when one is configured. An organization's verified
+// own sender (already in msg.From) wins; other letters never call this.
+func applyTicketFromAddress(msg *email.Message, ticketFrom string) {
+	if msg.From == "" {
+		msg.From = strings.TrimSpace(ticketFrom)
+	}
+}
+
 // isTerminalStatus reports whether status is a final, non-retryable state.
 func isTerminalStatus(status string) bool {
 	switch status {
@@ -807,7 +849,7 @@ func renderTicketEmailHTML(ticketNumber, recipientEmail string) string {
   <p style="font-size:12px;color:#666">Ticket ID: %s</p>
   <p style="font-size:12px;color:#666">Delivered to: %s</p>
   <hr>
-  <p style="font-size:11px;color:#999">Arena Platform — automated delivery</p>
+  <p style="font-size:11px;color:#999">ArenaSoldOut.com — automated delivery</p>
 </body>
 </html>`, ticketNumber, recipientEmail)
 }
@@ -819,7 +861,7 @@ func renderTicketEmailText(ticketNumber, recipientEmail string) string {
 			"Your ticket has been issued. Please find the PDF attached to this email.\n\n"+
 			"Ticket ID: %s\n"+
 			"Delivered to: %s\n\n"+
-			"Arena Platform — automated delivery\n",
+			"ArenaSoldOut.com — automated delivery\n",
 		ticketNumber, recipientEmail,
 	)
 }
@@ -838,7 +880,7 @@ func renderInvitationEmailHTML(ticketNumber, recipientEmail string) string {
   <p style="font-size:12px;color:#666">Ticket ID: %s</p>
   <p style="font-size:12px;color:#666">Delivered to: %s</p>
   <hr>
-  <p style="font-size:11px;color:#999">Arena Platform — automated invitation delivery</p>
+  <p style="font-size:11px;color:#999">ArenaSoldOut.com — automated invitation delivery</p>
 </body>
 </html>`, ticketNumber, recipientEmail)
 }
@@ -854,7 +896,7 @@ func renderInvitationEmailText(ticketNumber, recipientEmail string) string {
 			"no payment is required.\n\n"+
 			"Ticket ID: %s\n"+
 			"Delivered to: %s\n\n"+
-			"Arena Platform — automated invitation delivery\n",
+			"ArenaSoldOut.com — automated invitation delivery\n",
 		ticketNumber, recipientEmail,
 	)
 }
@@ -891,15 +933,18 @@ func buildPDFTicket(ticketID uuid.UUID, p Payload, branding templates.Branding, 
 	// now carries the ticket's EAN-13 digits — the same value as the printed
 	// barcode, and the only value entrance control can resolve. It used to
 	// encode the ticket UUID, which nothing could scan into anything.
+	dir := directions.Build(p.VenueLat, p.VenueLng, p.VenueAddress, p.VenueCity)
 	t := pdf.Ticket{
 		TicketID:               ticketID.String(),
 		TicketNumber:           p.TicketNumber,
 		OrderNumber:            p.OrderNumber,
 		Locale:                 p.Locale,
-		EventName:              defaultStr(p.EventName, "Arena Event"),
+		EventName:              defaultStr(p.EventName, "ArenaSoldOut.com Event"),
 		SessionStart:           defaultTime(p.SessionStart),
 		SessionTZ:              p.SessionTZ,
 		DoorsOpenAt:            p.DoorsOpenAt,
+		DirectionsGoogleURL:    dir.GoogleURL,
+		DirectionsWazeURL:      dir.WazeURL,
 		VenueName:              p.VenueName,
 		VenueAddress:           p.VenueAddress,
 		VenueCity:              p.VenueCity,
@@ -915,6 +960,7 @@ func buildPDFTicket(ticketID uuid.UUID, p Payload, branding templates.Branding, 
 		OrgLogo:                logoBytes,
 		PosterImage:            posterBytes,
 		OrgName:                branding.OrgName,
+		AccentColor:            branding.Accent,
 		OrganizerName:          p.PromoterName,
 		OrgWebsiteURL:          branding.WebsiteURL,
 		LegalName:              branding.LegalName,
@@ -983,6 +1029,7 @@ func resolveBranding(ctx context.Context, m MediaResolver, p Payload, logger *sl
 		TaxIDScheme:            strings.TrimSpace(p.OrgTaxIDScheme),
 	}
 	b.LogoAlt = b.OrgName
+	b.Accent = hexAccent(p.OrgAccentColor)
 
 	logoID := strings.TrimSpace(p.OrgLogoMediaID)
 	if logoID == "" || m == nil {
@@ -1092,7 +1139,7 @@ func joinNonEmpty(sep string, parts ...string) string {
 // on-the-fly without a DB write.
 func renderMinimalPDF(ticketNumber string, issuedAt time.Time) []byte {
 	cs := fmt.Sprintf(
-		"BT\n/F1 14 Tf\n72 720 Td\n(Arena Platform Ticket) Tj\n"+
+		"BT\n/F1 14 Tf\n72 720 Td\n(ArenaSoldOut.com Ticket) Tj\n"+
 			"/F1 10 Tf\n0 -30 Td\n(Ticket ID: %s) Tj\n"+
 			"0 -20 Td\n(Issued: %s) Tj\nET",
 		ticketNumber,

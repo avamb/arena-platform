@@ -29,7 +29,7 @@
   <p style="font-size:12px;color:#666">מזהה כרטיס: {{.TicketID}}</p>
   <p style="font-size:12px;color:#666">נשלח אל: {{.RecipientEmail}}</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;text-align:right;">
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;text-align:right;">
 {{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
     {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
@@ -40,7 +40,7 @@
     {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
     {{with .Branding.ContactEmail}}<br>יצירת קשר: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>יצירת קשר: <a href="{{.}}" style="color:#666">כתיבה למארגן</a>{{end}}{{end}}
   </p>
-  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}Arena Platform — שליחה אוטומטית{{end}}</p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Ticket processing by arenasoldout.com</a>{{end}}</p>
   <p style="font-size:11px;color:#999;line-height:1.5">אם תלחצו על ״ביטול הרשמה״, לא תקבלו יותר את המיילים עם הכרטיסים שלכם ואת המיילים החשובים על ההזמנה שלכם. אנחנו לא שולחים דיוורים שיווקיים ללא הסכמתכם.</p>
   </td></tr>
 </table>
@@ -70,7 +70,7 @@
 {{if or .Change.ContactEmail .Change.ContactFormURL}}אנא כתבו למארגן{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}בכתובת {{.Change.ContactEmail}}{{else if .Change.ContactFormURL}}דרך הטופס בדף המכירה: {{.Change.ContactFormURL}}{{end}}{{with .Change.ContactPhone}}, טלפון {{.}}{{end}}, כדי לברר מהם הצעדים הבאים.
 
 {{end}}מזהה כרטיס: {{.TicketID}}
-נשלח אל: {{.RecipientEmail}}
+{{template "contact_text" .}}נשלח אל: {{.RecipientEmail}}
 
 --
 {{.Branding.SellerLabel}} {{.Branding.LegalName}}
@@ -84,7 +84,7 @@
 {{end}}{{with .Branding.ContactEmail}}יצירת קשר: {{.}}
 {{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}יצירת קשר: {{.}}
 {{end}}{{end}}
-{{if not .WhiteLabel}}Arena Platform — שליחה אוטומטית{{end}}
+{{if not .WhiteLabel}}Ticket processing by arenasoldout.com — https://arenasoldout.com{{end}}
 
 אם תלחצו על ״ביטול הרשמה״, לא תקבלו יותר את המיילים עם הכרטיסים שלכם ואת המיילים החשובים על ההזמנה שלכם. אנחנו לא שולחים דיוורים שיווקיים ללא הסכמתכם.
 {{end}}

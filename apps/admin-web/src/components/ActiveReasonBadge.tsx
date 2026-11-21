@@ -34,7 +34,7 @@ export function ActiveReasonBadge() {
       <span style={labelStyle}>Audit reason</span>
       <span
         style={hasReason ? valueStyle : valueEmptyStyle}
-        title={activeReason ?? "No audit reason captured this session."}
+        title={activeReason ?? "No audit reason is set for this session."}
         data-testid="active-reason-value"
       >
         {hasReason ? truncate(activeReason ?? "", MAX_INLINE_LEN) : "not set"}
@@ -52,7 +52,7 @@ export function ActiveReasonBadge() {
           type="button"
           onClick={clearReason}
           style={clearBtnStyle}
-          title="Discard the active reason; the next cross-tenant request will re-prompt."
+          title="Delete the active reason. The next cross-organization request asks for a reason again."
           data-testid="active-reason-clear"
         >
           Clear

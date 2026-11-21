@@ -13,7 +13,7 @@ async function signIn(page: Page) {
   await page.getByLabel("E-mail").fill("manager@example.test");
   await page.getByLabel("Password").fill("right-password");
   await page.getByTestId("login-submit").click();
-  await expect(page.getByRole("heading", { name: "Choose an organization" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Select an organization" })).toBeVisible();
 }
 
 const url = `/o/${ORG_A}/events/${EVENT}/sessions/${SESSION}/invitations`;
@@ -37,7 +37,7 @@ test.describe("invitations on the seat map (mock)", () => {
     const state = await start(page);
 
     await seat(page, "A|1|3").click(); // sold
-    await expect(page.getByTestId("inv-note")).toContainText("cannot be given away");
+    await expect(page.getByTestId("inv-note")).toContainText("You cannot give 1 of those seats");
     await expect(picked(page)).toHaveCount(0);
 
     await seat(page, "A|2|3").click(); // held back by the organizer
@@ -56,7 +56,7 @@ test.describe("invitations on the seat map (mock)", () => {
     await page.getByTestId("inv-delivery-my_email").check();
     await page.getByTestId("inv-submit").click();
 
-    await expect(page.getByTestId("inv-result")).toContainText("2 places for Ana López");
+    await expect(page.getByTestId("inv-result")).toContainText("2 seats for Ana López");
     expect(state.issued).toHaveLength(1);
     const body = state.issued[0] as { request_id: string; seats: unknown; guest: Record<string, unknown>; delivery: string };
     expect(body.request_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
@@ -165,7 +165,7 @@ test.describe("invitations on the seat map (mock)", () => {
     await row.locator('[data-testid="inv-row-place"]', { hasText: "seat 3" }).getByTestId("inv-cancel-place").click();
     const dialog = page.getByTestId("inv-cancel-dialog");
     await expect(dialog).toContainText("1 seats go back to your reserve");
-    await expect(dialog).not.toContainText("go back on sale");
+    await expect(dialog).not.toContainText("go on sale again");
     await page.getByTestId("inv-cancel-dialog-submit").click();
     await expect(page.getByTestId("inv-cancelled")).toBeVisible();
     expect(state.cancelled).toEqual([{ ticket_ids: ["tk-A|2|3"], notify_guest: true }]);
@@ -180,7 +180,7 @@ test.describe("invitations on the seat map (mock)", () => {
 
     // The whole-invitation question now counts only the live place.
     await row.getByTestId("inv-cancel").click();
-    await expect(page.getByTestId("inv-cancel-dialog")).toContainText("1 places go back on sale");
+    await expect(page.getByTestId("inv-cancel-dialog")).toContainText("Seats that go on sale again: 1");
     await expect(page.getByTestId("inv-cancel-dialog")).not.toContainText("your reserve");
   });
 
@@ -199,7 +199,7 @@ test.describe("invitations on the seat map (mock)", () => {
     await row.getByTestId("inv-cancel").click();
     const dialog = page.getByTestId("inv-cancel-dialog");
     await expect(dialog).toContainText("1 seats go back to your reserve");
-    await expect(dialog).toContainText("1 places go back on sale");
+    await expect(dialog).toContainText("Seats that go on sale again: 1");
     await expect(page.getByTestId("inv-cancel-notify")).toBeChecked();
 
     // Closing the question changes nothing.
@@ -232,7 +232,7 @@ test.describe("invitations on the seat map (mock)", () => {
     const result = page.getByTestId("inv-result");
     await expect(result.getByTestId("inv-pdf")).toBeEnabled({ timeout: 15_000 });
     await result.getByTestId("inv-pdf").click();
-    await expect(result.getByTestId("inv-action-say")).toContainText("not available in this version yet");
+    await expect(result.getByTestId("inv-action-say")).toContainText("not available in this version");
   });
 
   test("a person without the right to issue sees the list but no form", async ({ page }) => {

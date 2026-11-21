@@ -235,6 +235,9 @@ func sesKeyboard(rows [][]Button) *models.InlineKeyboardMarkup {
 			if strings.HasPrefix(b.Data, "ql:") {
 				data = b.Data // hands the press over to the Links and QR dialog (spec 43)
 			}
+			if strings.HasPrefix(b.Data, planDataPrefix) {
+				data = b.Data // hands the press over to the seating plan intake
+			}
 			switch {
 			case b.URL != "" && b.WebApp:
 				line = append(line, models.InlineKeyboardButton{Text: b.Label, WebApp: &models.WebAppInfo{URL: b.URL}})
@@ -480,6 +483,11 @@ func (b *Bot) sesShowCard(ctx context.Context, chatID int64, msgID *int, jwt, lo
 				line = append(line, bt)
 			}
 			rows = append(rows, line)
+			// Another plan for the venue of the date (spec 64): an intake of
+			// its own, the date itself is not touched.
+			if it.Raw.VenueId != uuid.Nil {
+				rows = append(rows, []Button{{Label: b.sesT(loc, "bot.wz.plan_in_upload_btn", nil), Data: planDataPrefix + "up:" + it.Raw.VenueId.String()}})
+			}
 		}
 		if dlg.CanSales {
 			rows = append(rows, []Button{b.salesLinkSessionButton(loc, it.ID)}) // QR / link of the date (spec 43)

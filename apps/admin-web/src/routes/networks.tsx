@@ -98,7 +98,7 @@ export function validateNetworkSlug(slug: string): string | null {
     return "Slug must be at most 64 characters";
   }
   if (!OPERATOR_NETWORK_SLUG_RE.test(slug)) {
-    return "Slug must be lowercase letters, digits, or hyphens; start and end with [a-z0-9]";
+    return "Slug must use lowercase letters, digits, and hyphens. It must start and end with [a-z0-9]";
   }
   return null;
 }
@@ -185,8 +185,8 @@ function NetworksModule() {
             Operator Networks
           </h1>
           <p style={subheadingStyle}>
-            Manage operator networks. Networks group operators that work
-            across multiple organizations as organizers or agents. Slugs
+            Manage operator networks. A network groups the operators that work
+            in many organizations as organizers or agents. Each slug
             must match{" "}
             <code style={monoStyle}>{OPERATOR_NETWORK_SLUG_RE.source}</code>.
           </p>
@@ -199,7 +199,7 @@ function NetworksModule() {
             disabled={query.isFetching}
             data-testid="networks-refresh"
           >
-            {query.isFetching ? "Refreshing…" : "Refresh"}
+            {query.isFetching ? "Reloading…" : "Reload"}
           </button>
           {canCreate ? (
             <button
@@ -211,8 +211,8 @@ function NetworksModule() {
               New network
             </button>
           ) : (
-            <span style={mutedHintStyle} title="Requires network.create">
-              Create requires network.create
+            <span style={mutedHintStyle} title="You must have the network.create permission">
+              You must have the network.create permission to make a network
             </span>
           )}
         </div>
@@ -271,8 +271,8 @@ function NetworksBody({ query, rows, canUpdate, canArchive, onEdit, onArchive }:
   if (rows.length === 0) {
     return (
       <div style={statusBoxStyle} role="status" data-testid="networks-empty">
-        No operator networks exist yet. Create the first network to begin
-        assigning operators and organizations.
+        There are no operator networks. Make the first network. Then you can
+        assign operators and organizations to it.
       </div>
     );
   }
@@ -367,8 +367,8 @@ function NetworksErrorState({
       <div style={errorBoxStyle} role="alert" data-testid="networks-forbidden">
         <strong>Forbidden.</strong>
         <p style={errorParaStyle}>
-          Your account is missing <code style={monoStyle}>network.read</code>.
-          Ask a platform administrator to grant the permission.
+          Your account has no <code style={monoStyle}>network.read</code>
+          permission. Tell a platform administrator to give it to you.
         </p>
       </div>
     );
@@ -377,13 +377,13 @@ function NetworksErrorState({
     return (
       <div style={errorBoxStyle} role="status" data-testid="networks-session-expired">
         <strong>Session expired.</strong>
-        <p style={errorParaStyle}>Sign in again to reload operator networks.</p>
+        <p style={errorParaStyle}>Sign in again. Then reload the operator networks.</p>
       </div>
     );
   }
   return (
     <div style={errorBoxStyle} role="alert" data-testid="networks-error">
-      <strong>Failed to load operator networks.</strong>
+      <strong>We did not load the operator networks.</strong>
       <div style={errorCodeStyle}>{error?.code ?? "unknown.error"}</div>
       {error?.message ? <div style={errorParaStyle}>{error.message}</div> : null}
       <button type="button" style={errorRetryStyle} onClick={onRetry}>
@@ -466,7 +466,7 @@ function NetworkFormDialog({ mode, onClose }: FormDialogProps) {
   }
 
   const title = isEdit ? `Edit ${mode.network.name}` : "New operator network";
-  const submitLabel = isEdit ? "Save changes" : "Create network";
+  const submitLabel = isEdit ? "Save changes" : "Add network";
 
   return (
     <div
@@ -497,7 +497,7 @@ function NetworkFormDialog({ mode, onClose }: FormDialogProps) {
             htmlFor="network-name"
             error={serverErrors.name ?? null}
             localError={name.length > 0 ? nameErr : null}
-            hint="Operator-visible name. Required."
+            hint="The name that operators see. Required."
           >
             <input
               id="network-name"
@@ -523,8 +523,8 @@ function NetworkFormDialog({ mode, onClose }: FormDialogProps) {
             localError={slug.length > 0 ? slugErr : null}
             hint={
               <>
-                Lowercase letters, digits, and hyphens. Must start and end
-                with <code style={monoStyle}>[a-z0-9]</code>. Max 64 chars.
+                Use lowercase letters, digits, and hyphens. Start and end
+                with <code style={monoStyle}>[a-z0-9]</code>. Use 64 characters at most.
               </>
             }
           >
@@ -663,17 +663,17 @@ function ArchiveConfirmDialog({
         </header>
         <div style={archiveBodyStyle}>
           <p style={archiveParaStyle}>
-            Archiving an operator network removes it from the active list
-            and prevents new operator / organization assignments. Existing
-            roster and attachment rows remain on the archived record for
-            audit purposes. The slug{" "}
+            If you archive an operator network, the active list no longer shows it.
+            You cannot assign new operators or organizations to it. The
+            roster and attachment rows stay on the archived record for
+            audit. The slug{" "}
             <code style={monoStyle}>{network.slug}</code> becomes available
-            for reuse by a NEW network.
+            for a NEW network.
           </p>
           <p style={archiveParaStyle}>
-            This is a <strong>soft-archive</strong>: the row is preserved in
+            This is a <strong>soft-archive</strong>. The row stays in
             the database with <code style={monoStyle}>status = archived</code>.
-            It is not a destructive delete.
+            We do not delete it.
           </p>
           {error !== null ? (
             <div style={formErrorStyle} role="alert" data-testid="networks-archive-error">
@@ -738,7 +738,7 @@ export function mapServerError(err: ApiError): ServerFieldErrors {
       return out;
     case "permissions.denied":
       out.form =
-        "Your account is missing the required permission. Ask a platform administrator.";
+        "Your account has no permission for this. Tell a platform administrator.";
       return out;
     default:
       if (field === "name") {

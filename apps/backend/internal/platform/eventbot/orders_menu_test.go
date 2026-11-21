@@ -7,8 +7,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// The Orders button is on the main menu of a role that may read orders, and
-// on no other menu.
+// The "Orders and refunds" section is on the main menu of a role that may read
+// orders, and on no other menu. Its screen carries the Orders button.
 func TestHomeKeyboard_OrdersButtonOnlyForRolesThatReadOrders(t *testing.T) {
 	t.Parallel()
 	b := ecTestBot(t)
@@ -16,7 +16,7 @@ func TestHomeKeyboard_OrdersButtonOnlyForRolesThatReadOrders(t *testing.T) {
 		id := &Identity{Current: &Membership{Role: role}, Superadmin: super}
 		for _, row := range b.homeKeyboard(context.Background(), id, "").InlineKeyboard {
 			for _, btn := range row {
-				if btn.CallbackData == "or:new" {
+				if btn.CallbackData == "mn:ord" {
 					return true
 				}
 			}

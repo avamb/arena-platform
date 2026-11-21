@@ -5,6 +5,7 @@ import {
   activeTickets,
   maskEmail,
   orderAddress,
+  resendCopyNotice,
   resendFailure,
   resendFailureKey,
   resendOffered,
@@ -116,5 +117,19 @@ describe("resendFailure", () => {
   });
   it("has a text for every failure", () => {
     expect(resendFailureKey("site")).toBe("resend.site");
+  });
+});
+
+describe("resendCopyNotice (O-8)", () => {
+  it("says nothing for the order's own address, typed or chosen", () => {
+    expect(resendCopyNotice("", "anna@example.test", true)).toEqual({ kind: "none" });
+    expect(resendCopyNotice(" Anna@Example.TEST ", "anna@example.test", true)).toEqual({ kind: "none" });
+  });
+  it("warns about the same barcodes for another address and offers the replacement when the card does", () => {
+    expect(resendCopyNotice("other@example.test", "anna@example.test", true)).toEqual({ kind: "sameCodes", offerReissue: true });
+    expect(resendCopyNotice("other@example.test", "anna@example.test", false)).toEqual({ kind: "sameCodes", offerReissue: false });
+  });
+  it("an order without an address has no copy to warn about, like the bot", () => {
+    expect(resendCopyNotice("other@example.test", "", true)).toEqual({ kind: "none" });
   });
 });

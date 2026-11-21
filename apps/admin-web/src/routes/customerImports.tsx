@@ -61,10 +61,10 @@ interface RowsFilterAction {
 }
 
 const ROW_ACTION_FILTERS: readonly RowsFilterAction[] = [
-  { value: "", label: "All actions" },
-  { value: "created", label: "Created" },
-  { value: "matched", label: "Matched" },
-  { value: "merge_candidate", label: "Merge candidate" },
+  { value: "", label: "All results" },
+  { value: "created", label: "Made" },
+  { value: "matched", label: "Found a buyer" },
+  { value: "merge_candidate", label: "Possible merge" },
   { value: "skipped", label: "Skipped" },
 ];
 
@@ -197,7 +197,7 @@ function CustomerImportsPage() {
     setLookupError(null);
     const trimmed = lookupId.trim();
     if (!UUID_RE.test(trimmed)) {
-      setLookupError("Enter a valid import UUID.");
+      setLookupError("Type a correct import UUID.");
       return;
     }
     authedFetch<CustomerImport>({
@@ -210,7 +210,7 @@ function CustomerImportsPage() {
         setApplyReport(null);
       })
       .catch((err: unknown) => {
-        setLookupError(err instanceof Error ? err.message : "Import not found.");
+        setLookupError(err instanceof Error ? err.message : "We did not find this import.");
       });
   }
 
@@ -219,18 +219,18 @@ function CustomerImportsPage() {
       <header style={headerStyle}>
         <div>
           <h1 id="customer-imports-heading" style={headingStyle}>
-            Customer Imports
+            Buyer Imports
           </h1>
           <p style={subheadingStyle}>
-            Register an uploaded customer/order export, dry-run it to preview
-            resolution, then apply it. Applying is idempotent: re-applying the
-            same file never creates duplicate customers.
+            Add an uploaded export of buyers and orders. Run a dry run to see
+            the result first, then apply the import. You can apply the same
+            file again. The platform does not make duplicate buyers.
           </p>
         </div>
       </header>
 
       <form onSubmit={onSubmit} style={formStyle} noValidate>
-        <Field label="Organization ID" htmlFor="ci-org-id" error={visibleErrors.orgId} hint="Optional. Leave blank for a platform-wide import.">
+        <Field label="Organization ID" htmlFor="ci-org-id" error={visibleErrors.orgId} hint="Optional. Keep the field empty for an import for the whole platform.">
           <input
             id="ci-org-id"
             type="text"
@@ -243,7 +243,7 @@ function CustomerImportsPage() {
           />
         </Field>
 
-        <Field label="Source format" htmlFor="ci-source-label" error={undefined} hint="Selects the parser used by dry-run/apply.">
+        <Field label="Source format" htmlFor="ci-source-label" error={undefined} hint="Selects the parser for the dry run and for apply.">
           <select
             id="ci-source-label"
             value={sourceLabel}
@@ -259,7 +259,7 @@ function CustomerImportsPage() {
           </select>
         </Field>
 
-        <Field label="File media ID" htmlFor="ci-file-media-id" error={visibleErrors.fileMediaId} hint="media_objects.id of the already-uploaded file.">
+        <Field label="File media ID" htmlFor="ci-file-media-id" error={visibleErrors.fileMediaId} hint="The media_objects.id of the uploaded file.">
           <input
             id="ci-file-media-id"
             type="text"
@@ -272,7 +272,7 @@ function CustomerImportsPage() {
           />
         </Field>
 
-        <Field label="Legal basis" htmlFor="ci-legal-basis" error={undefined} hint="GDPR basis recorded for this import.">
+        <Field label="Legal basis" htmlFor="ci-legal-basis" error={undefined} hint="The GDPR basis that the platform keeps for this import.">
           <select
             id="ci-legal-basis"
             value={legalBasis}
@@ -288,7 +288,7 @@ function CustomerImportsPage() {
           </select>
         </Field>
 
-        <Field label="Column mapping (JSON)" htmlFor="ci-mapping" error={visibleErrors.mapping} hint="Optional parser overrides. Defaults to {}.">
+        <Field label="Column mapping (JSON)" htmlFor="ci-mapping" error={visibleErrors.mapping} hint="Optional parser settings. The default is {}.">
           <textarea
             id="ci-mapping"
             value={mappingRaw}
@@ -313,14 +313,14 @@ function CustomerImportsPage() {
             disabled={createMutation.isPending}
             data-testid="ci-submit"
           >
-            {createMutation.isPending ? "Creating..." : "Create import"}
+            {createMutation.isPending ? "Adding…" : "Add import"}
           </button>
         </div>
       </form>
 
       <section aria-labelledby="ci-lookup-heading" style={directoryStyle}>
         <h2 id="ci-lookup-heading" style={directoryHeadingStyle}>
-          Open an existing import
+          Open an import
         </h2>
         <form onSubmit={onLookup} style={searchFormStyle}>
           <input
@@ -361,7 +361,7 @@ function CustomerImportsPage() {
                 onClick={() => dryRunMutation.mutate(displayedImport.id)}
                 data-testid="ci-dry-run"
               >
-                {dryRunMutation.isPending ? "Running..." : "Dry-run"}
+                {dryRunMutation.isPending ? "Running…" : "Dry run"}
               </button>
               <button
                 type="button"
@@ -370,24 +370,24 @@ function CustomerImportsPage() {
                 onClick={() => applyMutation.mutate(displayedImport.id)}
                 data-testid="ci-apply"
               >
-                {applyMutation.isPending ? "Applying..." : "Apply"}
+                {applyMutation.isPending ? "Applying…" : "Apply"}
               </button>
             </div>
           </div>
 
           {dryRunMutation.isError ? (
             <p role="alert" style={formErrorStyle}>
-              Dry-run failed: {dryRunMutation.error.message}
+              The dry run did not complete: {dryRunMutation.error.message}
             </p>
           ) : null}
           {applyMutation.isError ? (
             <p role="alert" style={formErrorStyle}>
-              Apply failed: {applyMutation.error.message}
+              The apply step did not complete: {applyMutation.error.message}
             </p>
           ) : null}
 
           {dryRunReport !== null ? (
-            <ReportSummary title="Dry-run report" report={dryRunReport} />
+            <ReportSummary title="Dry run report" report={dryRunReport} />
           ) : null}
           {applyReport !== null ? (
             <ReportSummary title="Apply report" report={applyReport} />
@@ -396,7 +396,7 @@ function CustomerImportsPage() {
           <div style={directoryHeaderStyle}>
             <h3 style={directoryHeadingStyle}>Rows</h3>
             <select
-              aria-label="Filter rows by action"
+              aria-label="Filter rows by result"
               value={rowsAction}
               onChange={(e) => setRowsAction(e.target.value as RowsFilterAction["value"])}
               style={inputStyle}
@@ -412,7 +412,7 @@ function CustomerImportsPage() {
           {rowsQuery.isPending ? <p role="status">Loading rows…</p> : null}
           {rowsQuery.isError ? (
             <p role="alert" style={formErrorStyle}>
-              Unable to load rows: {rowsQuery.error.message}
+              We did not load the rows: {rowsQuery.error.message}
             </p>
           ) : null}
           {rowsQuery.isSuccess ? <RowsTable rows={rowsQuery.data.rows} /> : null}
@@ -427,8 +427,8 @@ function ReportSummary({ title, report }: { title: string; report: CustomerImpor
     <div style={reportStyle} data-testid="ci-report">
       <strong>{title}</strong>
       <span>
-        rows {report.rows} · created {report.created} · matched {report.matched} · merge
-        candidates {report.merge_candidates} · skipped {report.skipped}
+        rows {report.rows} · made {report.created} · found {report.matched} · possible
+        merges {report.merge_candidates} · skipped {report.skipped}
       </span>
       {report.errors.length > 0 ? (
         <ul>
@@ -444,9 +444,9 @@ function ReportSummary({ title, report }: { title: string; report: CustomerImpor
 function RowsTable({ rows }: { rows: readonly CustomerImportRow[] }) {
   const columns: readonly ResponsiveTableColumn<CustomerImportRow>[] = [
     { id: "row_no", header: "Row", primary: true, renderCell: (row) => row.row_no },
-    { id: "action", header: "Action", renderCell: (row) => row.action ?? "—" },
+    { id: "action", header: "Result", renderCell: (row) => row.action ?? "—" },
     { id: "reason", header: "Reason", renderCell: (row) => row.reason ?? "—" },
-    { id: "resolved_customer_id", header: "Customer", renderCell: (row) => row.resolved_customer_id ?? "—" },
+    { id: "resolved_customer_id", header: "Buyer", renderCell: (row) => row.resolved_customer_id ?? "—" },
   ];
   return (
     <ResponsiveTable
@@ -455,7 +455,7 @@ function RowsTable({ rows }: { rows: readonly CustomerImportRow[] }) {
       columns={columns}
       rows={rows}
       rowKey={(row) => row.id}
-      empty={<p>No rows match this filter.</p>}
+      empty={<p>No rows for this filter.</p>}
     />
   );
 }
@@ -498,7 +498,7 @@ export function validateCustomerImportOrgId(raw: string): string | null {
     return null;
   }
   if (!UUID_RE.test(value)) {
-    return "Organization ID must be a UUID.";
+    return "The organization ID must be a UUID.";
   }
   return null;
 }
@@ -506,10 +506,10 @@ export function validateCustomerImportOrgId(raw: string): string | null {
 export function validateCustomerImportFileMediaId(raw: string): string | null {
   const value = raw.trim();
   if (value === "") {
-    return "File media ID is required.";
+    return "Type the file media ID.";
   }
   if (!UUID_RE.test(value)) {
-    return "File media ID must be a UUID.";
+    return "The file media ID must be a UUID.";
   }
   return null;
 }
@@ -528,10 +528,10 @@ export function parseCustomerImportMapping(raw: string): ParsedMapping {
   try {
     parsed = JSON.parse(trimmed);
   } catch {
-    return { error: "Mapping must be valid JSON." };
+    return { error: "The mapping must be correct JSON." };
   }
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { error: "Mapping must be a JSON object." };
+    return { error: "The mapping must be a JSON object." };
   }
   return { value: parsed as Record<string, unknown> };
 }
@@ -598,12 +598,12 @@ export function mapCustomerImportServerError(err: ApiError): CreateImportErrors 
     case "customer_import.invalid_mapping":
       return { mapping: err.message };
     case "permissions.denied":
-      return { form: "Your account is missing superadmin.read." };
+      return { form: "Your account does not have superadmin.read." };
     case "superadmin.missing_reason":
     case "superadmin.reason_required":
-      return { form: "An audit reason is required before creating an import." };
+      return { form: "Write an audit reason before you add an import." };
     case "dependency.database_unavailable":
-      return { form: "Database is unavailable. Retry after the backend recovers." };
+      return { form: "The database does not answer. Try again in a few minutes." };
     default:
       return { form: `${err.message} (${err.code})` };
   }
@@ -614,9 +614,9 @@ export function formatImportStatus(status: CustomerImport["status"]): string {
     case "uploaded":
       return "Uploaded";
     case "dry_run_running":
-      return "Dry-run running";
+      return "Dry run in progress";
     case "dry_run_done":
-      return "Dry-run done";
+      return "Dry run done";
     case "applying":
       return "Applying";
     case "applied":
@@ -633,7 +633,7 @@ export function formatSourceLabel(label: CustomerImportSourceLabel): string {
     case "bil24_orders_json":
       return "Bil24 orders (JSON)";
     case "wc_customers_csv":
-      return "WooCommerce customers (CSV)";
+      return "WooCommerce buyers (CSV)";
     case "gsheets_csv":
       return "Google Sheets export (CSV)";
     case "brevo_csv":

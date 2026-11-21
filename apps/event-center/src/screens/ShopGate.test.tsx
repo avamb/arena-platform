@@ -94,8 +94,8 @@ describe("the shop gate", () => {
   it("in orders-only mode keeps the orders and an order card, with the banner and a nav of the orders alone", async () => {
     const { el, router } = await mount("orders_only", `/o/${ORG}/shop/orders/ab12`);
     expect(router.state.location.pathname).toBe(`/o/${ORG}/shop/orders/ab12`);
-    expect(byId(el, "shop-orders-only").textContent).toContain("The shop is switched off and the storefront is closed.");
-    expect(byId(el, "shop-orders-only").textContent).toContain("Orders and refunds are still available.");
+    expect(byId(el, "shop-orders-only").textContent).toContain("The shop is off and the storefront is closed.");
+    expect(byId(el, "shop-orders-only").textContent).toContain("Orders and refunds stay available.");
     expect(byId(el, "shop-nav-orders")).not.toBeNull();
     expect(byId(el, "shop-nav-products")).toBeNull();
     expect(byId(el, "shop-nav-settings")).toBeNull();

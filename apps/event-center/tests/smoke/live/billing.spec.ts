@@ -30,6 +30,7 @@ const billingUrl = `/o/${env.org_id}/billing`;
 test.describe("billing usage", () => {
   test("owner: totals per currency, events, rows with a reversal, one event, the previous month", async ({ page }) => {
     await signInAs(page, "org_admin");
+    await page.getByTestId("nav-more").click();
     await page.getByTestId("nav-billing").click();
     await expect(page).toHaveURL(new RegExp(`${billingUrl}$`));
     await expect(page.getByTestId("billing-preliminary")).toContainText("preliminary");
@@ -63,7 +64,7 @@ test.describe("billing usage", () => {
     await expect(summary.getByTestId("billing-event-alltime")).toBeVisible();
     await expect(summary.getByTestId("billing-total-EUR")).toContainText("€1.77");
     await expect(summary.getByTestId("billing-total-EUR")).toContainText("Charges: 4");
-    await expect(summary.getByTestId("billing-by-rule")).toContainText("Fixed fee per ticket");
+    await expect(summary.getByTestId("billing-by-rule")).toContainText("Fixed fee for each ticket");
     await expect(summary.getByTestId("billing-by-session").locator("li")).toHaveCount(1);
     await expect(page.getByTestId("billing-row")).toHaveCount(4);
     await page.getByTestId("billing-event-clear").click();
@@ -81,6 +82,7 @@ test.describe("billing usage", () => {
   for (const role of ["organizer", "agent"] as const) {
     test(`${role}: no menu entry, an explanation, no billing request, and the API says 403`, async ({ page, request }) => {
       await signInAs(page, role);
+      await page.getByTestId("nav-more").click();
       await expect(page.getByTestId("nav-billing")).toHaveCount(0);
 
       const billingCalls: string[] = [];

@@ -383,7 +383,9 @@ func anyLetterFailed(letters []emailstatus.LetterView) bool {
 		if !l.NeedsAttention() {
 			continue
 		}
-		if l.Kind != emailstatus.KindTicket && supersededLetter(letters, i) {
+		// A ticket letter naming no ticket (imported from WordPress) is
+		// dropped once a newer ticket letter exists, like the orders list does.
+		if (l.Kind != emailstatus.KindTicket || len(l.TicketIDs) == 0) && supersededLetter(letters, i) {
 			continue
 		}
 		return true

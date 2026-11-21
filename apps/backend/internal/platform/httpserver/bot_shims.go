@@ -31,6 +31,10 @@ func (s *Server) handleClaimWebLoginNotices(w http.ResponseWriter, r *http.Reque
 	s.botHandler().HandleClaimWebLoginNotices(w, r)
 }
 
+func (s *Server) handleClaimVenuePlanNotices(w http.ResponseWriter, r *http.Request) {
+	s.botHandler().HandleClaimVenuePlanNotices(w, r)
+}
+
 func (s *Server) handleClaimInvitationPDFNotices(w http.ResponseWriter, r *http.Request) {
 	s.botHandler().HandleClaimInvitationPDFNotices(w, r)
 }
@@ -53,4 +57,20 @@ func (s *Server) handleAcceptBotInvitation(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) handleListBotTeam(w http.ResponseWriter, r *http.Request) {
 	s.botHandler().HandleListTeam(w, r)
+}
+
+func (s *Server) handleTelegramConnectStatus(w http.ResponseWriter, r *http.Request) {
+	s.botHandler().HandleTelegramConnectStatus(w, r)
+}
+
+func (s *Server) handleCreateTelegramConnectCode(w http.ResponseWriter, r *http.Request) {
+	s.botHandler().HandleCreateTelegramConnectCode(w, r)
+}
+
+func (s *Server) handlePreviewTelegramConnect(w http.ResponseWriter, r *http.Request) {
+	s.botHandler().HandlePreviewTelegramConnect(w, r)
+}
+
+func (s *Server) handleAcceptTelegramConnect(w http.ResponseWriter, r *http.Request) {
+	s.botHandler().HandleAcceptTelegramConnect(w, r)
 }

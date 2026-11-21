@@ -35,8 +35,8 @@ describe('hosted-page card mode', () => {
     expect(defaults).toContain("frame = ''");
   });
 
-  it('gives the cart bar a verb in that mode, and only there', () => {
-    expect(widgetSource).toContain("cta={frameHidden ? t.continue_to_payment : null}");
+  it('gives the cart bar a verb in every mode (the single-event page had none)', () => {
+    expect(widgetSource).toContain("cta={t.continue_to_payment}");
     // Default null = the bar every other embed already has.
     expect(miniCartSource).toContain('cta = null');
     expect(miniCartSource).toContain('{#if cta}');

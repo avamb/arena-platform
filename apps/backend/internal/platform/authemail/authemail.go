@@ -16,8 +16,8 @@
 // # Locales
 //
 // The verification email is rendered in the requested locale (currently "en"
-// and "ru"); all other locales fall back to English. The password emails of a
-// platform user are rendered in English. An organizer's password email lands
+// "ru" and "uk"); all other locales fall back to English. The password emails of
+// a platform user are rendered in English or Ukrainian (payload Locale). An organizer's password email lands
 // on the web event center and is rendered in the user's preferred_locale
 // (en, ru, es; organizer_password.go).
 //
@@ -113,6 +113,11 @@ type PasswordResetEmailPayload struct {
 	// OrgName names the inviting organization in a PurposeOrgInvitation email.
 	// Optional; the email reads generically when it is empty.
 	OrgName string `json:"org_name,omitempty"`
+	// Locale is the recipient's language for a platform user's letter (en
+	// default, uk). An organizer's letter ignores it and uses preferred_locale
+	// from the recipient lookup. Optional: jobs queued before it existed read
+	// as English.
+	Locale string `json:"locale,omitempty"`
 }
 
 // ─── handler ──────────────────────────────────────────────────────────────────
@@ -295,13 +300,13 @@ func (h *Handler) HandlePasswordResetEmail(ctx context.Context, payload []byte) 
 		// Onboarding lands on the SPA's welcome / choose-a-password page.
 		setupURL := h.appPublicURL + "/accept-invite?token=" + url.QueryEscape(p.Token) +
 			"&email=" + url.QueryEscape(p.Email)
-		subject, htmlBody, textBody = renderAccountSetupEmail(purpose, p.OrgName, setupURL, p.ExpiresAt)
+		subject, htmlBody, textBody = renderAccountSetupEmail(p.Locale, purpose, p.OrgName, setupURL, p.ExpiresAt)
 	default:
 		// Build the reset URL from canonical AppPublicURL — not from request headers.
 		// Send recipients to the SPA password form, which POSTs to the separately
 		// configured API URL.
 		resetURL := h.appPublicURL + "/reset-password?token=" + p.Token
-		subject, htmlBody, textBody = renderPasswordResetEmail(resetURL, p.ExpiresAt)
+		subject, htmlBody, textBody = renderPasswordResetEmail(p.Locale, resetURL, p.ExpiresAt)
 	}
 
 	h.logger.Info("authemail: sending password email",
@@ -342,11 +347,15 @@ func renderVerificationEmail(locale, verifyURL string, expiresAt time.Time) (sub
 
 	switch normalizeLocale(locale) {
 	case "ru":
-		subject = "Подтвердите адрес электронной почты Arena Platform"
+		subject = "Подтвердите адрес электронной почты ArenaSoldOut.com"
 		htmlBody = fmt.Sprintf(verifyHTMLRu, expiry, safeURL, safeURL)
 		textBody = renderVerifyTextRu(verifyURL, expiry)
+	case "uk":
+		subject = "Підтвердіть адресу електронної пошти ArenaSoldOut.com"
+		htmlBody = fmt.Sprintf(verifyHTMLUk, expiry, safeURL, safeURL)
+		textBody = renderVerifyTextUk(verifyURL, expiry)
 	default: // "en" and all unsupported locales
-		subject = "Verify your Arena Platform email address"
+		subject = "Verify your ArenaSoldOut.com email address"
 		htmlBody = fmt.Sprintf(verifyHTMLEn, expiry, safeURL, safeURL)
 		textBody = renderVerifyTextEn(verifyURL, expiry)
 	}
@@ -355,10 +364,16 @@ func renderVerificationEmail(locale, verifyURL string, expiresAt time.Time) (sub
 
 // renderPasswordResetEmail returns subject, HTML body, and text body for a
 // password-reset email. Always rendered in English.
-func renderPasswordResetEmail(resetURL string, expiresAt time.Time) (subject, htmlBody, textBody string) {
+func renderPasswordResetEmail(locale, resetURL string, expiresAt time.Time) (subject, htmlBody, textBody string) {
 	safeURL := html.EscapeString(resetURL)
 	expiry := expiresAt.UTC().Format(time.RFC3339)
-	subject = "Reset your Arena Platform password"
+	if normalizeLocale(locale) == "uk" {
+		subject = "Скидання пароля ArenaSoldOut.com"
+		htmlBody = fmt.Sprintf(resetHTMLUk, expiry, safeURL, safeURL)
+		textBody = renderResetTextUk(resetURL, expiry)
+		return
+	}
+	subject = "Reset your ArenaSoldOut.com password"
 	htmlBody = fmt.Sprintf(resetHTMLEn, expiry, safeURL, safeURL)
 	textBody = renderResetTextEn(resetURL, expiry)
 	return
@@ -367,9 +382,15 @@ func renderPasswordResetEmail(resetURL string, expiresAt time.Time) (subject, ht
 // renderAccountSetupEmail returns subject, HTML body, and text body for the
 // password-setup email of an administrator-created account or an organization
 // invitation. Always rendered in English, like the reset email.
-func renderAccountSetupEmail(purpose, orgName, setupURL string, expiresAt time.Time) (subject, htmlBody, textBody string) {
+func renderAccountSetupEmail(locale, purpose, orgName, setupURL string, expiresAt time.Time) (subject, htmlBody, textBody string) {
 	safeURL := html.EscapeString(setupURL)
 	expiry := expiresAt.UTC().Format(time.RFC3339)
+	if normalizeLocale(locale) == "uk" {
+		subject, intro := setupCopyUk(purpose, orgName)
+		htmlBody = fmt.Sprintf(setupHTMLUk, html.EscapeString(intro), expiry, safeURL, safeURL)
+		textBody = renderSetupTextUk(subject, intro, setupURL, expiry)
+		return subject, htmlBody, textBody
+	}
 	// Collapse all whitespace (incl. CR/LF) so a stored name can never break
 	// the Subject header or the plain-text layout.
 	orgName = strings.Join(strings.Fields(orgName), " ")
@@ -377,14 +398,14 @@ func renderAccountSetupEmail(purpose, orgName, setupURL string, expiresAt time.T
 	var intro string
 	switch {
 	case purpose == PurposeOrgInvitation && orgName != "":
-		subject = "You are invited to join " + orgName + " on Arena Platform"
-		intro = "You have been invited to join " + orgName + " on Arena Platform."
+		subject = "You are invited to join " + orgName + " on ArenaSoldOut.com"
+		intro = "You have been invited to join " + orgName + " on ArenaSoldOut.com."
 	case purpose == PurposeOrgInvitation:
-		subject = "You are invited to Arena Platform"
-		intro = "You have been invited to join an organization on Arena Platform."
+		subject = "You are invited to ArenaSoldOut.com"
+		intro = "You have been invited to join an organization on ArenaSoldOut.com."
 	default:
-		subject = "Set up your Arena Platform account"
-		intro = "An administrator has created an Arena Platform account for you."
+		subject = "Set up your ArenaSoldOut.com account"
+		intro = "An administrator has created an ArenaSoldOut.com account for you."
 	}
 	htmlBody = fmt.Sprintf(setupHTMLEn, html.EscapeString(intro), expiry, safeURL, safeURL)
 	textBody = renderSetupTextEn(subject, intro, setupURL, expiry)
@@ -401,6 +422,10 @@ func normalizeLocale(locale string) string {
 		// Only the bot invitation e-mail is translated so far; the other
 		// e-mails fall through to their English default.
 		return "es"
+	case "uk":
+		// Translated for the team letters (bot invitation, organizer
+		// password, org-added, onboarding); the rest fall through to English.
+		return "uk"
 	default:
 		return "en"
 	}
@@ -415,7 +440,7 @@ const verifyHTMLEn = `<!DOCTYPE html>
 <head><meta charset="UTF-8"><title>Verify your email</title></head>
 <body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
   <h1 style="color:#1a1a2e">Verify your email address</h1>
-  <p>Thank you for registering with Arena Platform.</p>
+  <p>Thank you for registering with ArenaSoldOut.com.</p>
   <p>Click the button below to verify your email address.
      This link is valid until <strong>%s</strong>.</p>
   <p style="margin:24px 0">
@@ -429,10 +454,10 @@ const verifyHTMLEn = `<!DOCTYPE html>
     <span style="word-break:break-all">%s</span>
   </p>
   <p style="font-size:11px;color:#999">
-    If you did not create an Arena Platform account, you can safely ignore this email.
+    If you did not create an ArenaSoldOut.com account, you can safely ignore this email.
   </p>
   <hr>
-  <p style="font-size:11px;color:#999">Arena Platform &mdash; automated message</p>
+  <p style="font-size:11px;color:#999">ArenaSoldOut.com &mdash; automated message</p>
 </body>
 </html>`
 
@@ -441,7 +466,7 @@ const verifyHTMLRu = `<!DOCTYPE html>
 <head><meta charset="UTF-8"><title>Подтвердите email</title></head>
 <body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
   <h1 style="color:#1a1a2e">Подтвердите адрес электронной почты</h1>
-  <p>Спасибо за регистрацию на платформе Arena.</p>
+  <p>Спасибо за регистрацию на платформе ArenaSoldOut.com.</p>
   <p>Нажмите кнопку ниже, чтобы подтвердить адрес электронной почты.
      Ссылка действительна до <strong>%s</strong>.</p>
   <p style="margin:24px 0">
@@ -455,10 +480,10 @@ const verifyHTMLRu = `<!DOCTYPE html>
     <span style="word-break:break-all">%s</span>
   </p>
   <p style="font-size:11px;color:#999">
-    Если вы не регистрировались на платформе Arena, просто проигнорируйте это письмо.
+    Если вы не регистрировались на платформе ArenaSoldOut.com, просто проигнорируйте это письмо.
   </p>
   <hr>
-  <p style="font-size:11px;color:#999">Arena Platform &mdash; автоматическое сообщение</p>
+  <p style="font-size:11px;color:#999">ArenaSoldOut.com &mdash; автоматическое сообщение</p>
 </body>
 </html>`
 
@@ -467,7 +492,7 @@ const resetHTMLEn = `<!DOCTYPE html>
 <head><meta charset="UTF-8"><title>Reset your password</title></head>
 <body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
   <h1 style="color:#1a1a2e">Reset your password</h1>
-  <p>We received a request to reset your Arena Platform password.</p>
+  <p>We received a request to reset your ArenaSoldOut.com password.</p>
   <p>Click the button below to choose a new password.
      This link is valid until <strong>%s</strong>.</p>
   <p style="margin:24px 0">
@@ -485,7 +510,7 @@ const resetHTMLEn = `<!DOCTYPE html>
     Your password will not change.
   </p>
   <hr>
-  <p style="font-size:11px;color:#999">Arena Platform &mdash; automated message</p>
+  <p style="font-size:11px;color:#999">ArenaSoldOut.com &mdash; automated message</p>
 </body>
 </html>`
 
@@ -514,7 +539,7 @@ const setupHTMLEn = `<!DOCTYPE html>
     If you were not expecting this email, you can safely ignore it.
   </p>
   <hr>
-  <p style="font-size:11px;color:#999">Arena Platform &mdash; automated message</p>
+  <p style="font-size:11px;color:#999">ArenaSoldOut.com &mdash; automated message</p>
 </body>
 </html>`
 
@@ -532,30 +557,30 @@ func renderSetupTextEn(subject, intro, rawURL, expiry string) string {
 
 func renderVerifyTextEn(rawURL, expiry string) string {
 	var b bytes.Buffer
-	b.WriteString("Verify your Arena Platform email address\n\n")
-	b.WriteString("Thank you for registering with Arena Platform.\n\n")
+	b.WriteString("Verify your ArenaSoldOut.com email address\n\n")
+	b.WriteString("Thank you for registering with ArenaSoldOut.com.\n\n")
 	fmt.Fprintf(&b, "Please open the link below to verify your email address.\nThis link is valid until %s.\n\n", expiry)
 	fmt.Fprintf(&b, "%s\n\n", rawURL)
-	b.WriteString("If you did not create an Arena Platform account, you can safely ignore this email.\n")
+	b.WriteString("If you did not create an ArenaSoldOut.com account, you can safely ignore this email.\n")
 	b.WriteString("\n--\nArena Platform -- automated message\n")
 	return b.String()
 }
 
 func renderVerifyTextRu(rawURL, expiry string) string {
 	var b bytes.Buffer
-	b.WriteString("Подтвердите адрес электронной почты Arena Platform\n\n")
-	b.WriteString("Спасибо за регистрацию на платформе Arena.\n\n")
+	b.WriteString("Подтвердите адрес электронной почты ArenaSoldOut.com\n\n")
+	b.WriteString("Спасибо за регистрацию на платформе ArenaSoldOut.com.\n\n")
 	fmt.Fprintf(&b, "Перейдите по ссылке ниже, чтобы подтвердить адрес электронной почты.\nСсылка действительна до %s.\n\n", expiry)
 	fmt.Fprintf(&b, "%s\n\n", rawURL)
-	b.WriteString("Если вы не регистрировались на платформе Arena, просто проигнорируйте это письмо.\n")
+	b.WriteString("Если вы не регистрировались на платформе ArenaSoldOut.com, просто проигнорируйте это письмо.\n")
 	b.WriteString("\n--\nArena Platform -- автоматическое сообщение\n")
 	return b.String()
 }
 
 func renderResetTextEn(rawURL, expiry string) string {
 	var b bytes.Buffer
-	b.WriteString("Reset your Arena Platform password\n\n")
-	b.WriteString("We received a request to reset your Arena Platform password.\n\n")
+	b.WriteString("Reset your ArenaSoldOut.com password\n\n")
+	b.WriteString("We received a request to reset your ArenaSoldOut.com password.\n\n")
 	fmt.Fprintf(&b, "Open the link below to choose a new password.\nThis link is valid until %s.\n\n", expiry)
 	fmt.Fprintf(&b, "%s\n\n", rawURL)
 	b.WriteString("If you did not request a password reset, you can safely ignore this email.\n")

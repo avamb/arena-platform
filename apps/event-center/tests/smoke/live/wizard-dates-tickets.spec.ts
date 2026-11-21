@@ -43,7 +43,7 @@ async function counts(request: APIRequestContext): Promise<number[]> {
 }
 
 const status = (page: Page) => page.getByTestId("wizard-status");
-const correct = (page: Page) => expect(status(page)).toContainText("Everything you filled in is correct", { timeout: 25_000 });
+const correct = (page: Page) => expect(status(page)).toContainText("All data you added is correct", { timeout: 25_000 });
 
 test.describe("event wizard: dates and tickets", () => {
   test("two dates with different categories pass the check, which asks again only about the date that changed", async ({ page, request }) => {
@@ -111,7 +111,7 @@ test.describe("event wizard: dates and tickets", () => {
 
     // A step that ends by neither a day nor a number is refused at once.
     await page.getByTestId("wizard-cat-0-1-limit").fill("");
-    await expect(page.getByTestId("wizard-cat-0-1-until-error")).toContainText("Choose the last day of this step, or type a number of tickets.");
+    await expect(page.getByTestId("wizard-cat-0-1-until-error")).toContainText("Select the last day of this step, or type a number of tickets.");
     await noA11yViolations(page);
   });
 
@@ -161,7 +161,7 @@ test.describe("event wizard: dates and tickets", () => {
     await page.getByTestId("wizard-step-0-0-price").fill("5");
     // The wizard cannot know this rule: the platform's check says it, with the pointer of the field.
     await expect(page.getByTestId("wizard-tickets-0-error")).toContainText("A free ticket cannot have price changes", { timeout: 25_000 });
-    await expect(status(page)).toContainText("to fix");
+    await expect(status(page)).toContainText("to correct");
     await page.getByTestId("wizard-cat-0-0-price").fill("8");
     await correct(page);
   });

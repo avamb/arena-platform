@@ -166,7 +166,7 @@ other = "Toto je vzorová vstupenka. Neopravňuje ke vstupu."
 other = "Zpráva od kupujícího: {{.Name}}"
 
 ["contact.email.intro"]
-other = "Kupující vám napsal přes kontaktní formulář vaší prodejní stránky Arena."
+other = "Kupující vám napsal přes kontaktní formulář vaší prodejní stránky ArenaSoldOut.com."
 
 ["contact.email.from"]
 other = "Od"
@@ -175,10 +175,10 @@ other = "Od"
 other = "Prodejní stránka"
 
 ["contact.email.reply"]
-other = "Kupujícímu odpovíte odpovědí na tento e-mail. Arena vaši odpověď nevidí."
+other = "Kupujícímu odpovíte odpovědí na tento e-mail. ArenaSoldOut.com vaši odpověď nevidí."
 
 ["contact.email.footer"]
-other = "Arena Sold Out poslala tuto zprávu, protože kontaktní formulář vaší prodejní stránky je zapnutý."
+other = "ArenaSoldOut.com poslala tuto zprávu, protože kontaktní formulář vaší prodejní stránky je zapnutý."
 
 # The sales-link PDF insert (spec 43, QL-13): the one line printed under the QR code.
 ["salelinks.insert.scan_and_buy"]

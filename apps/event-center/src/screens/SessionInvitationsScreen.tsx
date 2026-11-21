@@ -1,3 +1,4 @@
+import { HelpPopover } from "@/components/HelpPopover";
 import { Link, useParams } from "@tanstack/react-router";
 import { SessionInvitations } from "@/components/staffInvitations/SessionInvitations";
 import { useI18n } from "@/lib/i18n";
@@ -23,7 +24,10 @@ export function SessionInvitationsScreen() {
           {t("common.back")}
         </Link>
       </p>
-      <h1 id="seat-inv-title">{t("seatInv.title")}</h1>
+      <h1 id="seat-inv-title">
+        {t("seatInv.title")}
+        <HelpPopover textKey="help.invitations" testId="help-invitations" />
+      </h1>
       <SessionInvitations orgId={orgId} eventId={eventId} sessionId={sessionId} can={access.can} withCsv />
     </article>
   );

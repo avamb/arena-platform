@@ -233,7 +233,7 @@ func TestExportCSV_SessionSalesFileKeepsBarcodesPhonesAndNamesExact(t *testing.T
 	if len(lines) != 3 {
 		t.Fatalf("lines: %d\n%s", len(lines), body)
 	}
-	if lines[0] != `"Заказ";"Статус заказа";"Дата";"Покупатель";"E-mail";"Телефон";"Категория";"Цена";"Валюта";"Штрихкод";"Статус билета";"Вошёл";"Время входа";"Источник входа";"Сканер / вход";"Канал";"Промокод"` {
+	if lines[0] != `"Заказ";"Статус заказа";"Дата";"Покупатель";"E-mail";"Телефон";"Категория";"Цена";"Валюта";"Штрихкод";"Статус билета";"Вошёл";"Время входа";"Источник входа";"Сканер / вход";"Канал";"Промокод";"Тест"` {
 		t.Errorf("header: %s", lines[0])
 	}
 	// Ticket 1: stored EAN-13, admitted. Ticket 2: derived legacy code, not admitted.
@@ -288,7 +288,7 @@ func TestExportCSV_EventSummaryAndPromoFiles(t *testing.T) {
 		t.Fatalf("event sales.csv: %d %s", st, body)
 	}
 	lines := ec07Lines(t, body)
-	if len(lines) != 3 || !strings.HasSuffix(lines[0], `;"Промокод";"Сеанс"`) {
+	if len(lines) != 3 || !strings.HasSuffix(lines[0], `;"Промокод";"Тест";"Сеанс"`) {
 		t.Errorf("event header/rows: %q", lines)
 	}
 	if !strings.HasSuffix(lines[1], `;"2026-12-24 18:30"`) {

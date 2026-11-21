@@ -123,7 +123,7 @@ test.describe("event status (live)", () => {
 
       // The question says sold tickets stay valid; Cancel changes nothing.
       await page.getByTestId("event-status-off").click();
-      await expect(page.getByTestId("event-off-dialog")).toContainText("Tickets already sold stay valid");
+      await expect(page.getByTestId("event-off-dialog")).toContainText("The tickets sold stay valid");
       await page.getByTestId("event-off-dialog-cancel").click();
       expect(writes, "nothing is sent before the confirmation").toEqual([]);
       expect((await mustList(request, role, TOGGLE)).status).toBe("published");
@@ -172,7 +172,7 @@ test.describe("event status (live)", () => {
 
     await page.getByTestId("event-status-delete").click();
     const panel = page.getByTestId("event-delete-panel");
-    await expect(panel).toContainText("Nothing was sold");
+    await expect(panel).toContainText("We sold no tickets");
     await expect(page.getByTestId("dry-run-result")).toContainText("Paid orders");
     await noA11yViolations(page);
     await page.getByTestId("dry-run-confirm").click();
@@ -180,17 +180,17 @@ test.describe("event status (live)", () => {
     // A wrong word and an empty one delete nothing.
     await expect(page.getByTestId("confirm-word")).toContainText("Delete this event?");
     await page.getByTestId("confirm-word-submit").click();
-    await expect(page.getByTestId("confirm-word")).toContainText("Nothing is typed yet");
+    await expect(page.getByTestId("confirm-word")).toContainText("You did not type the word");
     await page.getByTestId("confirm-word").getByRole("textbox").fill("remove");
     await page.getByTestId("confirm-word-submit").click();
-    await expect(page.getByTestId("confirm-word")).toContainText("does not match");
+    await expect(page.getByTestId("confirm-word")).toContainText("The text is different from the word");
     expect(writes, "no DELETE before the right word").toEqual([]);
     expect(rows()[DELETE]).toEqual({ status: "published", deleted: false });
 
     // The word of the event is not the word of an order.
     await page.getByTestId("confirm-word").getByRole("textbox").fill("CANCEL ORDER");
     await page.getByTestId("confirm-word-submit").click();
-    await expect(page.getByTestId("confirm-word")).toContainText("does not match");
+    await expect(page.getByTestId("confirm-word")).toContainText("The text is different from the word");
     expect(writes).toEqual([]);
 
     await page.getByTestId("confirm-word").getByRole("textbox").fill("delete");
@@ -230,10 +230,10 @@ test.describe("event status (live)", () => {
     expect(((await del.json()) as { error: { code: string } }).error.code).toBe("event.has_paid_orders");
 
     await page.getByTestId("event-delete-archive-instead").click();
-    await expect(page.getByTestId("event-archive-dialog")).toContainText("This is final");
-    await expect(page.getByTestId("event-archive-dialog")).toContainText("Tickets already sold stay valid");
+    await expect(page.getByTestId("event-archive-dialog")).toContainText("This step is permanent");
+    await expect(page.getByTestId("event-archive-dialog")).toContainText("Sold tickets stay valid");
     await page.getByTestId("event-archive-dialog-submit").click();
-    await expect(page.getByTestId("event-status-done")).toContainText("archived");
+    await expect(page.getByTestId("event-status-done")).toContainText("in the archive");
     await expect(page.getByTestId("event-status-current")).toContainText("Archived");
     expect((await mustList(request, "organizer", SOLD)).status).toBe("archived");
     expect(writes).toEqual([`POST /v1/organizations/${env.org_id}/events/${event.id}/status`]);

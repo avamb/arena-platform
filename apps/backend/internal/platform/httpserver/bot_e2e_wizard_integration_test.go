@@ -219,7 +219,7 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	// "Cancel" asks first: one tap must not wipe the draft.
 	press("wz:cancel", "Выйти из создания мероприятия")
 	press("wz:cancel:no", "Возраст")
-	press("wz:age:16+", "От чьего имени")
+	press("wz:age:16+", "Под каким брендом")
 	press("wz:prom:org", "афишу")
 	// The poster goes in as a file: the bot downloads it from Telegram,
 	// uploads it to the API and moves on to the dates.

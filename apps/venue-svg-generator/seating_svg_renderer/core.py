@@ -115,7 +115,7 @@ def render_model(model: dict[str, Any], output_path: str | Path, *, allow_quaran
         "data-reference-svg-used": "false", "data-source-only": "true",
     })
     ET.SubElement(root, f"{{{SVG_NS}}}title").text = "Diagnostic seating map"
-    ET.SubElement(root, f"{{{SVG_NS}}}desc").text = "Generated from seating-json-v1; coordinates are worksheet grid units."
+    ET.SubElement(root, f"{{{SVG_NS}}}desc").text = "The renderer made this drawing from seating-json-v1. The coordinates are in grid units of the worksheet."
     metadata = ET.SubElement(root, f"{{{SVG_NS}}}metadata")
     metadata.text = json.dumps({"schema_version": model.get("schema_version"), "adapter_version": model.get("adapter_version"), "profile_id": model.get("profile_id"), "coordinate_transform": "identity-grid-to-svg-user-units"}, ensure_ascii=True, sort_keys=True)
     style = ET.SubElement(root, f"{{{SVG_NS}}}style")

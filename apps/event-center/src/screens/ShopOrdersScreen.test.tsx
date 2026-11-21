@@ -118,7 +118,7 @@ describe("the orders list (SB-14)", () => {
     });
     await idle(el);
     expect(byId(el, "error")).toBeNull();
-    expect(el.textContent).toContain("There are no orders yet.");
+    expect(el.textContent).toContain("There are no orders.");
   });
 
   it("retries the NEXT page, not the whole list, when 'Show more' fails", async () => {

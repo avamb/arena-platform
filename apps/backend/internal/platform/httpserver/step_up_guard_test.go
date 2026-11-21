@@ -156,6 +156,7 @@ func TestRowOrgAccess_HoldsAFlatMoneyRouteToTheStepUpOrganization(t *testing.T) 
 // configs, bank accounts, order and ticket cancellation, payment-intent
 // transition).
 var stepUpMoneyRoutes = []string{
+	"POST /v1/organizations/{org_id}/orders/{order_id}/external-refund",
 	"POST /v1/organizations/{org_id}/orders/{order_id}/refunds",
 	"POST /v1/organizations/{org_id}/refunds/{refund_id}/retry",
 	"POST /v1/organizations/{org_id}/refunds/{refund_id}/resolve",

@@ -327,7 +327,7 @@ func (h *Handler) HandlePublicCheckout(w http.ResponseWriter, r *http.Request) {
 		h.abandon(r, o.ID, o.OrgID, err)
 		h.o.Logger.Error("shop checkout: recording the payment intent failed; refusing to redirect",
 			slog.String("order_id", o.ID.String()), slog.String("error", err.Error()))
-		writeErr(w, r, http.StatusInternalServerError, hfeed.ErrCodePaymentStartFailed,
+		writeErr(w, r, http.StatusServiceUnavailable, hfeed.ErrCodePaymentStartFailed,
 			"We could not start the payment. Try again in a minute.")
 		return
 	}

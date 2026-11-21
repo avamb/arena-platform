@@ -438,6 +438,91 @@ func SetQuantity(ctx context.Context, txq *gen.Queries, sessionID, tierID uuid.U
 	return res, nil
 }
 
+// AddSoldUpstreamPlaces grows a GA category by quantity places that were
+// SOLD in the system the session was imported from before the platform took
+// it over (cmd/arena-legacy-tickets-import, migration 0212). Such a sale
+// never took one of the platform's available places, so nothing available is
+// touched: the category gains quantity new 'sold' places with no reservation
+// behind them, its ticket_tiers.capacity grows by the same number, the session
+// capacity is recomputed, and the session-level ledger books them as sold
+// (capacity_total and capacity_sold both grow by quantity), which is how a
+// sold GA place is accounted everywhere else and what a later cancellation
+// releases.
+//
+// Lock order as SetQuantity: the sessions row first, then the new places
+// (rows nobody else can hold), then the ledger row. A seated category is
+// refused with ErrSeatedCategory. The new places come back in seat_key order.
+func AddSoldUpstreamPlaces(ctx context.Context, txq *gen.Queries, sessionID, tierID uuid.UUID, quantity int32) ([]gen.GAUnitKey, error) {
+	if quantity <= 0 {
+		return nil, ErrInvalidQuantity
+	}
+	if txq == nil {
+		return nil, errors.New("gaquota: nil queries")
+	}
+	version, err := txq.IncrementSessionSeatStatusVersion(ctx, sessionID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrSessionNotFound
+		}
+		return nil, fmt.Errorf("gaquota: bump seat_status_version: %w", err)
+	}
+	tier, err := txq.GetTicketTierByID(ctx, tierID, sessionID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrCategoryNotFound
+		}
+		return nil, fmt.Errorf("gaquota: load category: %w", err)
+	}
+	seats, err := txq.CountSeatRowsForTier(ctx, sessionID, tierID)
+	if err != nil {
+		return nil, fmt.Errorf("gaquota: count seats of category: %w", err)
+	}
+	if seats > 0 {
+		return nil, ErrSeatedCategory
+	}
+	stats, err := CategoryStats(ctx, txq, sessionID, tierID)
+	if err != nil {
+		return nil, err
+	}
+	seq, err := ensureUnitSeq(ctx, txq, sessionID, tier)
+	if err != nil {
+		return nil, err
+	}
+	prefix := unitKeyPrefix(seq)
+	start, err := txq.MaxGAUnitIndexForTierPrefix(ctx, sessionID, prefix)
+	if err != nil {
+		return nil, fmt.Errorf("gaquota: read highest place index: %w", err)
+	}
+	places, err := txq.InsertSoldUpstreamGAUnitsForTier(ctx, sessionID, prefix, start, tierID, quantity, version)
+	if err != nil {
+		return nil, fmt.Errorf("gaquota: add sold places: %w", err)
+	}
+	if toInt32(int64(len(places))) != quantity {
+		return nil, fmt.Errorf("gaquota: added %d sold places, wanted %d", len(places), quantity)
+	}
+	if _, err := txq.SetTicketTierCapacity(ctx, tierID, sessionID, stats.Quantity+quantity); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrCategoryNotFound
+		}
+		return nil, fmt.Errorf("gaquota: write category quantity: %w", err)
+	}
+	if _, err := recompute(ctx, txq, sessionID); err != nil {
+		return nil, err
+	}
+	// Book the places as sold on the session ledger: reserve, then confirm,
+	// the two steps every sale takes, now that capacity_total has room.
+	if _, err := txq.ReserveCapacity(ctx, sessionID, nil, quantity); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errors.New("gaquota: the session ledger has no room for the sold places (capacity_held + capacity_sold exceeds the places)")
+		}
+		return nil, fmt.Errorf("gaquota: reserve sold places on the ledger: %w", err)
+	}
+	if _, err := txq.ConfirmCapacity(ctx, sessionID, nil, quantity); err != nil {
+		return nil, fmt.Errorf("gaquota: confirm sold places on the ledger: %w", err)
+	}
+	return places, nil
+}
+
 // SetOpen opens or closes a category. A closed category accepts no NEW
 // holds (the gates themselves live on the sales paths); places already held
 // or sold are untouched and an order already placed can still be paid

@@ -214,9 +214,23 @@ describe("resends: the newest letter of every ticket", () => {
     expect(ticketLetterStatus(card([letter({ status: "delivered", delivered_at: T1 }), queued])).state).toBe("queued");
   });
 
-  it("keeps letters that name no ticket", () => {
-    const old = letter({ ticket_ids: [] });
-    expect(latestTicketLetters([old, resent])).toEqual([old, resent]);
+  it("keeps a letter that names no ticket when no newer ticket letter exists", () => {
+    const newer = letter({ ticket_ids: [], sent_at: T3 });
+    expect(latestTicketLetters([resent, newer])).toEqual([resent, newer]);
+  });
+
+  it("drops an old failed letter that names no ticket once a newer ticket letter exists", () => {
+    const old = letter({ ticket_ids: [], status: "failed", sent_at: T0, failed_at: T0, failure_event: "blocked" });
+    const newer = letter({ status: "delivered", sent_at: T2, delivered_at: T2, ticket_ids: ["a", "b"] });
+    const s = ticketLetterStatus(card([old, newer]));
+    expect(s.state).toBe("delivered");
+    expect(s.done).toBe(2);
+    expect(s.total).toBe(2);
+  });
+
+  it("a failed ticketless letter alone still counts as a bounce", () => {
+    const old = letter({ ticket_ids: [], status: "failed", sent_at: T0, failed_at: T0, failure_event: "blocked" });
+    expect(ticketLetterStatus(card([old])).state).toBe("bounced");
   });
 });
 

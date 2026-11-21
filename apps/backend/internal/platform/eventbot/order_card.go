@@ -69,6 +69,7 @@ func (b *Bot) showOrderCard(ctx context.Context, chatID int64, editMsgID *int, f
 	plain := note + b.orderCardText(loc, detail, meta, private, true)
 	kb := b.withResendButton(b.orderCardKeyboard(loc, detail), id, detail, private) // EC-13, resend.go
 	kb = b.withRefundButton(kb, id, detail, private)                                // EC-21, refund_dialog.go
+	kb = b.withReissueButton(kb, id, detail, private)                               // spec 63 R-4, reissue.go
 	kb = b.withVIPButtons(kb, id, detail)                                           // V1, order_vip.go
 	if ticketLetterStatus(detail).failed() {
 		// A lost ticket letter: the resend button says what it does now.

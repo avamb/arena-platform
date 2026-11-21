@@ -387,14 +387,14 @@ function TicketsConsole() {
             Tickets
           </h1>
           <p style={S.subheadingStyle}>
-            Cross-tenant ticket inventory for manual MACS reconciliation:
-            pick an organization, event and session to compare Arena
-            against a MACS export for one showing. Filters map to the
-            backend's <code>org_id</code>, <code>event_id</code>,{" "}
+            Tickets of all organizations, for a manual MACS reconciliation.
+            Select an organization, an event, and a session. Then compare Arena
+            with a MACS export for one session. The filters are the
+            query parameters <code>org_id</code>, <code>event_id</code>,{" "}
             <code>session_id</code>, <code>status</code>,{" "}
-            <code>limit</code>, <code>offset</code> query parameters.
-            Cancellation (AB-49) is available from the ticket drawer;
-            issue and transfer are not exposed under <code>/v1/admin</code>.
+            <code>limit</code>, and <code>offset</code>.
+            You can cancel a ticket (AB-49) in the ticket drawer.
+            Issue and transfer are not in <code>/v1/admin</code>.
           </p>
         </div>
         <div style={S.refreshWrapStyle}>
@@ -422,7 +422,7 @@ function TicketsConsole() {
                 data-testid="tickets-org-id"
                 disabled={orgsQuery.isPending}
               >
-                <option value="">Any organization</option>
+                <option value="">All organizations</option>
                 {orgs.map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.name}
@@ -440,7 +440,7 @@ function TicketsConsole() {
                 disabled={orgIdInput === "" || eventsQuery.isPending}
               >
                 <option value="">
-                  {orgIdInput === "" ? "Pick an organization first" : "Any event"}
+                  {orgIdInput === "" ? "Select an organization first" : "All events"}
                 </option>
                 {eventsForOrg.map((e) => (
                   <option key={e.id} value={e.id}>
@@ -459,7 +459,7 @@ function TicketsConsole() {
                 disabled={eventIdInput === "" || sessionsQuery.isPending}
               >
                 <option value="">
-                  {eventIdInput === "" ? "Pick an event first" : "Any session"}
+                  {eventIdInput === "" ? "Select an event first" : "All sessions"}
                 </option>
                 {sessionsForEvent.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -476,7 +476,7 @@ function TicketsConsole() {
                 style={S.selectStyle}
                 data-testid="tickets-status"
               >
-                <option value="">Any status</option>
+                <option value="">All statuses</option>
                 {TICKET_STATUSES.map((s) => (
                   <option key={s} value={s}>
                     {s}
@@ -507,7 +507,7 @@ function TicketsConsole() {
                 onClick={() => setOffset(clampOffset(offset - limit))}
                 data-testid="tickets-prev"
               >
-                Prev
+                Previous
               </button>
               <span data-testid="tickets-page-caption">
                 Page {currentPage(offset, limit)} · rows {rows.length}
@@ -564,15 +564,14 @@ function TicketsConsole() {
           data-testid="tickets-counters"
           aria-live="polite"
         >
-          Loaded rows — valid: <strong>{counters.valid}</strong> · refunded:{" "}
-          <strong>{counters.refunded}</strong> · cancelled:{" "}
+          Rows on this page. Valid: <strong>{counters.valid}</strong> · refunded:{" "}
+          <strong>{counters.refunded}</strong> · canceled:{" "}
           <strong>{counters.cancelled}</strong> · revoked:{" "}
           <strong>{counters.revoked}</strong> · total:{" "}
           <strong>{counters.total}</strong>
           {sessionIdInput === "" ? (
             <>
-              {" "}(pick a session and a large page size to see the full
-              picture)
+              {" "}(select a session and a large page size to see all rows)
             </>
           ) : null}
         </span>
@@ -633,7 +632,7 @@ function Body({ query, rows, activeId, onOpen }: BodyProps) {
   if (rows.length === 0) {
     return (
       <div style={S.statusBoxStyle} role="status" data-testid="tickets-empty">
-        No tickets match the current filters.
+        No ticket matches the filters.
       </div>
     );
   }
@@ -840,7 +839,7 @@ function TicketDrawer({
             }
           />
           <MetaRow
-            k="Holder email"
+            k="Holder e-mail"
             v={
               ticket.holder_email === null ? (
                 <span style={S.mutedStyle}>—</span>
@@ -876,13 +875,13 @@ function TicketDrawer({
           data-testid="tickets-review-hold"
         >
           <h3 id="tickets-drawer-hold" style={S.drawerSectionTitleStyle}>
-            ⚠ Review hold — partial refund needs attribution
+            ⚠ Review hold. A partial refund needs an assignment
           </h3>
           <p style={S.gapNoteStyle}>
             {ticket.review_hold_reason ??
-              "A partial provider refund landed on this order and must be attributed to specific tickets by an operator."}{" "}
-            Admission stays allowed until resolved — cancel the tickets
-            the refund covers, or confirm this one stays valid.
+              "The provider made a partial refund on this order. An operator must assign it to specific tickets."}{" "}
+            The ticket stays valid at the door until you decide. Cancel the tickets
+            that the refund covers, or keep this ticket valid.
           </p>
         </section>
       ) : null}
@@ -897,7 +896,7 @@ function TicketDrawer({
             Cancellation record
           </h3>
           <dl style={S.metaListStyle}>
-            <MetaRow k="Cancelled" v={formatDateTime(ticket.cancelled_at)} />
+            <MetaRow k="Canceled" v={formatDateTime(ticket.cancelled_at)} />
             <MetaRow
               k="Reason"
               v={ticket.cancellation_reason ?? <span style={S.mutedStyle}>—</span>}
@@ -907,7 +906,7 @@ function TicketDrawer({
               v={
                 ticket.refund_mode === "manual" ? (
                   <span>
-                    manual — <strong>pending, handled outside the platform</strong>
+                    manual. <strong>Pending. Someone refunds outside the platform.</strong>
                   </span>
                 ) : ticket.refund_mode === "automatic" ? (
                   <span>
@@ -923,7 +922,7 @@ function TicketDrawer({
                     ) : null}
                   </span>
                 ) : (
-                  <span>none — nothing owed</span>
+                  <span>none. No refund is due.</span>
                 )
               }
             />
@@ -950,20 +949,20 @@ function TicketDrawer({
           <BackendGapTile
             id="order-by-session"
             label="Parent order"
-            reason="No /v1/admin/orders/{id} detail endpoint yet; checkout_session_id is shown for cross-reference but cannot be linked into a typed detail view."
+            reason="There is no /v1/admin/orders/{id} endpoint. This page shows checkout_session_id for reference. It cannot open an order page."
           />
           <BackendGapTile
             id="event"
             label="Event / performance"
-            reason="No /v1/admin/events endpoint exposed; event metadata is not joined into the ticket list."
+            reason="There is no /v1/admin/events endpoint. The ticket list does not include event data."
           />
         </div>
         <p style={S.gapNoteStyle}>
-          Cross-tenant tickets/refunds filtered by the same org as this
-          ticket can be reached from the parent organization's drawer
+          To see the tickets and refunds of the organization of this
+          ticket, open the drawer of the organization
           (see <Link to="/organizations">Organizations</Link>). The
-          ticket list endpoint itself does not expose <code>org_id</code>
-          in its row payload today, so we cannot deep-link from this row.
+          ticket list does not give <code>org_id</code>
+          in its rows, so this row cannot link to the organization.
         </p>
       </section>
     </aside>
@@ -1032,21 +1031,21 @@ function CancelTicketSection({ ticket }: { ticket: AdminTicket }) {
         data-testid="tickets-cancel-done"
       >
         <h3 id="tickets-drawer-cancelled" style={S.drawerSectionTitleStyle}>
-          Ticket cancelled
+          Ticket canceled
         </h3>
         <p style={S.gapNoteStyle}>
           {result.seat_released
             ? "The seat is back on sale."
             : result.ga_unit_released
-              ? "One GA place returned to the pool."
-              : "Capacity was restored (no per-place row to release)."}{" "}
+              ? "One general admission seat is back on sale."
+              : "We gave the capacity back. No seat row needed a release."}{" "}
           {result.refund_task_failed
-            ? "The automatic refund task FAILED — the cancellation stands; retry the refund from the Refunds console."
+            ? "The automatic refund task FAILED. The ticket is canceled. Try the refund again in the Refunds console."
             : result.refund != null
               ? `Refund ${result.refund.state}: ${result.refund.amount} ${result.refund.currency}.`
               : mode === "manual"
-                ? "Refund pending — handled outside the platform."
-                : "No refund owed."}
+                ? "Refund pending. Someone refunds outside the platform."
+                : "No refund is due."}
         </p>
       </section>
     );
@@ -1073,19 +1072,19 @@ function CancelTicketSection({ ticket }: { ticket: AdminTicket }) {
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
           <p style={S.gapNoteStyle}>
-            Cancelling immediately invalidates the ticket at the door,
-            returns its place to sale and restores capacity — regardless
-            of the refund choice below.
+            The ticket stops at the door immediately. The seat goes back
+            on sale and the capacity goes back. This is the same for each
+            refund decision below.
           </p>
           <label style={S.fieldGroupStyle}>
-            <span style={S.fieldLabelStyle}>Reason (required, audited)</span>
+            <span style={S.fieldLabelStyle}>Reason (required, saved in the audit log)</span>
             <input
               type="text"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               style={S.inputStyle}
               data-testid="tickets-cancel-reason"
-              placeholder="e.g. customer request"
+              placeholder="for example, the buyer asked"
             />
           </label>
           <fieldset style={{ border: "none", padding: 0, margin: 0 }}>
@@ -1101,10 +1100,10 @@ function CancelTicketSection({ ticket }: { ticket: AdminTicket }) {
                   data-testid={`tickets-cancel-mode-${m}`}
                 />{" "}
                 {m === "none"
-                  ? "none — nothing owed (comp / no-refund policy)"
+                  ? "none. No refund is due (free ticket or no-refund policy)"
                   : m === "manual"
-                    ? "manual — I will refund from the provider dashboard (recorded as outstanding)"
-                    : "automatic — the platform refunds the confirmed amount"}
+                    ? "manual. I refund in the provider dashboard (we record it as open)"
+                    : "automatic. The platform refunds the confirmed amount"}
               </label>
             ))}
           </fieldset>
@@ -1127,7 +1126,7 @@ function CancelTicketSection({ ticket }: { ticket: AdminTicket }) {
             <p style={{ color: "#7f1d1d", fontSize: 12 }} data-testid="tickets-cancel-error">
               {mutation.error instanceof ApiError
                 ? `${mutation.error.code}: ${mutation.error.message}`
-                : "Cancellation failed."}
+                : "We did not cancel the ticket."}
             </p>
           ) : null}
           <div style={{ display: "flex", gap: 8 }}>
@@ -1138,7 +1137,7 @@ function CancelTicketSection({ ticket }: { ticket: AdminTicket }) {
               onClick={() => mutation.mutate()}
               data-testid="tickets-cancel-submit"
             >
-              {mutation.isPending ? "Cancelling…" : "Confirm cancellation"}
+              {mutation.isPending ? "Canceling…" : "Confirm cancellation"}
             </button>
             <button
               type="button"
@@ -1275,7 +1274,7 @@ function TicketDeliverySection({ ticketId }: { ticketId: string }) {
           style={S.gapNoteStyle}
           data-testid="tickets-delivery-empty"
         >
-          No delivery has been attempted for this ticket yet.
+          We did not try to deliver this ticket.
         </p>
       ) : (
         <dl style={S.metaListStyle} data-testid="tickets-delivery-detail">
@@ -1340,7 +1339,7 @@ function TicketDeliverySection({ ticketId }: { ticketId: string }) {
           id="tickets-delivery-resend-hint"
           style={{ fontSize: 11, color: "#475569" }}
         >
-          Enqueues a fresh delivery_jobs row. Requires{" "}
+          Adds a new delivery_jobs row. You need{" "}
           <code>ticket.update</code> or <code>support.act</code>.
         </span>
       </div>
@@ -1351,9 +1350,9 @@ function TicketDeliverySection({ ticketId }: { ticketId: string }) {
           role="alert"
           data-testid="tickets-delivery-resend-error"
         >
-          Resend failed:{" "}
+          We did not resend:{" "}
           {resend.error instanceof ApiError
-            ? `${resend.error.code} — ${resend.error.message}`
+            ? `${resend.error.code}: ${resend.error.message}`
             : "Unknown error"}
         </p>
       ) : null}
@@ -1363,7 +1362,7 @@ function TicketDeliverySection({ ticketId }: { ticketId: string }) {
           role="status"
           data-testid="tickets-delivery-resend-success"
         >
-          Resend enqueued (worker_job_id={" "}
+          We queued the resend (worker_job_id={" "}
           <code style={S.monoStyle}>{resend.data.worker_job_id}</code>).
         </p>
       ) : null}
@@ -1464,8 +1463,8 @@ function TicketScansSection({ ticketId }: { ticketId: string }) {
         Scans
       </h3>
       <p style={S.gapNoteStyle}>
-        Read-only history from <code>scan_events</code> for this ticket,
-        newest scan first. Backed by{" "}
+        Read-only history from <code>scan_events</code> for this ticket.
+        The newest scan is first. Source:{" "}
         <code>GET /v1/admin/tickets/{"{id}"}/scans</code>.
       </p>
 
@@ -1485,7 +1484,7 @@ function TicketScansSection({ ticketId }: { ticketId: string }) {
           role="status"
           data-testid="tickets-scans-empty"
         >
-          No scans recorded for this ticket yet.
+          This ticket has no scan.
         </div>
       ) : (
         <div

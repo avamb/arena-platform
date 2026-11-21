@@ -40,6 +40,28 @@ func TestRenderBotInvitationEmail_Spanish(t *testing.T) {
 	}
 }
 
+func TestRenderBotInvitationEmail_Ukrainian(t *testing.T) {
+	t.Parallel()
+	link := "https://t.me/ArenaEventsCentrBot?start=inv_abc"
+	expires := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+
+	subject, htmlBody, textBody := renderBotInvitationEmail("uk", "Театр Нова", "owner", link, expires)
+	if !strings.Contains(subject, "Театр Нова") || !strings.Contains(subject, "запрошення") {
+		t.Errorf("Ukrainian subject = %q", subject)
+	}
+	if !strings.Contains(textBody, "власника") || !strings.Contains(textBody, link) {
+		t.Errorf("Ukrainian text lacks the role or the link:\n%s", textBody)
+	}
+	if !strings.Contains(htmlBody, `lang="uk"`) || !strings.Contains(htmlBody, link) {
+		t.Errorf("Ukrainian html lacks lang or link:\n%s", htmlBody)
+	}
+
+	_, _, managerText := renderBotInvitationEmail("uk", "", "manager", link, expires)
+	if !strings.Contains(managerText, "менеджера") {
+		t.Errorf("manager role word missing:\n%s", managerText)
+	}
+}
+
 func TestHandleBotInvitationEmail_MailsTheDeepLink(t *testing.T) {
 	t.Parallel()
 	sender := &captureSender{}
@@ -92,7 +114,7 @@ func TestHandleBotInvitationEmail_DefaultsToEnglish(t *testing.T) {
 	if err := h.HandleBotInvitationEmail(context.Background(), payload); err != nil {
 		t.Fatalf("HandleBotInvitationEmail: %v", err)
 	}
-	if !strings.Contains(sender.message.Subject, "invitation to the Arena events bot") {
+	if !strings.Contains(sender.message.Subject, "invitation to the ArenaSoldOut.com events bot") {
 		t.Errorf("unknown locale should fall back to English: %q", sender.message.Subject)
 	}
 	if !strings.Contains(sender.message.TextBody, "role: manager") {

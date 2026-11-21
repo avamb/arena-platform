@@ -86,18 +86,18 @@ export interface ProbeLink {
 export const OPERATIONAL_PROBES: readonly ProbeLink[] = [
   {
     id: "healthz",
-    label: "Liveness probe",
+    label: "Liveness check",
     path: "/healthz",
     purpose:
-      "Process-level liveness check. Returns 200 when the API server is running.",
+      "Shows that the API server is alive. The answer is 200 when the server works.",
     browserSafe: true,
   },
   {
     id: "readyz",
-    label: "Readiness probe",
+    label: "Readiness check",
     path: "/readyz",
     purpose:
-      "Aggregates registered readiness checks (DB, outbox, dependent services). 503 with structured checks map on failure.",
+      "Shows the result of each readiness check (database, outbox, other services). If a check is not successful, the answer is 503 with a map of the checks.",
     browserSafe: true,
   },
   {
@@ -105,7 +105,7 @@ export const OPERATIONAL_PROBES: readonly ProbeLink[] = [
     label: "Prometheus metrics",
     path: "/metrics",
     purpose:
-      "Prometheus text exposition. Plain text only -- the UI deliberately does not parse this into charts.",
+      "Prometheus text. The page does not turn this text into charts.",
     browserSafe: false,
   },
 ];
@@ -131,70 +131,70 @@ export const OBSERVABILITY_GAPS: readonly ObservabilityGap[] = [
     label: "Platform overview",
     endpoint: "GET /v1/admin/observability/overview",
     purpose:
-      "Request rate, error rate, p50/p95/p99 latency, active workers, queue depth.",
+      "Request rate, error rate, p50/p95/p99 latency, active workers, and queue depth.",
   },
   {
     id: "GO2",
     label: "API traffic and latency",
     endpoint: "GET /v1/admin/observability/http",
     purpose:
-      "Per-route RED metrics (rate, errors, duration). Backed by the http_request_duration_seconds histogram.",
+      "RED metrics for each route (rate, errors, duration). The source is the http_request_duration_seconds histogram.",
   },
   {
     id: "GO3",
     label: "Checkout / order health",
     endpoint: "GET /v1/admin/observability/checkout",
     purpose:
-      "Reservation success / abandon rate, idempotency conflicts, slow-checkout outliers.",
+      "Hold success rate, hold stop rate, idempotency conflicts, and checkouts that take a long time.",
   },
   {
     id: "GO4",
     label: "Payment / refund health",
     endpoint: "GET /v1/admin/observability/payments",
     purpose:
-      "Authorization success rate, refund success rate, provider webhook freshness, dispute rate.",
+      "Authorization success rate, refund success rate, age of the last provider webhook, and dispute rate.",
   },
   {
     id: "GO5",
     label: "Webhook delivery",
     endpoint: "GET /v1/admin/observability/webhooks",
     purpose:
-      "Outbox depth, delivery success / failure rate, retry backlog, dead-letter count.",
+      "Outbox depth, delivery success rate, delivery failure rate, retry backlog, and dead-letter count.",
   },
   {
     id: "GO6",
     label: "Scanner sync",
     endpoint: "GET /v1/admin/observability/scanners",
     purpose:
-      "Per-scanner heartbeat, scan-event ingestion lag, sync failures.",
+      "Heartbeat of each scanner, scan-event ingestion lag, and sync failures.",
   },
   {
     id: "GO7",
     label: "Background jobs / queues",
     endpoint: "GET /v1/admin/observability/jobs",
     purpose:
-      "Queue depth, oldest job age, worker pool saturation, failure rate per queue.",
+      "Queue depth, age of the oldest job, worker pool load, and failure rate for each queue.",
   },
   {
     id: "GO8",
     label: "Billing / invoice health",
     endpoint: "GET /v1/admin/observability/billing",
     purpose:
-      "Invoice generation success rate, collection attempt success rate, dunning state.",
+      "Invoice generation success rate, payment collection success rate, and dunning status.",
   },
   {
     id: "GO9",
     label: "External ingestion",
     endpoint: "GET /v1/admin/observability/ingestion",
     purpose:
-      "Bil24 / WordPress / external allocation ingestion job lag and error rate.",
+      "Lag and error rate of the ingestion jobs for Bil24, WordPress, and other external allocations.",
   },
   {
     id: "GO10",
     label: "Error grouping",
     endpoint: "GET /v1/admin/observability/errors",
     purpose:
-      "Errors grouped by fingerprint with severity, first/last seen, affected service, owner.",
+      "Errors in groups by fingerprint. Each group shows severity, first and last time seen, the service, and the owner.",
   },
 ];
 
@@ -215,13 +215,11 @@ function ObservabilityShell() {
             Observability
           </h1>
           <p style={S.subheadingStyle}>
-            Honest shell. The platform exposes operational probes for
-            Dokploy and Prometheus, listed below as direct links. No
-            in-page dashboards are rendered: parsing
-            Prometheus text into charts here would produce
-            misleading rollups (cardinality sampling, rate windowing).
-            When real dashboard APIs land they replace the gap tiles
-            below. Permission rule:{" "}
+            This page is a shell. The platform gives operational probes
+            for Dokploy and Prometheus. The links are below. The page
+            has no dashboards. Charts made from Prometheus text here
+            can show incorrect totals. When the dashboard APIs exist,
+            they replace the gap tiles below. Permission rule:{" "}
             {describeRule(NAV_ENTRY.permission)}.
           </p>
         </div>
@@ -232,11 +230,10 @@ function ObservabilityShell() {
           Operational probes
         </h2>
         <p style={S.drawerHelpStyle}>
-          Direct links to the backend operational probes. These are
-          deployment-level signals, not part of the /v1 API contract.
-          Reachability depends on network and CORS configuration --
-          opens in a new tab so a failed request never replaces this
-          shell.
+          Links to the backend operational probes. These are
+          deployment signals. They are not part of the /v1 API contract.
+          If the network or CORS settings stop a link, it does not
+          open. Each link opens in a new tab, so this page stays.
         </p>
         <div style={S.relatedGridStyle}>
           {OPERATIONAL_PROBES.map((probe) => (
@@ -251,13 +248,13 @@ function ObservabilityShell() {
 
       <div style={S.drawerSectionStyle} aria-labelledby="obs-gaps-h2">
         <h2 id="obs-gaps-h2" style={S.drawerSectionTitleStyle}>
-          Dashboard endpoints not wired yet
+          Dashboard endpoints not available
         </h2>
         <p style={S.drawerHelpStyle}>
           Each tile names a dashboard family from
-          08_platform_superadmin_observability_ru.md and the exact
-          backend endpoint that has to land before the dashboard can
-          be populated. No tile renders synthesized data.
+          08_platform_superadmin_observability_ru.md. It also names the
+          backend endpoint that the dashboard will use. No tile shows
+          made-up data.
         </p>
         <div style={S.relatedGridStyle}>
           {OBSERVABILITY_GAPS.map((gap) => (
@@ -267,12 +264,12 @@ function ObservabilityShell() {
       </div>
 
       <div style={S.gapNoteStyle}>
-        <strong>Why no inline charts?</strong> The platform&apos;s
-        observability stack (Prometheus + OTLP) is the source of truth.
-        Re-parsing /metrics text into charts in the SPA produces
-        rollups that look right at a glance but lie under load. The
-        SuperAdmin console intentionally points operators at the
-        upstream tooling until a dedicated dashboard API ships.
+        <strong>No charts on this page.</strong> The observability
+        stack of the platform (Prometheus + OTLP) is the source of
+        truth. Charts that this page makes from /metrics text can show
+        incorrect totals when the load is high. Until a dashboard API
+        exists, the SuperAdmin console sends operators to the upstream
+        tools.
       </div>
     </section>
   );
@@ -298,7 +295,7 @@ function ProbeTile({
       <span style={S.relatedTileHintStyle}>{url}</span>
       <span style={hintParaStyle}>{probe.purpose}</span>
       {probe.browserSafe ? null : (
-        <span style={S.warnBadgeStyle}>Plain text -- may be ACLed</span>
+        <span style={S.warnBadgeStyle}>Plain text. An access list can block it.</span>
       )}
     </a>
   );

@@ -1,4 +1,4 @@
-{{define "subject"}}Vous êtes invité(e) — {{.EventName}}{{end}}
+{{define "subject"}}{{with .Reissue}}Votre nouvelle invitation — {{$.EventName}}{{else}}Vous êtes invité(e) — {{.EventName}}{{end}}{{end}}
 
 {{define "html"}}<!DOCTYPE html>
 <html lang="fr" dir="ltr">
@@ -11,9 +11,11 @@
   <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
   <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">Vous êtes invité(e) !</h1>
   <p style="margin:0 0 12px 0;">Bonjour{{with .HolderName}} {{.}}{{end}},</p>
-  <p style="margin:0 0 12px 0;">Vous avez reçu une invitation gratuite pour
+{{with .Reissue}}<p style="margin:0 0 12px 0;">{{if .Typo}}L'adresse e-mail contenait une faute de frappe : le premier e-mail avec votre invitation est donc parti vers une autre adresse. Vous avez contacté l'organisateur et confirmé vos coordonnées. Nous avons émis une nouvelle invitation pour vous.<br><br>L'invitation du premier e-mail n'est plus valable. Seule la nouvelle invitation permet d'entrer.{{else}}À votre demande, nous avons émis une nouvelle invitation pour remplacer la précédente.<br><br>L'invitation précédente n'est plus valable. Seule la nouvelle invitation permet d'entrer.{{end}}</p>
+{{end}}  <p style="margin:0 0 12px 0;">Vous avez reçu une invitation gratuite pour
      <strong>{{.EventName}}</strong>. Le PDF est joint à ce message.</p>
   <p style="margin:0 0 12px 0;">Ce billet est une invitation gratuite — aucun paiement n'est requis.</p>
+  {{with .Directions.GoogleURL}}<p style="margin:0 0 12px 0;">{{with $.VenueName}}{{.}}<br>{{end}}Itinéraire : <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a></p>{{end}}
   {{if gt (len .Tickets) 1}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">{{range .Tickets}}<tr><td>N° {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}</td></tr>{{end}}</table>{{else if or .SeatSector .SeatRow .SeatNumber}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">
     {{with .SeatSector}}<tr><td><strong>Secteur</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .SeatRow}}<tr><td><strong>Rang</strong></td><td>{{.}}</td></tr>{{end}}
@@ -22,7 +24,7 @@
   {{if le (len .Tickets) 1}}<p style="font-size:12px;color:#666">Identifiant du billet : {{.TicketID}}</p>{{end}}
   <p style="font-size:12px;color:#666">Envoyé à : {{.RecipientEmail}}</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
 {{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
     {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
@@ -33,7 +35,7 @@
     {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
     {{with .Branding.ContactEmail}}<br>Contact : <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Contact : <a href="{{.}}" style="color:#666">Écrire à l'organisateur</a>{{end}}{{end}}
   </p>
-  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}Arena Platform — envoi automatique des invitations{{end}}</p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Ticket processing by arenasoldout.com</a>{{end}}</p>
   <p style="font-size:11px;color:#999;line-height:1.5">Si vous cliquez sur « Se désabonner », vous ne recevrez plus les e-mails contenant vos billets ni les e-mails importants concernant votre commande. Nous n’envoyons pas de communications commerciales sans votre consentement.</p>
   </td></tr>
 </table>
@@ -47,17 +49,26 @@ Vous êtes invité(e) !
 
 Bonjour{{with .HolderName}} {{.}}{{end}},
 
-Vous avez reçu une invitation gratuite pour {{.EventName}}.
+{{with .Reissue}}{{if .Typo}}L'adresse e-mail contenait une faute de frappe : le premier e-mail avec votre invitation est donc parti vers une autre adresse. Vous avez contacté l'organisateur et confirmé vos coordonnées. Nous avons émis une nouvelle invitation pour vous.
+
+L'invitation du premier e-mail n'est plus valable. Seule la nouvelle invitation permet d'entrer.{{else}}À votre demande, nous avons émis une nouvelle invitation pour remplacer la précédente.
+
+L'invitation précédente n'est plus valable. Seule la nouvelle invitation permet d'entrer.{{end}}
+
+{{end}}Vous avez reçu une invitation gratuite pour {{.EventName}}.
 Le PDF est joint à ce message.
 
 Ce billet est une invitation gratuite — aucun paiement n'est requis.
 
-{{if gt (len .Tickets) 1}}{{range .Tickets}}- N° {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}
+{{with .Directions.GoogleURL}}{{with $.VenueName}}{{.}}
+{{end}}Itinéraire : Google Maps {{.}} · Waze {{$.Directions.WazeURL}}
+
+{{end}}{{if gt (len .Tickets) 1}}{{range .Tickets}}- N° {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}
 {{end}}{{else}}{{with .SeatSector}}Secteur : {{.}}
 {{end}}{{with .SeatRow}}Rang : {{.}}
 {{end}}{{with .SeatNumber}}Place : {{.}}
 {{end}}Identifiant du billet : {{.TicketID}}{{end}}
-Envoyé à : {{.RecipientEmail}}
+{{template "contact_text" .}}Envoyé à : {{.RecipientEmail}}
 
 --
 {{.Branding.SellerLabel}} {{.Branding.LegalName}}
@@ -71,7 +82,7 @@ Envoyé à : {{.RecipientEmail}}
 {{end}}{{with .Branding.ContactEmail}}Contact : {{.}}
 {{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Contact : {{.}}
 {{end}}{{end}}
-{{if not .WhiteLabel}}Arena Platform — envoi automatique des invitations{{end}}
+{{if not .WhiteLabel}}Ticket processing by arenasoldout.com — https://arenasoldout.com{{end}}
 
 Si vous cliquez sur « Se désabonner », vous ne recevrez plus les e-mails contenant vos billets ni les e-mails importants concernant votre commande. Nous n’envoyons pas de communications commerciales sans votre consentement.
 {{end}}
