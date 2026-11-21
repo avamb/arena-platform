@@ -1,0 +1,217 @@
+id: sell-tickets-from-poster
+fps: 30
+languages: [ru, en, es]
+title:
+  ru: "Афиша → продажа билетов"
+  en: "Poster → ticket sales"
+  es: "Cartel → venta de entradas"
+
+# Source text and storyboard: docs/video/01_first_video_script_ru.md.
+# Pictures in captures/ are made on the staging stand (see README, "Film sell-tickets-from-poster")
+# and are not committed. A picture of one language lies in captures/<language>/ or assets/<language>/.
+# zoom x,y is the point of the picture that the close-up looks at.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [16x9, 9x16, 4x5]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-poster
+    narration:
+      ru: "У вас есть афиша. Через несколько минут по ней можно продавать билеты."
+      en: "You have a poster. In a few minutes, you can sell tickets with it."
+      es: "Tienes un cartel. En unos minutos puedes vender entradas con él."
+    pause_after: 0.3
+    shots:
+      - image: assets/poster_vecher_dzhaza_4x5.png
+        frame: phone
+        title: { ru: "Афиша → продажа билетов за несколько минут", en: "Poster → ticket sales in a few minutes", es: "Del cartel a la venta de entradas en minutos" }
+        zoom: { from: 1.0, to: 1.12, x: 0.5, y: 0.45 }
+
+  - id: s2-bot
+    narration:
+      ru: "Отправьте афишу боту Arena Sold Out в Telegram. Бот прочитает название, дату, площадку и цену. Вы подтверждаете каждое значение кнопкой и отвечаете на несколько коротких вопросов. Нажимаете «Опубликовать» и получаете страницу мероприятия и ссылку для покупателей."
+      en: "Send the poster to the Arena Sold Out bot in Telegram. The bot reads the name, the date, the venue and the price. You confirm each value with a button and answer a few short questions. You press Publish and get the event page and a link for your buyers."
+      es: "Envía el cartel al bot de Arena Sold Out en Telegram. El bot lee el nombre, la fecha, el recinto y el precio. Confirmas cada dato con un botón y respondes a unas preguntas breves. Pulsas «Publicar» y recibes la página del evento y un enlace para los compradores."
+    pause_after: 1.0
+    shots:
+      - image: captures/r_03_sent.png
+        frame: phone
+        title: { ru: "Афиша отправлена боту", en: "Poster sent to the bot", es: "Cartel enviado al bot" }
+        weight: 2
+        zoom: { from: 1.0, to: 1.2, x: 0.5, y: 0.8 }
+      - image: captures/r_04_read.png
+        frame: phone
+        title: { ru: "Бот читает афишу", en: "The bot reads the poster", es: "El bot lee el cartel" }
+        weight: 4
+        zoom: { from: 1.14, to: 1.2, x: 0.3, y: 0.2 }
+        highlight: { x: 0.02, y: 0.085, w: 0.75, h: 0.215 }
+        per_language:
+          en: { highlight: { x: 0.02, y: 0.112, w: 0.75, h: 0.225 } }
+      - image: captures/r_16_price_q_close.png
+        frame: phone
+        title: { ru: "Вы подтверждаете кнопкой", en: "You confirm with a button", es: "Confirmas con un botón" }
+        weight: 4
+        scroll: { from: 0.92, to: 1.0 }
+        highlight: { x: 0.026, y: 0.586, w: 0.95, h: 0.0375 }
+        cursor:
+          - { at: 0.2, x: 0.8, y: 0.66 }
+          - { at: 0.65, x: 0.54, y: 0.605, click: true }
+      - image: captures/r_19_summary.png
+        frame: phone
+        title: { ru: "Проверьте и опубликуйте", en: "Check and publish", es: "Revisa y publica" }
+        weight: 2
+        zoom: { from: 1.14, to: 1.2, x: 0.3, y: 0.55 }
+      - image: captures/r_20_done.png
+        frame: phone
+        title: { ru: "Страница и ссылка готовы", en: "Page and link are ready", es: "Página y enlace listos" }
+        weight: 4
+        zoom: { from: 1.14, to: 1.2, x: 0.3, y: 0.16 }
+        highlight: { x: 0.02, y: 0.165, w: 0.75, h: 0.065 }
+        per_language:
+          en: { highlight: { x: 0.02, y: 0.243, w: 0.75, h: 0.058 } }
+
+  - id: s3-buyer
+    narration:
+      ru: "Покупатель открывает ссылку, выбирает билеты и платит картой. Билет приходит ему на почту."
+      en: "The buyer opens the link, selects tickets and pays by card. The ticket arrives by e-mail."
+      es: "El comprador abre el enlace, elige las entradas y paga con tarjeta. La entrada le llega por correo electrónico."
+    pause_after: 5.5          # five close-ups need more time than the short text gives
+    shots:
+      - image: captures/b_01_page_full.png
+        frame: phone
+        title: { ru: "Страница мероприятия", en: "Event page", es: "Página del evento" }
+        weight: 2
+        scroll: { from: 0, to: 0.75 }
+        # es: the widget has English parts in Spanish; the es pictures and scroll keep them out of the frame
+        per_language:
+          es: { scroll: { from: 0, to: 0.2 } }
+      - image: captures/b_03_cart_close.png
+        frame: phone
+        scroll: { from: 0.9, to: 1.0 }
+        per_language:
+          es: { scroll: { from: 0, to: 0 } }
+        title: { ru: "Выбор билетов", en: "Ticket selection", es: "Elección de entradas" }
+        weight: 2
+      - image: captures/b_04_form_close.png
+        frame: phone
+        title: { ru: "Оплата картой", en: "Card payment", es: "Pago con tarjeta" }
+        weight: 3
+        scroll: { from: 0.9, to: 1.0 }
+        highlight: { x: 0.04, y: 0.619, w: 0.92, h: 0.0311 }
+        per_language:
+          es: { highlight: { x: 0.04, y: 0.522, w: 0.92, h: 0.032 } }
+      # The production letter template, rendered again in Russian with the data of the order.
+      - image: captures/l_01_letter.png
+        frame: phone
+        title: { ru: "Письмо с билетами", en: "E-mail with tickets", es: "Correo con las entradas" }
+        weight: 3
+        scroll: { from: 0, to: 0.7 }
+      # The first page of the real ticket PDF: brand and holder name replaced, seller footer cut.
+      - image: captures/t_01_ticket.png
+        frame: phone
+        title: { ru: "Билет PDF", en: "PDF ticket", es: "Entrada en PDF" }
+        weight: 3
+        scroll: { from: 0, to: 1.0 }
+
+  - id: s4-money
+    narration:
+      ru: "Деньги поступают напрямую на ваш счёт в Stripe. О каждой продаже приходит сообщение в Telegram."
+      en: "The money goes directly to your Stripe account. You get a Telegram message about every sale."
+      es: "El dinero llega directamente a tu cuenta de Stripe. Recibes un mensaje en Telegram por cada venta."
+    pause_after: 2.5
+    shots:
+      # The payment page of the stand: test badge hidden, merchant name replaced.
+      - image: captures/b_06_stripe_crop.png
+        frame: browser
+        title: { ru: "Оплата через Stripe — деньги сразу на ваш счёт", en: "Payment through Stripe — money goes straight to your account", es: "Pago con Stripe: el dinero va directo a tu cuenta" }
+        weight: 3
+      # The payouts list of the provider's cabinet (test mode): heading and rows only.
+      - image: captures/p_01_payouts.png
+        frame: browser
+        title: { ru: "Выплаты на ваш банковский счёт", en: "Payouts to your bank account", es: "Pagos a tu cuenta bancaria" }
+        weight: 2
+      # Reconstruction (reconstructions/sale_message.html), not a screenshot.
+      - image: captures/s_01_sale_reconstruction.png
+        frame: phone
+        title: { ru: "Каждая продажа — сообщение в Telegram", en: "Every sale — a Telegram message", es: "Cada venta, un mensaje en Telegram" }
+        weight: 3
+        zoom: { from: 1.15, to: 1.22, x: 0.5, y: 0.33 }
+
+  - id: s5-center
+    narration:
+      ru: "Всё остальное есть в ивент-центре, в браузере или в том же боте, — заказы, возвраты, промокоды, бесплатные билеты, команда. Если дата изменилась, покупатели получат письмо и новый билет."
+      en: "Everything else is in the event center, in your browser or in the same bot: orders, refunds, promo codes, free tickets and your team. If the date changes, buyers get an e-mail and a new ticket."
+      es: "Todo lo demás está en el centro de eventos, en el navegador o en el mismo bot: pedidos, devoluciones, códigos promocionales, entradas gratuitas y equipo. Si cambia la fecha, los compradores reciben un correo y una entrada nueva."
+    pause_after: 2.0
+    shots:
+      - image: captures/w_02_order.png
+        frame: browser
+        title: { ru: "Заказы и возвраты", en: "Orders and refunds", es: "Pedidos y devoluciones" }
+        weight: 3
+        zoom: { from: 2.0, to: 2.2, x: 0.5, y: 0.38 }
+        highlight: { x: 0.297, y: 0.543, w: 0.097, h: 0.052 }
+        per_language:
+          en: { highlight: { x: 0.297, y: 0.543, w: 0.058, h: 0.052 } }
+      - image: captures/o_01_found_close.png
+        frame: phone
+        title: { ru: "Те же заказы в боте", en: "The same orders in the bot", es: "Los mismos pedidos en el bot" }
+        weight: 2
+        scroll: { from: 0.92, to: 1.0 }
+        highlight: { x: 0.026, y: 0.564, w: 0.95, h: 0.0453 }
+      - image: captures/w_03_promo.png
+        frame: browser
+        title: { ru: "Промокоды", en: "Promo codes", es: "Códigos promocionales" }
+        weight: 2
+        zoom: { from: 1.8, to: 2.0, x: 0.42, y: 0.4 }
+      - image: captures/w_04_inv.png
+        frame: browser
+        title: { ru: "Бесплатные билеты", en: "Free tickets", es: "Entradas gratuitas" }
+        weight: 2
+        zoom: { from: 1.8, to: 2.0, x: 0.45, y: 0.35 }
+      - image: captures/w_08_move_check.png
+        frame: browser
+        title: { ru: "Перенос даты: письмо и новый билет", en: "Date change: e-mail and a new ticket", es: "Cambio de fecha: correo y entrada nueva" }
+        weight: 4
+        zoom: { from: 2.0, to: 2.2, x: 0.38, y: 0.5 }
+
+  - id: s6-entrance
+    narration:
+      ru: "На входе билеты проверяет приложение-сканер на телефоне."
+      en: "At the entrance, a scanner app on a phone checks the tickets."
+      es: "En la entrada, una aplicación de escáner en el móvil comprueba las entradas."
+    pause_after: 3.5
+    shots:
+      # Owner's screenshots of the scanner app: browser part cut, holder name replaced.
+      - image: captures/m_01_scan_close.png
+        frame: phone
+        title: { ru: "Сканер читает билет", en: "The scanner reads the ticket", es: "El escáner lee la entrada" }
+        weight: 3
+        zoom: { from: 1.0, to: 1.1, x: 0.5, y: 0.27 }
+      - image: captures/m_02_checked_close.png
+        frame: phone
+        title: { ru: "Вход отмечен", en: "Entry recorded", es: "Acceso registrado" }
+        weight: 3
+        scroll: { from: 0, to: 1.0 }
+        highlight: { x: 0.24, y: 0.425, w: 0.52, h: 0.045 }
+      - image: captures/m_03_macs_web.png
+        frame: browser
+        title: { ru: "Контроль входа в браузере", en: "Entry control in the browser", es: "Control de acceso en el navegador" }
+        weight: 2
+
+  - id: s7-cta
+    narration:
+      ru: "Оставьте заявку на arenasoldout.com или в нашем Telegram-боте. Мы ждём вас."
+      en: "Apply at arenasoldout.com or in our Telegram bot. We look forward to working with you."
+      es: "Deja tu solicitud en arenasoldout.com o en nuestro bot de Telegram. Te esperamos."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Оставьте заявку", en: "Apply now", es: "Deja tu solicitud" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"

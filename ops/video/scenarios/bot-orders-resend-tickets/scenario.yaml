@@ -1,0 +1,127 @@
+id: bot-orders-resend-tickets
+fps: 30
+# To add a language: add it here, add its text to every narration, title and heading,
+# and put its pictures in captures/<language>/. Nothing else changes.
+languages: [ru, en, es]
+title:
+  ru: "Найти заказ и выслать билеты ещё раз"
+  en: "Find an order and send the tickets again"
+  es: "Buscar un pedido y reenviar las entradas"
+
+# Instruction film about the event-center bot: where the bot shows the orders, how to find one and how to send its tickets again.
+# The test organization has no paid orders (payments are not connected), thus the refund itself is not shown:
+# the order in the film is a free order made with a 100 % promo code.
+# Pictures are made on the staging stand with the test Telegram account in the organization
+# "Luna Events" (see README, "Bot instruction films") and are not committed.
+# Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in apply-in-telegram-bot.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [9x16, 4x5]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-result
+    narration:
+      ru: "Покупатель не может найти билет? Найдите его заказ в боте Arena Sold Out и отправьте билеты ещё раз."
+      en: "A buyer cannot find the ticket? Find the order in the Arena Sold Out bot and send the tickets again."
+      es: "¿Un comprador no encuentra su entrada? Busca su pedido en el bot de Arena Sold Out y reenvía las entradas."
+    pause_after: 0.4
+    shots:
+      - image: captures/o_04_card.png
+        frame: phone
+        title: { ru: "Заказ покупателя — в боте", en: "The buyer's order — in the bot", es: "El pedido del comprador, en el bot" }
+        scroll: { from: 0.2, to: 0.5 }
+
+  - id: s2-list
+    narration:
+      ru: "В меню откройте «Заказы и возвраты», потом «Заказы». Здесь последние заказы вашей организации."
+      en: "In the menu, open «Orders and refunds», then «Orders». Here are the latest orders of your organization."
+      es: "En el menú, abre «Pedidos y devoluciones» y luego «Pedidos». Aquí están los últimos pedidos de tu organización."
+    pause_after: 0.6
+    shots:
+      - image: captures/o_00_menu.png
+        frame: phone
+        title: { ru: "Меню → «Заказы и возвраты»", en: "Menu → «Orders and refunds»", es: "Menú → «Pedidos y devoluciones»" }
+        weight: 2
+        scroll: { from: 0.6, to: 0.9 }
+      - image: captures/o_02_list.png
+        frame: phone
+        title: { ru: "Последние заказы", en: "Latest orders", es: "Últimos pedidos" }
+        weight: 3
+        scroll: { from: 0.6, to: 1.0 }
+
+  - id: s3-find
+    narration:
+      ru: "Чтобы найти заказ, напишите имя покупателя, e-mail, телефон, номер заказа или штрихкод билета."
+      en: "To find an order, type the buyer's name, e-mail, phone number, the order number or the ticket barcode."
+      es: "Para buscar un pedido, escribe el nombre del comprador, su e-mail, su teléfono, el número de pedido o el código de barras de la entrada."
+    pause_after: 0.6
+    shots:
+      - image: captures/o_03_found.png
+        frame: phone
+        title: { ru: "Поиск по имени, e-mail или номеру", en: "Search by name, e-mail or number", es: "Búsqueda por nombre, e-mail o número" }
+        scroll: { from: 0.5, to: 0.9 }
+
+  - id: s4-card
+    narration:
+      ru: "В карточке заказа видно мероприятие, покупателя, билеты и то, что письмо с билетами отправлено."
+      en: "The order card shows the event, the buyer, the tickets, and that the ticket e-mail was sent."
+      es: "La ficha del pedido muestra el evento, el comprador, las entradas y que el e-mail con las entradas se ha enviado."
+    pause_after: 0.6
+    shots:
+      - image: captures/o_04_card.png
+        frame: phone
+        title: { ru: "Карточка заказа", en: "Order card", es: "Ficha del pedido" }
+        scroll: { from: 0.1, to: 0.6 }
+
+  - id: s5-resend
+    narration:
+      ru: "Нажмите «Выслать билеты», выберите тот же адрес или другой и подтвердите. Все билеты заказа уйдут одним письмом."
+      en: "Press «Resend tickets», select the same address or a different one, and confirm. All tickets of the order go in one e-mail."
+      es: "Pulsa «Reenviar entradas», elige la misma dirección u otra y confirma. Todas las entradas del pedido van en un solo e-mail."
+    pause_after: 0.8
+    shots:
+      - image: captures/o_05_resend.png
+        frame: phone
+        title: { ru: "«Выслать билеты»", en: "«Resend tickets»", es: "«Reenviar entradas»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/o_06_confirm.png
+        frame: phone
+        title: { ru: "Подтверждение", en: "Confirmation", es: "Confirmación" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/o_07_sent.png
+        frame: phone
+        title: { ru: "Билеты отправлены", en: "The tickets are sent", es: "Entradas enviadas" }
+        weight: 2
+        scroll: { from: 0.5, to: 0.9 }
+
+  - id: s6-refund
+    narration:
+      ru: "В этой же карточке есть кнопка «Вернуть деньги» — для заказов, оплаченных через Arena."
+      en: "The same card has the button «Refund», for orders that were paid through Arena."
+      es: "En la misma ficha está el botón «Devolver dinero», para los pedidos pagados a través de Arena."
+    pause_after: 1.0
+    shots:
+      - image: captures/o_04_card.png
+        frame: phone
+        title: { ru: "«Вернуть деньги» — в карточке заказа", en: "«Refund» — in the order card", es: "«Devolver dinero», en la ficha del pedido" }
+        scroll: { from: 0.7, to: 1.0 }
+
+  - id: cta
+    narration:
+      ru: "Оставьте заявку на arenasoldout.com или в нашем Telegram-боте. Мы ждём вас."
+      en: "Apply at arenasoldout.com or in our Telegram bot. We look forward to working with you."
+      es: "Deja tu solicitud en arenasoldout.com o en nuestro bot de Telegram. Te esperamos."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Оставьте заявку", en: "Apply now", es: "Deja tu solicitud" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"
