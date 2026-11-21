@@ -91,9 +91,14 @@ describe('no raw HTTP text reaches the buyer', () => {
     expect(buyerErrorText('weird', 'en')).toBe(getErrorStrings('en').generic);
   });
 
-  it('gives es/de/fr buyers their own generic text instead of the English call sentence', () => {
+  it('gives de/fr buyers their own generic text instead of the English call sentence', () => {
     const err = new Error('getCheckoutStatus HTTP 500');
-    expect(buyerErrorText(err, 'es', 'Failed to load order status.')).toBe(ERROR_I18N.es!.generic);
+    expect(buyerErrorText(err, 'de', 'Failed to load order status.')).toBe(ERROR_I18N.de!.generic);
+    expect(buyerErrorText(err, 'fr', 'Failed to load order status.')).toBe(ERROR_I18N.fr!.generic);
+    // es now has the full widget translation, so the call's own sentence is used.
+    expect(buyerErrorText(err, 'es', 'No se ha podido cargar el estado del pedido.')).toBe(
+      'No se ha podido cargar el estado del pedido.',
+    );
     expect(buyerErrorText(err, 'ru', 'Не удалось загрузить статус заказа.')).toBe(
       'Не удалось загрузить статус заказа.',
     );
