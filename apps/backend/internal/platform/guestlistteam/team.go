@@ -276,12 +276,15 @@ func (j *Job) recipients(ctx context.Context, orgID uuid.UUID) ([]recipient, err
 type chat struct{ ID, ChatID string }
 
 // chats are the allowed Telegram groups of THIS organization. The query
-// names org_id = $1 and never reads the operator rows (org_id NULL).
+// names org_id = $1 and never reads the operator rows (org_id NULL). Only
+// groups of kind 'tickets' count: a shop group (shop_sale/shop_delivery) never
+// gets a ticket buyers' file (Einat Winery Shop got one on 2026-11-21).
 func (j *Job) groups(ctx context.Context, orgID uuid.UUID) ([]chat, error) {
 	rows, err := j.pool.Query(ctx, `
 		SELECT id::text, chat_id
 		FROM   sales_notification_subscriptions
-		WHERE  org_id = $1 AND allowed
+		WHERE  org_id = $1 AND allowed AND deleted_at IS NULL
+		  AND  'tickets' = ANY(kinds)
 		ORDER  BY created_at, id`, orgID)
 	if err != nil {
 		return nil, err
