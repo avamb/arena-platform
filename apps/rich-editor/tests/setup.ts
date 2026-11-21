@@ -8,3 +8,8 @@ if (typeof Range !== 'undefined') {
 }
 Element.prototype.getClientRects = () => ({ length: 0, item: () => null, [Symbol.iterator]: [][Symbol.iterator] }) as unknown as DOMRectList
 document.elementFromPoint = () => null
+
+// Vitest 4 keeps Node's own URL in the jsdom environment. The shared link tables (Go parity,
+// strict UTS 46 bidi rule) were written against jsdom's whatwg-url, so keep using that one.
+import { JSDOM } from 'jsdom'
+globalThis.URL = new JSDOM('').window.URL as unknown as typeof URL
