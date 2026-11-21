@@ -49,16 +49,16 @@
 - `ticket_credentials` (0027): одна строка на пару (билет, тип), `UNIQUE (ticket_id, type)`. Типы `static_qr`, `pdf`, `ean13`. `InsertTicketCredential` — upsert: новый код **затирает** старый и сбрасывает `revoked_at`.
 - Выпуск — только `mintTicketEAN13s` → `mint.EAN13` (уникальность по всем источникам штрихкодов), затем upsert `ean13`.
 - Отзыв — `RevokeTicketArtifactsTx` (`htickets/cancel.go`): все строки `barcodes` билета → `revoked`, учётные данные `static_qr`, `pdf`, `ean13` → `revoked_at`. Ошибки только пишутся в лог. Событий не пишет: их пишет вызывающий код.
-- `RevokeBarcode` (`hbarcode/barcodes.go`) — ручной отзыв одной строки.
+- `RevokeBarcode` (`hbarcode/barcodes.go`) — ручной отзыв одной строки. Маршрут `DELETE /v1/barcodes/{id}` снят 2026-11-21, запрос `RevokeBarcode` остался только для `RevokeTicketArtifactsTx` и отзыва пригласительных.
 
 ### 2.3. Проверка на входе
 
 | Проверка | Что смотрит | Отозванный штрихкод |
 |---|---|---|
 | Bil24 SCAN_TICKET (`hbil24/cmd_tickets.go`) | `barcodes.status` по `external_ref` во всех authority | отказ `-2` «revoked». Статус билета **не** смотрит |
-| Сканер arena, `POST /v1/scanner/validate` | `barcodes.status` + статус билета | отказ `barcode_revoked` |
+| Сканер arena, `POST /v1/scanner/validate` | снят 2026-11-21 | — |
 | `scanner_callback` (только `static_qr`, служебный) | статус билета | отказ для `cancelled`, `revoked`, `transferred` |
-| Офлайн-снимок `GET /v1/scanner/snapshot` | список штрихкодов сеанса | полный снимок без отозванных, дельта отдаёт их со статусом `revoked` (R-1) |
+| Офлайн-снимок `GET /v1/scanner/snapshot` | снят 2026-11-21 | запросы `ListSnapshotBarcodesBySession` и `CountSnapshotBarcodesBySession` остались: полный список без отозванных, дельта с ними (R-1) |
 | MACS (вход Vino) | своя копия билетов из выгрузки arena | решает сам MACS, см. 2.5 |
 | Приём сканов MACS `POST /v1/macs/scan-events` | `ResolveMACSScanTicketByBarcode` | скан сохраняется как факт MACS, `used_at` не ставится, в событии `barcode_revoked: true` (R-1) |
 
@@ -342,7 +342,7 @@
 1. **PDF в письме.** Отозванный PDF не прикладывается. Билет рисуется заново с текущим штрихкодом. Новый PDF сохраняется только для `active` билета.
 2. **PDF по ссылке.** `GET /v1/public/checkout/{token}/tickets/{id}/pdf` и PDF «Моих билетов» отдают PDF только действующего билета. Иначе `410 checkout.ticket_not_valid`. Страница статуса заказа показывает такой билет без кода и без ссылки на PDF.
 3. **Приём сканов MACS.** Скан отозванного кода, который MACS всё же пропустил, сохраняется как факт, но `used_at` у билета не ставится, а в событии `v1.ticket.scanned` есть `barcode_revoked: true`. Записывать его как отказ нельзя: человек физически прошёл, это факт MACS.
-4. **Офлайн-снимок.** Полный `GET /v1/scanner/snapshot` без отозванных кодов. Дельта отдаёт их со статусом `revoked`, чтобы устройство вычеркнуло код из кэша.
+4. **Офлайн-снимок.** Полный `GET /v1/scanner/snapshot` без отозванных кодов. Дельта отдаёт их со статусом `revoked`, чтобы устройство вычеркнуло код из кэша. Маршрут снят 2026-11-21, правило осталось в запросах снимка.
 5. **`GET_TICKETS_BY_ORDER`** — менять не нужно. Проекция `orderexport` берёт билеты со статусами `active`, `cancelled`, `revoked`. Заменённый билет (`transferred`) в ответ сайту не попадает. Код отменённого билета отдаётся нарочно: по нему MACS и сайт узнают, какой код не пускать.
 6. **Повторная отправка на другой адрес** (`resend-tickets`) уходит с тем же штрихкодом. Её оставляем, но экран предупреждает: «Уйдут те же билеты с теми же штрихкодами, копия на прежнем адресе тоже пустит на вход». Рядом кнопка «Заменить билеты», если замена этого заказа доступна. Так в веб-ивент-центре и в боте (Р-22).
 

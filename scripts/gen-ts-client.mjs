@@ -102,7 +102,6 @@ export type ValidatePromoCodeResponse = components["schemas"]["ValidatePromoCode
 
 // ── Barcodes & batches ────────────────────────────────────────────────────────
 export type BarcodeAuthorityItem = components["schemas"]["BarcodeAuthorityItem"];
-export type BarcodeItem          = components["schemas"]["BarcodeItem"];
 /** Externally-issued barcode batch submitted for approval and registration. */
 export type BarcodeBatch         = components["schemas"]["BarcodeBatch"];
 

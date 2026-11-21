@@ -83,13 +83,6 @@ const (
 	BarcodeBatchStatusRejected BarcodeBatchStatus = "rejected"
 )
 
-// Defines values for BarcodeItemStatus.
-const (
-	BarcodeItemStatusActive  BarcodeItemStatus = "active"
-	BarcodeItemStatusRevoked BarcodeItemStatus = "revoked"
-	BarcodeItemStatusScanned BarcodeItemStatus = "scanned"
-)
-
 // Defines values for Bil24ReqAddPromoCodesCommand.
 const (
 	ADDPROMOCODES Bil24ReqAddPromoCodesCommand = "ADD_PROMO_CODES"
@@ -712,45 +705,10 @@ const (
 	PlatformSuperadmin        RevokeMembershipRequestRole = "platform_superadmin"
 )
 
-// Defines values for ScanRequestAuthorityType.
-const (
-	ScanRequestAuthorityTypeExternalPlatform ScanRequestAuthorityType = "external_platform"
-	ScanRequestAuthorityTypeGuestList        ScanRequestAuthorityType = "guest_list"
-	ScanRequestAuthorityTypeLegacyBil24      ScanRequestAuthorityType = "legacy_bil24"
-	ScanRequestAuthorityTypePlatform         ScanRequestAuthorityType = "platform"
-)
-
 // Defines values for ScannerScanInputResult.
 const (
 	Admitted ScannerScanInputResult = "admitted"
 	Denied   ScannerScanInputResult = "denied"
-)
-
-// Defines values for ScannerSnapshotBarcodeStatus.
-const (
-	ScannerSnapshotBarcodeStatusActive  ScannerSnapshotBarcodeStatus = "active"
-	ScannerSnapshotBarcodeStatusScanned ScannerSnapshotBarcodeStatus = "scanned"
-)
-
-// Defines values for ScannerValidateRequestAuthorityType.
-const (
-	ScannerValidateRequestAuthorityTypeExternalPlatform ScannerValidateRequestAuthorityType = "external_platform"
-	ScannerValidateRequestAuthorityTypeGuestList        ScannerValidateRequestAuthorityType = "guest_list"
-	ScannerValidateRequestAuthorityTypeLegacyBil24      ScannerValidateRequestAuthorityType = "legacy_bil24"
-	ScannerValidateRequestAuthorityTypePlatform         ScannerValidateRequestAuthorityType = "platform"
-)
-
-// Defines values for ScannerValidateResponseInvalidReason.
-const (
-	AlreadyScanned ScannerValidateResponseInvalidReason = "already_scanned"
-	BarcodeRevoked ScannerValidateResponseInvalidReason = "barcode_revoked"
-)
-
-// Defines values for ScannerValidateResponseStatus.
-const (
-	ScannerValidateResponseStatusActive  ScannerValidateResponseStatus = "active"
-	ScannerValidateResponseStatusRevoked ScannerValidateResponseStatus = "revoked"
-	ScannerValidateResponseStatusScanned ScannerValidateResponseStatus = "scanned"
 )
 
 // Defines values for SeatingPlanPlanType.
@@ -963,9 +921,9 @@ const (
 
 // Defines values for VenueItemStatus.
 const (
-	Active   VenueItemStatus = "active"
-	Archived VenueItemStatus = "archived"
-	Draft    VenueItemStatus = "draft"
+	VenueItemStatusActive   VenueItemStatus = "active"
+	VenueItemStatusArchived VenueItemStatus = "archived"
+	VenueItemStatusDraft    VenueItemStatus = "draft"
 )
 
 // Defines values for WidgetFunnelEventInputEventType.
@@ -2115,48 +2073,6 @@ type BarcodeBatch struct {
 
 // BarcodeBatchStatus Current lifecycle status of the batch.
 type BarcodeBatchStatus string
-
-// BarcodeItem A single barcodes row in the barcode authority federation
-// (feature #142, migration 0030_barcodes.sql). Each barcode is
-// scoped to exactly one authority; `(authority_id, external_ref)`
-// is UNIQUE among rows. Lifecycle: `active` → `scanned` (via
-// POST /v1/scan) or `active`|`scanned` → `revoked` (terminal, via
-// DELETE /v1/barcodes/{id}).
-type BarcodeItem struct {
-	// AuthorityId UUIDv7 of the barcode authority the barcode belongs to.
-	AuthorityId openapi_types.UUID `json:"authority_id"`
-
-	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
-	CreatedAt time.Time `json:"created_at"`
-
-	// ExternalRef The barcode string as printed / encoded on the ticket.
-	// Unique within the owning authority.
-	ExternalRef string `json:"external_ref"`
-
-	// Id UUIDv7 primary key of the barcodes row.
-	Id openapi_types.UUID `json:"id"`
-
-	// ScannedAt UTC timestamp of the successful scan. `null` until the
-	// barcode has been scanned.
-	ScannedAt *time.Time `json:"scanned_at"`
-
-	// Status Lifecycle status. `active` barcodes admit entry; `scanned`
-	// marks a consumed barcode (double-scan protected); `revoked`
-	// is terminal.
-	Status BarcodeItemStatus `json:"status"`
-
-	// TicketId Optional link to a platform tickets row. `null` for barcodes
-	// originating from external platforms or guest lists.
-	TicketId *openapi_types.UUID `json:"ticket_id"`
-
-	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update.
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-// BarcodeItemStatus Lifecycle status. `active` barcodes admit entry; `scanned`
-// marks a consumed barcode (double-scan protected); `revoked`
-// is terminal.
-type BarcodeItemStatus string
 
 // Bil24ActionEntry One row of `GET_ALL_ACTIONS.actionList` (one published event).
 type Bil24ActionEntry struct {
@@ -17153,22 +17069,6 @@ type RefundWebhookRequest struct {
 // `event_type` → state mapping.
 type RefundWebhookRequestTargetState string
 
-// RegisterBarcodeRequest Request body for `POST /v1/barcodes`. Registers a barcode under
-// an existing authority. Duplicate `external_ref` values within
-// the same authority are rejected with 409 `barcode.duplicate`.
-type RegisterBarcodeRequest struct {
-	// AuthorityId UUID of the barcode authority the barcode belongs to.
-	AuthorityId openapi_types.UUID `json:"authority_id"`
-
-	// ExternalRef The barcode string. Required; must be unique within the
-	// authority.
-	ExternalRef string `json:"external_ref"`
-
-	// TicketId Optional platform ticket UUID to link. Omit or send `null`
-	// for external / guest-list barcodes.
-	TicketId *openapi_types.UUID `json:"ticket_id"`
-}
-
 // RegisterWebhookSubscriberRequest Request body for `POST /v1/webhooks/subscribers`. Only
 // `callback_url` is strictly required; `site_url` defaults to
 // `callback_url` when absent, and `event_types` defaults to the
@@ -18087,46 +17987,6 @@ type SalesLinkUpdateRequest struct {
 	Utm *map[string]string `json:"utm"`
 }
 
-// ScanRequest Request body for `POST /v1/scan`. The scan flow resolves the
-// authority by `authority_type`, looks up the barcode by
-// `(authority_id, external_ref)`, and atomically transitions
-// `active` → `scanned`.
-type ScanRequest struct {
-	// AuthorityType Authority type the barcode is expected to belong to. Unknown
-	// types are rejected with 404 `barcode.unknown_authority`.
-	AuthorityType ScanRequestAuthorityType `json:"authority_type"`
-
-	// ExternalRef The scanned barcode string.
-	ExternalRef string `json:"external_ref"`
-}
-
-// ScanRequestAuthorityType Authority type the barcode is expected to belong to. Unknown
-// types are rejected with 404 `barcode.unknown_authority`.
-type ScanRequestAuthorityType string
-
-// ScanResultResponse Successful scan result returned by `POST /v1/scan` after the
-// barcode has been atomically marked `scanned`.
-type ScanResultResponse struct {
-	// AuthorityType Authority type the barcode was resolved against.
-	AuthorityType string `json:"authority_type"`
-
-	// BarcodeId UUID of the scanned barcodes row.
-	BarcodeId openapi_types.UUID `json:"barcode_id"`
-
-	// ExternalRef Echo of the scanned barcode string.
-	ExternalRef string `json:"external_ref"`
-
-	// ScannedAt UTC timestamp at which the scan was recorded.
-	ScannedAt time.Time `json:"scanned_at"`
-
-	// Status Post-scan barcode status (always `scanned` on success).
-	Status string `json:"status"`
-
-	// TicketId Linked platform ticket UUID; `null` for external /
-	// guest-list barcodes.
-	TicketId *openapi_types.UUID `json:"ticket_id"`
-}
-
 // ScannerScanBatchRequest POST body for `POST /v1/scanner/scan-events`. Carries one or
 // more scan attempts uploaded by an external scanner device.
 // Maximum batch size is 500 entries — scanners backfilling a
@@ -18252,108 +18112,6 @@ type ScannerScanResult struct {
 	// documented prose-only.)
 	TicketId openapi_types.UUID `json:"ticket_id"`
 }
-
-// ScannerSnapshotBarcode Minimal barcode projection returned inside the offline scanner
-// snapshot (feature #144). Offline scanners only need
-// `external_ref` and `status` to decide whether to admit a ticket.
-type ScannerSnapshotBarcode struct {
-	// ExternalRef The barcode string encoded on the ticket.
-	ExternalRef string `json:"external_ref"`
-
-	// Id UUID of the barcodes row.
-	Id openapi_types.UUID `json:"id"`
-
-	// Status Barcode status at snapshot time. Revoked barcodes are
-	// excluded from the snapshot entirely.
-	Status ScannerSnapshotBarcodeStatus `json:"status"`
-
-	// TicketId Linked platform ticket UUID. Omitted for barcodes without a
-	// ticket link.
-	TicketId *openapi_types.UUID `json:"ticket_id,omitempty"`
-
-	// UpdatedAt Last-update timestamp used by the `since` delta cursor.
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-// ScannerSnapshotBarcodeStatus Barcode status at snapshot time. Revoked barcodes are
-// excluded from the snapshot entirely.
-type ScannerSnapshotBarcodeStatus string
-
-// ScannerSnapshotResponse Paginated offline-validation snapshot returned by
-// `GET /v1/scanner/snapshot` (feature #144). Clients store
-// `last_updated_at` and pass it as the `since` query parameter on
-// the next poll to receive only changed / newly issued barcodes.
-type ScannerSnapshotResponse struct {
-	// Barcodes Non-revoked barcodes for the requested session (current page).
-	Barcodes []ScannerSnapshotBarcode `json:"barcodes"`
-
-	// LastUpdatedAt Maximum `updated_at` among returned barcodes; pass as
-	// `since` on the next poll. Omitted when the page is empty.
-	LastUpdatedAt *time.Time `json:"last_updated_at,omitempty"`
-
-	// Page 1-based page number echoed from the request.
-	Page int `json:"page"`
-
-	// PerPage Page size echoed from the request (default 200, max 500).
-	PerPage int `json:"per_page"`
-
-	// Total Total matching barcodes across all pages.
-	Total int64 `json:"total"`
-
-	// TotalPages Total number of pages (minimum 1).
-	TotalPages int `json:"total_pages"`
-}
-
-// ScannerValidateRequest Request body for `POST /v1/scanner/validate`. Identical shape to
-// `ScanRequest`, but the validate endpoint performs a pure read —
-// the barcode status is NOT changed.
-type ScannerValidateRequest struct {
-	// AuthorityType Authority type the barcode is expected to belong to. Unknown
-	// types are rejected with 404 `scanner.unknown_authority`.
-	AuthorityType ScannerValidateRequestAuthorityType `json:"authority_type"`
-
-	// ExternalRef The barcode string to validate.
-	ExternalRef string `json:"external_ref"`
-}
-
-// ScannerValidateRequestAuthorityType Authority type the barcode is expected to belong to. Unknown
-// types are rejected with 404 `scanner.unknown_authority`.
-type ScannerValidateRequestAuthorityType string
-
-// ScannerValidateResponse Read-only validation verdict returned by
-// `POST /v1/scanner/validate`. Unlike `POST /v1/scan` the barcode
-// status is left untouched.
-type ScannerValidateResponse struct {
-	// AuthorityType Authority type the barcode was resolved against.
-	AuthorityType string `json:"authority_type"`
-
-	// BarcodeId UUID of the barcodes row.
-	BarcodeId openapi_types.UUID `json:"barcode_id"`
-
-	// ExternalRef Echo of the validated barcode string.
-	ExternalRef string `json:"external_ref"`
-
-	// InvalidReason Machine-readable reason when `valid` is false. Omitted for
-	// valid barcodes.
-	InvalidReason *ScannerValidateResponseInvalidReason `json:"invalid_reason,omitempty"`
-
-	// Status Current barcode status (unchanged by this call).
-	Status ScannerValidateResponseStatus `json:"status"`
-
-	// TicketId Linked platform ticket UUID. Omitted for barcodes without a
-	// ticket link.
-	TicketId *openapi_types.UUID `json:"ticket_id,omitempty"`
-
-	// Valid True only when the barcode status is `active`.
-	Valid bool `json:"valid"`
-}
-
-// ScannerValidateResponseInvalidReason Machine-readable reason when `valid` is false. Omitted for
-// valid barcodes.
-type ScannerValidateResponseInvalidReason string
-
-// ScannerValidateResponseStatus Current barcode status (unchanged by this call).
-type ScannerValidateResponseStatus string
 
 // SeatBatch One recorded batch of seat changes.
 type SeatBatch struct {
@@ -26732,22 +26490,6 @@ type RejectRefundParams struct {
 	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
 }
 
-// GetScannerSnapshotParams defines parameters for GetScannerSnapshot.
-type GetScannerSnapshotParams struct {
-	// SessionId UUID of the event session whose barcodes to retrieve.
-	SessionId openapi_types.UUID `form:"session_id" json:"session_id"`
-
-	// Since RFC 3339 delta cursor — only barcodes updated strictly after
-	// this instant are returned. Omit for a full snapshot.
-	Since *time.Time `form:"since,omitempty" json:"since,omitempty"`
-
-	// Page 1-based page number (default 1).
-	Page *int `form:"page,omitempty" json:"page,omitempty"`
-
-	// PerPage Page size (default 200, capped at 500).
-	PerPage *int `form:"per_page,omitempty" json:"per_page,omitempty"`
-}
-
 // PostV1ServiceAnalyticsContactCodesParams defines parameters for PostV1ServiceAnalyticsContactCodes.
 type PostV1ServiceAnalyticsContactCodesParams struct {
 	// XAdminReason Human-readable business reason for the call (recorded in the audit log).
@@ -27010,9 +26752,6 @@ type PostV1AuthWebLinkJSONRequestBody = AuthWebLinkRequest
 
 // UploadBarcodeBatchJSONRequestBody defines body for UploadBarcodeBatch for application/json ContentType.
 type UploadBarcodeBatchJSONRequestBody UploadBarcodeBatchJSONBody
-
-// RegisterBarcodeJSONRequestBody defines body for RegisterBarcode for application/json ContentType.
-type RegisterBarcodeJSONRequestBody = RegisterBarcodeRequest
 
 // CreateBarcodeAuthorityJSONRequestBody defines body for CreateBarcodeAuthority for application/json ContentType.
 type CreateBarcodeAuthorityJSONRequestBody = CreateBarcodeAuthorityRequest
@@ -27584,14 +27323,8 @@ type RejectRefundJSONRequestBody = ApproveRefundRequest
 // CreateReservationJSONRequestBody defines body for CreateReservation for application/json ContentType.
 type CreateReservationJSONRequestBody = CreateReservationRequest
 
-// ScanBarcodeJSONRequestBody defines body for ScanBarcode for application/json ContentType.
-type ScanBarcodeJSONRequestBody = ScanRequest
-
 // PostScannerScanEventsJSONRequestBody defines body for PostScannerScanEvents for application/json ContentType.
 type PostScannerScanEventsJSONRequestBody = ScannerScanBatchRequest
-
-// ValidateScannerBarcodeJSONRequestBody defines body for ValidateScannerBarcode for application/json ContentType.
-type ValidateScannerBarcodeJSONRequestBody = ScannerValidateRequest
 
 // UpdateSeatingPlanJSONRequestBody defines body for UpdateSeatingPlan for application/json ContentType.
 type UpdateSeatingPlanJSONRequestBody = UpdateSeatingPlanRequest

@@ -36,7 +36,7 @@ import (
 func buildRefundEngine(pool *pgxpool.Pool, cfg *config.Config, metrics *observability.Metrics, logger *slog.Logger) *refunds.Engine {
 	q := gen.New(pool)
 	auditWriter := audit.NewPGWriter(pool)
-	scanner := hscanner.New(q, q, pool, outbox.NewPGEventsWriter(pool), nil, logger)
+	scanner := hscanner.New(q, q, pool, outbox.NewPGEventsWriter(pool), logger)
 	tickets := htickets.New(
 		q,    // ticketQ
 		q,    // credentialQ — revoked on cancellation

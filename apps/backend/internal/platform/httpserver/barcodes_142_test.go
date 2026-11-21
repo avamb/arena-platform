@@ -5,18 +5,16 @@
 //   - SQL query file (all named queries present)
 //   - Gen file (BarcodeAuthorityRow and BarcodeRow structs, all functions)
 //   - Querier interface (compile-time completeness check)
-//   - Route auth-gating (401 without JWT)
-//   - Request validation (missing fields, invalid UUIDs)
-//   - Duplicate barcode within authority rejected (409 Conflict)
-//   - Platform barcode validates in scan flow (unknown authority → 404)
-//   - Response shape (JSON content-type, required fields)
+//   - Route auth-gating (401 without JWT) of the authority routes
+//   - Request validation of the authority create route
+//   - Response shape (JSON content-type)
 //   - Server wiring (barcodeQueries field present, routes registered)
+//   - The retired flat single-barcode, scan and scanner routes stay unmounted
 //
 // All tests are pure unit tests — no live PostgreSQL required.
 package httpserver
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -351,27 +349,6 @@ func TestBarcode142_ListAuthoritiesRequiresJWT(t *testing.T) {
 	}
 }
 
-func TestBarcode142_GetBarcodeRequiresJWT(t *testing.T) {
-	s := buildBarcode142Server(t)
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/barcodes/00000000-0000-0000-0000-000000000001", nil)
-	s.router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("GET /v1/barcodes/{id} without JWT: want 401 got %d", rec.Code)
-	}
-}
-
-func TestBarcode142_ScanRequiresJWT(t *testing.T) {
-	s := buildBarcode142Server(t)
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/scan", strings.NewReader(`{}`))
-	req.Header.Set("Content-Type", "application/json")
-	s.router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("POST /v1/scan without JWT: want 401 got %d", rec.Code)
-	}
-}
-
 func TestBarcode142_CreateAuthorityRequiresJWT(t *testing.T) {
 	s := buildBarcode142Server(t)
 	rec := httptest.NewRecorder()
@@ -383,87 +360,9 @@ func TestBarcode142_CreateAuthorityRequiresJWT(t *testing.T) {
 	}
 }
 
-func TestBarcode142_RegisterBarcodeRequiresJWT(t *testing.T) {
-	s := buildBarcode142Server(t)
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/barcodes", strings.NewReader(`{}`))
-	req.Header.Set("Content-Type", "application/json")
-	s.router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("POST /v1/barcodes without JWT: want 401 got %d", rec.Code)
-	}
-}
-
-func TestBarcode142_RevokeBarcodeRequiresJWT(t *testing.T) {
-	s := buildBarcode142Server(t)
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodDelete, "/v1/barcodes/00000000-0000-0000-0000-000000000001", nil)
-	s.router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("DELETE /v1/barcodes/{id} without JWT: want 401 got %d", rec.Code)
-	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Scan validation: unknown authority type → not 200
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestBarcode142_ScanUnknownAuthorityRejected(t *testing.T) {
-	s := buildBarcode142Server(t)
-	tok := mintBarcodeToken(t, s, []string{"admin"})
-
-	body, _ := json.Marshal(map[string]string{
-		"external_ref":   "SOME-BARCODE",
-		"authority_type": "unknown_system",
-	})
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/scan", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+tok)
-	s.router.ServeHTTP(rec, req)
-
-	// GetBarcodeAuthorityByType with nil pool will fail (DB error), so we
-	// expect either 404 (unknown_authority) or 500. The key: NOT 200.
-	if rec.Code == http.StatusOK {
-		t.Errorf("scan with unknown authority_type must not return 200; got %d", rec.Code)
-	}
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Request validation
 // ─────────────────────────────────────────────────────────────────────────────
-
-func TestBarcode142_ScanMissingExternalRef(t *testing.T) {
-	s := buildBarcode142Server(t)
-	tok := mintBarcodeToken(t, s, []string{"admin"})
-
-	body := `{"authority_type":"platform"}`
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/scan", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+tok)
-	s.router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("scan without external_ref: want 400 got %d", rec.Code)
-	}
-}
-
-func TestBarcode142_ScanMissingAuthorityType(t *testing.T) {
-	s := buildBarcode142Server(t)
-	tok := mintBarcodeToken(t, s, []string{"admin"})
-
-	body := `{"external_ref":"BARCODE-123"}`
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/scan", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+tok)
-	s.router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("scan without authority_type: want 400 got %d", rec.Code)
-	}
-}
 
 func TestBarcode142_CreateAuthorityMissingType(t *testing.T) {
 	s := buildBarcode142Server(t)
@@ -513,101 +412,9 @@ func TestBarcode142_CreateAuthorityMissingLabel(t *testing.T) {
 	}
 }
 
-func TestBarcode142_RegisterBarcodeInvalidAuthorityIDUUID(t *testing.T) {
-	s := buildBarcode142Server(t)
-	tok := mintBarcodeToken(t, s, []string{"admin"})
-
-	body := `{"authority_id":"not-a-uuid","external_ref":"BARCODE"}`
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/barcodes", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+tok)
-	s.router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("register barcode with invalid authority_id UUID: want 400 got %d", rec.Code)
-	}
-}
-
-func TestBarcode142_RegisterBarcodeMissingExternalRef(t *testing.T) {
-	s := buildBarcode142Server(t)
-	tok := mintBarcodeToken(t, s, []string{"admin"})
-
-	body := `{"authority_id":"00000000-0000-0000-0000-000000000001"}`
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/barcodes", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+tok)
-	s.router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("register barcode without external_ref: want 400 got %d", rec.Code)
-	}
-}
-
-func TestBarcode142_GetBarcodeInvalidUUID(t *testing.T) {
-	s := buildBarcode142Server(t)
-	tok := mintBarcodeToken(t, s, []string{"admin"})
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/barcodes/not-a-uuid", nil)
-	req.Header.Set("Authorization", "Bearer "+tok)
-	s.router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("GET /v1/barcodes/not-a-uuid: want 400 got %d", rec.Code)
-	}
-}
-
-func TestBarcode142_DeleteBarcodeInvalidUUID(t *testing.T) {
-	s := buildBarcode142Server(t)
-	tok := mintBarcodeToken(t, s, []string{"admin"})
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodDelete, "/v1/barcodes/not-a-uuid", nil)
-	req.Header.Set("Authorization", "Bearer "+tok)
-	s.router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("DELETE /v1/barcodes/not-a-uuid: want 400 got %d", rec.Code)
-	}
-}
-
-func TestBarcode142_ScanInvalidJSONBody(t *testing.T) {
-	s := buildBarcode142Server(t)
-	tok := mintBarcodeToken(t, s, []string{"admin"})
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/scan", strings.NewReader("not-json"))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+tok)
-	s.router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("POST /v1/scan with invalid JSON: want 400 got %d", rec.Code)
-	}
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Response content-type
 // ─────────────────────────────────────────────────────────────────────────────
-
-func TestBarcode142_ScanResponseIsJSON(t *testing.T) {
-	s := buildBarcode142Server(t)
-	tok := mintBarcodeToken(t, s, []string{"admin"})
-
-	body := `{"external_ref":"TEST","authority_type":"platform"}`
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/scan", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+tok)
-	s.router.ServeHTTP(rec, req)
-
-	ct := rec.Header().Get("Content-Type")
-	if !strings.HasPrefix(ct, "application/json") {
-		t.Errorf("POST /v1/scan response Content-Type: want application/json got %q", ct)
-	}
-}
 
 func TestBarcode142_ListAuthoritiesResponseIsJSON(t *testing.T) {
 	s := buildBarcode142Server(t)
@@ -625,34 +432,6 @@ func TestBarcode142_ListAuthoritiesResponseIsJSON(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// barcodeFromRow / barcodeAuthorityFromRow conversion
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestBarcode142_BarcodeFromRowNilTicketID(t *testing.T) {
-	row := gen.BarcodeRow{
-		ExternalRef: "BARCODE",
-		Status:      "active",
-		TicketID:    nil,
-		ScannedAt:   nil,
-	}
-	resp := barcodeFromRow(row)
-	if resp.TicketID != nil {
-		t.Error("barcodeFromRow: TicketID must be nil when BarcodeRow.TicketID is nil")
-	}
-}
-
-func TestBarcode142_BarcodeFromRowNilScannedAt(t *testing.T) {
-	row := gen.BarcodeRow{
-		ExternalRef: "BARCODE",
-		Status:      "active",
-		ScannedAt:   nil,
-	}
-	resp := barcodeFromRow(row)
-	if resp.ScannedAt != nil {
-		t.Error("barcodeFromRow: ScannedAt must be nil when BarcodeRow.ScannedAt is nil")
-	}
-}
-
 func TestBarcode142_BarcodeAuthorityFromRowFieldMapping(t *testing.T) {
 	row := gen.BarcodeAuthorityRow{
 		Type:  "platform",
@@ -695,13 +474,6 @@ func TestBarcode142_ServerGoHasBarcodeQueriesOption(t *testing.T) {
 	}
 }
 
-func TestBarcode142_ServerGoMountsHandleScan(t *testing.T) {
-	content := findFileByName(t, "server.go")
-	if !strings.Contains(content, "handleScan") {
-		t.Error("server.go must mount handleScan for POST /v1/scan")
-	}
-}
-
 func TestBarcode142_ServerGoMountsHandleListBarcodeAuthorities(t *testing.T) {
 	content := findFileByName(t, "server.go")
 	if !strings.Contains(content, "handleListBarcodeAuthorities") {
@@ -716,85 +488,32 @@ func TestBarcode142_BarcodesGoFileExists(t *testing.T) {
 	}
 }
 
-func TestBarcode142_BarcodesGoHandlesScanAlreadyScannedPath(t *testing.T) {
-	content := findFileByName(t, "barcodes.go")
-	if !strings.Contains(content, "already_scanned") {
-		t.Error("barcodes.go must handle already-scanned case (barcode.already_scanned error code)")
-	}
-}
-
-func TestBarcode142_BarcodesGoHandlesScanRevokedPath(t *testing.T) {
-	content := findFileByName(t, "barcodes.go")
-	if !strings.Contains(content, "barcode.revoked") {
-		t.Error("barcodes.go must handle revoked barcode case (barcode.revoked error code)")
-	}
-}
-
-func TestBarcode142_BarcodesGoHandlesUnknownAuthority(t *testing.T) {
-	content := findFileByName(t, "barcodes.go")
-	if !strings.Contains(content, "unknown_authority") {
-		t.Error("barcodes.go must handle unknown authority type (barcode.unknown_authority error code)")
-	}
-}
-
-func TestBarcode142_BarcodesGoHandlesDuplicateBarcodeConflict(t *testing.T) {
-	content := findFileByName(t, "barcodes.go")
-	if !strings.Contains(content, "barcode.duplicate") {
-		t.Error("barcodes.go must return 409 with barcode.duplicate for unique constraint violations")
-	}
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Scan response shape
+// Retired flat routes (2026-11-21): no longer mounted
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestBarcode142_ScanResponseHasRequiredFields(t *testing.T) {
-	// scanResponse type must have barcode_id, authority_type, external_ref, status fields
-	content := findFileByName(t, "barcodes.go")
-	for _, field := range []string{"barcode_id", "authority_type", "external_ref", "status"} {
-		if !strings.Contains(content, `"`+field+`"`) {
-			t.Errorf("scanResponse must have json tag %q", field)
+// TestBarcode142_RetiredFlatRoutesNotMounted pins that the flat single-barcode,
+// scan and scanner routes stay unmounted even for a caller with every
+// permission: the router answers 404 or 405, never the handler.
+func TestBarcode142_RetiredFlatRoutesNotMounted(t *testing.T) {
+	s := buildBarcode142Server(t)
+	tok := mintBarcodeToken(t, s, []string{"admin"})
+	const id = "00000000-0000-0000-0000-000000000001"
+	for _, tc := range []struct{ method, path, body string }{
+		{http.MethodGet, "/v1/barcodes/" + id, ""},
+		{http.MethodDelete, "/v1/barcodes/" + id, ""},
+		{http.MethodPost, "/v1/barcodes", `{}`},
+		{http.MethodPost, "/v1/scan", `{}`},
+		{http.MethodGet, "/v1/scanner/snapshot?session_id=" + id, ""},
+		{http.MethodPost, "/v1/scanner/validate", `{}`},
+	} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+tok)
+		s.router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("%s %s: want 404 or 405 (route retired), got %d: %s", tc.method, tc.path, rec.Code, rec.Body.String())
 		}
-	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Scan authority_type validation
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestBarcode142_ScanValidatesNonEmptyAuthorityType(t *testing.T) {
-	content := findFileByName(t, "barcodes.go")
-	if !strings.Contains(content, "authority_type is required") {
-		t.Error("scan handler must validate that authority_type is non-empty")
-	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Nil barcodeQueries: routes not mounted → 404 (route not registered)
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestBarcode142_NilQueriesScanRouteNotMounted(t *testing.T) {
-	// Build server with NO BarcodeQueries wired — scan route should not be mounted.
-	cfg := &config.Config{
-		AppEnv:         config.EnvDevelopment,
-		RequestTimeout: 5 * time.Second,
-		BodyLimitBytes: 1 << 20,
-		JWTSecretStub:  "test-secret-which-is-long-enough-for-hs256",
-		EnableStubAuth: true,
-	}
-	stub, _ := auth.NewStubProvider(auth.StubConfig{
-		Secret:  cfg.JWTSecretStub,
-		Issuer:  "arena-test",
-		Enabled: true,
-	})
-	s := New(Options{Config: cfg, Auth: stub})
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/scan", strings.NewReader(`{}`))
-	s.router.ServeHTTP(rec, req)
-
-	// Without BarcodeQueries the route is not mounted → 404.
-	if rec.Code == http.StatusOK {
-		t.Errorf("POST /v1/scan with nil barcodeQueries must not return 200; got %d", rec.Code)
 	}
 }
