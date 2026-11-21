@@ -16,7 +16,7 @@
     "fixtures": "node mock/build-fixtures.cjs"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^26.6.6",
     "jsdom": "^29.1.1",
     "typescript": "^5.8.3",
     "vite": "^6.4.6",
