@@ -1007,7 +1007,8 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 	// anyone who knows a provider_payment_id from forging payment.succeeded to
 	// mint tickets or cancel them. Returns nil in dev/mock mode (no secrets
 	// configured); production requires at least one secret (config validation).
-	if sigErr := h.verifyWebhookSignature(r, body); sigErr != nil {
+	signer, sigErr := h.verifyLegacyWebhookSigner(r, body, legacyWebhookPayment)
+	if sigErr != nil {
 		if h.logger != nil {
 			h.logger.Warn("webhook: invalid signature; rejecting request",
 				slog.String("error", sigErr.Error()),
@@ -1021,7 +1022,40 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	h.processPaymentWebhook(w, r, body, webhookRoute{Kind: observability.RouteKindLegacy})
+	route := webhookRoute{Kind: observability.RouteKindLegacy}
+	if signer.OrgID != nil {
+		// An organization's own secret verified the body: the delivery speaks
+		// for that organization's provider account only. It must be the
+		// provider's own event envelope (the flat shape and a body-supplied
+		// target_state are for the mock provider in dev), and it can move
+		// only a payment of that organization and provider.
+		if !legacyOrgSignedBodyShapeOK(body) {
+			h.recordWebhookEvent(observability.PaymentWebhookEventOther, webhookOutcomeRejected)
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
+				"webhook.envelope_required",
+				"a webhook verified with an organization secret must be the provider's event envelope", r,
+			))
+			return
+		}
+		route.ExpectedOrgID = signer.OrgID
+		route.SignerProvider = signer.Provider
+	}
+
+	h.processPaymentWebhook(w, r, body, route)
+}
+
+// legacyOrgSignedBodyShapeOK reports whether a legacy-route body verified with
+// an ORGANIZATION secret has the provider event envelope shape: top-level
+// "type" and "data", and no "target_state".
+func legacyOrgSignedBodyShapeOK(body []byte) bool {
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(body, &probe); err != nil {
+		return false
+	}
+	_, hasType := probe["type"]
+	_, hasData := probe["data"]
+	_, hasTarget := probe["target_state"]
+	return hasType && hasData && !hasTarget
 }
 
 // webhookRoute carries the differences between the two webhook entry points
@@ -1063,6 +1097,11 @@ type webhookRoute struct {
 	// Provider is the provider whose config verified the delivery (per-config
 	// route only); a refund event is matched inside it.
 	Provider string
+	// SignerProvider, when set, is the provider whose ORGANIZATION secret
+	// verified a legacy-route delivery; an intent recorded under another
+	// provider is "not ours". Unlike ExpectedProvider it changes nothing else
+	// in the processing (amount guard, duplicate answer).
+	SignerProvider string
 }
 
 // processPaymentWebhook is the shared body of both webhook entry points. The
@@ -1242,6 +1281,15 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 		h.logger.Warn("webhook: payment intent belongs to a different provider than the config in the URL",
 			slog.String("provider_payment_id", req.ProviderPaymentID),
 			slog.String("config_provider", route.ExpectedProvider),
+			slog.String("intent_provider", pi.Provider),
+		)
+		h.writeNotOurPayment(w, r, req.EventType)
+		return
+	}
+	if route.SignerProvider != "" && !strings.EqualFold(pi.Provider, route.SignerProvider) {
+		h.logger.Warn("webhook: payment intent belongs to a different provider than the secret that verified the delivery",
+			slog.String("provider_payment_id", req.ProviderPaymentID),
+			slog.String("signer_provider", route.SignerProvider),
 			slog.String("intent_provider", pi.Provider),
 		)
 		h.writeNotOurPayment(w, r, req.EventType)

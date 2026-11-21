@@ -247,67 +247,67 @@ func providerPaymentIDFromEnvelope(body []byte) string {
 	return strings.TrimSpace(env.Data.Object.ID)
 }
 
+// legacyWebhookKind names the legacy route a body arrived on. Each route
+// resolves the organization from the SAME id its processing then uses, so
+// the organization whose secret verifies the body is the owner of the row
+// that moves.
+type legacyWebhookKind int
+
+const (
+	// legacyWebhookPayment is POST /v1/payment-intents/webhook: the row is
+	// found by the provider payment id of the envelope (data.object.id).
+	legacyWebhookPayment legacyWebhookKind = iota
+	// legacyWebhookRefund is POST /v1/refunds/webhook: the row is found by
+	// arena's refund_id.
+	legacyWebhookRefund
+)
+
 // webhookSecretsFromOrgConfig locates the organization behind an inbound
-// webhook body (refund_id or payment_intent_id) and returns, per provider the
-// legacy route can authenticate (legacyWebhookProviders), the webhook secret
-// from its usable payment_provider_configs row. A missing entry means "no
-// per-org secret": the caller falls back to the process-env secrets. Never
-// errors: a lookup problem simply yields the fallback, and the signature is
-// still verified.
-func (h *Handler) webhookSecretsFromOrgConfig(ctx context.Context, body []byte) map[string]string {
+// legacy webhook body and returns it with, per provider the legacy route can
+// authenticate (legacyWebhookProviders), the webhook secret from its usable
+// payment_provider_configs row. The payment route reads ONLY the envelope's
+// provider payment id, the refund route ONLY refund_id: the ids the
+// processing uses. A missing entry means "no per-org secret": the caller
+// falls back to the process-env secrets. Never errors: a lookup problem
+// simply yields the fallback, and the signature is still verified.
+func (h *Handler) webhookSecretsFromOrgConfig(ctx context.Context, body []byte, kind legacyWebhookKind) legacyOrgSecrets {
 	if h.orgQueries == nil {
-		return nil
-	}
-	var probe struct {
-		RefundID        string `json:"refund_id"`
-		PaymentIntentID string `json:"payment_intent_id"`
-	}
-	if err := json.Unmarshal(body, &probe); err != nil {
-		return nil
+		return legacyOrgSecrets{}
 	}
 	var orgID uuid.UUID
-	switch {
-	case probe.RefundID == "" && probe.PaymentIntentID == "":
-		// A genuine provider event envelope carries NEITHER of arena's own
-		// ids — only the provider's (data.object.id). Until this branch
-		// existed, every real Stripe webhook fell through to the default
-		// below, the per-org secrets were never consulted, and the request
-		// could only be verified against the process-wide env secret. With
-		// two organizers on two separate Stripe accounts that is not a
-		// degradation but a hard failure: at most one of them can have their
-		// signing secret in the process env, and the other's webhooks are
-		// all rejected 401.
+	switch kind {
+	case legacyWebhookPayment:
+		// A genuine provider event envelope carries only the provider's id
+		// (data.object.id), which is also the id processPaymentWebhook looks
+		// the intent up by. Two organizers on two separate Stripe accounts
+		// each verify with their own secret this way.
 		id := providerPaymentIDFromEnvelope(body)
 		if id == "" || h.paymentIntentQueries == nil {
-			return nil
+			return legacyOrgSecrets{}
 		}
 		pi, err := h.paymentIntentQueries.GetPaymentIntentByProviderID(ctx, id)
 		if err != nil {
-			return nil
+			return legacyOrgSecrets{}
 		}
 		orgID = pi.OrgID
-	case probe.RefundID != "" && h.refundQueries != nil:
+	case legacyWebhookRefund:
+		var probe struct {
+			RefundID string `json:"refund_id"`
+		}
+		if err := json.Unmarshal(body, &probe); err != nil || probe.RefundID == "" || h.refundQueries == nil {
+			return legacyOrgSecrets{}
+		}
 		id, err := uuid.Parse(probe.RefundID)
 		if err != nil {
-			return nil
+			return legacyOrgSecrets{}
 		}
 		ref, err := h.refundQueries.GetRefundByID(ctx, id)
 		if err != nil {
-			return nil
+			return legacyOrgSecrets{}
 		}
 		orgID = ref.OrgID
-	case probe.PaymentIntentID != "" && h.paymentIntentQueries != nil:
-		id, err := uuid.Parse(probe.PaymentIntentID)
-		if err != nil {
-			return nil
-		}
-		pi, err := h.paymentIntentQueries.GetPaymentIntentByID(ctx, id)
-		if err != nil {
-			return nil
-		}
-		orgID = pi.OrgID
 	default:
-		return nil
+		return legacyOrgSecrets{}
 	}
 	out := map[string]string{}
 	for _, provider := range legacyWebhookProviders() {
@@ -317,5 +317,5 @@ func (h *Handler) webhookSecretsFromOrgConfig(ctx context.Context, body []byte) 
 			}
 		}
 	}
-	return out
+	return legacyOrgSecrets{OrgID: &orgID, Secrets: out}
 }
