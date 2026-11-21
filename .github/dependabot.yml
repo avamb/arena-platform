@@ -1,7 +1,8 @@
 # Dependabot version and security updates.
 # Goal: a few grouped pull requests per week, not dozens of single ones.
 # Every ecosystem groups minor and patch updates into one pull request.
-# A major update is never grouped: it arrives alone so it can be read and tested alone.
+# Major version updates are ignored for Go, npm and Python: they are planned by hand as one change across all folders.
+# Security updates are not affected by that ignore rule. GitHub Actions majors still arrive alone.
 # Not covered on purpose:
 #   - Docker base images: the Go version is pinned in five places that move together (see AGENTS.md).
 #   - apps/venue-svg-generator/sdk_experiments: experiments, not built into any image.
@@ -21,6 +22,9 @@ updates:
       default-days: 3
     commit-message:
       prefix: "chore(deps)"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       go-minor-patch:
         applies-to: version-updates
@@ -50,6 +54,9 @@ updates:
       default-days: 3
     commit-message:
       prefix: "chore(deps)"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       npm-minor-patch:
         applies-to: version-updates
@@ -71,6 +78,9 @@ updates:
       default-days: 3
     commit-message:
       prefix: "chore(deps)"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       python-minor-patch:
         applies-to: version-updates
