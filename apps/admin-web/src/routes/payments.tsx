@@ -303,6 +303,26 @@ export const PROVIDER_REQUIRED_SECRETS: Readonly<
   manual: [],
 };
 
+/**
+ * Optional secret field names per provider, with their operator-facing
+ * labels (en / ru). Never required: a config without them stays valid.
+ * Mirrors the optional fields of the Go payment-module descriptors.
+ */
+export const PROVIDER_OPTIONAL_SECRETS: Readonly<
+  Partial<Record<PaymentProvider, readonly string[]>>
+> = {
+  stripe: ["publishable_key"],
+};
+
+export const OPTIONAL_SECRET_LABELS: Readonly<
+  Record<string, { readonly en: string; readonly ru: string }>
+> = {
+  publishable_key: {
+    en: "Stripe publishable key (Developers → API keys → Publishable key). Optional, used by the embedded checkout.",
+    ru: "Публичный ключ Stripe (Developers → API keys → Publishable key). Необязательно, нужен для встроенной оплаты.",
+  },
+};
+
 export interface PaymentConfig {
   readonly id: string;
   readonly org_id: string;
@@ -1593,6 +1613,9 @@ export function PaymentConfigFormDialog({
   // edit secrets the backend remembers even if our catalogue evolves.
   const allKnownKeys = useMemo(() => {
     const set = new Set<string>(requiredSecrets);
+    for (const k of PROVIDER_OPTIONAL_SECRETS[provider] ?? []) {
+      set.add(k);
+    }
     for (const k of storedKeys) {
       set.add(k);
     }
@@ -1909,6 +1932,15 @@ export function PaymentConfigFormDialog({
                         <span style={requiredMarkStyle} title="Required">
                           {" "}
                           *
+                        </span>
+                      ) : null}
+                      {OPTIONAL_SECRET_LABELS[key] ? (
+                        <span
+                          style={mutedHintStyle}
+                          title={`${OPTIONAL_SECRET_LABELS[key].en}\n${OPTIONAL_SECRET_LABELS[key].ru}`}
+                        >
+                          {" "}
+                          (optional)
                         </span>
                       ) : null}
                     </label>

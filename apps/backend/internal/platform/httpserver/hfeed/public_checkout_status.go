@@ -202,6 +202,10 @@ type checkoutStatusEvent struct {
 //  5. For paid sessions: load tickets + static_qr human_code.
 //  6. Return 200 with the status envelope.
 func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.Request) {
+	// The status changes within seconds of a payment and carries the order's
+	// tickets: no cache, on every answer including errors.
+	w.Header().Set("Cache-Control", "no-store")
+
 	if h.checkoutQueries == nil || h.reservationQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
