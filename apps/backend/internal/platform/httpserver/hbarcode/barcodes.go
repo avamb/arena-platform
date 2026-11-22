@@ -77,6 +77,9 @@ func (h *Handler) barcodeQueriesAvailable(w http.ResponseWriter, r *http.Request
 //
 // Returns 201 with the created authority on success.
 // Returns 400 when the request body is missing required fields or type is invalid.
+// Returns 409 barcode_authority.type_exists when an authority of that type
+// already exists: there is at most one authority per type. The route is for a
+// platform superadmin only (the router refuses other callers with 403).
 func (h *Handler) HandleCreateBarcodeAuthority(w http.ResponseWriter, r *http.Request) {
 	if !h.barcodeQueriesAvailable(w, r) {
 		return
@@ -113,6 +116,12 @@ func (h *Handler) HandleCreateBarcodeAuthority(w http.ResponseWriter, r *http.Re
 
 	authority, err := h.barcodeQueries.InsertBarcodeAuthority(r.Context(), body.Type, body.Label)
 	if err != nil {
+		if IsUniqueViolation(err) {
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+				"barcode_authority.type_exists", "a barcode authority of this type already exists", r,
+			))
+			return
+		}
 		h.logger.Error("barcode: insert authority failed",
 			slog.String("type", body.Type),
 			slog.String("error", err.Error()),
