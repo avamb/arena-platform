@@ -89,6 +89,12 @@ func BuildBundle(d *Draft, idx int, actionID int64, posterURL, externalRef strin
 	for _, c := range d.Channels {
 		req.ChannelIDs = append(req.ChannelIDs, c.ID)
 	}
+	if ext := d.extOf(idx); ext != nil {
+		// A partner box office sells this date: the bundle carries the block and
+		// no categories (an existing date without the key would be left as it is).
+		req.ActionEvent.ExternalSale = externalWire(ext, d.currencyOrGuess())
+		return req
+	}
 	if s.seated() {
 		// A date sold by a seating plan: the plan binds the places, the bundle
 		// only prices the categories (S1b). Nothing else of the ticket part

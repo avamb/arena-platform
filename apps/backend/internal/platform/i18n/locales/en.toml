@@ -7466,3 +7466,78 @@ other = "See the settings of your shop."
 
 ["bot.hp.i.sh.web"]
 other = "Open the shop in the browser."
+
+["bot.wz.ask_seller"]
+other = "Who sells the tickets?\n\nIf you sell them yourself, buyers get them on your page and in the widget. If a partner sells them, the event page gets a button to the partner's box office."
+
+["bot.wz.seller_platform_btn"]
+other = "We do, on the site and in the widget"
+
+["bot.wz.seller_partner_btn"]
+other = "A partner"
+
+["bot.wz.err_seller_first"]
+other = "First choose who sells the tickets: press one of the buttons."
+
+["bot.wz.ask_ext_url"]
+other = "Send the link to the partner's box office: the page where buyers get tickets for this event. The address starts with https://.{{if .Value}}\n\nNow: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_url"]
+other = "I need the link to the partner's box office. It starts with https://, leads to the partner's site by its name (not an IP address) and not to our site."
+
+["bot.wz.ask_ext_name"]
+other = "What is the box office called? Buyers see this name on the button, for example “Eventim”.{{if .Value}}\n\nNow: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_name"]
+other = "Give the name of the box office, up to 80 characters."
+
+["bot.wz.ask_ext_price"]
+other = "A “from” price for the event page, for example 25 or 39.90. It is a guide for buyers: the partner sells the tickets. The currency is the event's own, I will ask for it later.\n\nNo price? Press “Skip”.{{if .Value}}\n\nNow: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_price"]
+other = "I could not read the price. Write a number, for example 25 or 39.90, or press “Skip”."
+
+["bot.wz.ack_seller"]
+other = "Sold by"
+
+["bot.wz.ack_seller_us"]
+other = "we do, on the site and in the widget"
+
+["bot.wz.ack_seller_partner"]
+other = "a partner"
+
+["bot.wz.ack_ext_url"]
+other = "Box office link"
+
+["bot.wz.ack_ext_name"]
+other = "Box office"
+
+["bot.wz.ack_ext_price"]
+other = "Price from"
+
+["bot.wz.summary_external"]
+other = "Sold by a partner: {{.Name}}, {{.Url}}{{.Price}}"
+
+["bot.wz.summary_external_price"]
+other = ", from {{.Price}}"
+
+["bot.wz.summary_session_ext"]
+other = "{{.When}} {{.Venue}}"
+
+["bot.wz.session_external"]
+other = "Sold by a partner: {{.Name}}\n{{.Url}}"
+
+["bot.wz.edit_field_external"]
+other = "Partner box office"
+
+["bot.wz.edit_b_external"]
+other = "Partner box office"
+
+["bot.wz.edit_ext_btn"]
+other = "Change the box office"
+
+["bot.wz.edit_chg_date_ext"]
+other = "New date {{.When}} · {{.Venue}}. {{.List}}"
+
+["bot.wz.preview_new_date_ext"]
+other = "New date {{.When}} · {{.Venue}}. {{.List}}"

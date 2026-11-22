@@ -47,6 +47,28 @@ func importExternalSale(e bil24compat.ImportSessionActionEvent) (bil24compat.Ext
 	return kind, sale, nil
 }
 
+// requireCategoriesUnlessExternal finishes the categoryList check the pure
+// validation postponed (importPlan.CategoriesDeferred): a bundle with no
+// categories and no externalSale is only valid for an existing session a
+// partner already sells, which keeps its mode. Any other session answers the
+// same 422 import.categories_required the validation gives.
+func requireCategoriesUnlessExternal(ctx context.Context, q *gen.Queries, plan importPlan, m arenaMatch) error {
+	if !plan.CategoriesDeferred {
+		return nil
+	}
+	if m.SessionID != uuid.Nil {
+		cur, err := q.GetSessionByID(ctx, m.SessionID, m.Ctx.EventID)
+		if err != nil {
+			return fmt.Errorf("read session sales mode: %w", err)
+		}
+		if cur.SalesMode == gen.SessionSalesModeExternal {
+			return nil
+		}
+	}
+	return failImportAt(http.StatusUnprocessableEntity, "import.categories_required", "/categoryList",
+		"categoryList must contain at least one category")
+}
+
 // applyArenaExternalSale writes the bundle's sales mode onto the session
 // (inside the import's transaction, after the session row exists and, for an
 // existing one, is locked) and reports whether the session is now sold by a

@@ -54,6 +54,9 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 	if err != nil {
 		return importResult{}, err
 	}
+	if err := requireCategoriesUnlessExternal(ctx, q, plan, match); err != nil {
+		return importResult{}, err
+	}
 	eventID, err := h.resolveArenaEvent(ctx, q, tx, plan, match)
 	if err != nil {
 		return importResult{}, err

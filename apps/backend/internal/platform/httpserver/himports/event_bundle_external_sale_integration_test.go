@@ -114,3 +114,53 @@ func TestEventBundleExternalSale_ImportReadAndRoundTrip(t *testing.T) {
 		t.Fatalf("a refused switch left the mode %q", mode)
 	}
 }
+
+// A bundle re-sent for a session a partner already sells, with no externalSale
+// and no categoryList (what a client that does not touch the sales mode sends),
+// keeps the session external: absent means untouched, and the missing
+// categories are not an error. The same bundle for a platform session is still
+// refused with import.categories_required.
+func TestEventBundleExternalSale_AbsentKeepsExternalAndNeedsNoCategories(t *testing.T) {
+	pool := import517Pool(t)
+	ctx := context.Background()
+	f := newBundle525Fixture(t, ctx, pool)
+	defer f.cleanup()
+	h := newBundle525Handler(t, pool)
+
+	ext := f.payload()
+	ext.CategoryList = nil
+	ext.ActionEvent.ExternalSale = []byte(`{"url":"https://www.eventim.de/event/2","sellerName":"Eventim"}`)
+	rec, created := f.call(h, ext)
+	if rec.Code != http.StatusOK || !created.Created {
+		t.Fatalf("create external: %d %s", rec.Code, rec.Body.String())
+	}
+
+	again := f.payload()
+	again.CategoryList = nil
+	again.ActionEvent.ExternalSale = nil
+	again.ActionEvent.ArenaSessionID = created.SessionID.String()
+	again.ExternalRef = ""
+	rec, _ = f.call(h, again)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("re-send without externalSale and categories: %d %s", rec.Code, rec.Body.String())
+	}
+	if mode, url, _ := f.salesMode(ctx, t, created.SessionID); mode != "external" || url == nil || *url != "https://www.eventim.de/event/2" {
+		t.Fatalf("an absent externalSale changed the session: %q %v", mode, url)
+	}
+
+	// A platform session addressed the same way still needs its categories.
+	plain := f.payload()
+	plain.ExternalRef += ":plain"
+	rec, made := f.call(h, plain)
+	if rec.Code != http.StatusOK || !made.Created {
+		t.Fatalf("create platform: %d %s", rec.Code, rec.Body.String())
+	}
+	bare := f.payload()
+	bare.CategoryList = nil
+	bare.ActionEvent.ArenaSessionID = made.SessionID.String()
+	bare.ExternalRef = ""
+	rec, _ = f.call(h, bare)
+	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "import.categories_required") {
+		t.Fatalf("platform session without categories: %d %s", rec.Code, rec.Body.String())
+	}
+}
