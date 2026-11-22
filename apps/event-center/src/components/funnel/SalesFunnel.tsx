@@ -6,6 +6,7 @@ import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import { FUNNEL_STEPS, formatShare, funnelRows, isEmptyFunnel, lastDays, sourceRows } from "@/lib/salesFunnel";
 import { Empty, ErrorBox, Loading } from "@/components/ui";
+import { OutboundClicks } from "./OutboundClicks";
 import "./funnel.css";
 
 /**
@@ -216,6 +217,7 @@ export function SalesFunnel({ orgId, eventId }: { orgId: string; eventId: string
               )}
             </>
           )}
+          <OutboundClicks orgId={orgId} eventId={eventId} from={from} to={to} />
         </>
       )}
     </div>

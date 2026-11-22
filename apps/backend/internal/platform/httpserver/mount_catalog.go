@@ -272,6 +272,9 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 	// The same form, the subscription without a purchase and their site guard
 	// for a static site, addressed by feed token (spec 62 section 10).
 	r.With(s.siteFormIdempotency("organizer-contact")).Post("/public/feeds/{feed_token}/organizer-contact", s.handleSiteContact)
+	// Server-side tracking of a static site (spec 63 section 19). Not behind the
+	// idempotency middleware: the beacon carries its own event id.
+	r.Post("/public/feeds/{feed_token}/track", s.handleSiteTrack)
 	r.With(s.siteFormIdempotency("marketing-subscriptions")).Post("/public/feeds/{feed_token}/marketing-subscriptions", s.handleSiteSubscribe)
 	// Funnel telemetry sink — WID-0e (feature #322).
 	// Always mounted; handler self-gates with 503 when funnelQueries is nil.

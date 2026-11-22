@@ -85,6 +85,7 @@ ON CONFLICT (event_id, day, step, surface, session_key, utm_source, utm_campaign
 SELECT step, utm_source, utm_campaign, sum(hits)::bigint, sum(suspect_hits)::bigint
 FROM   sales_funnel_daily
 WHERE  event_id = $1 AND day BETWEEN $2 AND $3
+  AND  step IN ('view', 'session_open', 'seats_chosen')
   AND  ($4::uuid IS NULL OR (step <> 'view' AND session_id = $4::uuid))
 GROUP BY step, utm_source, utm_campaign;
 

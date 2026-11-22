@@ -199,7 +199,21 @@ export type SalesFunnelMoney = S["SalesFunnelMoney"];
 export type SalesFunnelSource = S["SalesFunnelSource"];
 export type SalesFunnelSalesLink = S["SalesFunnelSalesLink"];
 export type SalesFunnelGateway = S["SalesFunnelGateway"];
-export type PageStatsCounts = S["PageStatsCounts"];
+// Clicks from the organizer's site to outside box offices. Written by hand until
+// the OpenAPI schema of the route is generated.
+export type OutboundClicksResponse = {
+  event_id: string;
+  from: string;
+  to: string;
+  timezone: string | null;
+  total: number;
+  visits: number;
+  share_of_visitors: number | null;
+  by_day: { day: string; clicks: number }[];
+  by_seller: { seller: string; clicks: number }[];
+  by_source: { utm_source: string; clicks: number }[];
+};
+export type PageStatsCounts =S["PageStatsCounts"];
 // M2: door scans on the order card, the session's ticket list.
 export type TicketScan = S["TicketScan"];
 export type SessionTicketItem = S["SessionTicketItem"];
