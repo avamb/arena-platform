@@ -93,11 +93,11 @@ func TestPasswordResetRequest_LimitedPerClientAddressAndEmail(t *testing.T) {
 		h := newLimitTestHandler()
 		for i := 0; i < resetRequestPerEmailAttempts; i++ {
 			remote := fmt.Sprintf("203.0.113.%d:1", 20+i)
-			if rec := sendAccountRequest(h.PasswordResetRequest, http.MethodPost, "/v1/auth/password-reset/request", `{"email":"victim@example.test"}`, remote); rec.Code != http.StatusServiceUnavailable {
+			if rec := sendAccountRequest(h.PasswordResetRequest, http.MethodPost, "/v1/auth/password-reset/request", `{"email":"person@example.test"}`, remote); rec.Code != http.StatusServiceUnavailable {
 				t.Fatalf("request %d: status = %d, want 503", i, rec.Code)
 			}
 		}
-		assertRateLimited(t, sendAccountRequest(h.PasswordResetRequest, http.MethodPost, "/v1/auth/password-reset/request", `{"email":"VICTIM@example.test"}`, "203.0.113.99:1"))
+		assertRateLimited(t, sendAccountRequest(h.PasswordResetRequest, http.MethodPost, "/v1/auth/password-reset/request", `{"email":"PERSON@example.test"}`, "203.0.113.99:1"))
 	})
 }
 

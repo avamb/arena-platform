@@ -12480,7 +12480,7 @@ type OnboardingApproveResponse struct {
 	// OrgSlug Its public slug.
 	OrgSlug string `json:"org_slug"`
 
-	// OwnerCreated True when a new account was created and a set-password e-mail queued.
+	// OwnerCreated True when a set-password e-mail was queued for the owner: a new account was created, or an existing account that was never used (unconfirmed e-mail, no membership, no Telegram link) got a new random password.
 	OwnerCreated bool `json:"owner_created"`
 
 	// OwnerId The owner user.

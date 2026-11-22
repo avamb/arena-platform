@@ -229,6 +229,22 @@ func (h *Handler) HandleCreateInvitation(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// An existing account that accountclaim selects (unconfirmed address, no
+	// membership anywhere, no Telegram link) is decided before the membership
+	// is written.
+	resetEligible := false
+	if !userCreated {
+		eligible, claimErr := accountclaim.NeedsReset(ctx, tx, userID, userRow.EmailVerifiedAt)
+		if claimErr != nil {
+			h.logger.Error("hbot: read invited account failed", slog.String("error", claimErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"bot.invite_failed", "failed to resolve the user", r,
+			))
+			return
+		}
+		resetEligible = eligible
+	}
+
 	// 2. The membership. An existing one keeps its role: the bot never
 	// widens what a person already holds.
 	membershipRole := ""
@@ -268,11 +284,10 @@ func (h *Handler) HandleCreateInvitation(w http.ResponseWriter, r *http.Request)
 	}
 	effectiveRole := BotRoleFor(membershipRole)
 
-	// An existing account whose address was never confirmed gets a fresh
-	// secret with its new membership, and the set-your-password letter goes
-	// with the invitation (accountclaim).
+	// Such an account gets a fresh secret with its new membership, and the
+	// set-your-password letter goes with the invitation (accountclaim).
 	accountReset := false
-	if !userCreated && membershipCreated && accountclaim.NeedsReset(userRow.EmailVerifiedAt) {
+	if resetEligible && membershipCreated {
 		if err := accountclaim.ResetCredentials(ctx, tx, userID); err != nil {
 			h.logger.Error("hbot: reset unconfirmed account failed", slog.String("error", err.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(

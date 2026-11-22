@@ -120,6 +120,22 @@ VALUES ($1, $2, CASE WHEN $3 THEN now() END) RETURNING id`, email, hash, verifie
 		t.Fatalf("setup letters = %+v, want one org invitation", letters)
 	}
 
+	// An unconfirmed address of a person who already works in another
+	// organization: an existing organizer, never reset.
+	memberEmail := fmt.Sprintf("claim-owner-member-%s@claim.example.test", nonce)
+	memberID, memberHash := account(memberEmail, false)
+	if _, err := tx.Exec(ctx, `INSERT INTO memberships (user_id, org_id, role) VALUES ($1, $2, 'organizer')`, memberID, ws.OrgID); err != nil {
+		t.Fatal(err)
+	}
+	ws = approve("member", memberEmail)
+	if ws.OwnerID != memberID || ws.OwnerCreated {
+		t.Fatalf("workspace = %+v, want the existing organizer without a letter", ws)
+	}
+	hash, active, tokens, letters = state(memberID, memberEmail)
+	if hash != memberHash || active != 1 || tokens != 0 || len(letters) != 0 {
+		t.Fatalf("an existing organizer was changed: hash kept=%v active=%d tokens=%d letters=%d", hash == memberHash, active, tokens, len(letters))
+	}
+
 	confirmedEmail := fmt.Sprintf("claim-owner-ok-%s@claim.example.test", nonce)
 	confirmedID, keptHash := account(confirmedEmail, true)
 	ws = approve("confirmed", confirmedEmail)

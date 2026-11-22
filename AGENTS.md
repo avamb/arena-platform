@@ -334,7 +334,7 @@ Org-scoped access, roles and scopes, API keys, memberships, owners, archived org
 * A password-reset or invitation token is spent by O…
 * A refresh token records WHY it was revoked (migrat…
 * /v1/me shows the shop only on memberships whose role holds shop.read
-* An existing account with an unconfirmed e-mail gets a NEW membership only with a fresh secret (accountclaim)
+* An existing account that was never used gets a NEW membership only with a fresh secret (accountclaim)
 * Register, password reset and e-mail verification are rate limited, and register never says an address is taken
 
 ### [Bil24 compatibility gateway](docs/agents/bil24-gateway.md)

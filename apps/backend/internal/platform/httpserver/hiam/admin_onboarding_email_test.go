@@ -95,8 +95,6 @@ func (tx *onboardingFakeTx) QueryRow(_ context.Context, sql string, args ...any)
 	case strings.Contains(sql, "-- name: GetUserByID"):
 		// An existing account with a confirmed address (accountclaim leaves it).
 		return fakeRow{values: []any{args[0].(uuid.UUID), "member@example.test", "x", "en", now, &now, (*time.Time)(nil)}}
-	case strings.Contains(sql, "SELECT EXISTS (SELECT 1 FROM memberships"):
-		return fakeRow{values: []any{false}}
 	case strings.Contains(sql, "FROM users"):
 		return fakeRow{err: pgx.ErrNoRows}
 	case strings.Contains(sql, "FROM organizations"):

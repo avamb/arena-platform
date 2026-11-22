@@ -8,13 +8,12 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestNeedsReset(t *testing.T) {
-	if !NeedsReset(nil) {
-		t.Fatal("an unconfirmed address needs a reset")
-	}
+func TestNeedsReset_ConfirmedAddressReadsNothing(t *testing.T) {
 	now := time.Now()
-	if NeedsReset(&now) {
-		t.Fatal("a confirmed address needs no reset")
+	// A nil transaction proves the database is not read.
+	needs, err := NeedsReset(context.Background(), nil, uuid.New(), &now)
+	if err != nil || needs {
+		t.Fatalf("NeedsReset = %v %v, want false, nil for a confirmed address", needs, err)
 	}
 }
 

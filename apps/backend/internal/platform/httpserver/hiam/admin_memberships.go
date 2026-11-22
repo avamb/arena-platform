@@ -327,6 +327,28 @@ func (h *Handler) HandleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// An existing account that accountclaim selects (unconfirmed address, no
+	// membership anywhere, no Telegram link) is decided before the membership
+	// is written. An unknown user_id is left to the insert below (422).
+	resetEligible := false
+	var resetEmail string
+	if !invited {
+		existing, lookupErr := q.GetUserByID(ctx, userID)
+		if lookupErr == nil {
+			resetEmail = existing.Email
+			resetEligible, lookupErr = accountclaim.NeedsReset(ctx, tx, userID, existing.EmailVerifiedAt)
+		} else if errors.Is(lookupErr, pgx.ErrNoRows) {
+			lookupErr = nil
+		}
+		if lookupErr != nil {
+			h.logger.Error("admin_membership: load member account failed", slog.String("error", lookupErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"admin_membership.insert_failed", "failed to add member", r,
+			))
+			return
+		}
+	}
+
 	m, err := q.InsertMembership(ctx, userID, orgID, req.Role)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -352,37 +374,20 @@ func (h *Handler) HandleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
-	// An existing account whose address was never confirmed gets a fresh
-	// secret with its new membership and the set-your-password letter, like
-	// an invited one (accountclaim). A person who already holds another
-	// membership in this organization is not a new member and is left as is.
+	// Such an account gets a fresh secret with its new membership and the
+	// set-your-password letter, like an invited one (accountclaim).
 	accountReset := false
-	if !invited {
-		var alreadyMember bool
-		existing, lookupErr := q.GetUserByID(ctx, userID)
-		if lookupErr == nil {
-			lookupErr = tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM memberships
-WHERE user_id = $1 AND org_id = $2 AND id <> $3 AND status = 'active')`, userID, orgID, m.ID).Scan(&alreadyMember)
-		}
-		if lookupErr != nil {
-			h.logger.Error("admin_membership: load member account failed", slog.String("error", lookupErr.Error()))
+	if resetEligible {
+		if err := accountclaim.ResetCredentials(ctx, tx, userID); err != nil {
+			h.logger.Error("admin_membership: reset unconfirmed account failed", slog.String("error", err.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"admin_membership.insert_failed", "failed to add member", r,
+				"admin_membership.invite_failed", "failed to prepare the member account", r,
 			))
 			return
 		}
-		if !alreadyMember && accountclaim.NeedsReset(existing.EmailVerifiedAt) {
-			if err := accountclaim.ResetCredentials(ctx, tx, userID); err != nil {
-				h.logger.Error("admin_membership: reset unconfirmed account failed", slog.String("error", err.Error()))
-				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-					"admin_membership.invite_failed", "failed to prepare the member account", r,
-				))
-				return
-			}
-			invited, accountReset = true, true
-			invitedEmail = existing.Email
-			invitationExpiresAt = time.Now().UTC().Add(passwordResetTokenTTL)
-		}
+		invited, accountReset = true, true
+		invitedEmail = resetEmail
+		invitationExpiresAt = time.Now().UTC().Add(passwordResetTokenTTL)
 	}
 	var invitationJobID string
 	if invited {

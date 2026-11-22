@@ -167,6 +167,63 @@ func TestAccountClaimIntegration_WebInvitation(t *testing.T) {
 	}
 }
 
+// A person with an unconfirmed address who already works in another
+// organization is an existing organizer: never reset, and the web invitation
+// sends the usual "added" letter.
+func TestAccountClaimIntegration_MemberElsewhereIsNeverReset(t *testing.T) {
+	pool := onboardingIntegrationPool(t)
+	f := newBotInviteFixture(t, pool)
+	srv := buildWebInviteServer(t, f)
+	ctx := context.Background()
+
+	other, err := gen.New(pool).InsertOrganization(ctx, "Claim elsewhere "+uuid.NewString()[:8], "claim-elsewhere-"+uuid.NewString()[:8], "CZ", "en", 1200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM memberships WHERE org_id = $1`, other.ID)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id = $1`, other.ID)
+	})
+	a := newClaimAccount(t, pool, f.newEmail("claim-elsewhere"), false)
+	if _, err := gen.New(pool).InsertMembership(ctx, a.id, other.ID, "organizer"); err != nil {
+		t.Fatal(err)
+	}
+	// Any state counts: a revoked membership is still a membership row.
+	if _, err := pool.Exec(ctx, `UPDATE memberships SET status = 'revoked' WHERE user_id = $1 AND org_id = $2`, a.id, other.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := f.invite(srv, f.ownerID, `{"email":"`+a.email+`","role":"manager","channel":"web"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	assertUntouched(t, pool, a)
+	if got := len(f.jobPayloads(authemail.JobTypeOrgAddedEmail, a.email)); got != 1 {
+		t.Fatalf("org added letters = %d, want 1", got)
+	}
+}
+
+// A person with an unconfirmed address and a Telegram bot link is never reset.
+func TestAccountClaimIntegration_TelegramLinkedIsNeverReset(t *testing.T) {
+	pool := onboardingIntegrationPool(t)
+	f := newBotInviteFixture(t, pool)
+	srv := buildBotIntegrationServer(t, pool)
+
+	a := newClaimAccount(t, pool, f.newEmail("claim-linked"), false)
+	tgID := 9300000000 + time.Now().UnixNano()%100000000
+	if _, err := gen.New(pool).UpsertBotTelegramLink(context.Background(), tgID, a.id, nil, "en", nil); err != nil {
+		t.Fatal(err)
+	}
+	rec := f.invite(srv, f.ownerID, fmt.Sprintf(`{"email":%q,"role":"manager"}`, a.email))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	assertUntouched(t, pool, a)
+	if got := len(f.jobPayloads(authemail.JobTypeBotInvitationEmail, a.email)); got != 1 {
+		t.Fatalf("bot invitation letters = %d, want 1", got)
+	}
+}
+
 func TestAccountClaimIntegration_TelegramInvitation(t *testing.T) {
 	pool := onboardingIntegrationPool(t)
 	f := newBotInviteFixture(t, pool)
@@ -378,8 +435,30 @@ func TestAccountClaimIntegration_DuplicateRegistrationLooksNewAndWritesNothing(t
 	if second.UserID == first.UserID {
 		t.Fatal("the second answer names the existing account")
 	}
-	if _, err := uuid.Parse(second.UserID); err != nil {
+	realID, err := uuid.Parse(first.UserID)
+	if err != nil {
+		t.Fatalf("user_id %q is not a UUID", first.UserID)
+	}
+	fakeID, err := uuid.Parse(second.UserID)
+	if err != nil {
 		t.Fatalf("user_id %q is not a UUID", second.UserID)
+	}
+	if realID.Version() != 7 || fakeID.Version() != realID.Version() {
+		t.Fatalf("UUID versions: real %d, answer %d, want both 7", realID.Version(), fakeID.Version())
+	}
+	fraction := func(ts string) int {
+		dot := strings.IndexByte(ts, '.')
+		if dot < 0 {
+			return 0
+		}
+		end := strings.IndexAny(ts[dot:], "Z+-")
+		if end < 0 {
+			t.Fatalf("created_at %q has no zone", ts)
+		}
+		return end - 1
+	}
+	if fr, ff := fraction(first.CreatedAt), fraction(second.CreatedAt); fr > 6 || ff > 6 {
+		t.Fatalf("created_at fractions: real %q (%d digits), answer %q (%d digits), want at most 6", first.CreatedAt, fr, second.CreatedAt, ff)
 	}
 	if u2, t2, j2 := counts(); u2 != 1 || t2 != 1 || j2 != 1 {
 		t.Fatalf("the second registration wrote rows: users=%d tokens=%d jobs=%d", u2, t2, j2)

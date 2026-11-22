@@ -1,8 +1,10 @@
 // Package accountclaim prepares an existing account for a new organization
 // membership.
 //
-// An account whose e-mail address was never confirmed has not proved that its
-// owner reads that mailbox. When such an account receives a NEW membership
+// An account whose e-mail address was never confirmed, that holds no
+// membership in any organization and has no Telegram bot link has not proved
+// that its owner reads that mailbox or uses the platform. When such an
+// account receives a NEW membership
 // (an organizer application is approved, a person is invited to a team or an
 // administrator adds a member), the membership must reach the person behind
 // the address. Claim therefore replaces the account's password with a random
@@ -11,8 +13,8 @@
 // through that letter, and the reset confirmation marks the address as
 // confirmed.
 //
-// An account with a confirmed address and an existing membership are not
-// touched. Every function runs on the caller's transaction, so the change and
+// An account with a confirmed address, with any membership row or with a
+// Telegram bot link is not touched. Every function runs on the caller's transaction, so the change and
 // the membership are committed together or not at all.
 package accountclaim
 
@@ -35,9 +37,20 @@ import (
 const DefaultLetterMaxAttempts = 5
 
 // NeedsReset reports whether an existing account must be reset before it
-// receives a new membership: its e-mail address was never confirmed.
-func NeedsReset(emailVerifiedAt *time.Time) bool {
-	return emailVerifiedAt == nil
+// receives a new membership: its e-mail address was never confirmed, it holds
+// no membership row in any organization (in any state) and it has no
+// Telegram bot link. Call it BEFORE the new membership is inserted. An
+// account with a confirmed address is answered without reading the database.
+func NeedsReset(ctx context.Context, tx pgx.Tx, userID uuid.UUID, emailVerifiedAt *time.Time) (bool, error) {
+	if emailVerifiedAt != nil {
+		return false, nil
+	}
+	var inUse bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM memberships WHERE user_id = $1)
+    OR EXISTS (SELECT 1 FROM bot_telegram_links WHERE user_id = $1)`, userID).Scan(&inUse); err != nil {
+		return false, fmt.Errorf("accountclaim: read account use: %w", err)
+	}
+	return !inUse, nil
 }
 
 // ResetCredentials replaces the account's password with a random secret that
@@ -108,12 +121,13 @@ func QueueSetupLetter(ctx context.Context, tx pgx.Tx, in SetupLetter) (string, e
 	return jobID, nil
 }
 
-// Claim resets an account whose address was never confirmed and queues its
-// set-your-password letter. It does nothing for an account with a confirmed
-// address and reports claimed=false then.
+// Claim resets an account that NeedsReset selects and queues its
+// set-your-password letter; otherwise it does nothing and reports
+// claimed=false. Call it before the new membership is inserted.
 func Claim(ctx context.Context, tx pgx.Tx, emailVerifiedAt *time.Time, letter SetupLetter) (claimed bool, jobID string, err error) {
-	if !NeedsReset(emailVerifiedAt) {
-		return false, "", nil
+	needs, err := NeedsReset(ctx, tx, letter.UserID, emailVerifiedAt)
+	if err != nil || !needs {
+		return false, "", err
 	}
 	if err := ResetCredentials(ctx, tx, letter.UserID); err != nil {
 		return false, "", err

@@ -148,8 +148,14 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
 			// An address that already has an account gets the same answer as
-			// a new one; nothing is written and no letter is sent.
-			writeRegisterAccepted(w, uuid.New(), email, time.Now().UTC())
+			// a new one; nothing is written and no letter is sent. The id is
+			// a version 7 UUID and the time has microsecond precision, as a
+			// row PostgreSQL creates.
+			fakeID, idErr := uuid.NewV7()
+			if idErr != nil {
+				fakeID = uuid.New()
+			}
+			writeRegisterAccepted(w, fakeID, email, time.Now().UTC().Truncate(time.Microsecond))
 			return
 		}
 		logger.Error("auth.register: insert user failed", "error", err)
