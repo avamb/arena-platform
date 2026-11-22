@@ -5043,6 +5043,139 @@ export interface paths {
         patch: operations["updateConversionSettings"];
         trace?: never;
     };
+    "/v1/organizations/{org_id}/integrations/meta/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start connecting the organization's Meta business
+         * @description Signs the login state for the caller and this organization and
+         *     answers the Meta login parameters (spec 66 section 4.1). Nothing is
+         *     stored. Requires `org.update` (the owner); an organization API key is
+         *     refused. The person who starts must still hold `org.update` here
+         *     through an active membership when Meta sends them back.
+         */
+        post: operations["startMetaConnect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/integrations/meta": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the organization's Meta connection
+         * @description Whether the feature is on, the status, the business, the shared
+         *     datasets, ad accounts and pages and which are selected, and the
+         *     granted permissions. The token is never returned. Requires
+         *     `org.update` (the owner); an organization API key is refused.
+         */
+        get: operations["getMetaIntegration"];
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect the organization's Meta business
+         * @description Asks Meta to drop the access (`DELETE /me/permissions`, best effort),
+         *     then always wipes the stored token, sets the connection to revoked
+         *     and removes the shared objects. Audited as `v1.org.meta.disconnect`.
+         *     Requires `org.update` (the owner); an organization API key is refused.
+         */
+        delete: operations["deleteMetaIntegration"];
+        options?: never;
+        head?: never;
+        /**
+         * Select the dataset and the ad account the platform uses
+         * @description Marks the given shared objects as selected (one per kind). Audited as
+         *     `v1.org.meta.select`. Requires `org.update` (the owner); an
+         *     organization API key is refused.
+         */
+        patch: operations["updateMetaIntegration"];
+        trace?: never;
+    };
+    "/v1/integrations/meta/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Finish a Meta login and send the person back to the event center
+         * @description Public, no login: the signed state is the credential. Checks the state
+         *     (signature, 10 minutes, organization, person), checks again that the
+         *     person holds `org.update` there through an active membership,
+         *     exchanges the code (redirect_uri = META_OAUTH_REDIRECT_URL for a
+         *     redirect login, empty for a JS SDK login), reads `/me`, the granted
+         *     permissions and the shared objects, stores the connection with the
+         *     token sealed and audits `v1.org.meta.connect`. Every outcome of the
+         *     login is a redirect to the event center, never JSON.
+         */
+        get: operations["metaLoginCallback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/integrations/meta/deauthorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Meta tells the platform a person removed the app
+         * @description Public: Meta's deauthorize callback, signed with the app secret
+         *     (constant-time compare). Every connection made by the signed
+         *     app-scoped user id is set to revoked and its token wiped. Audited as
+         *     `v1.org.meta.deauthorize` (system actor).
+         */
+        post: operations["metaDeauthorizeCallback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/integrations/meta/data-deletion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Meta asks the platform to delete a person's data
+         * @description Public: Meta's data-deletion callback, signed with the app secret.
+         *     Every connection made by the signed app-scoped user id is deleted
+         *     with its shared objects. Audited as `v1.org.meta.data_deletion`
+         *     (system actor) with the confirmation code. Answers what Meta requires.
+         */
+        post: operations["metaDataDeletionCallback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/seller-profile": {
         parameters: {
             query?: never;
@@ -30399,6 +30532,127 @@ export interface components {
             ga4_measurement_id?: string | null;
             /** @description Measurement Protocol API secret, 8-512 characters. Write-only. */
             ga4_api_secret?: string | null;
+        };
+        /**
+         * @description What the event center needs to open the Meta login (spec 66 section
+         *     4.1). Two login modes come back to the same callback. JS SDK (main):
+         *     call `FB.login` with `config_id`, `response_type: 'code'` and
+         *     `override_default_response_type: true`, then send the browser to
+         *     `GET /v1/integrations/meta/callback?code=<code>&state=<state>` with
+         *     `state` from this answer. Redirect (fallback): open `login_url`, which
+         *     carries its own state. A state is valid for 10 minutes, for this
+         *     person and this organization only.
+         */
+        MetaConnectStart: {
+            /** @description The Meta app id (public). */
+            app_id: string;
+            /** @description The configuration id of Facebook Login for Business. */
+            config_id: string;
+            /** @description The Graph API version, such as v25.0. */
+            graph_version: string;
+            /** @description Signed state of a JS SDK login (mode js). Opaque. */
+            state: string;
+            /**
+             * @description The dialog/oauth address of a redirect login (mode redirect), with
+             *     its own signed state; empty when META_OAUTH_REDIRECT_URL is not set.
+             */
+            login_url: string;
+        };
+        /** @description A dataset (pixel), ad account or page the organizer shared with the platform. */
+        MetaAsset: {
+            /**
+             * @description The kind of the Meta object.
+             * @enum {string}
+             */
+            kind: "dataset" | "ad_account" | "page";
+            /** @description The Meta id (an ad account id starts with act_). */
+            meta_id: string;
+            /** @description The name in Meta, empty when Meta sent none. */
+            name: string;
+            /** @description Currency of an ad account, null for other kinds. */
+            currency: string | null;
+            /** @description Time zone name of an ad account, null for other kinds. */
+            timezone: string | null;
+            /** @description The platform uses this object (at most one per kind). */
+            selected: boolean;
+        };
+        /** @description The stored connection. The access token is never returned. */
+        MetaConnection: {
+            /**
+             * @description active = in use; revoked = disconnected here or at Meta; error =
+             *     Meta refused the token (Graph error 190), connect again.
+             * @enum {string}
+             */
+            status: "active" | "revoked" | "error";
+            /** @description The client business id from Meta, empty when Meta named none. */
+            meta_business_id: string;
+            /** @description The login configuration the connection was made with. */
+            config_id: string;
+            /** @description The permissions the organizer granted. */
+            scopes: string[];
+            /** @description Short code of the last problem, null when there is none. */
+            last_error: string | null;
+            /**
+             * Format: uuid
+             * @description The person who connected, null when the account was removed.
+             */
+            connected_by: string | null;
+            /**
+             * Format: date-time
+             * @description When the connection was last made.
+             */
+            connected_at: string;
+            /**
+             * Format: date-time
+             * @description When the token was last checked with Meta.
+             */
+            checked_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the token expires, null when Meta gave no expiry.
+             */
+            token_expires_at: string | null;
+            /** @description The meta_id of the selected dataset, null when none is selected. */
+            selected_dataset_id: string | null;
+            /** @description The meta_id of the selected ad account, null when none is selected. */
+            selected_ad_account_id: string | null;
+            /** @description Every shared object. */
+            assets: components["schemas"]["MetaAsset"][];
+        };
+        /** @description The Meta connection of an organization. */
+        MetaIntegration: {
+            /** @description The platform has the Meta connection switched on; false = do not show the Connect button. */
+            enabled: boolean;
+            /** @description The stored connection, null when the organization never connected or the data was deleted. */
+            connection: components["schemas"]["MetaConnection"] | null;
+        };
+        /** @description At least one key. Each value must be the meta_id of a shared object of that kind. */
+        UpdateMetaIntegrationRequest: {
+            /** @description The dataset (pixel) the server-side purchases go to. */
+            dataset_id?: string;
+            /** @description The ad account the platform reads spend from. */
+            ad_account_id?: string;
+        };
+        /** @description The form Meta posts to its callbacks. */
+        MetaSignedRequestForm: {
+            /**
+             * @description `<signature>.<payload>`, both base64url; the signature is
+             *     HMAC-SHA256 of the payload with the app secret. The payload names
+             *     the app-scoped user id.
+             */
+            signed_request: string;
+        };
+        /** @description Answer of the deauthorize callback. */
+        MetaCallbackReceived: {
+            /** @description Always true. */
+            received: boolean;
+        };
+        /** @description The answer Meta requires from a data-deletion callback. */
+        MetaDataDeletionAnswer: {
+            /** @description The status page of the deletion, with the confirmation code. */
+            url: string;
+            /** @description The confirmation code Meta shows the person. */
+            confirmation_code: string;
         };
         /**
          * @description The buyer's answer to the marketing consent tick (spec 51-1). When
@@ -57233,6 +57487,376 @@ export interface operations {
                 };
             };
             /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    startMetaConnect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The login parameters. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaConnectStart"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an API key (`meta.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Meta connection is switched off (`meta.disabled`) or the database is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getMetaIntegration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The connection, or `connection` null. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaIntegration"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an API key (`meta.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteMetaIntegration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Disconnected; the connection as stored now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaIntegration"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an API key (`meta.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization has no Meta connection (`meta.not_connected`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateMetaIntegration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMetaIntegrationRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved; the connection as stored now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaIntegration"];
+                };
+            };
+            /** @description Invalid body (`meta.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an API key (`meta.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization has no Meta connection (`meta.not_connected`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The meta_id is not a shared object of that kind in this organization (`meta.asset_not_found`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    metaLoginCallback: {
+        parameters: {
+            query?: {
+                /** @description The login code from Meta. */
+                code?: string;
+                /** @description The signed state from the connect route. */
+                state?: string;
+                /** @description Set by Meta when the person cancelled or refused. */
+                error?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Redirect to `EVENT_CENTER_PUBLIC_URL/o/{org_id}/ads/meta?meta=connected`,
+             *     or `?meta=error&reason=<code>` with reason denied, no_code,
+             *     forbidden, exchange_failed, graph_failed or unavailable. A state
+             *     that cannot be trusted (`state_invalid`) or a switched-off feature
+             *     (`disabled`) goes to the event center root.
+             */
+            302: {
+                headers: {
+                    /** @description Where the person goes next. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description EVENT_CENTER_PUBLIC_URL is not configured, so there is nowhere to
+             *     send the person (`meta.event_center_unconfigured`). The only answer
+             *     that is not a redirect.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    metaDeauthorizeCallback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["MetaSignedRequestForm"];
+            };
+        };
+        responses: {
+            /** @description Received. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaCallbackReceived"];
+                };
+            };
+            /** @description signed_request missing or wrongly signed (`meta.invalid_signed_request`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Meta connection is switched off (`meta.disabled`) or the database is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    metaDataDeletionCallback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["MetaSignedRequestForm"];
+            };
+        };
+        responses: {
+            /** @description Deleted (also when nothing was stored). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaDataDeletionAnswer"];
+                };
+            };
+            /** @description signed_request missing or wrongly signed (`meta.invalid_signed_request`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Meta connection is switched off (`meta.disabled`) or the database is unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

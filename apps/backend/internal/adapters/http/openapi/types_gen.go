@@ -519,6 +519,20 @@ const (
 	MembershipItemStatusSuspended MembershipItemStatus = "suspended"
 )
 
+// Defines values for MetaAssetKind.
+const (
+	AdAccount MetaAssetKind = "ad_account"
+	Dataset   MetaAssetKind = "dataset"
+	Page      MetaAssetKind = "page"
+)
+
+// Defines values for MetaConnectionStatus.
+const (
+	MetaConnectionStatusActive  MetaConnectionStatus = "active"
+	MetaConnectionStatusError   MetaConnectionStatus = "error"
+	MetaConnectionStatusRevoked MetaConnectionStatus = "revoked"
+)
+
 // Defines values for NetworkAgentsListResponseAssignmentKind.
 const (
 	NetworkAgentsListResponseAssignmentKindAgent NetworkAgentsListResponseAssignmentKind = "agent"
@@ -921,9 +935,9 @@ const (
 
 // Defines values for VenueItemStatus.
 const (
-	VenueItemStatusActive   VenueItemStatus = "active"
-	VenueItemStatusArchived VenueItemStatus = "archived"
-	VenueItemStatusDraft    VenueItemStatus = "draft"
+	Active   VenueItemStatus = "active"
+	Archived VenueItemStatus = "archived"
+	Draft    VenueItemStatus = "draft"
 )
 
 // Defines values for WidgetFunnelEventInputEventType.
@@ -11916,6 +11930,132 @@ type MembershipItemRole string
 
 // MembershipItemStatus Lifecycle state of the membership. active = in force, revoked = soft-removed by an admin, suspended = paused.
 type MembershipItemStatus string
+
+// MetaAsset A dataset (pixel), ad account or page the organizer shared with the platform.
+type MetaAsset struct {
+	// Currency Currency of an ad account, null for other kinds.
+	Currency *string `json:"currency"`
+
+	// Kind The kind of the Meta object.
+	Kind MetaAssetKind `json:"kind"`
+
+	// MetaId The Meta id (an ad account id starts with act_).
+	MetaId string `json:"meta_id"`
+
+	// Name The name in Meta, empty when Meta sent none.
+	Name string `json:"name"`
+
+	// Selected The platform uses this object (at most one per kind).
+	Selected bool `json:"selected"`
+
+	// Timezone Time zone name of an ad account, null for other kinds.
+	Timezone *string `json:"timezone"`
+}
+
+// MetaAssetKind The kind of the Meta object.
+type MetaAssetKind string
+
+// MetaCallbackReceived Answer of the deauthorize callback.
+type MetaCallbackReceived struct {
+	// Received Always true.
+	Received bool `json:"received"`
+}
+
+// MetaConnectStart What the event center needs to open the Meta login (spec 66 section
+// 4.1). Two login modes come back to the same callback. JS SDK (main):
+// call `FB.login` with `config_id`, `response_type: 'code'` and
+// `override_default_response_type: true`, then send the browser to
+// `GET /v1/integrations/meta/callback?code=<code>&state=<state>` with
+// `state` from this answer. Redirect (fallback): open `login_url`, which
+// carries its own state. A state is valid for 10 minutes, for this
+// person and this organization only.
+type MetaConnectStart struct {
+	// AppId The Meta app id (public).
+	AppId string `json:"app_id"`
+
+	// ConfigId The configuration id of Facebook Login for Business.
+	ConfigId string `json:"config_id"`
+
+	// GraphVersion The Graph API version, such as v25.0.
+	GraphVersion string `json:"graph_version"`
+
+	// LoginUrl The dialog/oauth address of a redirect login (mode redirect), with
+	// its own signed state; empty when META_OAUTH_REDIRECT_URL is not set.
+	LoginUrl string `json:"login_url"`
+
+	// State Signed state of a JS SDK login (mode js). Opaque.
+	State string `json:"state"`
+}
+
+// MetaConnection The stored connection. The access token is never returned.
+type MetaConnection struct {
+	// Assets Every shared object.
+	Assets []MetaAsset `json:"assets"`
+
+	// CheckedAt When the token was last checked with Meta.
+	CheckedAt *time.Time `json:"checked_at"`
+
+	// ConfigId The login configuration the connection was made with.
+	ConfigId string `json:"config_id"`
+
+	// ConnectedAt When the connection was last made.
+	ConnectedAt time.Time `json:"connected_at"`
+
+	// ConnectedBy The person who connected, null when the account was removed.
+	ConnectedBy *openapi_types.UUID `json:"connected_by"`
+
+	// LastError Short code of the last problem, null when there is none.
+	LastError *string `json:"last_error"`
+
+	// MetaBusinessId The client business id from Meta, empty when Meta named none.
+	MetaBusinessId string `json:"meta_business_id"`
+
+	// Scopes The permissions the organizer granted.
+	Scopes []string `json:"scopes"`
+
+	// SelectedAdAccountId The meta_id of the selected ad account, null when none is selected.
+	SelectedAdAccountId *string `json:"selected_ad_account_id"`
+
+	// SelectedDatasetId The meta_id of the selected dataset, null when none is selected.
+	SelectedDatasetId *string `json:"selected_dataset_id"`
+
+	// Status active = in use; revoked = disconnected here or at Meta; error =
+	// Meta refused the token (Graph error 190), connect again.
+	Status MetaConnectionStatus `json:"status"`
+
+	// TokenExpiresAt When the token expires, null when Meta gave no expiry.
+	TokenExpiresAt *time.Time `json:"token_expires_at"`
+}
+
+// MetaConnectionStatus active = in use; revoked = disconnected here or at Meta; error =
+// Meta refused the token (Graph error 190), connect again.
+type MetaConnectionStatus string
+
+// MetaDataDeletionAnswer The answer Meta requires from a data-deletion callback.
+type MetaDataDeletionAnswer struct {
+	// ConfirmationCode The confirmation code Meta shows the person.
+	ConfirmationCode string `json:"confirmation_code"`
+
+	// Url The status page of the deletion, with the confirmation code.
+	Url string `json:"url"`
+}
+
+// MetaIntegration The Meta connection of an organization.
+type MetaIntegration struct {
+	// Connection The stored connection, null when the organization never connected or the data was deleted.
+	Connection *MetaConnection `json:"connection"`
+
+	// Enabled The platform has the Meta connection switched on; false = do not show the Connect button.
+	Enabled bool `json:"enabled"`
+}
+
+// MetaSignedRequestForm The form Meta posts to its callbacks.
+type MetaSignedRequestForm struct {
+	// SignedRequest `<signature>.<payload>`, both base64url; the signature is
+	// HMAC-SHA256 of the payload with the app secret. The payload names
+	// the app-scoped user id.
+	SignedRequest string `json:"signed_request"`
+}
 
 // MyTicketsExchangeRequest Body of `POST /v1/public/my-tickets/session`.
 type MyTicketsExchangeRequest struct {
@@ -23019,6 +23159,15 @@ type UpdateEventStatusRequest struct {
 // `error.code = "event.invalid_transition"`.
 type UpdateEventStatusRequestStatus string
 
+// UpdateMetaIntegrationRequest At least one key. Each value must be the meta_id of a shared object of that kind.
+type UpdateMetaIntegrationRequest struct {
+	// AdAccountId The ad account the platform reads spend from.
+	AdAccountId *string `json:"ad_account_id,omitempty"`
+
+	// DatasetId The dataset (pixel) the server-side purchases go to.
+	DatasetId *string `json:"dataset_id,omitempty"`
+}
+
 // UpdateOperatorNetworkRequest At least one of `name` or `slug` must be supplied. Empty strings are
 // treated as "do not change". Slug is validated against the same regex
 // as on create.
@@ -25219,6 +25368,18 @@ type GetV1GeoWorldCountriesParams struct {
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
+// MetaLoginCallbackParams defines parameters for MetaLoginCallback.
+type MetaLoginCallbackParams struct {
+	// Code The login code from Meta.
+	Code *string `form:"code,omitempty" json:"code,omitempty"`
+
+	// State The signed state from the connect route.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// Error Set by Meta when the person cancelled or refused.
+	Error *string `form:"error,omitempty" json:"error,omitempty"`
+}
+
 // PostMACSScanEventsParams defines parameters for PostMACSScanEvents.
 type PostMACSScanEventsParams struct {
 	// XMACSSubscriberId Id of the MACS subscriber (GET /v1/organizations/{org_id}/macs-webhook answers it).
@@ -26852,6 +27013,12 @@ type PatchSessionSeatsCategoryJSONRequestBody = PatchSessionSeatsCategoryRequest
 // PublishEventJSONRequestBody defines body for PublishEvent for application/json ContentType.
 type PublishEventJSONRequestBody = PublishEventRequest
 
+// MetaDataDeletionCallbackFormdataRequestBody defines body for MetaDataDeletionCallback for application/x-www-form-urlencoded ContentType.
+type MetaDataDeletionCallbackFormdataRequestBody = MetaSignedRequestForm
+
+// MetaDeauthorizeCallbackFormdataRequestBody defines body for MetaDeauthorizeCallback for application/x-www-form-urlencoded ContentType.
+type MetaDeauthorizeCallbackFormdataRequestBody = MetaSignedRequestForm
+
 // PostMACSScanEventsJSONRequestBody defines body for PostMACSScanEvents for application/json ContentType.
 type PostMACSScanEventsJSONRequestBody = MACSScanBatchRequest
 
@@ -27073,6 +27240,9 @@ type ImportBil24SessionJSONRequestBody = ImportBil24SessionRequest
 
 // ImportEventBundleJSONRequestBody defines body for ImportEventBundle for application/json ContentType.
 type ImportEventBundleJSONRequestBody = ImportEventBundleRequest
+
+// UpdateMetaIntegrationJSONRequestBody defines body for UpdateMetaIntegration for application/json ContentType.
+type UpdateMetaIntegrationJSONRequestBody = UpdateMetaIntegrationRequest
 
 // CancelStaffInvitationJSONRequestBody defines body for CancelStaffInvitation for application/json ContentType.
 type CancelStaffInvitationJSONRequestBody = StaffInvitationCancelRequest
