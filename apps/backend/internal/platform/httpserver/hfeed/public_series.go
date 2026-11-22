@@ -27,6 +27,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating/layoutgen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesstate"
 )
 
@@ -96,7 +97,7 @@ func (h *Handler) hydrateFeedSeriesIDs(ctx context.Context, responses []publicFe
 			ids = append(ids, id)
 		}
 	}
-	series, err := h.publicFeedQueries.ListSeriesIDsForEvents(ctx, ids)
+	series, err := h.publicFeedQueries.ListActiveSeriesIDsForEvents(ctx, ids)
 	if err != nil {
 		h.logger.Warn("public_feed: series id hydration failed", slog.String("error", err.Error()))
 		return
@@ -209,16 +210,49 @@ func (h *Handler) seriesSummaries(ctx context.Context, groups map[uuid.UUID][]uu
 			}
 		}
 	}
+	// The price of a category is the one in effect now (priceresolve, the rule
+	// of the feed's event detail), and a step of a price chain that does not
+	// sell now is skipped (chainView.hide), one session at a time.
+	bySession := map[uuid.UUID][]gen.SeriesTierPriceRow{}
+	var sessionOrder []uuid.UUID
 	for _, t := range tiers {
 		if placeless[t.TierID] {
 			continue
 		}
-		a := aggs[sessionSeries[t.SessionID]]
+		if _, ok := bySession[t.SessionID]; !ok {
+			sessionOrder = append(sessionOrder, t.SessionID)
+		}
+		bySession[t.SessionID] = append(bySession[t.SessionID], t)
+	}
+	for _, sessID := range sessionOrder {
+		a := aggs[sessionSeries[sessID]]
 		if a == nil {
 			continue
 		}
-		if cur, ok := a.prices[t.Currency]; !ok || t.PriceAmount < cur {
-			a.prices[t.Currency] = t.PriceAmount
+		var hide map[uuid.UUID]bool
+		var eff map[uuid.UUID]priceresolve.Effective
+		if h.tierQueries != nil {
+			all, err := h.tierQueries.ListTicketTiersBySession(ctx, sessID)
+			if err != nil {
+				return nil, err
+			}
+			all = withoutPlacelessTiers(all, placeless)
+			if eff, err = priceresolve.ForTiers(ctx, h.tierQueries, all, now); err != nil {
+				return nil, err
+			}
+			hide = h.loadChainView(ctx, sessID, all).hide
+		}
+		for _, t := range bySession[sessID] {
+			if hide[t.TierID] {
+				continue
+			}
+			amount := t.PriceAmount
+			if e, ok := eff[t.TierID]; ok {
+				amount = e.Amount
+			}
+			if cur, ok := a.prices[t.Currency]; !ok || amount < cur {
+				a.prices[t.Currency] = amount
+			}
 		}
 	}
 	for sid, a := range aggs {
@@ -451,7 +485,7 @@ func (h *Handler) HandlePublicSeriesPage(w http.ResponseWriter, r *http.Request)
 	for i, e := range all {
 		allIDs[i] = e.EventID
 	}
-	seriesOf, err := h.publicFeedQueries.ListSeriesIDsForEvents(ctx, allIDs)
+	seriesOf, err := h.publicFeedQueries.ListActiveSeriesIDsForEvents(ctx, allIDs)
 	if err != nil {
 		fail(err)
 		return

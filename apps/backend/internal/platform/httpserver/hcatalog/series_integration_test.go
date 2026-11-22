@@ -321,3 +321,46 @@ func TestSeriesAPI_EventLinkAndSlugNamespace(t *testing.T) {
 	w = rig.call(rig.h.HandleCreateSeries, http.MethodPost, other, nil, map[string]any{"name": "x", "slug": mine.Slug}, "")
 	mustStatus(t, w, http.StatusCreated, "same slug elsewhere")
 }
+
+// A tour accepts only pictures uploaded for a tour (owner_type event_series) of
+// its own organization; the default of hide_children_in_lists on create is true.
+func TestSeriesAPI_MediaOwnerTypeAndDefaults(t *testing.T) {
+	rig := newSeriesRig(t)
+	org := rig.org
+	other := rig.newOrg("m")
+	ctx := context.Background()
+
+	mkMedia := func(orgID uuid.UUID, ownerType string) string {
+		t.Helper()
+		id := uuid.New()
+		if _, err := rig.pool.Exec(ctx, `INSERT INTO media_objects (id, org_id, owner_type, storage_backend, storage_key, content_type, byte_size, checksum_sha256)
+			VALUES ($1, $2, $3, 'local', $4, 'image/png', 10, 'abc')`, id, orgID, ownerType, "series-test/"+id.String()); err != nil {
+			t.Fatalf("insert media: %v", err)
+		}
+		t.Cleanup(func() { _, _ = rig.pool.Exec(context.Background(), `DELETE FROM media_objects WHERE id = $1`, id) })
+		return id.String()
+	}
+	own := mkMedia(org, "event_series")
+	foreignOrg := mkMedia(other, "event_series")
+	wrongType := mkMedia(org, "org_logo")
+
+	for name, body := range map[string]map[string]any{
+		"another org's media": {"name": "x", "poster_media_id": foreignOrg},
+		"wrong owner type":    {"name": "x", "hero_media_id": wrongType},
+	} {
+		w := rig.call(rig.h.HandleCreateSeries, http.MethodPost, org, nil, body, "")
+		if w.Code != http.StatusUnprocessableEntity || errCode(w) != "series.invalid" {
+			t.Errorf("%s: %d %s", name, w.Code, w.Body.String())
+		}
+	}
+	w := rig.call(rig.h.HandleCreateSeries, http.MethodPost, org, nil, map[string]any{"name": "Pictured", "poster_media_id": own}, "")
+	mustStatus(t, w, http.StatusCreated, "own media")
+	created := decodeSeries(t, w)
+	if !created.HideChildrenInLists {
+		t.Errorf("hide_children_in_lists = false on create without the field, want true")
+	}
+	w = rig.call(rig.h.HandleUpdateSeries, http.MethodPatch, org, map[string]string{"series_id": created.ID}, map[string]any{"hero_media_id": wrongType}, "")
+	if w.Code != http.StatusUnprocessableEntity || errCode(w) != "series.invalid" {
+		t.Errorf("patch with a wrong owner type: %d %s", w.Code, w.Body.String())
+	}
+}

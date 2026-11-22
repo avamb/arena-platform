@@ -217,7 +217,7 @@ func TestSeriesScreen(t *testing.T) {
 			labels = append(labels, btn.Text)
 		}
 	}
-	want := []string{"sr:s:" + ev.String() + ":0", "sr:s:" + ev.String() + ":1", "sr:u:" + ev.String(), "ec:o:" + ev.String()}
+	want := []string{"sr:s:" + ev.String() + ":t1", "sr:s:" + ev.String() + ":t2", "sr:u:" + ev.String(), "ec:o:" + ev.String()}
 	if strings.Join(data, "|") != strings.Join(want, "|") {
 		t.Errorf("callbacks = %v, want %v", data, want)
 	}
@@ -233,5 +233,33 @@ func TestSeriesScreen(t *testing.T) {
 	_, rows = b.seriesScreen("ru", nil, ev, "", "")
 	if len(rows) != 1 {
 		t.Errorf("no tours and no bind: want only Back, got %v", rows)
+	}
+}
+
+func TestSeriesShortID_ResolvesByIDNotByPosition(t *testing.T) {
+	a, b2 := uuid.New().String(), uuid.New().String()
+	items := []SeriesItem{{ID: a}, {ID: b2}}
+	if got := seriesIndexByShortID(items, seriesShortID(b2)); got != 1 {
+		t.Fatalf("resolve second = %d", got)
+	}
+	// The list changed since the keyboard was drawn: the same handle still
+	// names the same tour, and a removed tour is refused.
+	if got := seriesIndexByShortID([]SeriesItem{{ID: b2}}, seriesShortID(b2)); got != 0 {
+		t.Fatalf("after a removal = %d", got)
+	}
+	if got := seriesIndexByShortID([]SeriesItem{{ID: b2}}, seriesShortID(a)); got != -1 {
+		t.Fatalf("gone tour = %d, want -1", got)
+	}
+	// Two tours sharing a handle are never guessed.
+	twin := []SeriesItem{{ID: "019a0000-0000-7000-8000-000000000001"}, {ID: "019a0000-0000-7000-8000-000000000002"}}
+	if got := seriesIndexByShortID(twin, seriesShortID(twin[0].ID)); got != 0 {
+		t.Fatalf("same-millisecond uuidv7 handles resolve: %d", got)
+	}
+	same := []SeriesItem{{ID: "00000000-0000-7000-8000-abcdefabcdef"}, {ID: "11111111-0000-7000-8000-abcdefabcdef"}}
+	if got := seriesIndexByShortID(same, seriesShortID(same[0].ID)); got != -1 {
+		t.Fatalf("ambiguous handle = %d, want -1", got)
+	}
+	if n := len("sr:s:" + uuid.New().String() + ":" + seriesShortID(a)); n > 64 {
+		t.Fatalf("callback is %d bytes", n)
 	}
 }

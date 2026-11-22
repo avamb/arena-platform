@@ -10,7 +10,6 @@ package eventbot
 import (
 	"context"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/go-telegram/bot/models"
@@ -98,9 +97,9 @@ func (b *Bot) seriesCallback(ctx context.Context, chatID int64, msgID int, from 
 			b.ecError(ctx, chatID, &msgID, id, err, "ec:o:"+eventID.String())
 			return
 		}
-		n, convErr := strconv.Atoi(parts[2])
-		if convErr != nil || n < 0 || n >= len(items) {
-			// A stale row: show the list as it is now rather than bind the wrong tour.
+		n := seriesIndexByShortID(items, parts[2])
+		if n < 0 {
+			// A stale or ambiguous row: show the list as it is now rather than bind the wrong tour.
 			b.seriesRender(ctx, chatID, &msgID, id, jwt, eventID, b.texts.T(loc, "bot.ser.gone", nil)+"\n\n")
 			return
 		}
@@ -136,6 +135,38 @@ func (b *Bot) seriesRender(ctx context.Context, chatID int64, editMsgID *int, id
 	b.reply(ctx, chatID, editMsgID, prefix+text, &models.InlineKeyboardMarkup{InlineKeyboard: rows})
 }
 
+// seriesShortID is the stable handle of a tour in a callback: the first 12
+// characters of its id without dashes ("sr:s:" + 36 + ":" + 12 = 54 bytes,
+// under Telegram's 64).
+func seriesShortID(id string) string {
+	s := strings.ToLower(strings.ReplaceAll(id, "-", ""))
+	// The tail, not the head: a uuidv7 starts with its timestamp.
+	if len(s) > 12 {
+		s = s[len(s)-12:]
+	}
+	return s
+}
+
+// seriesIndexByShortID resolves a handle against the current list: -1 when no
+// tour has it (gone, archived) or more than one does (never guess).
+func seriesIndexByShortID(items []SeriesItem, short string) int {
+	short = strings.ToLower(short)
+	if short == "" {
+		return -1
+	}
+	found := -1
+	for i, s := range items {
+		if seriesShortID(s.ID) != short {
+			continue
+		}
+		if found >= 0 {
+			return -1
+		}
+		found = i
+	}
+	return found
+}
+
 // seriesScreen builds the text and the keyboard of the tour list.
 func (b *Bot) seriesScreen(loc string, items []SeriesItem, eventID uuid.UUID, curID, curName string) (string, [][]models.InlineKeyboardButton) {
 	ev := eventID.String()
@@ -151,12 +182,12 @@ func (b *Bot) seriesScreen(loc string, items []SeriesItem, eventID uuid.UUID, cu
 	} else {
 		text += "\n\n" + b.texts.T(loc, "bot.ser.list_hint", nil)
 	}
-	for i, s := range items {
+	for _, s := range items {
 		mark := ""
 		if s.ID == curID {
 			mark = "✔ "
 		}
-		rows = append(rows, []models.InlineKeyboardButton{{Text: mark + truncate(s.Name, 48), CallbackData: "sr:s:" + ev + ":" + strconv.Itoa(i)}})
+		rows = append(rows, []models.InlineKeyboardButton{{Text: mark + truncate(s.Name, 48), CallbackData: "sr:s:" + ev + ":" + seriesShortID(s.ID)}})
 	}
 	if curID != "" {
 		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.ser.unbind_btn", nil), CallbackData: "sr:u:" + ev}})

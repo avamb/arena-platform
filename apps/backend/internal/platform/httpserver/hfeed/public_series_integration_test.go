@@ -190,6 +190,13 @@ func newSeriesFixture(t *testing.T) *seriesFixture {
 	return f
 }
 
+// handler is the public handler with the price resolver wired, as in production.
+func (f *seriesFixture) handler() *Handler {
+	h := promoterPageHandler(f.pool)
+	h.tierQueries = f.q
+	return h
+}
+
 func seriesFeedReq(path string, params map[string]string) *http.Request {
 	req := httptest.NewRequest(http.MethodGet, path, nil)
 	rctx := chi.NewRouteContext()
@@ -208,7 +215,7 @@ func (f *seriesFixture) get(t *testing.T, h http.HandlerFunc, path string, param
 
 func TestPublicSeries_FeedListShowsOnlyToursWithAnEventOfThisFeed(t *testing.T) {
 	f := newSeriesFixture(t)
-	h := promoterPageHandler(f.pool)
+	h := f.handler()
 
 	code, body := f.get(t, h.HandlePublicFeedSeries, "/x", map[string]string{"feed_token": f.tokenA})
 	if code != 200 {
@@ -257,7 +264,7 @@ func TestPublicSeries_FeedListShowsOnlyToursWithAnEventOfThisFeed(t *testing.T) 
 
 func TestPublicSeries_FeedDetailSummary(t *testing.T) {
 	f := newSeriesFixture(t)
-	h := promoterPageHandler(f.pool)
+	h := f.handler()
 
 	code, body := f.get(t, h.HandlePublicFeedSeriesItem, "/x", map[string]string{
 		"feed_token": f.tokenA, "series_id": f.series.ID.String()})
@@ -309,7 +316,7 @@ func TestPublicSeries_FeedDetailSummary(t *testing.T) {
 
 func TestPublicSeries_FeedDetail404(t *testing.T) {
 	f := newSeriesFixture(t)
-	h := promoterPageHandler(f.pool)
+	h := f.handler()
 	for name, tc := range map[string]struct{ token, id string }{
 		"archived":            {f.tokenA, f.archived.ID.String()},
 		"no event in feed":    {f.tokenA, f.onlyB.ID.String()},
@@ -325,7 +332,7 @@ func TestPublicSeries_FeedDetail404(t *testing.T) {
 
 func TestPublicSeries_SeriesIDOnFeedEvents(t *testing.T) {
 	f := newSeriesFixture(t)
-	h := promoterPageHandler(f.pool)
+	h := f.handler()
 
 	code, body := f.get(t, h.HandlePublicFeedEvents, "/x", map[string]string{"feed_token": f.tokenA})
 	if code != 200 {
@@ -342,6 +349,9 @@ func TestPublicSeries_SeriesIDOnFeedEvents(t *testing.T) {
 	}
 	found := false
 	for _, e := range list.Events {
+		if e.ID == f.evArchived.String() && e.SeriesID != nil {
+			t.Errorf("event of an archived tour shows series_id %s, want null", *e.SeriesID)
+		}
 		if e.ID == f.evInA.String() {
 			found = true
 			if e.SeriesID == nil || *e.SeriesID != f.series.ID.String() {
@@ -356,7 +366,7 @@ func TestPublicSeries_SeriesIDOnFeedEvents(t *testing.T) {
 
 func TestPublicSeries_PageRoute(t *testing.T) {
 	f := newSeriesFixture(t)
-	h := promoterPageHandler(f.pool)
+	h := f.handler()
 	page := func(slug string) (int, []byte) {
 		return f.get(t, h.HandlePublicSeriesPage, "/x", map[string]string{"org_slug": f.orgSlug, "series_slug": slug})
 	}
@@ -404,5 +414,74 @@ func TestPublicSeries_PageRoute(t *testing.T) {
 	}
 	if code, _ := f.get(t, h.HandlePublicSeriesPage, "/x", map[string]string{"org_slug": "no-such-org-" + uuid.NewString(), "series_slug": f.series.Slug}); code != 404 {
 		t.Errorf("unknown org: status %d, want 404", code)
+	}
+}
+
+// TestPublicSeries_PriceFromUsesEffectivePriceAndChain: price_from follows the
+// price in effect now (a price window) and skips a chain step that does not sell.
+func TestPublicSeries_PriceFromUsesEffectivePriceAndChain(t *testing.T) {
+	f := newSeriesFixture(t)
+	h := f.handler()
+	ctx := context.Background()
+
+	var cheap, dear uuid.UUID
+	if err := f.pool.QueryRow(ctx, `SELECT t.id FROM ticket_tiers t JOIN sessions s ON s.id = t.session_id
+		WHERE s.event_id = $1 AND t.price_amount = 1800`, f.evInA).Scan(&cheap); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.pool.QueryRow(ctx, `SELECT t.id FROM ticket_tiers t JOIN sessions s ON s.id = t.session_id
+		WHERE s.event_id = $1 AND t.price_amount = 2500`, f.evInA).Scan(&dear); err != nil {
+		t.Fatal(err)
+	}
+	eur := func(what string) float64 {
+		t.Helper()
+		code, body := f.get(t, h.HandlePublicFeedSeriesItem, "/x", map[string]string{
+			"feed_token": f.tokenA, "series_id": f.series.ID.String()})
+		if code != 200 {
+			t.Fatalf("%s: status %d: %s", what, code, body)
+		}
+		var s struct {
+			Summary struct {
+				PriceFrom []struct {
+					Currency string  `json:"currency"`
+					Amount   float64 `json:"amount"`
+				} `json:"price_from"`
+			} `json:"summary"`
+		}
+		if err := json.Unmarshal(body, &s); err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range s.Summary.PriceFrom {
+			if p.Currency == "EUR" {
+				return p.Amount
+			}
+		}
+		t.Fatalf("%s: no EUR price: %s", what, body)
+		return 0
+	}
+
+	// A window in effect now lowers the price of the 18.00 category to 9.00.
+	now := time.Now().UTC()
+	to := now.Add(time.Hour)
+	if _, err := f.q.InsertTierPriceWindow(ctx, cheap, now.Add(-time.Hour), &to, 900); err != nil {
+		t.Fatalf("InsertTierPriceWindow: %v", err)
+	}
+	if got := eur("window"); got != 9.0 {
+		t.Errorf("price_from EUR with an active window = %v, want 9", got)
+	}
+	if _, err := f.q.DeleteTierPriceWindowsByTier(ctx, cheap); err != nil {
+		t.Fatal(err)
+	}
+	if got := eur("no window"); got != 18.0 {
+		t.Errorf("price_from EUR without a window = %v, want 18", got)
+	}
+
+	// The cheap category is a later step of a chain whose first step sells now:
+	// it is not offered, so it must not set the "from" price.
+	if err := f.q.UpsertTierChain(ctx, dear, cheap); err != nil {
+		t.Fatalf("UpsertTierChain: %v", err)
+	}
+	if got := eur("chain"); got != 25.0 {
+		t.Errorf("price_from EUR with a hidden chain step = %v, want 25", got)
 	}
 }

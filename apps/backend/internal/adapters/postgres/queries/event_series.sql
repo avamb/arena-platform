@@ -86,6 +86,14 @@ FROM   events
 WHERE  id = ANY($1::uuid[])
   AND  series_id IS NOT NULL;
 
+-- name: ListActiveSeriesIDsForEvents :many
+-- Public variant: an event of an archived tour has no tour.
+SELECT e.id, e.series_id
+FROM   events e
+JOIN   event_series s ON s.id = e.series_id
+WHERE  e.id = ANY($1::uuid[])
+  AND  s.archived_at IS NULL;
+
 -- name: ListEventIDsForSeries :many
 SELECT id
 FROM   events

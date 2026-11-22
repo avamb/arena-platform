@@ -256,6 +256,39 @@ func (q *Queries) ListSeriesIDsForEvents(ctx context.Context, eventIDs []uuid.UU
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ListActiveSeriesIDsForEvents
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listActiveSeriesIDsForEvents = `-- name: ListActiveSeriesIDsForEvents :many
+SELECT e.id, e.series_id
+FROM   events e
+JOIN   event_series s ON s.id = e.series_id
+WHERE  e.id = ANY($1::uuid[])
+  AND  s.archived_at IS NULL`
+
+// ListActiveSeriesIDsForEvents is the public variant of ListSeriesIDsForEvents:
+// an event of an archived tour is absent from the map.
+func (q *Queries) ListActiveSeriesIDsForEvents(ctx context.Context, eventIDs []uuid.UUID) (map[uuid.UUID]uuid.UUID, error) {
+	out := make(map[uuid.UUID]uuid.UUID, len(eventIDs))
+	if len(eventIDs) == 0 {
+		return out, nil
+	}
+	rows, err := q.db.Query(ctx, listActiveSeriesIDsForEvents, eventIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var eventID, seriesID uuid.UUID
+		if err := rows.Scan(&eventID, &seriesID); err != nil {
+			return nil, err
+		}
+		out[eventID] = seriesID
+	}
+	return out, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ListEventIDsForSeries
 // ─────────────────────────────────────────────────────────────────────────────
 

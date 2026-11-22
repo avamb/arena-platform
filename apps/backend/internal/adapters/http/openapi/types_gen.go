@@ -7292,7 +7292,7 @@ type CreateSeriesRequest struct {
 	// HeroVideoUrl An https YouTube or Vimeo link.
 	HeroVideoUrl *string `json:"hero_video_url"`
 
-	// HideChildrenInLists Leave the events of the tour out of the page lists. Default false.
+	// HideChildrenInLists Leave the events of the tour out of the page lists. Default true.
 	HideChildrenInLists *bool `json:"hide_children_in_lists,omitempty"`
 
 	// Name Name of the tour, 1-200 characters.

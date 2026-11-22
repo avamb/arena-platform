@@ -24307,7 +24307,7 @@ export interface components {
             hero_video_url?: string | null;
             /** @description Text about the partners as HTML, passed through the event description filter. */
             partners_text_html?: string | null;
-            /** @description Leave the events of the tour out of the page lists. Default false. */
+            /** @description Leave the events of the tour out of the page lists. Default true. */
             hide_children_in_lists?: boolean;
             /**
              * Format: int32

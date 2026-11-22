@@ -247,13 +247,15 @@ func writeSeriesNotFound(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("series.not_found", "tour not found", r))
 }
 
-// seriesMediaInOrg checks that a media object belongs to the organization.
+// seriesMediaInOrg checks that a media object is a picture uploaded for a tour
+// (owner_type event_series) of the organization.
 // It answers 422 series.invalid itself and reports false on a refusal.
 func (h *Handler) seriesMediaInOrg(w http.ResponseWriter, r *http.Request, q *gen.Queries, field string, mediaID, orgID uuid.UUID) bool {
 	var owner *uuid.UUID
+	var ownerType string
 	err := q.DB().QueryRow(r.Context(),
-		`SELECT org_id FROM media_objects WHERE id = $1 AND deleted_at IS NULL`, mediaID).Scan(&owner)
-	if err == nil && owner != nil && *owner != orgID {
+		`SELECT org_id, owner_type FROM media_objects WHERE id = $1 AND deleted_at IS NULL`, mediaID).Scan(&owner, &ownerType)
+	if err == nil && (owner == nil || *owner != orgID || ownerType != "event_series") {
 		err = pgx.ErrNoRows
 	}
 	if err != nil {

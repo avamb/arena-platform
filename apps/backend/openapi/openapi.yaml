@@ -11322,7 +11322,7 @@ components:
           description: Text about the partners as HTML, passed through the event description filter.
         hide_children_in_lists:
           type: boolean
-          description: Leave the events of the tour out of the page lists. Default false.
+          description: Leave the events of the tour out of the page lists. Default true.
         position:
           type: integer
           format: int32
