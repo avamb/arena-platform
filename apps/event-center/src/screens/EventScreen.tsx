@@ -15,6 +15,8 @@ import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { Badge, DownloadButton, Empty, ErrorBox, Loading } from "@/components/ui";
 import { SalesFigures } from "@/components/SalesFigures";
+import { ExternalLabel } from "@/components/ExternalSaleFields";
+import { isExternalSession } from "@/lib/externalSale";
 import { EventStatusBlock } from "@/components/EventStatusBlock";
 import { EventPoster } from "@/components/EventPoster";
 import { EmailNoteSection } from "@/components/EmailNoteSection";
@@ -33,6 +35,8 @@ interface SessionRef {
   tz: string | null;
   venue: string | null;
   cancelled: boolean;
+  /** Spec 63, L-3: the partner box office that sells this date; absent when the platform does. */
+  external?: { url: string; seller_name: string };
 }
 
 /** The session a sample ticket is printed for: the next live one, else the first. */
@@ -107,7 +111,8 @@ export function EventScreen() {
   const sessions = useQuery({
     queryKey: ["sessions", orgId, eventId],
     queryFn: () => listSessions(orgId, eventId),
-    enabled: canSessions && !canSales,
+    // Also with sales rights: the list says which dates a partner box office sells (spec 63, L-3).
+    enabled: canSessions,
   });
 
   const event = events.data?.events.find((e) => e.id === eventId);
@@ -115,6 +120,12 @@ export function EventScreen() {
   if (events.error !== null) return <ErrorBox error={events.error} onRetry={() => void events.refetch()} />;
   if (event === undefined) return <ErrorBox error={new ApiError(404, "event.not_found", "")} />;
 
+  const partnerOf = (id: string): { external?: { url: string; seller_name: string } } => {
+    const item = sessions.data?.sessions.find((x) => x.id === id);
+    return isExternalSession(item) && item?.external !== null && item?.external !== undefined
+      ? { external: { url: item.external.url, seller_name: item.external.seller_name } }
+      : {};
+  };
   const refs: SessionRef[] =
     summary.data !== undefined
       ? summary.data.sessions.map((s) => ({
@@ -123,6 +134,7 @@ export function EventScreen() {
           tz: s.venue_timezone,
           venue: s.venue_name,
           cancelled: s.status === "cancelled",
+          ...partnerOf(s.id),
         }))
       : (sessions.data?.sessions ?? []).map((s) => ({
           id: s.id,
@@ -130,6 +142,7 @@ export function EventScreen() {
           tz: null,
           venue: null,
           cancelled: s.status === "cancelled",
+          ...partnerOf(s.id),
         }));
   const sample = sampleSession(refs);
   const poster = posterCapabilities(access.can);
@@ -294,7 +307,9 @@ export function EventScreen() {
                         {s.cancelled && <Badge tone="bad">{t("event.cancelled")}</Badge>}
                       </span>
                     </Link>
-                    {fig !== undefined && <SalesFigures places={fig.places} money={fig.money} compact />}
+                    {/* A partner box office sells this date: its label and link stand where the sales figures would. */}
+                    {s.external !== undefined && <ExternalLabel external={s.external} testId="session-external" />}
+                    {s.external === undefined && fig !== undefined && <SalesFigures places={fig.places} money={fig.money} compact />}
                   </li>
                 );
               })}
@@ -308,7 +323,7 @@ export function EventScreen() {
             orgId={orgId}
             eventId={eventId}
             canUpdate={access.can("session.update")}
-            sessions={refs.map((r) => ({ id: r.id, startAt: r.startAt, tz: r.tz, cancelled: r.cancelled }))}
+            sessions={refs.filter((r) => r.external === undefined).map((r) => ({ id: r.id, startAt: r.startAt, tz: r.tz, cancelled: r.cancelled }))}
           />
         );
       case "materials":

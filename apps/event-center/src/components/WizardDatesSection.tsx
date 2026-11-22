@@ -8,12 +8,14 @@
  * Times are the venue's. Nothing is written: the platform's check runs on the
  * bundle of every date (EventWizardScreen).
  */
+import { ExternalFields, SalesModeChoice } from "@/components/ExternalSaleFields";
 import { TextField } from "@/components/FormField";
 import { WizardDayPick } from "@/components/WizardDayPick";
 import { WizardTicketsEditor } from "@/components/WizardTicketsEditor";
 import { useI18n } from "@/lib/i18n";
 import { isSeatedDraft } from "@/lib/wizard/bundle";
-import { dateFieldKey, type DateErrorView } from "@/lib/wizard/dateErrors";
+import { dateFieldKey, extSuffix, type DateErrorView } from "@/lib/wizard/dateErrors";
+import type { ExternalField } from "@/lib/externalSale";
 import { MAX_DATES, effectiveTickets } from "@/lib/wizard/datesDraft";
 import { venueCapacity, venueTimezone, type DraftAction, type WizardDraft } from "@/lib/wizard/draft";
 import { isKnownZone } from "@/lib/wizard/zones";
@@ -43,7 +45,9 @@ export function WizardDatesSection({ draft, dispatch, errors, defaultCategoryNam
 
       {draft.dates.map((date, index) => {
         const key = date.key;
-        const parallel = effectiveTickets(draft.dates, index).mode === "parallel";
+        // Spec 63, L-3: a date a partner box office sells has no places and no tickets here.
+        const external = date.sales === "external";
+        const parallel = !external && effectiveTickets(draft.dates, index).mode === "parallel";
         const text = (suffix: "time" | "endTime" | "salesEnd" | "doors" | "capacity") => ({
           error: errors.errorOf(key, suffix),
           onBlur: () => errors.touch(dateFieldKey(key, suffix)),
@@ -55,6 +59,12 @@ export function WizardDatesSection({ draft, dispatch, errors, defaultCategoryNam
         return (
           <fieldset key={key} className="wizard-date" data-testid={`wizard-date-${index}`}>
             <legend>{t("wizard.date.title", { n: index + 1 })}</legend>
+
+            <SalesModeChoice
+              value={date.sales}
+              onChange={(sales) => dispatch({ type: "dateSales", key, sales })}
+              testId={`wizard-date-${index}-sales`}
+            />
 
             <WizardDayPick
               value={date.day}
@@ -88,7 +98,23 @@ export function WizardDatesSection({ draft, dispatch, errors, defaultCategoryNam
               {...text("salesEnd")}
             />
             <TextField label={t("wizard.date.doors")} hint={t("wizard.date.doorsHint")} value={date.doors} onChange={(v) => set("doors", v)} testId={`wizard-date-${index}-doors`} {...text("doors")} />
-            {seated ? (
+            {external ? (
+              <>
+                <p className="field-hint" data-testid={`wizard-date-${index}-partner-note`}>
+                  {t("wizard.tickets.partner")}
+                </p>
+                <ExternalFields
+                  value={date.external}
+                  onChange={(field: ExternalField, value) => {
+                    errors.touch(dateFieldKey(key, extSuffix(field)));
+                    dispatch({ type: "dateExternal", key, field, value });
+                  }}
+                  onBlur={(field) => errors.touch(dateFieldKey(key, extSuffix(field)))}
+                  errorOf={(field) => errors.errorOf(key, extSuffix(field))}
+                  testId={`wizard-date-${index}-external`}
+                />
+              </>
+            ) : seated ? (
               <p className="field-hint" data-testid={`wizard-date-${index}-seated`}>
                 {t("wizard.seating.dateNote", { plan: draft.seating.planName, seats: draft.seating.seats })}
               </p>
@@ -105,7 +131,7 @@ export function WizardDatesSection({ draft, dispatch, errors, defaultCategoryNam
               />
             )}
 
-            {!seated && <WizardTicketsEditor draft={draft} index={index} dispatch={dispatch} errors={errors} timezone={tz} />}
+            {!seated && !external && <WizardTicketsEditor draft={draft} index={index} dispatch={dispatch} errors={errors} timezone={tz} />}
 
             {errors.generalOf(key).length > 0 && (
               <div className="notice notice-bad" role="alert" data-testid={`wizard-date-${index}-general`}>

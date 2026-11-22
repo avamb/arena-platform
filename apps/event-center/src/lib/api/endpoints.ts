@@ -135,6 +135,7 @@ import type {
   StaffInvitationOrgListResponse,
 } from "@/lib/api/types";
 import type { SchemaResponse } from "@seatmap/types";
+import type { SalesModePatch } from "@/lib/externalSale";
 import type { SessionPatchBody } from "@/lib/sessionChange";
 
 export function fetchMe(): Promise<MeResponse> {
@@ -989,6 +990,20 @@ export function updateSessionSaleTimes(
   eventId: string,
   sessionId: string,
   body: { sales_end_at: string } | { doors_open_at: string | null },
+): Promise<SessionEnvelope> {
+  return call<SessionEnvelope>({
+    route: API.sessionUpdate,
+    params: { org_id: orgId, event_id: eventId, id: sessionId },
+    body,
+  });
+}
+
+/** Spec 63, L-3: who sells the date, the platform or a partner box office. One PATCH of the existing session. */
+export function updateSessionSalesMode(
+  orgId: string,
+  eventId: string,
+  sessionId: string,
+  body: SalesModePatch,
 ): Promise<SessionEnvelope> {
   return call<SessionEnvelope>({
     route: API.sessionUpdate,
