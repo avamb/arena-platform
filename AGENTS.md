@@ -507,6 +507,7 @@ Session lifecycle and times, event status and sales state, promoters, sales chan
 * The hold gate refuses a cancelled session, and the…
 * A VERIFIED venue is open to every organization (mi…
 * A city is found before it is created: citymatch.FindInCountry (any name, any language, slug, alias of its own country)
+* A partner session (sales_mode external, migration 0218) is never sold by arena: CheckSessionSellable on every sale path, LockSessionSalesMode before tier/seat/plan writes
 
 ### [Telegram bot: core, wizard and screens](docs/agents/bot-core-wizard.md)
 
