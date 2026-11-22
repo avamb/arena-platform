@@ -3902,6 +3902,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/payment-configs/{id}/payment-method-domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the wallet domains of a payment config
+         * @description Returns the hosts registered for Apple Pay and Google Pay in the
+         *     Stripe account of this config, with the status Stripe gave each one
+         *     and the last error, if any. The platform hosts come first. Empty for
+         *     a config that is not Stripe or has not been synced yet. Requires
+         *     `payment_config.read`.
+         */
+        get: operations["listPaymentMethodDomains"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/payment-configs/{id}/verify": {
         parameters: {
             query?: never;
@@ -9154,6 +9178,40 @@ export interface paths {
          *     `X-Admin-Reason` header.
          */
         delete: operations["deleteChannelGatewayCredential"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/channels/{id}/site-domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the site hosts of a sales channel
+         * @description Returns the hosts of the organizer's own sites that sell through this
+         *     channel. They are registered for Apple Pay and Google Pay in the
+         *     organization's Stripe account. Requires `channel.update`.
+         */
+        get: operations["getChannelSiteDomains"];
+        /**
+         * Replace the site hosts of a sales channel
+         * @description Replaces the whole list. Each entry may be a bare host or a URL; the
+         *     lower-case host is stored, without scheme, port or path. Repeats are
+         *     stored once. An IP address, `localhost`, a name without a dot and an
+         *     invalid label are refused with `channel.invalid_site_domain` and
+         *     details (`index`, `value`, `reason`); more than 10 hosts are refused
+         *     with `channel.too_many_site_domains`. After a change arena queues a
+         *     job that registers the hosts in the organization's Stripe account.
+         *     Emits the audit action `v1.channel.site_domains.update`. Requires
+         *     `channel.update`.
+         */
+        put: operations["putChannelSiteDomains"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -23012,6 +23070,79 @@ export interface components {
              * @example stripe: API error (status 401, type invalid_request_error, code ): Invalid API Key provided: sk_test_****abcd
              */
             verification_error?: string | null;
+        };
+        /**
+         * @description One wallet domain (Apple Pay, Google Pay, Link) of a Stripe payment
+         *     configuration: the host arena registered in the organization's Stripe
+         *     account and what Stripe answered about it (spec 65 section 5).
+         */
+        PaymentMethodDomainItem: {
+            /**
+             * @description Lower-case host without scheme or port.
+             * @example tickets.arenasoldout.com
+             */
+            domain: string;
+            /**
+             * @description `platform` - a host of the platform itself (STRIPE_WALLET_DOMAINS).
+             *     `site` - a site host listed on one of the organization's Stripe
+             *     sales channels.
+             * @example platform
+             * @enum {string}
+             */
+            source: "platform" | "site";
+            /**
+             * @description Whether Stripe has the domain enabled. Null while Stripe has not answered yet.
+             * @example true
+             */
+            enabled: boolean | null;
+            /**
+             * @description Stripe's Apple Pay status for the domain (`active` or `inactive`). Null while unknown.
+             * @example active
+             */
+            apple_pay_status: string | null;
+            /**
+             * @description Stripe's Google Pay status for the domain (`active` or `inactive`). Null while unknown.
+             * @example active
+             */
+            google_pay_status: string | null;
+            /**
+             * @description Stripe's Link status for the domain (`active` or `inactive`). Null while unknown.
+             * @example active
+             */
+            link_status: string | null;
+            /**
+             * @description Stripe's own explanation when a wallet is not active. Null otherwise.
+             * @example null
+             */
+            status_detail: string | null;
+            /**
+             * @description Stripe's wording of the last failure to register the domain. Null
+             *     when the last attempt succeeded. Operator-facing only.
+             * @example null
+             */
+            last_error: string | null;
+            /**
+             * Format: date-time
+             * @description When arena last asked Stripe about the domain. Null if it never has.
+             * @example 2026-11-22T12:00:00Z
+             */
+            checked_at: string | null;
+        };
+        /**
+         * @description The site hosts of one sales channel. They are registered as wallet
+         *     domains in the organization's Stripe account (spec 65 section 5).
+         */
+        ChannelSiteDomains: {
+            /**
+             * @description Lower-case hosts without scheme, port or path, at most 10. A PUT
+             *     accepts bare hosts or URLs and stores the host; an IP address,
+             *     `localhost`, a name without a dot and an invalid label are refused.
+             *     Repeats are stored once.
+             * @example [
+             *       "www.example.com"
+             *     ]
+             */
+            domains: string[];
         };
         /**
          * @description Request body for POST /v1/organizations/{org_id}/payment-configs.
@@ -52215,6 +52346,79 @@ export interface operations {
             };
         };
     };
+    listPaymentMethodDomains: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 primary key of the payment config. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The wallet domains of the config */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description One entry per registered wallet domain. */
+                        payment_method_domains: components["schemas"]["PaymentMethodDomainItem"][];
+                    };
+                };
+            };
+            /** @description Malformed org_id or id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks payment_config.read or is not a member of the organization */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found or owned by another org */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     verifyPaymentProviderConfig: {
         parameters: {
             query?: never;
@@ -52237,6 +52441,14 @@ export interface operations {
                 content: {
                     "application/json": {
                         payment_config: components["schemas"]["PaymentProviderConfigItem"];
+                        /**
+                         * @description The wallet domains of a Stripe config after this check
+                         *     registered the wanted hosts in the Stripe account. Empty
+                         *     for other providers and when the credential was not
+                         *     accepted. A Stripe failure shows as `last_error` on the
+                         *     domain and never fails this request.
+                         */
+                        payment_method_domains: components["schemas"]["PaymentMethodDomainItem"][];
                         /**
                          * @description Advisory findings about the provider's webhook endpoint,
                          *     empty when there is nothing to report or the provider
@@ -70689,6 +70901,150 @@ export interface operations {
                 };
             };
             /** @description X-Admin-Reason header missing or empty. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor is not a member of the target organization or lacks `channel.update`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Sales channel not found in the given organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getChannelSiteDomains: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Sales channel UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The site hosts of the channel. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelSiteDomains"];
+                };
+            };
+            /** @description Malformed org_id or id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor is not a member of the target organization or lacks `channel.update`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Sales channel not found in the given organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putChannelSiteDomains: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Sales channel UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChannelSiteDomains"];
+            };
+        };
+        responses: {
+            /** @description The stored site hosts, normalized. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelSiteDomains"];
+                };
+            };
+            /** @description Malformed body, an invalid host or more than 10 hosts. */
             400: {
                 headers: {
                     [name: string]: unknown;

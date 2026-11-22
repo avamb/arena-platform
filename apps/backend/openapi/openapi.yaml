@@ -10060,6 +10060,77 @@ components:
             unauthenticated route.
           example: "stripe: API error (status 401, type invalid_request_error, code ): Invalid API Key provided: sk_test_****abcd"
 
+    PaymentMethodDomainItem:
+      type: object
+      required: [domain, source, enabled, apple_pay_status, google_pay_status, link_status, status_detail, last_error, checked_at]
+      description: |
+        One wallet domain (Apple Pay, Google Pay, Link) of a Stripe payment
+        configuration: the host arena registered in the organization's Stripe
+        account and what Stripe answered about it (spec 65 section 5).
+      properties:
+        domain:
+          type: string
+          description: Lower-case host without scheme or port.
+          example: "tickets.arenasoldout.com"
+        source:
+          type: string
+          enum: [platform, site]
+          description: |
+            `platform` - a host of the platform itself (STRIPE_WALLET_DOMAINS).
+            `site` - a site host listed on one of the organization's Stripe
+            sales channels.
+          example: "platform"
+        enabled:
+          type: [boolean, "null"]
+          description: Whether Stripe has the domain enabled. Null while Stripe has not answered yet.
+          example: true
+        apple_pay_status:
+          type: [string, "null"]
+          description: Stripe's Apple Pay status for the domain (`active` or `inactive`). Null while unknown.
+          example: "active"
+        google_pay_status:
+          type: [string, "null"]
+          description: Stripe's Google Pay status for the domain (`active` or `inactive`). Null while unknown.
+          example: "active"
+        link_status:
+          type: [string, "null"]
+          description: Stripe's Link status for the domain (`active` or `inactive`). Null while unknown.
+          example: "active"
+        status_detail:
+          type: [string, "null"]
+          description: Stripe's own explanation when a wallet is not active. Null otherwise.
+          example: null
+        last_error:
+          type: [string, "null"]
+          description: |
+            Stripe's wording of the last failure to register the domain. Null
+            when the last attempt succeeded. Operator-facing only.
+          example: null
+        checked_at:
+          type: [string, "null"]
+          format: date-time
+          description: When arena last asked Stripe about the domain. Null if it never has.
+          example: "2026-11-22T12:00:00Z"
+
+    ChannelSiteDomains:
+      type: object
+      required: [domains]
+      description: |
+        The site hosts of one sales channel. They are registered as wallet
+        domains in the organization's Stripe account (spec 65 section 5).
+      properties:
+        domains:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+          description: |
+            Lower-case hosts without scheme, port or path, at most 10. A PUT
+            accepts bare hosts or URLs and stores the host; an IP address,
+            `localhost`, a name without a dot and an invalid label are refused.
+            Repeats are stored once.
+          example: ["www.example.com"]
+
     CreatePaymentProviderConfigRequest:
       type: object
       required: [provider]
@@ -41782,6 +41853,79 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/payment-configs/{id}/payment-method-domains:
+    get:
+      operationId: listPaymentMethodDomains
+      summary: List the wallet domains of a payment config
+      description: |
+        Returns the hosts registered for Apple Pay and Google Pay in the
+        Stripe account of this config, with the status Stripe gave each one
+        and the last error, if any. The platform hosts come first. Empty for
+        a config that is not Stripe or has not been synced yet. Requires
+        `payment_config.read`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the payment config.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The wallet domains of the config
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [payment_method_domains]
+                properties:
+                  payment_method_domains:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PaymentMethodDomainItem"
+                    description: One entry per registered wallet domain.
+        "400":
+          description: Malformed org_id or id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks payment_config.read or is not a member of the organization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found or owned by another org
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not wired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{org_id}/payment-configs/{id}/verify:
     post:
       operationId: verifyPaymentProviderConfig
@@ -41828,10 +41972,20 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [payment_config, webhook_warnings]
+                required: [payment_config, webhook_warnings, payment_method_domains]
                 properties:
                   payment_config:
                     $ref: "#/components/schemas/PaymentProviderConfigItem"
+                  payment_method_domains:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PaymentMethodDomainItem"
+                    description: |
+                      The wallet domains of a Stripe config after this check
+                      registered the wanted hosts in the Stripe account. Empty
+                      for other providers and when the credential was not
+                      accepted. A Stripe failure shows as `last_error` on the
+                      domain and never fails this request.
                   webhook_warnings:
                     type: array
                     items:
@@ -60369,6 +60523,136 @@ paths:
                 $ref: "#/components/schemas/ChannelGatewayCredentialSummary"
         "400":
           description: X-Admin-Reason header missing or empty.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor is not a member of the target organization or lacks `channel.update`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Sales channel not found in the given organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/channels/{id}/site-domains:
+    get:
+      operationId: getChannelSiteDomains
+      summary: Get the site hosts of a sales channel
+      description: |
+        Returns the hosts of the organizer's own sites that sell through this
+        channel. They are registered for Apple Pay and Google Pay in the
+        organization's Stripe account. Requires `channel.update`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: Organization UUID that scopes this request (tenant isolation).
+          schema: { type: string, format: uuid }
+        - name: id
+          in: path
+          required: true
+          description: Sales channel UUID.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The site hosts of the channel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelSiteDomains"
+        "400":
+          description: Malformed org_id or id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor is not a member of the target organization or lacks `channel.update`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Sales channel not found in the given organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      operationId: putChannelSiteDomains
+      summary: Replace the site hosts of a sales channel
+      description: |
+        Replaces the whole list. Each entry may be a bare host or a URL; the
+        lower-case host is stored, without scheme, port or path. Repeats are
+        stored once. An IP address, `localhost`, a name without a dot and an
+        invalid label are refused with `channel.invalid_site_domain` and
+        details (`index`, `value`, `reason`); more than 10 hosts are refused
+        with `channel.too_many_site_domains`. After a change arena queues a
+        job that registers the hosts in the organization's Stripe account.
+        Emits the audit action `v1.channel.site_domains.update`. Requires
+        `channel.update`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: Organization UUID that scopes this request (tenant isolation).
+          schema: { type: string, format: uuid }
+        - name: id
+          in: path
+          required: true
+          description: Sales channel UUID.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelSiteDomains"
+      responses:
+        "200":
+          description: The stored site hosts, normalized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelSiteDomains"
+        "400":
+          description: Malformed body, an invalid host or more than 10 hosts.
           content:
             application/json:
               schema:

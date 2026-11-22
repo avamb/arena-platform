@@ -611,6 +611,12 @@ const (
 	PaymentIntentWebhookRequestTargetStateSucceeded      PaymentIntentWebhookRequestTargetState = "succeeded"
 )
 
+// Defines values for PaymentMethodDomainItemSource.
+const (
+	Platform PaymentMethodDomainItemSource = "platform"
+	Site     PaymentMethodDomainItemSource = "site"
+)
+
 // Defines values for PaymentProviderConfigItemMode.
 const (
 	PaymentProviderConfigItemModeLive PaymentProviderConfigItemMode = "live"
@@ -5720,6 +5726,16 @@ type ChannelGatewayCredentialSummary struct {
 	// RotatedAt RFC3339 UTC timestamp of the last `PUT` (credential rotation).
 	// Empty string when the gateway was never provisioned.
 	RotatedAt string `json:"rotated_at"`
+}
+
+// ChannelSiteDomains The site hosts of one sales channel. They are registered as wallet
+// domains in the organization's Stripe account (spec 65 section 5).
+type ChannelSiteDomains struct {
+	// Domains Lower-case hosts without scheme, port or path, at most 10. A PUT
+	// accepts bare hosts or URLs and stores the host; an IP address,
+	// `localhost`, a name without a dot and an invalid label are refused.
+	// Repeats are stored once.
+	Domains []string `json:"domains"`
 }
 
 // ChannelWPWebhookRegistered One-shot response of `PUT /v1/organizations/{org_id}/channels/{id}/wp-webhook`
@@ -15255,6 +15271,46 @@ type PaymentIntentWebhookRequest struct {
 // PaymentIntentWebhookRequestTargetState Optional explicit target state that overrides the
 // `event_type` → state mapping.
 type PaymentIntentWebhookRequestTargetState string
+
+// PaymentMethodDomainItem One wallet domain (Apple Pay, Google Pay, Link) of a Stripe payment
+// configuration: the host arena registered in the organization's Stripe
+// account and what Stripe answered about it (spec 65 section 5).
+type PaymentMethodDomainItem struct {
+	// ApplePayStatus Stripe's Apple Pay status for the domain (`active` or `inactive`). Null while unknown.
+	ApplePayStatus *string `json:"apple_pay_status"`
+
+	// CheckedAt When arena last asked Stripe about the domain. Null if it never has.
+	CheckedAt *time.Time `json:"checked_at"`
+
+	// Domain Lower-case host without scheme or port.
+	Domain string `json:"domain"`
+
+	// Enabled Whether Stripe has the domain enabled. Null while Stripe has not answered yet.
+	Enabled *bool `json:"enabled"`
+
+	// GooglePayStatus Stripe's Google Pay status for the domain (`active` or `inactive`). Null while unknown.
+	GooglePayStatus *string `json:"google_pay_status"`
+
+	// LastError Stripe's wording of the last failure to register the domain. Null
+	// when the last attempt succeeded. Operator-facing only.
+	LastError *string `json:"last_error"`
+
+	// LinkStatus Stripe's Link status for the domain (`active` or `inactive`). Null while unknown.
+	LinkStatus *string `json:"link_status"`
+
+	// Source `platform` - a host of the platform itself (STRIPE_WALLET_DOMAINS).
+	// `site` - a site host listed on one of the organization's Stripe
+	// sales channels.
+	Source PaymentMethodDomainItemSource `json:"source"`
+
+	// StatusDetail Stripe's own explanation when a wallet is not active. Null otherwise.
+	StatusDetail *string `json:"status_detail"`
+}
+
+// PaymentMethodDomainItemSource `platform` - a host of the platform itself (STRIPE_WALLET_DOMAINS).
+// `site` - a site host listed on one of the organization's Stripe
+// sales channels.
+type PaymentMethodDomainItemSource string
 
 // PaymentProviderConfigItem A single payment provider config row for the owning organization.
 //
@@ -26920,6 +26976,9 @@ type UpdateSellerDisplayJSONRequestBody = UpdateSellerDisplayRequest
 
 // UpdateChannelJSONRequestBody defines body for UpdateChannel for application/json ContentType.
 type UpdateChannelJSONRequestBody = UpdateChannelRequest
+
+// PutChannelSiteDomainsJSONRequestBody defines body for PutChannelSiteDomains for application/json ContentType.
+type PutChannelSiteDomainsJSONRequestBody = ChannelSiteDomains
 
 // PutChannelWPWebhookJSONRequestBody defines body for PutChannelWPWebhook for application/json ContentType.
 type PutChannelWPWebhookJSONRequestBody PutChannelWPWebhookJSONBody

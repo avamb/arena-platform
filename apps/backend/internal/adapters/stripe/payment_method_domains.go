@@ -98,7 +98,9 @@ func (a *Adapter) EnsurePaymentMethodDomain(ctx context.Context, domain string) 
 	}
 	form := url.Values{}
 	form.Set("domain_name", domain)
-	cb, cstatus, err := a.doRequest(ctx, http.MethodPost, a.cfg.BaseURL+"/payment_method_domains", form, "")
+	// The idempotency key keeps two syncs racing on one account, the API and
+	// the worker, from creating the domain twice, which Stripe asks to avoid.
+	cb, cstatus, err := a.doRequest(ctx, http.MethodPost, a.cfg.BaseURL+"/payment_method_domains", form, "arena-pmd-"+domain)
 	if err != nil {
 		return payments.PaymentMethodDomain{}, pmdError(cstatus, err)
 	}
