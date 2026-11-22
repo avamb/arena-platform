@@ -271,7 +271,8 @@ func (e *piEnv) draftState() (step string, paused bool, intakeID string) {
 // wizardToVenue walks the wizard to the venue question and picks the venue.
 func (e *piEnv) wizardToVenue(eventName string) {
 	o := e.owner
-	o.press("wz:new", "Как называется")
+	o.press("wz:new", "Кто продаёт билеты?")
+	o.press("wz:seller:platform", "Как называется")
 	o.say(eventName, "Возраст")
 	o.press("wz:age:16+", "Под каким брендом")
 	o.press("wz:prom:org", "афишу")
