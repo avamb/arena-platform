@@ -173,6 +173,12 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 		))
 		return
 	}
+	// A session a partner box office sells (migration 0218): 409
+	// session.sold_externally, the answer checkout/start gives.
+	if gateErr := hcheckout.CheckSessionSellable(ctx, h.reservationQueries, sessionID, time.Now().UTC()); gateErr != nil {
+		hcheckout.WriteCategoryGateError(w, r, gateErr)
+		return
+	}
 	pricingRules := h.channelPricingRules(ctx, checkCtx.OrgID, checkCtx.SalesChannelID)
 
 	// ── GA lines: the SAME resolution checkout/start uses ──────────────────────

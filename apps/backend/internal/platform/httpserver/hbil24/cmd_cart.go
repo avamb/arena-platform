@@ -397,6 +397,12 @@ func (h *Handler) writeHoldError(ctx context.Context, w http.ResponseWriter, com
 		resp := bil24Error(command, ResultCodeInvalidRequest, "one or more requested seats are not available")
 		resp.Data = map[string]any{"conflicts": conflicts.Conflicts}
 		writeBil24JSON(w, http.StatusOK, resp)
+	case errors.Is(err, hcheckout.ErrSessionSoldExternally):
+		// A partner box office sells this session (migration 0218): the
+		// platform never holds its places. 101, as for closed sales.
+		writeBil24JSON(w, http.StatusOK, bil24Error(command, ResultCodeUserVisible,
+			h.localizeDesc("", "", "bil24.sales_closed",
+				"sales are closed for this event", nil)))
 	case errors.Is(err, hcheckout.ErrSessionSalesSoon),
 		errors.Is(err, hcheckout.ErrSessionSoldOut):
 		// The organizer set the session to "coming soon" or "sold out"
