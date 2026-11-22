@@ -14,6 +14,33 @@ var contactWords = map[string][2]string{
 	"es": {"Por favor, no respondas a este correo. Para cualquier duda escribe a", "Contactar con el organizador"},
 	"fr": {"Merci de ne pas répondre à cet e-mail. Pour toute question, écrivez à", "Contacter l’organisateur"},
 	"he": {"נא לא להשיב למייל זה. לכל שאלה אפשר לכתוב אל", "יצירת קשר עם המארגן"},
+	"et": {"Palun ärge sellele e-kirjale vastake. Kõigi küsimustega pöörduge aadressil", "Võtke korraldajaga ühendust"},
+	"fi": {"Älkää vastatko tähän sähköpostiviestiin. Kaikissa kysymyksissä kirjoittakaa osoitteeseen", "Ota yhteyttä järjestäjään"},
+	"hu": {"Kérjük, ne válaszoljon erre a levélre. Kérdés esetén írjon a következő címre:", "Kapcsolatfelvétel a szervezővel"},
+	"lt": {"Prašome neatsakyti į šį el. laišką. Iškilus klausimų, rašykite adresu", "Susisiekti su organizatoriumi"},
+	"lv": {"Lūdzu, neatbildiet uz šo e-pasta ziņojumu. Ar jebkuriem jautājumiem rakstiet uz", "Sazināties ar organizatoru"},
+	"pl": {"Prosimy nie odpowiadać na tę wiadomość. W razie pytań prosimy pisać na adres", "Skontaktuj się z organizatorem"},
+	"uk": {"Не відповідайте на цей лист. З будь-яких питань пишіть на", "Зв’язатися з організатором"},
+}
+
+// translated reports whether the kind has its own template in the locale;
+// the other locales of an untranslated kind fall back to English.
+func translated(r *Renderer, kind, loc string) bool {
+	// An older language must have every kind: a missing file is a failure, so
+	// only the L-4 languages may take the English fallback for a kind.
+	if !isSiteLocale(loc) {
+		return true
+	}
+	return r.ResolveLocale(kind, loc) == loc
+}
+
+func isSiteLocale(loc string) bool {
+	for _, l := range parityLocales {
+		if l == loc {
+			return true
+		}
+	}
+	return false
 }
 
 // buyerKinds are the letters a buyer receives; every one carries the block.
@@ -56,6 +83,12 @@ func TestRender_ContactBlock_EveryBuyerLetterEveryLocale(t *testing.T) {
 	}
 	for _, kind := range buyerKinds {
 		for _, loc := range SupportedLocales {
+			if !translated(r, kind, loc) {
+				if got := r.ResolveLocale(kind, loc); got != "en" {
+					t.Errorf("%s/%s: untranslated kind resolves to %q, want en", kind, loc, got)
+				}
+				continue
+			}
 			words := contactWords[loc]
 			d := contactData()
 			d.Contact.Email = "marketing@einatwinery.com"

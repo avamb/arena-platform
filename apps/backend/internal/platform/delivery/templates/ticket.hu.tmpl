@@ -1,0 +1,116 @@
+{{define "subject"}}{{with .Reissue}}Új jegyei — {{$.EventName}}{{else}}{{if gt (len .Tickets) 1}}Jegyei — {{.EventName}}{{else}}Jegye — {{.EventName}}{{end}}{{end}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="hu" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Az Ön jegye</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:28px 32px 8px 32px;color:#22333D;font-size:16px;">Üdvözöljük{{with .HolderName}}, {{.}}{{end}}!</td></tr>
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">{{with .Reissue}}{{if .Typo}}A vásárláskor megadott e-mail-címben elírás volt, ezért a jegyeit tartalmazó első levél másik címre ment. Felvette a kapcsolatot a szervezővel, és megerősítette az adatait. Új jegyeket állítottunk ki Önnek, ezek mellékelve vannak.<br><br>Az első levélben szereplő jegyek már nem érvényesek. Csak az új jegyekkel léphet be.{{else}}Kérésére új jegyeket állítottunk ki a korábbiak helyett. Ezek mellékelve vannak.<br><br>A korábbi jegyek már nem érvényesek. Csak az új jegyekkel léphet be.{{end}}<br><br>Az ülőhelyei és a fizetése nem változtak.{{with .OrderNumber}} Rendelésszám: {{.}}.{{end}}{{else}}{{if gt (len .Tickets) 1}}Köszönjük a vásárlást. A(z) „{{.EventName}}” jegyei ehhez az e-mailhez vannak csatolva (PDF-fájlok).{{else}}Köszönjük a vásárlást. A(z) „{{.EventName}}” jegye ehhez az e-mailhez van csatolva (PDF).{{end}}{{end}}</td></tr>
+  <tr><td style="padding:8px 32px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-left:4px solid {{.Accent}};background:#f8f9fa;"><tr><td style="padding:12px 16px;color:#22333D;font-size:14px;line-height:1.6;">
+      <strong>{{.EventName}}</strong>{{with .SessionStart}}<br>{{.}}{{end}}{{with .DoorsOpen}}<br>Beengedés: {{.}}{{end}}{{with .VenueName}}<br>{{.}}{{end}}{{with .Directions.GoogleURL}}<br>Útvonal: <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a>{{end}}
+    </td></tr></table>
+  </td></tr>
+  <tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">{{if gt (len .Tickets) 1}}Jegyek ({{len .Tickets}}){{else}}Jegy{{end}}</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5;border-collapse:collapse;">
+    {{range .Tickets}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">{{.Number}}. sz.{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .DownloadURL}}<br><a href="{{.}}" style="color:{{$.Accent}};font-size:13px;">PDF letöltése</a>{{end}}</td>{{with .Price}}<td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td>{{end}}</tr>
+    {{else}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">{{.TicketID}}. sz.{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · {{.}}. szektor{{end}}{{with .SeatRow}} · {{.}}. sor{{end}}{{with .SeatNumber}} · {{.}}. ülőhely{{end}}</td></tr>
+    {{end}}</table>
+  </td></tr>
+  {{with .Payment}}<tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">Fizetés</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5;border-collapse:collapse;">
+      <tr><td style="padding:4px 0;color:#46555f;">Rendelés</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.OrderNumber}}. sz.</td></tr>
+      {{with .PaidAt}}<tr><td style="padding:4px 0;color:#46555f;">Fizetve</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      {{with .Subtotal}}<tr><td style="padding:4px 0;color:#46555f;">Jegyek</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      {{with .Discount}}<tr><td style="padding:4px 0;color:#46555f;">Kedvezmény</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">−{{.}}</td></tr>{{end}}
+      {{with .ServiceFee}}<tr><td style="padding:4px 0;color:#46555f;">Szolgáltatási díj</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      <tr><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;">Összesen kifizetve</td><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;white-space:nowrap;text-align:right;">{{.Total}}</td></tr>
+    </table>
+  </td></tr>{{end}}
+  {{with .EventNote.HTML}}<tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">Az eseményről</div>
+    <div style="color:#46555f;font-size:14px;line-height:1.6;">{{.}}</div>
+  </td></tr>{{end}}
+  {{if .WithdrawalNotice}}<tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Az adott időpontra szóló eseményre váltott jegyekre nem vonatkozik az elállási jog. A rendelés a kifizetéssel vált kötelező érvényűvé.</td></tr>{{end}}
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Nyissa meg a fájlt a telefonján, és a bejáratnál mutassa meg a vonalkódot — nyomtatni nem kell.</td></tr>
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+    Címzett: {{.RecipientEmail}}<br><br>
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Kapcsolat: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Kapcsolat: <a href="{{.}}" style="color:#666">Írjon a szervezőnek</a>{{end}}{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Jegykezelés: arenasoldout.com</a>{{end}}</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Ha a „Leiratkozás” gombra kattint, a jegyeit tartalmazó levelek és a rendeléséről szóló fontos levelek többé nem érkeznek meg Önhöz. Az Ön hozzájárulása nélkül nem küldünk marketinglevelet.</p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+Üdvözöljük{{with .HolderName}}, {{.}}{{end}}!
+
+{{with .Reissue}}{{if .Typo}}A vásárláskor megadott e-mail-címben elírás volt, ezért a jegyeit tartalmazó első levél másik címre ment. Felvette a kapcsolatot a szervezővel, és megerősítette az adatait. Új jegyeket állítottunk ki Önnek, ezek mellékelve vannak.
+
+Az első levélben szereplő jegyek már nem érvényesek. Csak az új jegyekkel léphet be.{{else}}Kérésére új jegyeket állítottunk ki a korábbiak helyett. Ezek mellékelve vannak.
+
+A korábbi jegyek már nem érvényesek. Csak az új jegyekkel léphet be.{{end}}
+
+Az ülőhelyei és a fizetése nem változtak.{{with .OrderNumber}} Rendelésszám: {{.}}.{{end}}{{else}}{{if gt (len .Tickets) 1}}Köszönjük a vásárlást. A(z) „{{.EventName}}” jegyei ehhez az e-mailhez vannak csatolva (PDF-fájlok).{{else}}Köszönjük a vásárlást. A(z) „{{.EventName}}” jegye ehhez az e-mailhez van csatolva (PDF).{{end}}{{end}}
+
+{{.EventName}}
+{{with .SessionStart}}{{.}}
+{{end}}{{with .DoorsOpen}}Beengedés: {{.}}
+{{end}}{{with .VenueName}}{{.}}
+{{end}}{{with .Directions.GoogleURL}}Útvonal: Google Maps {{.}} · Waze {{$.Directions.WazeURL}}
+{{end}}
+{{if gt (len .Tickets) 1}}Jegyek ({{len .Tickets}}){{else}}Jegy{{end}}:
+{{range .Tickets}}- {{.Number}}. sz.{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .Price}} · {{.}}{{end}}{{with .DownloadURL}}
+  PDF letöltése: {{.}}{{end}}
+{{else}}- {{.TicketID}}. sz.{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · {{.}}. szektor{{end}}{{with .SeatRow}} · {{.}}. sor{{end}}{{with .SeatNumber}} · {{.}}. ülőhely{{end}}
+{{end}}{{with .Payment}}
+Fizetés:
+- Rendelés: {{.OrderNumber}}. sz.
+{{with .PaidAt}}- Fizetve: {{.}}
+{{end}}{{with .Subtotal}}- Jegyek: {{.}}
+{{end}}{{with .Discount}}- Kedvezmény: −{{.}}
+{{end}}{{with .ServiceFee}}- Szolgáltatási díj: {{.}}
+{{end}}- Összesen kifizetve: {{.Total}}
+{{end}}
+{{with .EventNote.Plain}}Az eseményről:
+{{.}}
+
+{{end}}{{if .WithdrawalNotice}}Az adott időpontra szóló eseményre váltott jegyekre nem vonatkozik az elállási jog. A rendelés a kifizetéssel vált kötelező érvényűvé.
+
+{{end}}Nyissa meg a fájlt a telefonján, és a bejáratnál mutassa meg a vonalkódot — nyomtatni nem kell.
+{{template "contact_text" .}}Címzett: {{.RecipientEmail}}
+
+--
+{{.Branding.SellerLabel}} {{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
+{{end}}{{with .Branding.PaymentLine}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}Kapcsolat: {{.}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Kapcsolat: {{.}}
+{{end}}{{end}}
+{{if not .WhiteLabel}}Jegykezelés: arenasoldout.com — https://arenasoldout.com{{end}}
+
+Ha a „Leiratkozás” gombra kattint, a jegyeit tartalmazó levelek és a rendeléséről szóló fontos levelek többé nem érkeznek meg Önhöz. Az Ön hozzájárulása nélkül nem küldünk marketinglevelet.
+{{end}}

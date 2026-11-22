@@ -1,0 +1,116 @@
+{{define "subject"}}{{with .Reissue}}Jūsų nauji bilietai — {{$.EventName}}{{else}}{{if gt (len .Tickets) 1}}Jūsų bilietai — {{.EventName}}{{else}}Jūsų bilietas — {{.EventName}}{{end}}{{end}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="lt" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Jūsų bilietas</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:28px 32px 8px 32px;color:#22333D;font-size:16px;">Sveiki{{with .HolderName}} {{.}}{{end}}!</td></tr>
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">{{with .Reissue}}{{if .Typo}}Pirkdami nurodėte el. pašto adresą su klaida, todėl pirmasis laiškas su Jūsų bilietais pateko į kitą adresą. Susisiekėte su organizatoriumi ir patvirtinote savo duomenis. Išdavėme Jums naujus bilietus, jie pridėti.<br><br>Pirmajame laiške buvę bilietai nebegalioja. Į renginį įleis tik naujieji bilietai.{{else}}Jūsų prašymu išdavėme naujus bilietus vietoj ankstesnių. Jie pridėti.<br><br>Ankstesni bilietai nebegalioja. Į renginį įleis tik naujieji bilietai.{{end}}<br><br>Jūsų vietos ir apmokėjimas nepasikeitė.{{with .OrderNumber}} Užsakymo numeris: {{.}}.{{end}}{{else}}{{if gt (len .Tickets) 1}}Dėkojame už pirkinį. Jūsų bilietai į „{{.EventName}}“ pridėti prie šio laiško (PDF failai).{{else}}Dėkojame už pirkinį. Jūsų bilietas į „{{.EventName}}“ pridėtas prie šio laiško (PDF).{{end}}{{end}}</td></tr>
+  <tr><td style="padding:8px 32px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-left:4px solid {{.Accent}};background:#f8f9fa;"><tr><td style="padding:12px 16px;color:#22333D;font-size:14px;line-height:1.6;">
+      <strong>{{.EventName}}</strong>{{with .SessionStart}}<br>{{.}}{{end}}{{with .DoorsOpen}}<br>Durys atidaromos {{.}}{{end}}{{with .VenueName}}<br>{{.}}{{end}}{{with .Directions.GoogleURL}}<br>Kaip nuvykti: <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a>{{end}}
+    </td></tr></table>
+  </td></tr>
+  <tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">{{if gt (len .Tickets) 1}}Bilietai ({{len .Tickets}}){{else}}Bilietas{{end}}</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5;border-collapse:collapse;">
+    {{range .Tickets}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">Nr. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .DownloadURL}}<br><a href="{{.}}" style="color:{{$.Accent}};font-size:13px;">Atsisiųsti PDF</a>{{end}}</td>{{with .Price}}<td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td>{{end}}</tr>
+    {{else}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">Nr. {{.TicketID}}{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · Sektorius {{.}}{{end}}{{with .SeatRow}} · Eilė {{.}}{{end}}{{with .SeatNumber}} · Vieta {{.}}{{end}}</td></tr>
+    {{end}}</table>
+  </td></tr>
+  {{with .Payment}}<tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">Apmokėjimas</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5;border-collapse:collapse;">
+      <tr><td style="padding:4px 0;color:#46555f;">Užsakymas</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">Nr. {{.OrderNumber}}</td></tr>
+      {{with .PaidAt}}<tr><td style="padding:4px 0;color:#46555f;">Apmokėta</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      {{with .Subtotal}}<tr><td style="padding:4px 0;color:#46555f;">Bilietai</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      {{with .Discount}}<tr><td style="padding:4px 0;color:#46555f;">Nuolaida</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">−{{.}}</td></tr>{{end}}
+      {{with .ServiceFee}}<tr><td style="padding:4px 0;color:#46555f;">Paslaugų mokestis</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      <tr><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;">Iš viso sumokėta</td><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;white-space:nowrap;text-align:right;">{{.Total}}</td></tr>
+    </table>
+  </td></tr>{{end}}
+  {{with .EventNote.HTML}}<tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">Apie renginį</div>
+    <div style="color:#46555f;font-size:14px;line-height:1.6;">{{.}}</div>
+  </td></tr>{{end}}
+  {{if .WithdrawalNotice}}<tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Bilietams į renginį tam tikrą dieną atsisakymo teisė netaikoma. Užsakymas tapo privalomas, kai jį apmokėjote.</td></tr>{{end}}
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Atidarykite failą telefone ir prie įėjimo parodykite brūkšninį kodą — spausdinti nereikia.</td></tr>
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+    Išsiųsta adresu: {{.RecipientEmail}}<br><br>
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Kontaktai: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Kontaktai: <a href="{{.}}" style="color:#666">Rašyti organizatoriui</a>{{end}}{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Bilietus apdoroja arenasoldout.com</a>{{end}}</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Jei paspausite „Atsisakyti prenumeratos“, laiškai su Jūsų bilietais ir svarbūs laiškai apie Jūsų užsakymą Jūsų nebepasieks. Rinkodaros laiškų be Jūsų sutikimo nesiunčiame.</p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+Sveiki{{with .HolderName}} {{.}}{{end}}!
+
+{{with .Reissue}}{{if .Typo}}Pirkdami nurodėte el. pašto adresą su klaida, todėl pirmasis laiškas su Jūsų bilietais pateko į kitą adresą. Susisiekėte su organizatoriumi ir patvirtinote savo duomenis. Išdavėme Jums naujus bilietus, jie pridėti.
+
+Pirmajame laiške buvę bilietai nebegalioja. Į renginį įleis tik naujieji bilietai.{{else}}Jūsų prašymu išdavėme naujus bilietus vietoj ankstesnių. Jie pridėti.
+
+Ankstesni bilietai nebegalioja. Į renginį įleis tik naujieji bilietai.{{end}}
+
+Jūsų vietos ir apmokėjimas nepasikeitė.{{with .OrderNumber}} Užsakymo numeris: {{.}}.{{end}}{{else}}{{if gt (len .Tickets) 1}}Dėkojame už pirkinį. Jūsų bilietai į „{{.EventName}}“ pridėti prie šio laiško (PDF failai).{{else}}Dėkojame už pirkinį. Jūsų bilietas į „{{.EventName}}“ pridėtas prie šio laiško (PDF).{{end}}{{end}}
+
+{{.EventName}}
+{{with .SessionStart}}{{.}}
+{{end}}{{with .DoorsOpen}}Durys atidaromos {{.}}
+{{end}}{{with .VenueName}}{{.}}
+{{end}}{{with .Directions.GoogleURL}}Kaip nuvykti: Google Maps {{.}} · Waze {{$.Directions.WazeURL}}
+{{end}}
+{{if gt (len .Tickets) 1}}Bilietai ({{len .Tickets}}){{else}}Bilietas{{end}}:
+{{range .Tickets}}- Nr. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .Price}} · {{.}}{{end}}{{with .DownloadURL}}
+  Atsisiųsti PDF: {{.}}{{end}}
+{{else}}- Nr. {{.TicketID}}{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · Sektorius {{.}}{{end}}{{with .SeatRow}} · Eilė {{.}}{{end}}{{with .SeatNumber}} · Vieta {{.}}{{end}}
+{{end}}{{with .Payment}}
+Apmokėjimas:
+- Užsakymas: Nr. {{.OrderNumber}}
+{{with .PaidAt}}- Apmokėta: {{.}}
+{{end}}{{with .Subtotal}}- Bilietai: {{.}}
+{{end}}{{with .Discount}}- Nuolaida: −{{.}}
+{{end}}{{with .ServiceFee}}- Paslaugų mokestis: {{.}}
+{{end}}- Iš viso sumokėta: {{.Total}}
+{{end}}
+{{with .EventNote.Plain}}Apie renginį:
+{{.}}
+
+{{end}}{{if .WithdrawalNotice}}Bilietams į renginį tam tikrą dieną atsisakymo teisė netaikoma. Užsakymas tapo privalomas, kai jį apmokėjote.
+
+{{end}}Atidarykite failą telefone ir prie įėjimo parodykite brūkšninį kodą — spausdinti nereikia.
+{{template "contact_text" .}}Išsiųsta adresu: {{.RecipientEmail}}
+
+--
+{{.Branding.SellerLabel}} {{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
+{{end}}{{with .Branding.PaymentLine}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}Kontaktai: {{.}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Kontaktai: {{.}}
+{{end}}{{end}}
+{{if not .WhiteLabel}}Bilietus apdoroja arenasoldout.com — https://arenasoldout.com{{end}}
+
+Jei paspausite „Atsisakyti prenumeratos“, laiškai su Jūsų bilietais ir svarbūs laiškai apie Jūsų užsakymą Jūsų nebepasieks. Rinkodaros laiškų be Jūsų sutikimo nesiunčiame.
+{{end}}
