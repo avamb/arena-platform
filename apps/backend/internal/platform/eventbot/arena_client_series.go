@@ -57,31 +57,3 @@ func (c *ArenaClient) LinkEventSeries(ctx context.Context, jwt string, orgID uui
 	body := map[string]any{"series_id": value}
 	return c.do(ctx, http.MethodPatch, "/v1/organizations/"+orgID.String()+"/events/"+url.PathEscape(eventID), jwt, body, nil)
 }
-
-// EventSeries reads the tour of one event from the organization's event list:
-// the tour's id and name, both "" when the event has none.
-func (c *ArenaClient) EventSeries(ctx context.Context, jwt string, orgID, eventID uuid.UUID) (id, name string, err error) {
-	var out struct {
-		Events []struct {
-			ID         string  `json:"id"`
-			SeriesID   *string `json:"series_id"`
-			SeriesName *string `json:"series_name"`
-		} `json:"events"`
-	}
-	if err := c.do(ctx, http.MethodGet, "/v1/organizations/"+orgID.String()+"/events", jwt, nil, &out); err != nil {
-		return "", "", err
-	}
-	for _, e := range out.Events {
-		if e.ID != eventID.String() {
-			continue
-		}
-		if e.SeriesID != nil {
-			id = *e.SeriesID
-		}
-		if e.SeriesName != nil {
-			name = *e.SeriesName
-		}
-		return id, name, nil
-	}
-	return "", "", nil
-}

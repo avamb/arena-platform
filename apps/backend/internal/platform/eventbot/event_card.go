@@ -117,9 +117,9 @@ func (b *Bot) showEventCard(ctx context.Context, chatID int64, editMsgID *int, f
 		"Name": Esc(event.Name), "Status": EventChip(event.SalesState) + " " + b.statusText(loc, string(event.Status)), "Link": link,
 	})
 
-	head += b.promoterEventLine(loc, *event)                 // the event's brand (EC-14)
-	head += b.seriesEventLine(ctx, loc, jwt, orgID, eventID) // the event's tour (L-2)
-	head += b.pageStatsLine(ctx, loc, jwt, orgID, eventID)   // page views of the hosted page (HP-2a)
+	head += b.promoterEventLine(loc, *event)               // the event's brand (EC-14)
+	head += b.seriesEventLine(loc, *event)                 // the event's tour (L-2)
+	head += b.pageStatsLine(ctx, loc, jwt, orgID, eventID) // page views of the hosted page (HP-2a)
 
 	sum := b.cardSummary(ctx, id, jwt, eventID)
 

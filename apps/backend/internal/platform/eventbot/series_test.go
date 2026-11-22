@@ -168,8 +168,6 @@ func TestArenaClient_Series(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == base+"/series":
 			_, _ = w.Write([]byte(`{"items":[{"id":"t1","name":"Лето","event_count":2},{"id":"t2","name":"Зима"}]}`))
-		case r.Method == http.MethodGet && r.URL.Path == base+"/events":
-			_, _ = w.Write([]byte(`{"events":[{"id":"` + uuid.NewString() + `"},{"id":"` + eventID.String() + `","series_id":"t1","series_name":"Лето"}]}`))
 		case r.Method == http.MethodPatch && r.URL.Path == base+"/events/"+eventID.String():
 			b, _ := io.ReadAll(r.Body)
 			patched = nil
@@ -186,10 +184,6 @@ func TestArenaClient_Series(t *testing.T) {
 	items, err := c.ActiveSeries(ctx, "jwt", orgID)
 	if err != nil || len(items) != 2 || items[0].Name != "Лето" || items[0].EventCount != 2 {
 		t.Fatalf("ActiveSeries = %+v, %v", items, err)
-	}
-	id, name, err := c.EventSeries(ctx, "jwt", orgID, eventID)
-	if err != nil || id != "t1" || name != "Лето" {
-		t.Fatalf("EventSeries = %q %q %v", id, name, err)
 	}
 	if err := c.LinkEventSeries(ctx, "jwt", orgID, eventID.String(), "t2"); err != nil || patched["series_id"] != "t2" {
 		t.Fatalf("bind: body %v err %v", patched, err)

@@ -15,13 +15,37 @@ import (
 
 	"github.com/go-telegram/bot/models"
 	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
 )
 
-// seriesEventLine is the event card's tour line; "" when the event has no tour
-// or the read failed (the card never waits on it).
-func (b *Bot) seriesEventLine(ctx context.Context, loc, jwt string, orgID, eventID uuid.UUID) string {
-	_, name, err := b.arena.EventSeries(ctx, jwt, orgID, eventID)
-	if err != nil || name == "" {
+// canEditEvent is the event.update gate of the tour screens: the owner, the
+// manager and the platform operator (superadmin). An agent holds only
+// event.read and gets no tour button. The API still decides every call.
+func canEditEvent(id *Identity) bool {
+	if id == nil || id.Current == nil {
+		return false
+	}
+	return id.Superadmin || id.Current.Role == membershipRoleOwner || id.Current.Role == membershipRoleManager
+}
+
+// eventSeries is the tour of one event as the organizer API lists it: the
+// tour's id and name, both "" when the event has none.
+func eventSeries(e *openapi.EventItem) (id, name string) {
+	if e.SeriesId != nil {
+		id = e.SeriesId.String()
+	}
+	if e.SeriesName != nil {
+		name = *e.SeriesName
+	}
+	return id, name
+}
+
+// seriesEventLine is the event card's tour line, read from the event the card
+// already has; "" when the event has no tour.
+func (b *Bot) seriesEventLine(loc string, event openapi.EventItem) string {
+	_, name := eventSeries(&event)
+	if name == "" {
 		return ""
 	}
 	return "\n" + b.texts.T(loc, "bot.ser.event_line", map[string]any{"Name": Esc(name)})
@@ -29,7 +53,7 @@ func (b *Bot) seriesEventLine(ctx context.Context, loc, jwt string, orgID, event
 
 // seriesEventRow is the card's button for a role that may edit events.
 func (b *Bot) seriesEventRow(loc string, id *Identity, eventID uuid.UUID) []models.InlineKeyboardButton {
-	if !canViewSales(id) {
+	if !canEditEvent(id) {
 		return nil
 	}
 	return []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.ser.event_btn", nil), CallbackData: "sr:e:" + eventID.String()}}
@@ -43,7 +67,7 @@ func (b *Bot) seriesCallback(ctx context.Context, chatID int64, msgID int, from 
 		return
 	}
 	loc := id.Locale()
-	if !canViewSales(id) {
+	if !canEditEvent(id) {
 		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ec.no_rights", nil), b.backKeyboard(loc, "home"))
 		return
 	}
@@ -102,11 +126,12 @@ func (b *Bot) seriesRender(ctx context.Context, chatID int64, editMsgID *int, id
 		b.ecError(ctx, chatID, editMsgID, id, err, back)
 		return
 	}
-	curID, curName, err := b.arena.EventSeries(ctx, jwt, orgID, eventID)
+	event, err := b.cardEvent(ctx, jwt, orgID, eventID)
 	if err != nil {
 		b.ecError(ctx, chatID, editMsgID, id, err, back)
 		return
 	}
+	curID, curName := eventSeries(event)
 	text, rows := b.seriesScreen(loc, items, eventID, curID, curName)
 	b.reply(ctx, chatID, editMsgID, prefix+text, &models.InlineKeyboardMarkup{InlineKeyboard: rows})
 }
