@@ -142,7 +142,7 @@ func TestSweep_SiteEventBranch(t *testing.T) {
 		w.WriteHeader(200)
 	}))
 	defer meta.Close()
-	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) }))
+	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(500) }))
 	defer failing.Close()
 	senders := Senders{Meta: MetaSender{BaseURL: meta.URL}, GA4: GA4Sender{BaseURL: failing.URL}}
 	run := func(f *fakeStore, d Delivery, s Senders) {
