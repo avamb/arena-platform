@@ -1,0 +1,36 @@
+{{define "subject"}}{{if .LatePayment.Refunding}}Teie makse üritusele {{.EventName}} tagastatakse{{else}}Teie makse kohta üritusele {{.EventName}}{{end}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="et" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Teie makse kohta</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">{{if .LatePayment.Refunding}}Teie makse tagastatakse{{else}}Teie makse jõudis kohale pärast tellimuse sulgemist{{end}}</h1>
+  <p style="margin:0 0 12px 0;">{{if .LatePayment.BuyerCancelled}}Te tühistasite tellimuse {{.LatePayment.OrderNumber}} üritusele {{.EventName}}{{with .LatePayment.When}} ({{.}}){{end}}, kuid makse summas {{.LatePayment.Total}} jõudis meieni siiski.{{else}}Teie makse summas {{.LatePayment.Total}} tellimuse {{.LatePayment.OrderNumber}} eest ({{.EventName}}{{with .LatePayment.When}}, {{.}}{{end}}) jõudis meieni pärast tellimuse sulgemist ning pileteid ei olnud enam võimalik teile hoida.{{end}}</p>
+  <p style="margin:0 0 12px 0;">{{if .LatePayment.Refunding}}Tagastame kogu summa maksevahendile, millega maksite. Pangal kulub selle kuvamiseks tavaliselt 5–10 tööpäeva.{{else}}Korraldaja tagastab teile kogu summa ja võtab selles küsimuses teiega ühendust.{{end}}</p>
+  <p style="margin:0 0 12px 0;">Sellele tellimusele ei väljastatud ühtegi piletit.</p>
+  {{with .LatePayment.Venue}}<p style="margin:0 0 12px 0;">{{.}}</p>{{end}}
+  </td></tr>
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Piletite töötlemine: arenasoldout.com</a><br>{{end}}Kui vajutate „Tellimus lõpetada“, ei jõua teieni enam piletitega kirjad ega olulised kirjad teie tellimuse kohta. Turundusuudiskirju me ilma teie nõusolekuta ei saada.</td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}
+
+{{if .LatePayment.Refunding}}Teie makse tagastatakse{{else}}Teie makse jõudis kohale pärast tellimuse sulgemist{{end}}
+
+{{if .LatePayment.BuyerCancelled}}Te tühistasite tellimuse {{.LatePayment.OrderNumber}} üritusele {{.EventName}}{{with .LatePayment.When}} ({{.}}){{end}}, kuid makse summas {{.LatePayment.Total}} jõudis meieni siiski.{{else}}Teie makse summas {{.LatePayment.Total}} tellimuse {{.LatePayment.OrderNumber}} eest ({{.EventName}}{{with .LatePayment.When}}, {{.}}{{end}}) jõudis meieni pärast tellimuse sulgemist ning pileteid ei olnud enam võimalik teile hoida.{{end}}
+{{if .LatePayment.Refunding}}Tagastame kogu summa maksevahendile, millega maksite. Pangal kulub selle kuvamiseks tavaliselt 5–10 tööpäeva.{{else}}Korraldaja tagastab teile kogu summa ja võtab selles küsimuses teiega ühendust.{{end}}
+Sellele tellimusele ei väljastatud ühtegi piletit.
+{{with .LatePayment.Venue}}{{.}}
+{{end}}
+{{template "contact_text" .}}{{if not .WhiteLabel}}Piletite töötlemine: arenasoldout.com — https://arenasoldout.com{{end}}
+
+Kui vajutate „Tellimus lõpetada“, ei jõua teieni enam piletitega kirjad ega olulised kirjad teie tellimuse kohta. Turundusuudiskirju me ilma teie nõusolekuta ei saada.
+{{end}}
