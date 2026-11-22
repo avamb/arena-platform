@@ -139,6 +139,7 @@ export function EventScreen() {
   const hasStatus = statusActions(event.status, { canPublish, canDelete }).length > 0;
   const rights: ItemRights = {
     edit: access.can("event.update"),
+    translations: access.can("event.update"),
     sample: canSessions && sample !== undefined,
     orders: canSales,
     csv: canCsv,
@@ -168,6 +169,12 @@ export function EventScreen() {
     edit: (
       <Link to="/o/$orgId/events/$eventId/edit" params={{ orgId, eventId }} className={btn("edit")} data-testid="event-edit-link">
         {t("event.edit")}
+      </Link>
+    ),
+    // Spec 63 section 16: the texts of the event in other languages.
+    translations: (
+      <Link to="/o/$orgId/events/$eventId/translations" params={{ orgId, eventId }} className={btn("translations")} data-testid="event-translations-link">
+        {t("tr.title")}
       </Link>
     ),
     csv: (

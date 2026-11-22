@@ -212,3 +212,11 @@ func TestAnthropic_TranslateSanitizesAndChecksName(t *testing.T) {
 		t.Errorf("no key: %v", err)
 	}
 }
+
+func TestDecide_BlankOriginalIsNothingToTranslate(t *testing.T) {
+	blank := "  "
+	orig := EventOriginal{ContentLocale: "en", Name: "Night", ShortDescription: &blank}
+	if got := Decide(orig, "cs", nil); got != DecisionSkipNoContent {
+		t.Fatalf("Decide with a blank original = %s, want %s", got, DecisionSkipNoContent)
+	}
+}

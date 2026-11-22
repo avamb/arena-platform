@@ -304,3 +304,11 @@ export type InvitationBatchReport = S["InvitationBatchReport"];
 export type InvitationBatchRowIssue = S["InvitationBatchRowIssue"];
 export type InvitationBatchPreviewGuest = S["InvitationBatchPreviewGuest"];
 export type InvitationChargePreview = S["InvitationChargePreview"];
+
+// ─── Translations of an event's texts (spec 63 section 16) ───────────────────
+export type ContentTranslationList = S["ContentTranslationList"];
+export type ContentTranslationItem = S["ContentTranslationItem"];
+export type ContentTranslationOriginal = S["ContentTranslationOriginal"];
+export type PutContentTranslationRequest = S["PutContentTranslationRequest"];
+export type MachineTranslateAccepted = S["MachineTranslateAccepted"];
+export type EventReportText = S["EventReportText"];

@@ -203,6 +203,12 @@ export const API = {
   // the test letter of the organizer's own text. The text itself is saved with eventUpdate.
   textsFormat: { method: "POST", path: "/v1/organizations/{org_id}/texts/format" },
   emailNoteTest: { method: "POST", path: "/v1/organizations/{org_id}/events/{event_id}/email-note/test" },
+  // Spec 63 section 16: translations of the event texts, and the photo-report text of the original.
+  eventTranslations: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/translations" },
+  eventTranslationPut: { method: "PUT", path: "/v1/organizations/{org_id}/events/{event_id}/translations/{locale}" },
+  eventTranslationDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/events/{event_id}/translations/{locale}" },
+  eventTranslationsMachine: { method: "POST", path: "/v1/organizations/{org_id}/events/{event_id}/translations/machine" },
+  eventReportText: { method: "PUT", path: "/v1/organizations/{org_id}/events/{event_id}/report-text" },
   // 5-3: the sales end and doors-open time of a session
   sessionUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{event_id}/sessions/{id}" },
   // The sales state of a session, for every channel at once (migration 0183).

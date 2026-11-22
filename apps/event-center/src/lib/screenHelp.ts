@@ -49,6 +49,7 @@ export const CARD_HELP: Record<Exclude<ItemId, "status">, { label: MessageKey; t
   guests: { label: "guestList.downloadEvent", text: "screenHelp.action.guests" },
   funnel: { label: "funnel.button", text: "screenHelp.action.funnel" },
   edit: { label: "event.edit", text: "screenHelp.action.edit" },
+  translations: { label: "tr.title", text: "screenHelp.action.translations" },
   sample: { label: "event.sample", text: "screenHelp.action.sample" },
   promo: { label: "nav.promo", text: "screenHelp.action.promo" },
   invitations: { label: "nav.invitations", text: "screenHelp.action.invitations" },

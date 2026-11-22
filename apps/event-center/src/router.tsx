@@ -18,6 +18,7 @@ import { OrgLayout } from "@/screens/OrgLayout";
 import { EventsScreen } from "@/screens/EventsScreen";
 import { EventScreen } from "@/screens/EventScreen";
 import { EventEditScreen } from "@/screens/EventEditScreen";
+import { TranslationsScreen } from "@/screens/TranslationsScreen";
 import { EventFunnelScreen } from "@/screens/EventFunnelScreen";
 import { SessionScreen } from "@/screens/SessionScreen";
 import { SessionInvitationsScreen } from "@/screens/SessionInvitationsScreen";
@@ -172,6 +173,13 @@ const eventEditRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/events/$eventId/edit",
   component: EventEditScreen,
+});
+
+// Spec 63 section 16: the translations of the event texts. Reached from the "Translations" item of the "Edit" section.
+const eventTranslationsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/events/$eventId/translations",
+  component: TranslationsScreen,
 });
 
 const sessionRoute = createRoute({
@@ -438,6 +446,7 @@ export const routeTree = rootRoute.addChildren([
     eventRoute,
     eventFunnelRoute,
     eventEditRoute,
+    eventTranslationsRoute,
     sessionRoute,
     sessionSeatsRoute,
     sessionInvitationsRoute,

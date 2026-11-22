@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -118,7 +119,8 @@ func Decide(orig EventOriginal, locale string, existing *Translation) Decision {
 		}
 	}
 	f := orig.Fields()
-	if f.ShortDescription == nil && f.DescriptionHTML == nil && f.ReportTextHTML == nil {
+	blank := func(s *string) bool { return s == nil || strings.TrimSpace(*s) == "" }
+	if blank(f.ShortDescription) && blank(f.DescriptionHTML) && blank(f.ReportTextHTML) {
 		return DecisionSkipNoContent
 	}
 	return DecisionTranslate
