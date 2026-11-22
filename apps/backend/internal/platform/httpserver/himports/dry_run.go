@@ -275,6 +275,9 @@ func (h *Handler) checkArenaReferences(ctx context.Context, q *gen.Queries, tx p
 	if _, err := resolveArenaPromoter(ctx, q, plan); err != nil && issues.add(err) {
 		return f
 	}
+	if _, err := resolveArenaSeries(ctx, q, plan); err != nil && issues.add(err) {
+		return f
+	}
 
 	// A bundle that names no venue keeps the addressed session's; when that
 	// session could not be resolved there is nothing to check, and
@@ -493,6 +496,7 @@ func normalizeBundle(prep preparedImport) bil24compat.ImportSessionRequest {
 	a.DescriptionFormat, a.EmailNoteFormat = trimSpace(a.DescriptionFormat), trimSpace(a.EmailNoteFormat)
 	a.Age, a.OrganizerName, a.ArenaEventID = trimSpace(a.Age), trimSpace(a.OrganizerName), trimSpace(a.ArenaEventID)
 	a.PromoterID = trimPtr(a.PromoterID)
+	a.ArenaSeriesID.Value = trimPtr(a.ArenaSeriesID.Value)
 
 	e := &n.ActionEvent
 	e.Day, e.Time, e.EndTime = trimSpace(e.Day), trimSpace(e.Time), trimSpace(e.EndTime)

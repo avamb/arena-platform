@@ -488,6 +488,7 @@ const (
 	MediaObjectOwnerTypeEventGallery   MediaObjectOwnerType = "event_gallery"
 	MediaObjectOwnerTypeEventPoster    MediaObjectOwnerType = "event_poster"
 	MediaObjectOwnerTypeEventReport    MediaObjectOwnerType = "event_report"
+	MediaObjectOwnerTypeEventSeries    MediaObjectOwnerType = "event_series"
 	MediaObjectOwnerTypeOrgLogo        MediaObjectOwnerType = "org_logo"
 	MediaObjectOwnerTypeSeatingPlanSvg MediaObjectOwnerType = "seating_plan_svg"
 	MediaObjectOwnerTypeSessionPoster  MediaObjectOwnerType = "session_poster"
@@ -962,6 +963,7 @@ const (
 	PostV1MediaMultipartBodyOwnerTypeEventGallery   PostV1MediaMultipartBodyOwnerType = "event_gallery"
 	PostV1MediaMultipartBodyOwnerTypeEventPoster    PostV1MediaMultipartBodyOwnerType = "event_poster"
 	PostV1MediaMultipartBodyOwnerTypeEventReport    PostV1MediaMultipartBodyOwnerType = "event_report"
+	PostV1MediaMultipartBodyOwnerTypeEventSeries    PostV1MediaMultipartBodyOwnerType = "event_series"
 	PostV1MediaMultipartBodyOwnerTypeOrgLogo        PostV1MediaMultipartBodyOwnerType = "org_logo"
 	PostV1MediaMultipartBodyOwnerTypeSeatingPlanSvg PostV1MediaMultipartBodyOwnerType = "seating_plan_svg"
 	PostV1MediaMultipartBodyOwnerTypeSessionPoster  PostV1MediaMultipartBodyOwnerType = "session_poster"
@@ -7279,6 +7281,42 @@ type CreateSeatingPlanVersionRequest struct {
 	SvgAssetMediaId *openapi_types.UUID `json:"svg_asset_media_id,omitempty"`
 }
 
+// CreateSeriesRequest Body of POST /v1/organizations/{org_id}/series.
+type CreateSeriesRequest struct {
+	// DescriptionHtml Description as HTML, passed through the event description filter.
+	DescriptionHtml *string `json:"description_html"`
+
+	// HeroMediaId A media object of the organization (owner type `event_series`).
+	HeroMediaId *openapi_types.UUID `json:"hero_media_id"`
+
+	// HeroVideoUrl An https YouTube or Vimeo link.
+	HeroVideoUrl *string `json:"hero_video_url"`
+
+	// HideChildrenInLists Leave the events of the tour out of the page lists. Default false.
+	HideChildrenInLists *bool `json:"hide_children_in_lists,omitempty"`
+
+	// Name Name of the tour, 1-200 characters.
+	Name string `json:"name"`
+
+	// PartnersTextHtml Text about the partners as HTML, passed through the event description filter.
+	PartnersTextHtml *string `json:"partners_text_html"`
+
+	// Position Sort position, ascending. Default 0.
+	Position *int32 `json:"position,omitempty"`
+
+	// PosterMediaId A media object of the organization (owner type `event_series`).
+	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
+
+	// Slug Public address. Absent, null or empty: derived from the name
+	// (with a numeric suffix while taken). A typed one that an event or
+	// another tour of the organization uses answers 409
+	// `series.slug_taken`.
+	Slug *string `json:"slug"`
+
+	// Translations Reserved for translated texts; ignored.
+	Translations *map[string]interface{} `json:"translations,omitempty"`
+}
+
 // CreateSessionRequest Create-time payload for POST
 // /v1/organizations/{org_id}/events/{event_id}/sessions. The owning
 // org_id and event_id are taken from the path; the body MUST NOT
@@ -8781,6 +8819,15 @@ type EventItem struct {
 	// the lookup failed.
 	SalesState string `json:"sales_state"`
 
+	// SeriesId The tour (event series, migration 0218) the event belongs to.
+	// Null when the event stands alone. Set by PATCH
+	// .../events/{id} `series_id`.
+	SeriesId *openapi_types.UUID `json:"series_id"`
+
+	// SeriesName Name of the event's tour. Filled by the organizer API only; null
+	// in the public feed (read the tour by `series_id` there).
+	SeriesName *string `json:"series_name"`
+
 	// SessionCount Number of active, non-cancelled sessions of the event, past ones
 	// included — the same count the hosted page reports.
 	SessionCount int `json:"session_count"`
@@ -9530,6 +9577,99 @@ type ExternalRefundResultItem struct {
 	TicketId openapi_types.UUID `json:"ticket_id"`
 }
 
+// FeedSeries A tour as the public feed and the hosted page show it.
+type FeedSeries struct {
+	// DescriptionHtml Description as safe HTML. Null when none.
+	DescriptionHtml *string `json:"description_html"`
+
+	// EventIds UUIDs of the events of the tour visible in this feed, by first session.
+	EventIds []openapi_types.UUID `json:"event_ids"`
+
+	// HeroUrl URL of the wide photo. Null when none.
+	HeroUrl *string `json:"hero_url"`
+
+	// HeroVideoUrl An https YouTube or Vimeo link. Null when none.
+	HeroVideoUrl *string `json:"hero_video_url"`
+
+	// HideChildrenInLists When true the events of the tour are left out of the page lists, the tour card stands for them.
+	HideChildrenInLists bool `json:"hide_children_in_lists"`
+
+	// Id UUID of the tour.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name of the tour.
+	Name string `json:"name"`
+
+	// PartnersTextHtml Text about the partners as safe HTML. Null when none.
+	PartnersTextHtml *string `json:"partners_text_html"`
+
+	// Position Sort position among the tours (ascending).
+	Position int32 `json:"position"`
+
+	// PosterUrl URL of the poster. Null when none.
+	PosterUrl *string `json:"poster_url"`
+
+	// Slug Public address of the tour.
+	Slug string `json:"slug"`
+
+	// Summary The "at a glance" block of the tour.
+	Summary FeedSeriesSummary `json:"summary"`
+
+	// Translations Reserved for translated texts. Always an empty object for now.
+	Translations map[string]interface{} `json:"translations"`
+}
+
+// FeedSeriesListEnvelope List-tours response of a feed.
+type FeedSeriesListEnvelope struct {
+	// Items Tours with at least one event visible in this feed.
+	Items []FeedSeries `json:"items"`
+}
+
+// FeedSeriesNextSession The nearest upcoming session of a tour.
+type FeedSeriesNextSession struct {
+	// City City of the session's venue. Null when unknown.
+	City *string `json:"city"`
+
+	// EventId UUID of the event of the session.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// SessionId UUID of the session.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// StartsAt Start of the session.
+	StartsAt time.Time `json:"starts_at"`
+}
+
+// FeedSeriesPrice The lowest open price of a tour in one currency.
+type FeedSeriesPrice struct {
+	// Amount The price in MAJOR units (19.5 for 1950 minor units of EUR).
+	Amount float32 `json:"amount"`
+
+	// Currency ISO 4217 currency code.
+	Currency string `json:"currency"`
+}
+
+// FeedSeriesSummary The "at a glance" block of a tour, over the events visible in the feed.
+type FeedSeriesSummary struct {
+	// CitiesCount Number of distinct cities of the sessions.
+	CitiesCount int `json:"cities_count"`
+
+	// CitiesOnSaleCount Number of cities with a session whose sales state is open.
+	CitiesOnSaleCount int `json:"cities_on_sale_count"`
+
+	// DateFrom Start of the first session of the visible events. Null when there is none.
+	DateFrom *time.Time `json:"date_from"`
+
+	// DateTo Start of the last session of the visible events. Null when there is none.
+	DateTo *time.Time `json:"date_to"`
+
+	// NextSession The nearest upcoming session. Null when there is none.
+	NextSession *FeedSeriesNextSession `json:"next_session"`
+
+	// PriceFrom The minimum open category price per currency, sorted by currency.
+	PriceFrom []FeedSeriesPrice `json:"price_from"`
+}
+
 // FeedToken A long-lived bearer token that grants a scanner device read access to the
 // agent feed for a specific sales channel. Presented as
 // `Authorization: Bearer <token>` to authenticated feed endpoints.
@@ -10229,6 +10369,30 @@ type HostedPromoterPageResponse struct {
 	Seller *HostedPageSeller `json:"seller,omitempty"`
 }
 
+// HostedSeriesPageResponse Response of GET /v1/public/pages/{org_slug}/series/{series_slug}: the
+// tour page. `org`, `events`, `seller` and `contact_form` are the same
+// as on the organization page (`HostedPromoterPageResponse`); `events`
+// are the tour's events visible on the hosted page.
+type HostedSeriesPageResponse struct {
+	// ContactForm Present when the page offers the "Write to the organizer" form.
+	ContactForm *HostedPageContactForm `json:"contact_form,omitempty"`
+
+	// DefaultLocale Organization default locale, used when no `?lang=` is present.
+	DefaultLocale string `json:"default_locale"`
+
+	// Events The tour's events visible on the hosted page, upcoming first.
+	Events []HostedPageEvent `json:"events"`
+
+	// Org Public-safe organization branding.
+	Org HostedPageOrg `json:"org"`
+
+	// Seller Legal identity of the seller, omitted as on the organization page.
+	Seller *HostedPageSeller `json:"seller,omitempty"`
+
+	// Series The tour.
+	Series FeedSeries `json:"series"`
+}
+
 // ImpersonateRequest defines model for ImpersonateRequest.
 type ImpersonateRequest struct {
 	// DurationSeconds Token lifetime in seconds. Capped at 1800 (30 minutes).
@@ -10287,6 +10451,15 @@ type ImportBil24SessionAction struct {
 	// actionEvent.arenaSessionId that belongs to another event answers
 	// 409 import.action_mismatch.
 	ArenaEventId *openapi_types.UUID `json:"arenaEventId,omitempty"`
+
+	// ArenaSeriesId Arena event-bundle extension (source=arena only; migration 0218):
+	// absent keeps the event's tour, null or "" removes the link, a
+	// UUID links one of the organization's active tours. Anything else
+	// answers 422 `import.invalid_series` at `/action/arenaSeriesId`.
+	// The dry run reports the same refusal. Reading an event back
+	// (GET .../event-bundle) writes "" for an event without a tour and
+	// leaves the key out for an archived tour.
+	ArenaSeriesId *string `json:"arenaSeriesId"`
 
 	// BigPosterUrl Absolute URL of the Bil24 poster image. Side-loaded into arena media
 	// storage outside the import transaction; a fetch failure is reported
@@ -11848,6 +12021,8 @@ type MediaObject struct {
 	// photo report. `shop_product` (migration 0172) is a picture of a
 	// merchandise shop product; `shop_digital` is the file a digital
 	// shop product sells (offered to the buyer only after payment).
+	// `event_series` (migration 0218) is the poster or the wide photo
+	// of a tour.
 	OwnerType MediaObjectOwnerType `json:"owner_type"`
 
 	// SignedUrl Short-lived download URL. Present on `GET /v1/media/{id}`
@@ -11882,6 +12057,8 @@ type MediaObject struct {
 // photo report. `shop_product` (migration 0172) is a picture of a
 // merchandise shop product; `shop_digital` is the file a digital
 // shop product sells (offered to the buyer only after payment).
+// `event_series` (migration 0218) is the poster or the wide photo
+// of a tour.
 type MediaObjectOwnerType string
 
 // MediaObjectStorageBackend Which storage adapter holds the bytes. `s3` covers any
@@ -19302,6 +19479,155 @@ type SellerProviderReceipt struct {
 	Forced bool `json:"forced"`
 }
 
+// Series A tour (event series, migration 0218, spec 63): several events under
+// one name, public address and set of page materials. The slug shares
+// one address space with the organization's active event slugs.
+type Series struct {
+	// ArchivedAt When the tour was archived. Null for an active tour.
+	ArchivedAt *time.Time `json:"archived_at"`
+
+	// CreatedAt When the tour was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// DescriptionHtml Description of the tour as filtered HTML (the event description filter). Null when none.
+	DescriptionHtml *string `json:"description_html"`
+
+	// EventCount Number of active events of the tour.
+	EventCount int `json:"event_count"`
+
+	// HeroMediaId Wide photo 16:9 (a media object of owner type `event_series`). Null when none.
+	HeroMediaId *openapi_types.UUID `json:"hero_media_id"`
+
+	// HeroUrl URL of the wide photo, null when there is none.
+	HeroUrl *string `json:"hero_url"`
+
+	// HeroVideoUrl An https YouTube or Vimeo link shown at the top of the tour page. Null when none.
+	HeroVideoUrl *string `json:"hero_video_url"`
+
+	// HideChildrenInLists When true the events of the tour are left out of the page lists, the tour card stands for them.
+	HideChildrenInLists bool `json:"hide_children_in_lists"`
+
+	// Id UUID of the tour.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name of the tour, 1-200 characters.
+	Name string `json:"name"`
+
+	// OrgId UUID of the owning organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PartnersTextHtml Text about the partners of the tour as filtered HTML. Null when none.
+	PartnersTextHtml *string `json:"partners_text_html"`
+
+	// Position Sort position of the tour among the organization's tours (ascending).
+	Position int32 `json:"position"`
+
+	// PosterMediaId Portrait poster 4:5 (a media object of owner type `event_series`). Null when none.
+	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
+
+	// PosterUrl URL of the poster, null when there is none.
+	PosterUrl *string `json:"poster_url"`
+
+	// Slug Public address of the tour (`<page>/<slug>`): 1-120 characters of
+	// Latin letters, digits and single hyphens.
+	Slug string `json:"slug"`
+
+	// Translations Reserved for the translated texts of a tour: locale to
+	// `{description_html, partners_text_html}`. Always an empty object
+	// for now; ignored on write.
+	Translations map[string]interface{} `json:"translations"`
+
+	// UpdatedAt When the tour was last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// SeriesDetail defines model for SeriesDetail.
+type SeriesDetail struct {
+	// ArchivedAt When the tour was archived. Null for an active tour.
+	ArchivedAt *time.Time `json:"archived_at"`
+
+	// CreatedAt When the tour was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// DescriptionHtml Description of the tour as filtered HTML (the event description filter). Null when none.
+	DescriptionHtml *string `json:"description_html"`
+
+	// EventCount Number of active events of the tour.
+	EventCount int `json:"event_count"`
+
+	// Events Active events of the tour by first session (events without sessions last).
+	Events []SeriesEventCard `json:"events"`
+
+	// HeroMediaId Wide photo 16:9 (a media object of owner type `event_series`). Null when none.
+	HeroMediaId *openapi_types.UUID `json:"hero_media_id"`
+
+	// HeroUrl URL of the wide photo, null when there is none.
+	HeroUrl *string `json:"hero_url"`
+
+	// HeroVideoUrl An https YouTube or Vimeo link shown at the top of the tour page. Null when none.
+	HeroVideoUrl *string `json:"hero_video_url"`
+
+	// HideChildrenInLists When true the events of the tour are left out of the page lists, the tour card stands for them.
+	HideChildrenInLists bool `json:"hide_children_in_lists"`
+
+	// Id UUID of the tour.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name of the tour, 1-200 characters.
+	Name string `json:"name"`
+
+	// OrgId UUID of the owning organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PartnersTextHtml Text about the partners of the tour as filtered HTML. Null when none.
+	PartnersTextHtml *string `json:"partners_text_html"`
+
+	// Position Sort position of the tour among the organization's tours (ascending).
+	Position int32 `json:"position"`
+
+	// PosterMediaId Portrait poster 4:5 (a media object of owner type `event_series`). Null when none.
+	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
+
+	// PosterUrl URL of the poster, null when there is none.
+	PosterUrl *string `json:"poster_url"`
+
+	// Slug Public address of the tour (`<page>/<slug>`): 1-120 characters of
+	// Latin letters, digits and single hyphens.
+	Slug string `json:"slug"`
+
+	// Translations Reserved for the translated texts of a tour: locale to
+	// `{description_html, partners_text_html}`. Always an empty object
+	// for now; ignored on write.
+	Translations map[string]interface{} `json:"translations"`
+
+	// UpdatedAt When the tour was last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// SeriesEventCard Short card of an event inside a tour.
+type SeriesEventCard struct {
+	// FirstSessionAt Start of the first session of the event. Null while it has no sessions.
+	FirstSessionAt *time.Time `json:"first_session_at"`
+
+	// Id UUID of the event.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name of the event.
+	Name string `json:"name"`
+
+	// Slug Public address of the event. Null while it has none.
+	Slug *string `json:"slug"`
+
+	// Status Status of the event (draft, published, archived, ...).
+	Status string `json:"status"`
+}
+
+// SeriesListEnvelope List-tours response.
+type SeriesListEnvelope struct {
+	// Items The organization's tours ordered by position, then name.
+	Items []Series `json:"items"`
+}
+
 // ServerInfoResponse defines model for ServerInfoResponse.
 type ServerInfoResponse struct {
 	// BuildSha Git commit SHA embedded at build time via runtime/debug.ReadBuildInfo
@@ -22963,6 +23289,12 @@ type UpdateEventRequest struct {
 	// override. Nil leaves unchanged.
 	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
 
+	// SeriesId The event's tour (migration 0218). Absent keeps the link, null
+	// (or an empty string) removes it, a UUID links an ACTIVE tour of
+	// the organization. An unknown, foreign or archived tour answers
+	// 422 `event.invalid_series`.
+	SeriesId *openapi_types.UUID `json:"series_id"`
+
 	// ShortDescription Tri-state (absent=keep, null=clear, value=set).
 	// Short marketing description shown in cards and previews (AB-45c).
 	ShortDescription *string `json:"short_description"`
@@ -23310,6 +23642,40 @@ type UpdateSellerProfileRequest struct {
 	// gets 403 `seller.provider_receipt_forced_superadmin_only` unless the
 	// value repeats the stored one.
 	ProviderReceiptForced *bool `json:"provider_receipt_forced,omitempty"`
+}
+
+// UpdateSeriesRequest Body of PATCH /v1/organizations/{org_id}/series/{series_id}. Absent
+// keeps a field, null clears a nullable one.
+type UpdateSeriesRequest struct {
+	// DescriptionHtml Description as HTML, passed through the event description filter. Null clears.
+	DescriptionHtml *string `json:"description_html"`
+
+	// HeroMediaId A media object of the organization. Null clears.
+	HeroMediaId *openapi_types.UUID `json:"hero_media_id"`
+
+	// HeroVideoUrl An https YouTube or Vimeo link. Null clears.
+	HeroVideoUrl *string `json:"hero_video_url"`
+
+	// HideChildrenInLists Leave the events of the tour out of the page lists.
+	HideChildrenInLists *bool `json:"hide_children_in_lists,omitempty"`
+
+	// Name Name of the tour, 1-200 characters. Cannot be null.
+	Name *string `json:"name,omitempty"`
+
+	// PartnersTextHtml Text about the partners as HTML. Null clears.
+	PartnersTextHtml *string `json:"partners_text_html"`
+
+	// Position Sort position, ascending.
+	Position *int32 `json:"position,omitempty"`
+
+	// PosterMediaId A media object of the organization. Null clears.
+	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
+
+	// Slug New public address. Cannot be null. A taken one answers 409 `series.slug_taken`.
+	Slug *string `json:"slug,omitempty"`
+
+	// Translations Reserved for translated texts; ignored.
+	Translations *map[string]interface{} `json:"translations,omitempty"`
 }
 
 // UpdateSessionRequest Partial update for PATCH
@@ -26026,6 +26392,12 @@ type GetSalesLinkStatsParams struct {
 	To *string `form:"to,omitempty" json:"to,omitempty"`
 }
 
+// ListSeriesParams defines parameters for ListSeries.
+type ListSeriesParams struct {
+	// IncludeArchived Include archived tours (true/false, default false).
+	IncludeArchived *bool `form:"include_archived,omitempty" json:"include_archived,omitempty"`
+}
+
 // GetV1OrganizationsOrgIdSessionsSessionIdChangeImpactParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdChangeImpact.
 type GetV1OrganizationsOrgIdSessionsSessionIdChangeImpactParams struct {
 	// StartAt Proposed start (RFC 3339).
@@ -26338,6 +26710,18 @@ type SendSiteOrganizerContactParams struct {
 	// retry is not verified a second time); the same key with another
 	// body is 409. Scoped to the route and the feed token, kept 24 hours.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
+}
+
+// ListPublicFeedSeriesParams defines parameters for ListPublicFeedSeries.
+type ListPublicFeedSeriesParams struct {
+	// Locale Reserved for translated texts; accepted and ignored for now.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// GetPublicFeedSeriesParams defines parameters for GetPublicFeedSeries.
+type GetPublicFeedSeriesParams struct {
+	// Locale Reserved for translated texts; accepted and ignored for now.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
 // GetPublicMarketingConfirmPageParams defines parameters for GetPublicMarketingConfirmPage.
@@ -27157,6 +27541,12 @@ type PatchV1OrganizationsOrgIdSeatingPlansPlanIdLayoutsLayoutIdJSONRequestBody =
 
 // UpdateSellerProfileJSONRequestBody defines body for UpdateSellerProfile for application/json ContentType.
 type UpdateSellerProfileJSONRequestBody = UpdateSellerProfileRequest
+
+// CreateSeriesJSONRequestBody defines body for CreateSeries for application/json ContentType.
+type CreateSeriesJSONRequestBody = CreateSeriesRequest
+
+// UpdateSeriesJSONRequestBody defines body for UpdateSeries for application/json ContentType.
+type UpdateSeriesJSONRequestBody = UpdateSeriesRequest
 
 // CreateInvitationBatchMultipartRequestBody defines body for CreateInvitationBatch for multipart/form-data ContentType.
 type CreateInvitationBatchMultipartRequestBody = InvitationBatchUploadRequest

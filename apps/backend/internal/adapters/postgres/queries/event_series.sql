@@ -93,3 +93,23 @@ WHERE  series_id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
 ORDER  BY created_at, id;
+
+-- name: CountEventsPerSeries :many
+SELECT series_id, count(*)
+FROM   events
+WHERE  series_id = ANY($1::uuid[])
+  AND  deleted_at IS NULL
+GROUP  BY series_id;
+
+-- name: ListEventSeriesNames :many
+SELECT id, name
+FROM   event_series
+WHERE  id = ANY($1::uuid[]);
+
+-- name: ListEventCardsForSeries :many
+SELECT id, name, slug, status, first_session_at
+FROM   events
+WHERE  series_id = $1
+  AND  org_id = $2
+  AND  deleted_at IS NULL
+ORDER  BY first_session_at NULLS LAST, created_at, id;

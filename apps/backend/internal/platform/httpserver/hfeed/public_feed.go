@@ -88,6 +88,9 @@ type publicFeedEventResponse struct {
 	// PosterURL is the public URL for the event-level poster cover (nil when
 	// no cover is set). Sessions can override this per-session (AB-47c).
 	PosterURL *string `json:"poster_url"`
+	// SeriesID is the tour (event_series) the event belongs to, null when it
+	// has none. Read in one batch by hydrateFeedSeriesIDs, never via EventRow.
+	SeriesID  *string `json:"series_id"`
 	CreatedAt string  `json:"created_at"`
 	UpdatedAt string  `json:"updated_at"`
 }
@@ -697,6 +700,7 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 	}
 	h.hydrateFeedVenueNames(ctx, events)
 	h.hydrateFeedDescriptions(ctx, events)
+	h.hydrateFeedSeriesIDs(ctx, events)
 
 	totalPages := int(total) / perPage
 	if int(total)%perPage != 0 {
@@ -799,6 +803,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 		hydrated := []publicFeedEventResponse{eventResp}
 		h.hydrateFeedVenueNames(ctx, hydrated)
 		h.hydrateFeedDescriptions(ctx, hydrated)
+		h.hydrateFeedSeriesIDs(ctx, hydrated)
 		eventResp = hydrated[0]
 	}
 

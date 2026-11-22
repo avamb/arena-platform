@@ -285,3 +285,108 @@ func (q *Queries) ListEventIDsForSeries(ctx context.Context, seriesID, orgID uui
 	}
 	return out, rows.Err()
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CountEventsPerSeries
+// ─────────────────────────────────────────────────────────────────────────────
+
+const countEventsPerSeries = `-- name: CountEventsPerSeries :many
+SELECT series_id, count(*)
+FROM   events
+WHERE  series_id = ANY($1::uuid[])
+  AND  deleted_at IS NULL
+GROUP  BY series_id`
+
+// CountEventsPerSeries returns the number of active events of each given
+// tour, keyed by tour id. Tours without events are absent from the map.
+func (q *Queries) CountEventsPerSeries(ctx context.Context, seriesIDs []uuid.UUID) (map[uuid.UUID]int, error) {
+	out := make(map[uuid.UUID]int, len(seriesIDs))
+	if len(seriesIDs) == 0 {
+		return out, nil
+	}
+	rows, err := q.db.Query(ctx, countEventsPerSeries, seriesIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var n int64
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		out[id] = int(n)
+	}
+	return out, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListEventSeriesNames
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listEventSeriesNames = `-- name: ListEventSeriesNames :many
+SELECT id, name
+FROM   event_series
+WHERE  id = ANY($1::uuid[])`
+
+// ListEventSeriesNames returns the name of each given tour, keyed by tour id.
+func (q *Queries) ListEventSeriesNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	out := make(map[uuid.UUID]string, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := q.db.Query(ctx, listEventSeriesNames, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		out[id] = name
+	}
+	return out, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListEventCardsForSeries
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listEventCardsForSeries = `-- name: ListEventCardsForSeries :many
+SELECT id, name, slug, status, first_session_at
+FROM   events
+WHERE  series_id = $1
+  AND  org_id = $2
+  AND  deleted_at IS NULL
+ORDER  BY first_session_at NULLS LAST, created_at, id`
+
+// SeriesEventCard is the short card of an event inside a tour.
+type SeriesEventCard struct {
+	ID             uuid.UUID  `json:"id"`
+	Name           string     `json:"name"`
+	Slug           *string    `json:"slug"`
+	Status         string     `json:"status"`
+	FirstSessionAt *time.Time `json:"first_session_at"`
+}
+
+// ListEventCardsForSeries returns the active events of a tour of the
+// organization, by first session (events without sessions last).
+func (q *Queries) ListEventCardsForSeries(ctx context.Context, seriesID, orgID uuid.UUID) ([]SeriesEventCard, error) {
+	rows, err := q.db.Query(ctx, listEventCardsForSeries, seriesID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SeriesEventCard
+	for rows.Next() {
+		var c SeriesEventCard
+		if err := rows.Scan(&c.ID, &c.Name, &c.Slug, &c.Status, &c.FirstSessionAt); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}

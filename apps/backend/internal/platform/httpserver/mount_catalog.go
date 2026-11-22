@@ -91,6 +91,18 @@ func (s *Server) mountEventRoutes(r chi.Router) {
 			s.applyAuth(pr, "event.update", "events")
 			pr.Put("/organizations/{org_id}/events/{id}/promoter", s.handleSetEventPromoter)
 		})
+		// Migration 0218: tours (event_series), no permission of their own.
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "event.read", "events")
+			pr.Get("/organizations/{org_id}/series", s.handleListSeries)
+			pr.Get("/organizations/{org_id}/series/{series_id}", s.handleGetSeries)
+		})
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "event.update", "events")
+			pr.Post("/organizations/{org_id}/series", s.handleCreateSeries)
+			pr.Patch("/organizations/{org_id}/series/{series_id}", s.handleUpdateSeries)
+			pr.Delete("/organizations/{org_id}/series/{series_id}", s.handleArchiveSeries)
+		})
 	}
 }
 
@@ -254,6 +266,12 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 	if s.publicFeedQueries != nil {
 		r.Get("/public/feeds/{feed_token}/events", s.handlePublicFeedEvents)
 		r.Get("/public/feeds/{feed_token}/events/{event_id}", s.handlePublicFeedEvent)
+		// Tours (event_series): shown to a feed through its visible events.
+		r.Get("/public/feeds/{feed_token}/series", s.handlePublicFeedSeries)
+		r.Get("/public/feeds/{feed_token}/series/{series_id}", s.handlePublicFeedSeriesItem)
+		// Hosted tour page; "series" is a fixed segment of three, so it never
+		// meets the two-segment event page route.
+		r.Get("/public/pages/{org_slug}/series/{series_slug}", s.handlePublicSeriesPage)
 		// Hosted sales page resolver (tickets.arenasoldout.com/{org}/{event}).
 		r.Get("/public/pages/{org_slug}/{event_slug}", s.handlePublicPage)
 		// Promoter landing page (tickets.arenasoldout.com/{org}) — lists

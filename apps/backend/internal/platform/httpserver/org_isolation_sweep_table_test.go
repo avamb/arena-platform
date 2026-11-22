@@ -446,15 +446,20 @@ var orgIsolationAuditedSafe = map[string]string{
 	// organization must equal the path organization (404 event.not_found).
 	// TestEventBundleRead_OrganizationBoundary drives a foreign, unknown and
 	// deleted event and a foreign organization.
-	"GET /v1/organizations/{org_id}/events/{event_id}/event-bundle":              "himports",
-	"GET /v1/organizations/{org_id}/events/{id}/artists":                         "events",
-	"PATCH /v1/organizations/{org_id}/events/{id}":                               "events",
-	"PATCH /v1/organizations/{org_id}/events/{id}/artists/{aid}":                 "events",
-	"POST /v1/organizations/{org_id}/events/{id}/artists":                        "events",
-	"POST /v1/organizations/{org_id}/events/{id}/status":                         "events",
-	"PUT /v1/organizations/{org_id}/events/{event_id}/contact":                   "events",
-	"PUT /v1/organizations/{org_id}/events/{id}/promoter":                        "events",
-	"PATCH /v1/organizations/{org_id}/promoters/{id}":                            "promoters",
+	"GET /v1/organizations/{org_id}/events/{event_id}/event-bundle": "himports",
+	"GET /v1/organizations/{org_id}/events/{id}/artists":            "events",
+	"PATCH /v1/organizations/{org_id}/events/{id}":                  "events",
+	"PATCH /v1/organizations/{org_id}/events/{id}/artists/{aid}":    "events",
+	"POST /v1/organizations/{org_id}/events/{id}/artists":           "events",
+	"POST /v1/organizations/{org_id}/events/{id}/status":            "events",
+	"PUT /v1/organizations/{org_id}/events/{event_id}/contact":      "events",
+	"PUT /v1/organizations/{org_id}/events/{id}/promoter":           "events",
+	"PATCH /v1/organizations/{org_id}/promoters/{id}":               "promoters",
+	// hcatalog tours (migration 0218, series.go): every query is keyed by
+	// (series id, org id); a foreign tour is 404 series.not_found.
+	"GET /v1/organizations/{org_id}/series/{series_id}":                          "series",
+	"PATCH /v1/organizations/{org_id}/series/{series_id}":                        "series",
+	"DELETE /v1/organizations/{org_id}/series/{series_id}":                       "series",
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/change-impact":         "events (requireEventInOrg on the session's event)",
 	"GET /v1/organizations/{org_id}/events/{event_id}/sessions/{id}/macs-export": "macs_export.go checks the session against event AND organization",
 
