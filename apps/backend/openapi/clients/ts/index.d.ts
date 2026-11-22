@@ -6874,8 +6874,14 @@ export interface paths {
          *     `barcode_authorities_type_check` constraint
          *     (`platform`, `legacy_bil24`, `external_platform`, `guest_list`).
          *     `label` is a human-readable display name for operator UIs.
+         *     There is at most one authority per `type` (unique index of
+         *     migration 0218): a type that already has an authority answers
+         *     409 `barcode_authority.type_exists`.
          *
-         *     Requires JWT + the `barcode.create` permission.
+         *     Requires JWT + the `barcode.create` permission, and the caller
+         *     must be a platform superadmin: any other caller, including an
+         *     organization owner or an organization API key, gets 403
+         *     `barcode.superadmin_only`.
          */
         post: operations["createBarcodeAuthority"];
         delete?: never;
@@ -7791,10 +7797,12 @@ export interface paths {
          *          credential against `agent_feed_tokens` and resolves
          *          the scanner scope (organization + sales channel).
          *       2. For each entry:
-         *          - resolves `credential_code` to a `tickets` row when
-         *            possible (unresolved credentials still produce an
-         *            audit-only `scan_events` row);
-         *          - inserts a `scan_events` row scoped to the resolved
+         *          - resolves `credential_code` to a `tickets` row of the
+         *            token's organization when possible (unresolved
+         *            credentials, and credentials of a ticket of another
+         *            organization, still produce an audit-only `scan_events`
+         *            row with no event, session or ticket);
+         *          - inserts a `scan_events` row scoped to the token's
          *            organization, idempotent on
          *            `(credential_code, scanned_at)`;
          *          - on a fresh `admitted` insert, flips
@@ -9395,13 +9403,17 @@ export interface paths {
         };
         /**
          * List external barcode batches
-         * @description List external barcode batches. Requires the `barcode_batch.read` permission.
+         * @description List external barcode batches. Requires the `barcode_batch.read`
+         *     permission, and the caller must be a platform superadmin: any other
+         *     caller gets 403 `barcode.superadmin_only`.
          */
         get: operations["listBarcodeBatches"];
         put?: never;
         /**
          * Upload an external barcode batch
-         * @description Upload an external barcode batch. Requires the `barcode_batch.upload` permission.
+         * @description Upload an external barcode batch. Requires the `barcode_batch.upload`
+         *     permission, and the caller must be a platform superadmin: any other
+         *     caller gets 403 `barcode.superadmin_only`.
          */
         post: operations["uploadBarcodeBatch"];
         delete?: never;
@@ -9419,7 +9431,9 @@ export interface paths {
         };
         /**
          * Get a barcode batch by ID
-         * @description Get a barcode batch by ID.
+         * @description Get a barcode batch by ID. Requires the `barcode_batch.read`
+         *     permission, and the caller must be a platform superadmin: any other
+         *     caller gets 403 `barcode.superadmin_only`.
          */
         get: operations["getBarcodeBatch"];
         put?: never;
@@ -9441,7 +9455,9 @@ export interface paths {
         put?: never;
         /**
          * Approve a barcode batch for registration
-         * @description Approve a barcode batch for registration.
+         * @description Approve a barcode batch for registration. Requires the
+         *     `barcode_batch.approve` permission, and the caller must be a platform
+         *     superadmin: any other caller gets 403 `barcode.superadmin_only`.
          */
         post: operations["approveBarcodeBatch"];
         delete?: never;
@@ -9461,7 +9477,9 @@ export interface paths {
         put?: never;
         /**
          * Reject a barcode batch
-         * @description Reject a barcode batch.
+         * @description Reject a barcode batch. Requires the `barcode_batch.approve`
+         *     permission, and the caller must be a platform superadmin: any other
+         *     caller gets 403 `barcode.superadmin_only`.
          */
         post: operations["rejectBarcodeBatch"];
         delete?: never;
@@ -64010,8 +64028,23 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `barcode.create` permission. */
+            /**
+             * @description Caller lacks the `barcode.create` permission, or is not a
+             *     platform superadmin (`barcode.superadmin_only`).
+             */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description An authority of this `type` already exists
+             *     (`barcode_authority.type_exists`).
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -71535,7 +71568,10 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Insufficient permission (`barcode_batch.read`). */
+            /**
+             * @description Insufficient permission (`barcode_batch.read`), or the caller
+             *     is not a platform superadmin (`barcode.superadmin_only`).
+             */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -71598,7 +71634,10 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Insufficient permission (`barcode_batch.upload`). */
+            /**
+             * @description Insufficient permission (`barcode_batch.upload`), or the caller
+             *     is not a platform superadmin (`barcode.superadmin_only`).
+             */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -71637,6 +71676,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BarcodeBatch"];
+                };
+            };
+            /**
+             * @description Insufficient permission (`barcode_batch.read`), or the caller
+             *     is not a platform superadmin (`barcode.superadmin_only`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Batch not found. */
@@ -71680,6 +71731,18 @@ export interface operations {
                     "application/json": components["schemas"]["BarcodeBatch"];
                 };
             };
+            /**
+             * @description Insufficient permission (`barcode_batch.approve`), or the caller
+             *     is not a platform superadmin (`barcode.superadmin_only`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Batch not found. */
             404: {
                 headers: {
@@ -71719,6 +71782,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BarcodeBatch"];
+                };
+            };
+            /**
+             * @description Insufficient permission (`barcode_batch.approve`), or the caller
+             *     is not a platform superadmin (`barcode.superadmin_only`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Batch not found. */

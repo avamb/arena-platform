@@ -48,9 +48,6 @@ const (
 	flatSharedRead flatHow = "shared read"
 	// flatNoOrgData: touches no organization data.
 	flatNoOrgData flatHow = "no organization data"
-	// flatScannerFamily: the barcode batch import routes, which are reviewed
-	// together with the scanner integration.
-	flatScannerFamily flatHow = "scanner family"
 )
 
 type flatFamily struct {
@@ -58,8 +55,8 @@ type flatFamily struct {
 	method string
 	// path is a chi route with parameter names, listed EXACTLY: a new route
 	// under an existing prefix is not covered until somebody reads its handler
-	// and adds it. (A trailing "*" still matches a prefix, but only the barcode
-	// batch family uses it.) Parameter names are ignored when matching.
+	// and adds it. (A trailing "*" still matches a prefix, but no entry uses
+	// it.) Parameter names are ignored when matching.
 	path string
 	how  flatHow
 	// note names the guard or the credential.
@@ -337,8 +334,14 @@ var flatRouteFamilies = []flatFamily{
 	{"PATCH", "/v1/reconciliation/reports/{id}/lines/{line_id}", flatPlatform, "reconciliation.review"},
 	{"POST", "/v1/billing/tariffs", flatPlatform, "billing.admin"},
 	{"POST", "/v1/billing/invoices/generate", flatPlatform, "billing.admin"},
-	{"POST", "/v1/barcode-batches/{id}/approve", flatPlatform, "barcode_batch.approve"},
-	{"POST", "/v1/barcode-batches/{id}/reject", flatPlatform, "barcode_batch.approve"},
+	// /v1/barcode-batches* and POST /v1/barcodes/authorities  (flatPlatform):
+	// platform superadmin only (requireBarcodeSuperadmin, mount_scanning.go).
+	{"GET", "/v1/barcode-batches", flatPlatform, "requirePlatformSuperadmin: requireBarcodeSuperadmin"},
+	{"POST", "/v1/barcode-batches", flatPlatform, "requirePlatformSuperadmin: requireBarcodeSuperadmin"},
+	{"GET", "/v1/barcode-batches/{id}", flatPlatform, "requirePlatformSuperadmin: requireBarcodeSuperadmin"},
+	{"POST", "/v1/barcode-batches/{id}/approve", flatPlatform, "requirePlatformSuperadmin: requireBarcodeSuperadmin"},
+	{"POST", "/v1/barcode-batches/{id}/reject", flatPlatform, "requirePlatformSuperadmin: requireBarcodeSuperadmin"},
+	{"POST", "/v1/barcodes/authorities", flatPlatform, "requirePlatformSuperadmin: requireBarcodeSuperadmin"},
 
 	// ── rows of one organization behind a row guard ─────────────────────────
 	{"GET", "/v1/checkout/{id}/tickets", flatRowGuard, "htickets.RowOrgAccess"},
@@ -418,10 +421,9 @@ var flatRouteFamilies = []flatFamily{
 	// ── barcode inventory and door scanner ──────────────────────────────────
 	// The flat single-barcode, scan and scanner snapshot/validate routes were
 	// retired on 2026-11-21 (TestBarcode142_RetiredFlatRoutesNotMounted).
+	// POST /v1/barcodes/authorities and /v1/barcode-batches* are listed with
+	// the platform-only routes above.
 	{"GET", "/v1/barcodes/authorities", flatNoOrgData, "barcode.read; the platform-wide authority list (type and label), no organization data"},
-	{"POST", "/v1/barcodes/authorities", flatNoOrgData, "barcode.create; adds a platform-wide authority (type and label), touches no organization's data"},
-	{"*", "/v1/barcode-batches", flatScannerFamily, "barcode and scanner family"},
-	{"*", "/v1/barcode-batches/*", flatScannerFamily, "barcode and scanner family"},
 	{"POST", "/v1/scanner/scan-events", flatPublic, "agent_feed_tokens bearer in Authorization; every stored scan_events row carries the token's organization"},
 }
 
