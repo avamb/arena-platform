@@ -1,7 +1,6 @@
 // Package hbarcode implements HTTP handlers for the barcode-authority
-// federation domain: authority CRUD, individual barcode register / get /
-// revoke, the authority-aware POST /v1/scan endpoint, and the external
-// barcode-batch import + operator approval flow.
+// federation domain: authority list / create and the external barcode-batch
+// import + operator approval flow.
 package hbarcode
 
 import (

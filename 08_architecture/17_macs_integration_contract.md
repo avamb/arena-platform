@@ -321,12 +321,15 @@ ORDER BY next_attempt_at;
 
 ## Internal Scanner Endpoints (INTERNAL / TESTING-ONLY)
 
-The three legacy scanner endpoints (`POST /v1/scan`, `POST /v1/scanner/validate`,
-`POST /v1/scanner/scan-events`) are **not the production gate**. They exist for
-development and integration testing only. Do not build scanner hardware against
-them — MACS is the production gate.
+`POST /v1/scan` and `POST /v1/scanner/validate` (with `GET /v1/scanner/snapshot`
+and the flat `POST /v1/barcodes`, `GET|DELETE /v1/barcodes/{id}`) were retired
+on 2026-11-21: they had no clients.
 
-As of AB-50d, these endpoints apply a status gate: credentials for cancelled or
+The remaining legacy scanner endpoint, `POST /v1/scanner/scan-events`, is **not
+the production gate**. It exists for development and integration testing only.
+Do not build scanner hardware against it — MACS is the production gate.
+
+As of AB-50d, this endpoint applies a status gate: credentials for cancelled or
 revoked tickets are rejected with `scanner.ticket_not_admissible`.
 
 ---

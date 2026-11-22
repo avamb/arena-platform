@@ -48,8 +48,8 @@ const (
 	flatSharedRead flatHow = "shared read"
 	// flatNoOrgData: touches no organization data.
 	flatNoOrgData flatHow = "no organization data"
-	// flatScannerFamily: the barcode inventory and door-scanner routes, which
-	// are reviewed together with the scanner integration.
+	// flatScannerFamily: the barcode batch import routes, which are reviewed
+	// together with the scanner integration.
 	flatScannerFamily flatHow = "scanner family"
 )
 
@@ -59,7 +59,7 @@ type flatFamily struct {
 	// path is a chi route with parameter names, listed EXACTLY: a new route
 	// under an existing prefix is not covered until somebody reads its handler
 	// and adds it. (A trailing "*" still matches a prefix, but only the barcode
-	// and scanner family uses it.) Parameter names are ignored when matching.
+	// batch family uses it.) Parameter names are ignored when matching.
 	path string
 	how  flatHow
 	// note names the guard or the credential.
@@ -416,12 +416,13 @@ var flatRouteFamilies = []flatFamily{
 	{"GET", "/v1/stripe/connect/callback", flatNoOrgData, "OAuth redirect helpers, nothing is stored"},
 
 	// ── barcode inventory and door scanner ──────────────────────────────────
-	{"*", "/v1/barcodes", flatScannerFamily, "barcode and scanner family"},
-	{"*", "/v1/barcodes/*", flatScannerFamily, "barcode and scanner family"},
+	// The flat single-barcode, scan and scanner snapshot/validate routes were
+	// retired on 2026-11-21 (TestBarcode142_RetiredFlatRoutesNotMounted).
+	{"GET", "/v1/barcodes/authorities", flatNoOrgData, "barcode.read; the platform-wide authority list (type and label), no organization data"},
+	{"POST", "/v1/barcodes/authorities", flatNoOrgData, "barcode.create; adds a platform-wide authority (type and label), touches no organization's data"},
 	{"*", "/v1/barcode-batches", flatScannerFamily, "barcode and scanner family"},
 	{"*", "/v1/barcode-batches/*", flatScannerFamily, "barcode and scanner family"},
-	{"*", "/v1/scan", flatScannerFamily, "barcode and scanner family"},
-	{"*", "/v1/scanner/*", flatScannerFamily, "barcode and scanner family"},
+	{"POST", "/v1/scanner/scan-events", flatPublic, "agent_feed_tokens bearer in Authorization; every stored scan_events row carries the token's organization"},
 }
 
 var flatParamName = regexp.MustCompile(`\{[^}/]*\}`)

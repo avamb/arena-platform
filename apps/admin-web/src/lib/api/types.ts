@@ -58,7 +58,6 @@ export type ValidatePromoCodeResponse = components["schemas"]["ValidatePromoCode
 
 // ── Barcode management ────────────────────────────────────────────────────
 export type BarcodeAuthorityItem = components["schemas"]["BarcodeAuthorityItem"];
-export type BarcodeItem = components["schemas"]["BarcodeItem"];
 export type BarcodeBatch = components["schemas"]["BarcodeBatch"];
 
 // ── Complimentary & allocations ───────────────────────────────────────────

@@ -14,7 +14,7 @@ on:
         required: false
         default: ''
       vus:
-        description: 'Virtual users per scenario (scanner/feed/checkout)'
+        description: 'Virtual users per scenario (feed/checkout)'
         required: false
         default: '20'
       duration:
@@ -229,17 +229,7 @@ jobs:
             --out json=ops/loadtest/results/auth-login-raw.json \
             --summary-export=ops/loadtest/results/auth-login-summary.json
 
-      # Scenario 2: scanner barcode validation (dev-auth JWT, random barcodes).
-      - name: Run scanner load test
-        run: |
-          BASE_URL=${{ github.event.inputs.base_url || 'http://localhost:8080' }} \
-          VUS=${{ github.event.inputs.vus || '20' }} \
-          DURATION=${{ github.event.inputs.duration || '30s' }} \
-          k6 run ops/loadtest/scanner.js \
-            --out json=ops/loadtest/results/scanner-raw.json \
-            --summary-export=ops/loadtest/results/scanner-summary.json
-
-      # Scenario 3: public feed read (skipped if no feed token is available).
+      # Scenario 2: public feed read (skipped if no feed token is available).
       - name: Run public feed load test
         if: ${{ github.event.inputs.feed_token != '' || env.FEED_TOKEN != '' }}
         run: |
@@ -253,7 +243,7 @@ jobs:
         env:
           FEED_TOKEN: ${{ secrets.LOAD_TEST_FEED_TOKEN }}
 
-      # Scenario 4: checkout end-to-end (skipped if no org seed secrets set).
+      # Scenario 3: checkout end-to-end (skipped if no org seed secrets set).
       - name: Run checkout load test
         if: ${{ env.ORG_ID != '' }}
         run: |

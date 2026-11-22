@@ -2,48 +2,28 @@ package httpserver
 
 import "github.com/go-chi/chi/v5"
 
-// mountBarcodeRoutes mounts barcode authority federation (feature #142).
+// mountBarcodeRoutes mounts the barcode authority list and create routes
+// (feature #142). The flat single-barcode, scan and scanner routes were
+// retired on 2026-11-21: the gate is MACS, the Bil24 SCAN_TICKET and the
+// scan-events callbacks below.
 func (s *Server) mountBarcodeRoutes(r chi.Router) {
 	if s.authEnabled() && s.barcodeQueries != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "barcode.read", "barcodes")
 			pr.Get("/barcodes/authorities", s.handleListBarcodeAuthorities)
-			pr.Get("/barcodes/{id}", s.handleGetBarcode)
-		})
-		r.Group(func(pr chi.Router) {
-			s.applyAuth(pr, "barcode.scan", "barcodes")
-			pr.Post("/scan", s.handleScan)
 		})
 	}
 	if s.authEnabled() && s.barcodeQueries != nil && s.pool != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "barcode.create", "barcodes")
 			pr.Post("/barcodes/authorities", s.handleCreateBarcodeAuthority)
-			pr.Post("/barcodes", s.handleRegisterBarcode)
-		})
-		r.Group(func(pr chi.Router) {
-			s.applyAuth(pr, "barcode.revoke", "barcodes")
-			pr.Delete("/barcodes/{id}", s.handleRevokeBarcode)
 		})
 	}
-}
-
-// mountScannerRoutes mounts offline scanner snapshot + online validate
-// (feature #144).
-func (s *Server) mountScannerRoutes(r chi.Router) {
-	if !s.authEnabled() || s.barcodeQueries == nil {
-		return
-	}
-	r.Group(func(pr chi.Router) {
-		s.applyAuth(pr, "barcode.scan", "barcodes")
-		pr.Get("/scanner/snapshot", s.handleScannerSnapshot)
-		pr.Post("/scanner/validate", s.handleScannerValidate)
-	})
 }
 
 // mountScannerCallbackRoutes mounts the external-scanner ingest endpoint
 // (feature #293 / S-2).  The route is intentionally OUTSIDE the JWT-gated
-// applyAuth group above because it is authenticated via an agent_feed_tokens
+// applyAuth groups because it is authenticated via an agent_feed_tokens
 // bearer presented in the Authorization header rather than a session JWT.
 //
 // Always mounted (handler self-gates on s.feedTokenQueries == nil with a

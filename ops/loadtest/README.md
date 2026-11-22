@@ -8,7 +8,6 @@ architecture decision log ([arch: Q8 — hundreds of tickets/day target]).
 | Script | Scenario | VU default | Auth method |
 |--------|----------|------------|-------------|
 | `auth-login.js` | Production login + GET /v1/me | 5 | Real POST /v1/auth/login |
-| `scanner.js` | Scanner barcode validate (POST /v1/scan) | 20 | Dev-stub JWT |
 | `feed.js` | Public feed read (GET /v1/feeds/{token}) | 50 | None (public) |
 | `checkout.js` | Checkout end-to-end (start → confirm → complete) | 10 | Dev-stub JWT |
 
@@ -137,18 +136,6 @@ CI job if any threshold is breached (no `continue-on-error`).
 > `/v1/me` metrics. The generous `http_req_failed < 5%` bucket covers the
 > single login request k6 records before steady-state begins.
 
-### Scanner Validate (`scanner.js`)
-
-| Percentile | Target |
-|------------|--------|
-| p50 | < 20 ms |
-| p95 | < 60 ms |
-| p99 | < 100 ms |
-| Error rate (non-404) | < 0.1% |
-
-> 404 responses (barcode not found) are counted as "misses", not errors, because
-> the load script generates random synthetic refs.
-
 ### Public Feed Read (`feed.js`)
 
 | Percentile | Target |
@@ -205,9 +192,9 @@ DATABASE_URL=postgres://arena:arena@localhost:55432/arena?sslmode=disable \
   go run ./apps/backend/cmd/arena-seed
 ```
 
-### Enable dev-auth routes (for scanner/checkout scenarios)
+### Enable dev-auth routes (for the checkout scenario)
 
-The scanner and checkout scripts use the dev-stub auth endpoint. This is
+The checkout script uses the dev-stub auth endpoint. This is
 enabled by default in docker-compose (`ENABLE_DEV_AUTH: "true"`).
 
 For the auth-login scenario no dev routes are needed — it uses the real
@@ -231,12 +218,6 @@ BASE_URL=http://localhost:8080 \
   LOAD_TEST_PASSWORD=TestPass!23 \
   VUS=5 DURATION=60s \
   k6 run ops/loadtest/auth-login.js
-```
-
-### Scanner
-
-```bash
-BASE_URL=http://localhost:8080 k6 run ops/loadtest/scanner.js
 ```
 
 ### Public feed (requires a real feed token)
@@ -355,7 +336,6 @@ Custom metric names exported:
 |--------|--------|
 | `k6_me_latency_ms` | auth-login.js |
 | `k6_feed_latency_ms` | feed.js |
-| `k6_scan_latency_ms` | scanner.js |
 | `k6_checkout_flow_ms` | checkout.js |
 
 ---
@@ -368,7 +348,6 @@ ops/loadtest/
 ├── auth-login.js          ← production login + /v1/me scenario (PR-11 required)
 ├── checkout.js            ← checkout end-to-end scenario
 ├── feed.js                ← public feed read scenario
-├── scanner.js             ← scanner barcode validate scenario
 ├── scripts/
 │   └── check-negative.sh  ← negative tests: proves k6 fails honestly
 ├── shared/
@@ -376,6 +355,5 @@ ops/loadtest/
 └── results/               ← gitignored; written by handleSummary
     ├── auth-login-summary.json
     ├── checkout-summary.json
-    ├── feed-summary.json
-    └── scanner-summary.json
+    └── feed-summary.json
 ```
