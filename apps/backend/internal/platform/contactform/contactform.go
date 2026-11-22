@@ -66,10 +66,13 @@ const JobType = "contact.organizer_message"
 const (
 	TopicContact      = "contact"
 	TopicPrivateEvent = "private_event"
+	TopicPartnership  = "partnership"
 )
 
 // ValidTopic reports whether t is one of the allow-listed topics.
-func ValidTopic(t string) bool { return t == TopicContact || t == TopicPrivateEvent }
+func ValidTopic(t string) bool {
+	return t == TopicContact || t == TopicPrivateEvent || t == TopicPartnership
+}
 
 // MaxRecipientsPerTopic bounds how many addresses one topic of a channel's
 // contact form is mailed to. Checked when the channel settings are written
@@ -220,6 +223,9 @@ type message struct {
 	OrgSenderEmail  string
 	OrgSenderStatus string
 	SiteOrigins     []byte
+	Company         string
+	City            string
+	Website         string
 }
 
 const loadMessageSQL = `
@@ -229,7 +235,8 @@ SELECT m.id, m.org_id, m.page_slug, m.sender_name, m.sender_email, m.message,
        sc.settings #> '{hosted_page,public_contact}', COALESCE(o.contact_email, ''),
        COALESCE(` + gen.OwnerRecipientSQL + `, ''), sc.deleted_at IS NOT NULL,
        m.topic, m.last_name, m.phone, m.email_done_to, sc.settings #> '{contact_form,recipients}',
-       COALESCE(o.sender_email, ''), COALESCE(o.sender_verification_status, ''), sc.settings #> '{site,origins}'
+       COALESCE(o.sender_email, ''), COALESCE(o.sender_verification_status, ''), sc.settings #> '{site,origins}',
+       m.company, m.city, m.website
 FROM organizer_contact_messages m
 JOIN organizations o ON o.id = m.org_id
 JOIN sales_channels sc ON sc.id = m.channel_id
@@ -253,6 +260,7 @@ func (h *Handler) Handle(ctx context.Context, payload []byte) error {
 		&m.PublicContact, &m.OrgEmail, &m.OwnerEmail, &m.ChannelDeleted,
 		&m.Topic, &m.LastName, &m.Phone, &m.DoneTo, &m.TopicRecipients,
 		&m.OrgSenderEmail, &m.OrgSenderStatus, &m.SiteOrigins,
+		&m.Company, &m.City, &m.Website,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Purged or never committed: nothing to deliver.
@@ -298,7 +306,7 @@ func (h *Handler) Handle(ctx context.Context, payload []byte) error {
 			// leg still runs and says so.
 			h.logger.Warn("contactform: no usable address; message not mailed", slog.String("message_id", id.String()))
 		} else {
-			subject, htmlBody, textBody := RenderEmailTopic(m.OrgLocale, m.OrgName, pageRef(m.PageSlug, m.SiteOrigins), fullName, m.SenderEmail, m.Phone, m.Topic, m.Body)
+			subject, htmlBody, textBody := RenderEmailPartner(m.OrgLocale, m.OrgName, pageRef(m.PageSlug, m.SiteOrigins), fullName, m.SenderEmail, m.Phone, m.Topic, m.Body, m.Company, m.City, m.Website)
 			from, fromName := organizerFrom(m.OrgSenderEmail, m.OrgSenderStatus, m.OrgName)
 			done := map[string]bool{}
 			for _, d := range m.DoneTo {
@@ -542,6 +550,13 @@ func RenderEmail(locale, orgName, pageSlug, senderName, senderEmail, body string
 // words, so the letter needs no new catalog keys). An empty message prints a
 // dash.
 func RenderEmailTopic(locale, orgName, pageSlug, senderName, senderEmail, phone, topic, body string) (subject, htmlBody, textBody string) {
+	return RenderEmailPartner(locale, orgName, pageSlug, senderName, senderEmail, phone, topic, body, "", "", "")
+}
+
+// RenderEmailPartner is RenderEmailTopic for the partnership topic: the
+// sender's company, city and website are printed in the sender block, one
+// line each (plain labels, empty values skipped, everything HTML-escaped).
+func RenderEmailPartner(locale, orgName, pageSlug, senderName, senderEmail, phone, topic, body, company, city, website string) (subject, htmlBody, textBody string) {
 	l := baseLang(locale)
 	loc := localizer(l)
 	name := strings.Join(strings.Fields(senderName), " ")
@@ -565,13 +580,14 @@ func RenderEmailTopic(locale, orgName, pageSlug, senderName, senderEmail, phone,
 		`<p>` + esc(intro) + `</p>` +
 		`<p><b>` + esc(from) + `:</b> ` + esc(name) + ` &lt;<span dir="ltr">` + esc(senderEmail) + `</span>&gt;<br>` +
 		phoneHTML(phone, esc) +
+		extraHTML(company, city, website, esc) +
 		`<b>` + esc(page) + `:</b> ` + esc(orgName) + ` ` + esc(pageParen(pageSlug)) + esc(pageTag) + `</p>` +
 		`<div style="white-space:pre-wrap;border-left:3px solid #4f46e5;padding:8px 12px;background:#f6f6fb">` + esc(body) + `</div>` +
 		`<p>` + esc(reply) + `</p>` +
 		`<p style="font-size:12px;color:#888">` + esc(footer) + `</p></body></html>`
 	textBody = strings.Join([]string{
 		intro, "",
-		from + ": " + name + " <" + senderEmail + ">" + phoneText(phone),
+		from + ": " + name + " <" + senderEmail + ">" + phoneText(phone) + extraText(company, city, website),
 		strings.TrimSpace(page+": "+orgName+" "+pageParen(pageSlug)) + pageTag, "",
 		body, "",
 		reply, "",
@@ -646,6 +662,33 @@ func phoneHTML(phone string, esc func(string) string) string {
 		return ""
 	}
 	return `\u260e <span dir="ltr">` + esc(phone) + `</span><br>`
+}
+
+// extraLines are the labelled lines of the partnership sender block.
+func extraLines(company, city, website string) [][2]string {
+	var out [][2]string
+	for _, kv := range [][2]string{{"Company", company}, {"City", city}, {"Website", website}} {
+		if v := strings.Join(strings.Fields(kv[1]), " "); v != "" {
+			out = append(out, [2]string{kv[0], v})
+		}
+	}
+	return out
+}
+
+func extraHTML(company, city, website string, esc func(string) string) string {
+	var b strings.Builder
+	for _, kv := range extraLines(company, city, website) {
+		b.WriteString(`<b>` + kv[0] + `:</b> <span dir="ltr">` + esc(kv[1]) + `</span><br>`)
+	}
+	return b.String()
+}
+
+func extraText(company, city, website string) string {
+	var b strings.Builder
+	for _, kv := range extraLines(company, city, website) {
+		b.WriteString("\n" + kv[0] + ": " + kv[1])
+	}
+	return b.String()
 }
 
 func phoneText(phone string) string {

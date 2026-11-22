@@ -11473,9 +11473,21 @@ components:
         topic:
           type: string
           description: |
-            `contact` (default) or `private_event`. It is also the Turnstile
-            widget action of the form and picks the recipients.
+            `contact` (default), `private_event` or `partnership`. It is also
+            the Turnstile widget action of the form and picks the recipients.
           example: "private_event"
+        company:
+          type: string
+          description: Company name, 1-100 characters. Required for the `partnership` topic, ignored for other topics.
+          example: "Hall Productions"
+        city:
+          type: string
+          description: City, up to 100 characters. Used by the `partnership` topic only.
+          example: "Tel Aviv"
+        website:
+          type: string
+          description: Website address, up to 200 characters, an http/https URL or a bare host such as example.com. Used by the `partnership` topic only.
+          example: "https://example.com"
         name:
           type: string
           description: Sender's first name, 1-100 characters.
@@ -11494,7 +11506,7 @@ components:
           example: "+972 50 123 4567"
         message:
           type: string
-          description: The message, 10-2000 characters. Optional for the `contact` topic, required for `private_event`.
+          description: The message, 10-2000 characters. Optional for the `contact` topic, required for `private_event` and `partnership`.
           example: "We would like to book the hall for 30 guests."
         consent:
           type: boolean
@@ -11506,6 +11518,198 @@ components:
           type: string
           description: Page language of the sender.
           example: "he"
+
+    SiteTrackData:
+      type: object
+      description: What the site knows about the event it reports; every field is optional and bounded.
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: The platform event the visitor looked at or went from.
+        session_id:
+          type: string
+          format: uuid
+          description: The platform session, when the click is about one date. A wrong value is ignored.
+        seller:
+          type: string
+          description: The box office a click leads to, up to 64 characters. Becomes `affiliation` in GA4 and `seller` in Meta.
+          example: "Eventim"
+        city:
+          type: string
+          description: City of the event, up to 100 characters.
+        value:
+          type: number
+          description: The "from" price in major units of `currency`.
+        currency:
+          type: string
+          description: ISO 4217 code, three letters.
+          example: "EUR"
+        checkout_type:
+          type: string
+          description: Accepted and ignored; the event name decides between an external and an own checkout.
+        email:
+          type: string
+          description: The visitor's e-mail, `lead` only, only when they typed it. Sent to Meta as a SHA-256 hash.
+        phone:
+          type: string
+          description: The visitor's phone, `lead` only, only when they typed it. Sent to Meta as a SHA-256 hash.
+
+    SiteTrackRequest:
+      type: object
+      additionalProperties: false
+      required: [event, event_id]
+      description: One event of a static site's visitor (spec 63 section 19).
+      properties:
+        event:
+          type: string
+          enum: [page_view, view_event, outbound_ticket_click, checkout_open, lead]
+          description: |
+            What happened. `outbound_ticket_click` (a click to a partner's box
+            office) is the main one: Meta `InitiateCheckout`, GA4
+            `begin_checkout`, the `outbound_click` funnel step and the box
+            office counter.
+        event_id:
+          type: string
+          description: The browser's id of this event, up to 64 characters of letters, digits, `_` and `-`. The browser pixel sends the same id, so Meta and GA4 merge the two.
+        page_url:
+          type: string
+          description: The page the visitor was on. An address outside the channel's site origins is not counted.
+        referrer:
+          type: string
+          description: Accepted and ignored.
+        utm_source:
+          type: string
+          description: Traffic source, as in the funnel beacon.
+        utm_campaign:
+          type: string
+          description: Campaign, as in the funnel beacon.
+        fbclid:
+          type: string
+          description: Meta click id.
+        gclid:
+          type: string
+          description: Google click id.
+        fbp:
+          type: string
+          description: Value of the `_fbp` cookie.
+        fbc:
+          type: string
+          description: Value of the `_fbc` cookie.
+        ga_client_id:
+          type: string
+          description: GA4 client id from the `_ga` cookie. Without it nothing goes to GA4.
+        ga_session_id:
+          type: string
+          description: GA4 session number from the `_ga_<id>` cookie.
+        vid:
+          type: string
+          description: The site's first-party visitor id, up to 64 characters. Meta gets its SHA-256 as `external_id`.
+        tracking_declined:
+          type: boolean
+          description: |
+            True when the visitor refused tracking. Tracking is on until the
+            visitor refuses (owner decision 2026-11-22, as on vinoandco.events).
+            A refusal sends nothing to Meta or GA4; the anonymous funnel counts
+            the step all the same.
+        data:
+          $ref: "#/components/schemas/SiteTrackData"
+
+    SiteTrackAccepted:
+      type: object
+      required: [status]
+      description: The event was taken. The answer never says what was done with it.
+      properties:
+        status:
+          type: string
+          description: Always "accepted".
+          example: "accepted"
+
+    OutboundClicksDay:
+      type: object
+      required: [day, clicks]
+      description: Clicks to partner box offices on one day.
+      properties:
+        day:
+          type: string
+          description: "`YYYY-MM-DD` in the venue's zone."
+        clicks:
+          type: integer
+          format: int64
+          description: Number of clicks.
+
+    OutboundClicksSeller:
+      type: object
+      required: [seller, clicks]
+      description: Clicks to one partner box office.
+      properties:
+        seller:
+          type: string
+          description: Name of the box office; empty when the site sent none.
+        clicks:
+          type: integer
+          format: int64
+          description: Number of clicks.
+
+    OutboundClicksSource:
+      type: object
+      required: [utm_source, clicks]
+      description: Clicks that came from one traffic source.
+      properties:
+        utm_source:
+          type: string
+          description: The source; empty for direct visits.
+        clicks:
+          type: integer
+          format: int64
+          description: Number of clicks.
+
+    OutboundClicksResponse:
+      type: object
+      required: [event_id, from, to, total, visits, by_day, by_seller, by_source]
+      description: Clicks from the event's page on a static site to partner box offices.
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: The event.
+        from:
+          type: string
+          description: First day of the window.
+        to:
+          type: string
+          description: Last day of the window.
+        timezone:
+          type: string
+          nullable: true
+          description: IANA zone of the venue the days are read in.
+        total:
+          type: integer
+          format: int64
+          description: All clicks of the window.
+        visits:
+          type: integer
+          format: int64
+          description: Visits of the event page on the site in the same window.
+        share_of_visitors:
+          type: number
+          nullable: true
+          description: "`total` divided by `visits`; null when there were no visits."
+        by_day:
+          type: array
+          description: Clicks per day, oldest first.
+          items:
+            $ref: "#/components/schemas/OutboundClicksDay"
+        by_seller:
+          type: array
+          description: Clicks per box office, the biggest first, at most 50.
+          items:
+            $ref: "#/components/schemas/OutboundClicksSeller"
+        by_source:
+          type: array
+          description: Clicks per traffic source, the biggest first, at most 50.
+          items:
+            $ref: "#/components/schemas/OutboundClicksSource"
 
     SiteMarketingSubscriptionRequest:
       type: object
@@ -59305,7 +59509,8 @@ paths:
         The contact form of a static site that sells through a feed token
         (spec 62 section 10.2). It extends the hosted page's form: the site is
         addressed by its feed token, the message carries a `topic`
-        (`contact` or `private_event`), a `last_name` and a `phone`, and the
+        (`contact`, `private_event` or `partnership`; the last one adds
+        `company`, `city` and `website`), a `last_name` and a `phone`, and the
         letter goes to the addresses configured for the topic in the channel's
         settings (`settings.contact_form.recipients.<topic>`, a list of
         addresses; a topic without addresses falls back to the channel's
@@ -59357,7 +59562,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/OrganizerContactAccepted"
         "400":
-          description: Invalid topic, name, last name, e-mail, phone, message, missing consent or a malformed body (`contact.invalid_*`, `contact.consent_required`).
+          description: Invalid topic, name, last name, company, city, website, e-mail, phone, message, missing consent or a malformed body (`contact.invalid_*`, `contact.consent_required`).
           content:
             application/json:
               schema:
@@ -59394,6 +59599,100 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable, the message could not be stored (`contact.send_failed`, retry), or the captcha is not configured or cannot be checked (`contact.captcha_not_configured`, `contact.captcha_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/feeds/{feed_token}/track:
+    post:
+      operationId: trackSiteEvent
+      summary: Report a visitor's event of a static site
+      description: |
+        Server-side tracking of a static site that sells through a feed token
+        (spec 63 section 19). The site's nginx forwards the beacon from
+        `/_site/e`. The main event is `outbound_ticket_click`, a click to a
+        partner's box office: the platform counts it in the anonymous funnel
+        (step `outbound_click`, surface `external_site`) and in the per-box-office
+        counter, and queues `InitiateCheckout` for Meta Conversions API and
+        `begin_checkout` (with `affiliation`) for GA4 Measurement Protocol, using
+        the organization's conversion settings.
+
+        Tracking is on until the visitor refuses: `tracking_declined=true`
+        sends nothing to Meta or GA4. Events reach the ad platforms only when
+        the request carries `X-Site-Key`, the channel's secret
+        (`settings.site.track_key_hash` holds its SHA-256); then the visitor's
+        address comes from `X-Site-Client-IP` and the browser from
+        `X-Site-User-Agent`. Without the key only the anonymous funnel counts,
+        the address is the connection's. Robots are not counted. Limits: an 8 KiB
+        body, a rate per feed token and per address. No JWT. The answer is 202
+        and never says what was done with the event.
+      tags: [v1]
+      security: []
+      parameters:
+        - name: feed_token
+          in: path
+          required: true
+          description: The site channel's feed token.
+          schema:
+            type: string
+        - name: X-Site-Key
+          in: header
+          required: false
+          description: The channel's tracking secret, added by the site's nginx.
+          schema:
+            type: string
+        - name: X-Site-Client-IP
+          in: header
+          required: false
+          description: The visitor's address, trusted only together with a valid `X-Site-Key`.
+          schema:
+            type: string
+        - name: X-Site-User-Agent
+          in: header
+          required: false
+          description: The visitor's browser, trusted only together with a valid `X-Site-Key`.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SiteTrackRequest"
+      responses:
+        "202":
+          description: Taken.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteTrackAccepted"
+        "400":
+          description: The body is not a JSON object of this shape (`track.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The token is unknown or the channel has no site origin (`track.not_available`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: The body is larger than 8 KiB (`track.too_large`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many events (`track.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The service is unavailable (`track.unavailable`, `dependency.database_unavailable`).
           content:
             application/json:
               schema:
@@ -67550,6 +67849,80 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/outbound-clicks:
+    get:
+      operationId: getV1OrganizationsOrgIdEventsEventIdOutboundClicks
+      summary: Clicks from the event's site page to partner box offices
+      description: |
+        The block "Clicks to box offices" of the event: all clicks of the
+        window, the share of the site's visitors who clicked, and the clicks per
+        day, per box office and per traffic source. The numbers are anonymous
+        and count every visitor, whatever they chose about tracking. By default
+        the window is the last 30 days ending today in the venue's zone; `from`
+        and `to` (`YYYY-MM-DD`, inclusive) set it, at most 366 days. Requires
+        `report.read`. An event of another organization is a 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: false
+          description: First day, `YYYY-MM-DD`. Default 29 days before `to`.
+          schema: { type: string }
+        - name: to
+          in: query
+          required: false
+          description: Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone.
+          schema: { type: string }
+      responses:
+        "200":
+          description: The clicks of the window.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutboundClicksResponse"
+        "400":
+          description: A path parameter is not a UUID or the window is wrong (`outbound_clicks.invalid_date`, `outbound_clicks.invalid_range`, `outbound_clicks.range_too_long`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `report.read` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event not found, or not part of this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable.
           content:
             application/json:
               schema:

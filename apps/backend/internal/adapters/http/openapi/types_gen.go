@@ -780,6 +780,15 @@ const (
 	Soon    SetSessionSalesStateRequestState = "soon"
 )
 
+// Defines values for SiteTrackRequestEvent.
+const (
+	CheckoutOpen        SiteTrackRequestEvent = "checkout_open"
+	Lead                SiteTrackRequestEvent = "lead"
+	OutboundTicketClick SiteTrackRequestEvent = "outbound_ticket_click"
+	PageView            SiteTrackRequestEvent = "page_view"
+	ViewEvent           SiteTrackRequestEvent = "view_event"
+)
+
 // Defines values for TextFormatKind.
 const (
 	Description    TextFormatKind = "description"
@@ -14669,6 +14678,66 @@ type OrganizerContactRequest struct {
 	TurnstileToken *string `json:"turnstile_token,omitempty"`
 }
 
+// OutboundClicksDay Clicks to partner box offices on one day.
+type OutboundClicksDay struct {
+	// Clicks Number of clicks.
+	Clicks int64 `json:"clicks"`
+
+	// Day `YYYY-MM-DD` in the venue's zone.
+	Day string `json:"day"`
+}
+
+// OutboundClicksResponse Clicks from the event's page on a static site to partner box offices.
+type OutboundClicksResponse struct {
+	// ByDay Clicks per day, oldest first.
+	ByDay []OutboundClicksDay `json:"by_day"`
+
+	// BySeller Clicks per box office, the biggest first, at most 50.
+	BySeller []OutboundClicksSeller `json:"by_seller"`
+
+	// BySource Clicks per traffic source, the biggest first, at most 50.
+	BySource []OutboundClicksSource `json:"by_source"`
+
+	// EventId The event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// From First day of the window.
+	From string `json:"from"`
+
+	// ShareOfVisitors `total` divided by `visits`; null when there were no visits.
+	ShareOfVisitors *float32 `json:"share_of_visitors"`
+
+	// Timezone IANA zone of the venue the days are read in.
+	Timezone *string `json:"timezone"`
+
+	// To Last day of the window.
+	To string `json:"to"`
+
+	// Total All clicks of the window.
+	Total int64 `json:"total"`
+
+	// Visits Visits of the event page on the site in the same window.
+	Visits int64 `json:"visits"`
+}
+
+// OutboundClicksSeller Clicks to one partner box office.
+type OutboundClicksSeller struct {
+	// Clicks Number of clicks.
+	Clicks int64 `json:"clicks"`
+
+	// Seller Name of the box office; empty when the site sent none.
+	Seller string `json:"seller"`
+}
+
+// OutboundClicksSource Clicks that came from one traffic source.
+type OutboundClicksSource struct {
+	// Clicks Number of clicks.
+	Clicks int64 `json:"clicks"`
+
+	// UtmSource The source; empty for direct visits.
+	UtmSource string `json:"utm_source"`
+}
+
 // PageStatsCounts A pair of counters of one kind.
 type PageStatsCounts struct {
 	// Hits Hits that looked like a person with a browser.
@@ -21349,6 +21418,12 @@ type ShopVariantsReplaceRequest struct {
 
 // SiteContactRequest A message from a static site's contact or private-event form.
 type SiteContactRequest struct {
+	// City City, up to 100 characters. Used by the `partnership` topic only.
+	City *string `json:"city,omitempty"`
+
+	// Company Company name, 1-100 characters. Required for the `partnership` topic, ignored for other topics.
+	Company *string `json:"company,omitempty"`
+
 	// Consent Must be true; the sender agrees that the message is passed to the organizer.
 	Consent bool `json:"consent"`
 
@@ -21361,7 +21436,7 @@ type SiteContactRequest struct {
 	// Locale Page language of the sender.
 	Locale *string `json:"locale,omitempty"`
 
-	// Message The message, 10-2000 characters. Optional for the `contact` topic, required for `private_event`.
+	// Message The message, 10-2000 characters. Optional for the `contact` topic, required for `private_event` and `partnership`.
 	Message *string `json:"message,omitempty"`
 
 	// Name Sender's first name, 1-100 characters.
@@ -21370,12 +21445,15 @@ type SiteContactRequest struct {
 	// Phone Sender's phone, 5-30 characters of digits, spaces and + ( ) - . ; optional.
 	Phone *string `json:"phone,omitempty"`
 
-	// Topic `contact` (default) or `private_event`. It is also the Turnstile
-	// widget action of the form and picks the recipients.
+	// Topic `contact` (default), `private_event` or `partnership`. It is also
+	// the Turnstile widget action of the form and picks the recipients.
 	Topic *string `json:"topic,omitempty"`
 
 	// TurnstileToken Cloudflare Turnstile response token, solved with the action equal to `topic`.
 	TurnstileToken *string `json:"turnstile_token,omitempty"`
+
+	// Website Website address, up to 200 characters, an http/https URL or a bare host such as example.com. Used by the `partnership` topic only.
+	Website *string `json:"website,omitempty"`
 }
 
 // SiteMarketingSubscriptionAccepted The subscription was accepted.
@@ -21412,6 +21490,102 @@ type SiteMarketingSubscriptionRequest struct {
 	// TurnstileToken Cloudflare Turnstile response token, solved with the action `club`.
 	TurnstileToken *string `json:"turnstile_token,omitempty"`
 }
+
+// SiteTrackAccepted The event was taken. The answer never says what was done with it.
+type SiteTrackAccepted struct {
+	// Status Always "accepted".
+	Status string `json:"status"`
+}
+
+// SiteTrackData What the site knows about the event it reports; every field is optional and bounded.
+type SiteTrackData struct {
+	// CheckoutType Accepted and ignored; the event name decides between an external and an own checkout.
+	CheckoutType *string `json:"checkout_type,omitempty"`
+
+	// City City of the event, up to 100 characters.
+	City *string `json:"city,omitempty"`
+
+	// Currency ISO 4217 code, three letters.
+	Currency *string `json:"currency,omitempty"`
+
+	// Email The visitor's e-mail, `lead` only, only when they typed it. Sent to Meta as a SHA-256 hash.
+	Email *string `json:"email,omitempty"`
+
+	// EventId The platform event the visitor looked at or went from.
+	EventId *openapi_types.UUID `json:"event_id,omitempty"`
+
+	// Phone The visitor's phone, `lead` only, only when they typed it. Sent to Meta as a SHA-256 hash.
+	Phone *string `json:"phone,omitempty"`
+
+	// Seller The box office a click leads to, up to 64 characters. Becomes `affiliation` in GA4 and `seller` in Meta.
+	Seller *string `json:"seller,omitempty"`
+
+	// SessionId The platform session, when the click is about one date. A wrong value is ignored.
+	SessionId *openapi_types.UUID `json:"session_id,omitempty"`
+
+	// Value The "from" price in major units of `currency`.
+	Value *float32 `json:"value,omitempty"`
+}
+
+// SiteTrackRequest One event of a static site's visitor (spec 63 section 19).
+type SiteTrackRequest struct {
+	// Data What the site knows about the event it reports; every field is optional and bounded.
+	Data *SiteTrackData `json:"data,omitempty"`
+
+	// Event What happened. `outbound_ticket_click` (a click to a partner's box
+	// office) is the main one: Meta `InitiateCheckout`, GA4
+	// `begin_checkout`, the `outbound_click` funnel step and the box
+	// office counter.
+	Event SiteTrackRequestEvent `json:"event"`
+
+	// EventId The browser's id of this event, up to 64 characters of letters, digits, `_` and `-`. The browser pixel sends the same id, so Meta and GA4 merge the two.
+	EventId string `json:"event_id"`
+
+	// Fbc Value of the `_fbc` cookie.
+	Fbc *string `json:"fbc,omitempty"`
+
+	// Fbclid Meta click id.
+	Fbclid *string `json:"fbclid,omitempty"`
+
+	// Fbp Value of the `_fbp` cookie.
+	Fbp *string `json:"fbp,omitempty"`
+
+	// GaClientId GA4 client id from the `_ga` cookie. Without it nothing goes to GA4.
+	GaClientId *string `json:"ga_client_id,omitempty"`
+
+	// GaSessionId GA4 session number from the `_ga_<id>` cookie.
+	GaSessionId *string `json:"ga_session_id,omitempty"`
+
+	// Gclid Google click id.
+	Gclid *string `json:"gclid,omitempty"`
+
+	// PageUrl The page the visitor was on. An address outside the channel's site origins is not counted.
+	PageUrl *string `json:"page_url,omitempty"`
+
+	// Referrer Accepted and ignored.
+	Referrer *string `json:"referrer,omitempty"`
+
+	// TrackingDeclined True when the visitor refused tracking. Tracking is on until the
+	// visitor refuses (owner decision 2026-11-22, as on vinoandco.events).
+	// A refusal sends nothing to Meta or GA4; the anonymous funnel counts
+	// the step all the same.
+	TrackingDeclined *bool `json:"tracking_declined,omitempty"`
+
+	// UtmCampaign Campaign, as in the funnel beacon.
+	UtmCampaign *string `json:"utm_campaign,omitempty"`
+
+	// UtmSource Traffic source, as in the funnel beacon.
+	UtmSource *string `json:"utm_source,omitempty"`
+
+	// Vid The site's first-party visitor id, up to 64 characters. Meta gets its SHA-256 as `external_id`.
+	Vid *string `json:"vid,omitempty"`
+}
+
+// SiteTrackRequestEvent What happened. `outbound_ticket_click` (a click to a partner's box
+// office) is the main one: Meta `InitiateCheckout`, GA4
+// `begin_checkout`, the `outbound_click` funnel step and the box
+// office counter.
+type SiteTrackRequestEvent string
 
 // SmartPriceNow Where an active preset stands at the moment of the read.
 type SmartPriceNow struct {
@@ -25562,6 +25736,15 @@ type CheckEventMapPointParams struct {
 	Longitude float64 `form:"longitude" json:"longitude"`
 }
 
+// GetV1OrganizationsOrgIdEventsEventIdOutboundClicksParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdOutboundClicks.
+type GetV1OrganizationsOrgIdEventsEventIdOutboundClicksParams struct {
+	// From First day, `YYYY-MM-DD`. Default 29 days before `to`.
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone.
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+}
+
 // GetV1OrganizationsOrgIdEventsEventIdPageStatsParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdPageStats.
 type GetV1OrganizationsOrgIdEventsEventIdPageStatsParams struct {
 	// From First day, `YYYY-MM-DD`. Default 29 days before `to`.
@@ -26338,6 +26521,18 @@ type SendSiteOrganizerContactParams struct {
 	// retry is not verified a second time); the same key with another
 	// body is 409. Scoped to the route and the feed token, kept 24 hours.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
+}
+
+// TrackSiteEventParams defines parameters for TrackSiteEvent.
+type TrackSiteEventParams struct {
+	// XSiteKey The channel's tracking secret, added by the site's nginx.
+	XSiteKey *string `json:"X-Site-Key,omitempty"`
+
+	// XSiteClientIP The visitor's address, trusted only together with a valid `X-Site-Key`.
+	XSiteClientIP *string `json:"X-Site-Client-IP,omitempty"`
+
+	// XSiteUserAgent The visitor's browser, trusted only together with a valid `X-Site-Key`.
+	XSiteUserAgent *string `json:"X-Site-User-Agent,omitempty"`
 }
 
 // GetPublicMarketingConfirmPageParams defines parameters for GetPublicMarketingConfirmPage.
@@ -27283,6 +27478,9 @@ type SendSiteOrganizerContactJSONRequestBody = SiteContactRequest
 
 // CreatePublicSaleSubscriptionJSONRequestBody defines body for CreatePublicSaleSubscription for application/json ContentType.
 type CreatePublicSaleSubscriptionJSONRequestBody = PublicSaleSubscriptionRequest
+
+// TrackSiteEventJSONRequestBody defines body for TrackSiteEvent for application/json ContentType.
+type TrackSiteEventJSONRequestBody = SiteTrackRequest
 
 // PostPublicFunnelJSONRequestBody defines body for PostPublicFunnel for application/json ContentType.
 type PostPublicFunnelJSONRequestBody = SalesFunnelRequest

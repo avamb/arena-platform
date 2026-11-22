@@ -5,7 +5,7 @@
  */
 import { ApiError, PAGE_READ_TIMEOUT_MS, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
-import type { GettingStarted, PageStatsResponse, SalesFunnelResponse } from "@/lib/api/types";
+import type { GettingStarted, OutboundClicksResponse, PageStatsResponse, SalesFunnelResponse } from "@/lib/api/types";
 import type {
   BillingAccountInvoice,
   BillingAccountInvoiceList,
@@ -1456,6 +1456,22 @@ export function fetchEventFunnel(
       from: window.from === "" ? undefined : window.from,
       to: window.to === "" ? undefined : window.to,
       session_id: window.sessionId === "" ? undefined : window.sessionId,
+    },
+  });
+}
+
+// Clicks from the organizer's site to outside box offices, same window as the funnel.
+export function fetchEventOutboundClicks(
+  orgId: string,
+  eventId: string,
+  window: { from?: string; to?: string } = {},
+): Promise<OutboundClicksResponse> {
+  return call<OutboundClicksResponse>({
+    route: API.eventOutboundClicks,
+    params: { org_id: orgId, event_id: eventId },
+    query: {
+      from: window.from === "" ? undefined : window.from,
+      to: window.to === "" ? undefined : window.to,
     },
   });
 }

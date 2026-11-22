@@ -44,10 +44,14 @@ type OrderData struct {
 
 // Delivery is one claimed conversion_deliveries row.
 type Delivery struct {
-	ID        uuid.UUID
-	OrderID   uuid.UUID
+	ID uuid.UUID
+	// OrderID is nil for a site event (no order); Payload then holds the SiteEvent JSON.
+	OrderID   *uuid.UUID
 	OrgID     uuid.UUID
 	Provider  string
+	Kind      string
+	EventID   string
+	Payload   []byte
 	Attempts  int
 	CreatedAt time.Time
 }
@@ -108,7 +112,7 @@ func (s *PGStore) ClaimDue(ctx context.Context, limit int) ([]Delivery, error) {
 		                 ORDER BY next_attempt_at
 		                 LIMIT $1
 		                 FOR UPDATE SKIP LOCKED)
-		RETURNING d.id, d.order_id, d.org_id, d.provider, d.attempts, d.created_at`,
+		RETURNING d.id, d.order_id, d.org_id, d.provider, d.kind, COALESCE(d.event_id, ''), d.payload, d.attempts, d.created_at`,
 		limit, fmt.Sprintf("%d seconds", int(leaseFor.Seconds())))
 	if err != nil {
 		return nil, err
@@ -117,7 +121,7 @@ func (s *PGStore) ClaimDue(ctx context.Context, limit int) ([]Delivery, error) {
 	var out []Delivery
 	for rows.Next() {
 		var d Delivery
-		if err := rows.Scan(&d.ID, &d.OrderID, &d.OrgID, &d.Provider, &d.Attempts, &d.CreatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.OrderID, &d.OrgID, &d.Provider, &d.Kind, &d.EventID, &d.Payload, &d.Attempts, &d.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
@@ -174,7 +178,8 @@ func (s *PGStore) ConsentForOrder(ctx context.Context, orderID uuid.UUID) (bool,
 
 // markTerminal moves one delivery to a final state and, in the same
 // transaction, forgets the buyer context of its checkout once no delivery of
-// that order is still pending (forgetContextSQL).
+// that order is still pending (forgetContextSQL). A row without an order (a
+// site event) has no context to forget: its payload is emptied instead.
 func (s *PGStore) markTerminal(ctx context.Context, id uuid.UUID, sql string, args ...any) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -184,10 +189,32 @@ func (s *PGStore) markTerminal(ctx context.Context, id uuid.UUID, sql string, ar
 	if _, err := tx.Exec(ctx, sql, append([]any{id}, args...)...); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE conversion_deliveries SET payload = '{}'::jsonb
+		 WHERE id = $1 AND order_id IS NULL AND payload <> '{}'::jsonb`, id); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx, forgetContextSQL, id); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// EventRetention is how long a final site-event row is kept.
+const EventRetention = 30 * 24 * time.Hour
+
+// PurgeEvents deletes final (not pending) site-event rows last touched before
+// olderThan and returns how many it deleted (at most purgeBatch per call).
+func (s *PGStore) PurgeEvents(ctx context.Context, olderThan time.Time) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `
+		DELETE FROM conversion_deliveries
+		 WHERE id IN (SELECT id FROM conversion_deliveries
+		               WHERE order_id IS NULL AND status <> 'pending' AND updated_at < $1
+		               LIMIT $2)`, olderThan, purgeBatch)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 // forgetContextSQL empties the stored buyer context (IP, User-Agent, fbp,

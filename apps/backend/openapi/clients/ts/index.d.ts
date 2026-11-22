@@ -8825,7 +8825,8 @@ export interface paths {
          * @description The contact form of a static site that sells through a feed token
          *     (spec 62 section 10.2). It extends the hosted page's form: the site is
          *     addressed by its feed token, the message carries a `topic`
-         *     (`contact` or `private_event`), a `last_name` and a `phone`, and the
+         *     (`contact`, `private_event` or `partnership`; the last one adds
+         *     `company`, `city` and `website`), a `last_name` and a `phone`, and the
          *     letter goes to the addresses configured for the topic in the channel's
          *     settings (`settings.contact_form.recipients.<topic>`, a list of
          *     addresses; a topic without addresses falls back to the channel's
@@ -8845,6 +8846,43 @@ export interface paths {
          *     channel, a 16 KiB body. No JWT. The answer never carries an address.
          */
         post: operations["sendSiteOrganizerContact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/feeds/{feed_token}/track": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report a visitor's event of a static site
+         * @description Server-side tracking of a static site that sells through a feed token
+         *     (spec 63 section 19). The site's nginx forwards the beacon from
+         *     `/_site/e`. The main event is `outbound_ticket_click`, a click to a
+         *     partner's box office: the platform counts it in the anonymous funnel
+         *     (step `outbound_click`, surface `external_site`) and in the per-box-office
+         *     counter, and queues `InitiateCheckout` for Meta Conversions API and
+         *     `begin_checkout` (with `affiliation`) for GA4 Measurement Protocol, using
+         *     the organization's conversion settings.
+         *
+         *     Tracking is on until the visitor refuses: `tracking_declined=true`
+         *     sends nothing to Meta or GA4. Events reach the ad platforms only when
+         *     the request carries `X-Site-Key`, the channel's secret
+         *     (`settings.site.track_key_hash` holds its SHA-256); then the visitor's
+         *     address comes from `X-Site-Client-IP` and the browser from
+         *     `X-Site-User-Agent`. Without the key only the anonymous funnel counts,
+         *     the address is the connection's. Robots are not counted. Limits: an 8 KiB
+         *     body, a rate per feed token and per address. No JWT. The answer is 202
+         *     and never says what was done with the event.
+         */
+        post: operations["trackSiteEvent"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11483,6 +11521,32 @@ export interface paths {
          *     one) is a 404.
          */
         get: operations["getV1OrganizationsOrgIdEventsEventIdPageStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/outbound-clicks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Clicks from the event's site page to partner box offices
+         * @description The block "Clicks to box offices" of the event: all clicks of the
+         *     window, the share of the site's visitors who clicked, and the clicks per
+         *     day, per box office and per traffic source. The numbers are anonymous
+         *     and count every visitor, whatever they chose about tracking. By default
+         *     the window is the last 30 days ending today in the venue's zone; `from`
+         *     and `to` (`YYYY-MM-DD`, inclusive) set it, at most 366 days. Requires
+         *     `report.read`. An event of another organization is a 404.
+         */
+        get: operations["getV1OrganizationsOrgIdEventsEventIdOutboundClicks"];
         put?: never;
         post?: never;
         delete?: never;
@@ -24332,11 +24396,26 @@ export interface components {
         /** @description A message from a static site's contact or private-event form. */
         SiteContactRequest: {
             /**
-             * @description `contact` (default) or `private_event`. It is also the Turnstile
-             *     widget action of the form and picks the recipients.
+             * @description `contact` (default), `private_event` or `partnership`. It is also
+             *     the Turnstile widget action of the form and picks the recipients.
              * @example private_event
              */
             topic?: string;
+            /**
+             * @description Company name, 1-100 characters. Required for the `partnership` topic, ignored for other topics.
+             * @example Hall Productions
+             */
+            company?: string;
+            /**
+             * @description City, up to 100 characters. Used by the `partnership` topic only.
+             * @example Tel Aviv
+             */
+            city?: string;
+            /**
+             * @description Website address, up to 200 characters, an http/https URL or a bare host such as example.com. Used by the `partnership` topic only.
+             * @example https://example.com
+             */
+            website?: string;
             /**
              * @description Sender's first name, 1-100 characters.
              * @example Anna
@@ -24358,7 +24437,7 @@ export interface components {
              */
             phone?: string;
             /**
-             * @description The message, 10-2000 characters. Optional for the `contact` topic, required for `private_event`.
+             * @description The message, 10-2000 characters. Optional for the `contact` topic, required for `private_event` and `partnership`.
              * @example We would like to book the hall for 30 guests.
              */
             message?: string;
@@ -24371,6 +24450,152 @@ export interface components {
              * @example he
              */
             locale?: string;
+        };
+        /** @description What the site knows about the event it reports; every field is optional and bounded. */
+        SiteTrackData: {
+            /**
+             * Format: uuid
+             * @description The platform event the visitor looked at or went from.
+             */
+            event_id?: string;
+            /**
+             * Format: uuid
+             * @description The platform session, when the click is about one date. A wrong value is ignored.
+             */
+            session_id?: string;
+            /**
+             * @description The box office a click leads to, up to 64 characters. Becomes `affiliation` in GA4 and `seller` in Meta.
+             * @example Eventim
+             */
+            seller?: string;
+            /** @description City of the event, up to 100 characters. */
+            city?: string;
+            /** @description The "from" price in major units of `currency`. */
+            value?: number;
+            /**
+             * @description ISO 4217 code, three letters.
+             * @example EUR
+             */
+            currency?: string;
+            /** @description Accepted and ignored; the event name decides between an external and an own checkout. */
+            checkout_type?: string;
+            /** @description The visitor's e-mail, `lead` only, only when they typed it. Sent to Meta as a SHA-256 hash. */
+            email?: string;
+            /** @description The visitor's phone, `lead` only, only when they typed it. Sent to Meta as a SHA-256 hash. */
+            phone?: string;
+        };
+        /** @description One event of a static site's visitor (spec 63 section 19). */
+        SiteTrackRequest: {
+            /**
+             * @description What happened. `outbound_ticket_click` (a click to a partner's box
+             *     office) is the main one: Meta `InitiateCheckout`, GA4
+             *     `begin_checkout`, the `outbound_click` funnel step and the box
+             *     office counter.
+             * @enum {string}
+             */
+            event: "page_view" | "view_event" | "outbound_ticket_click" | "checkout_open" | "lead";
+            /** @description The browser's id of this event, up to 64 characters of letters, digits, `_` and `-`. The browser pixel sends the same id, so Meta and GA4 merge the two. */
+            event_id: string;
+            /** @description The page the visitor was on. An address outside the channel's site origins is not counted. */
+            page_url?: string;
+            /** @description Accepted and ignored. */
+            referrer?: string;
+            /** @description Traffic source, as in the funnel beacon. */
+            utm_source?: string;
+            /** @description Campaign, as in the funnel beacon. */
+            utm_campaign?: string;
+            /** @description Meta click id. */
+            fbclid?: string;
+            /** @description Google click id. */
+            gclid?: string;
+            /** @description Value of the `_fbp` cookie. */
+            fbp?: string;
+            /** @description Value of the `_fbc` cookie. */
+            fbc?: string;
+            /** @description GA4 client id from the `_ga` cookie. Without it nothing goes to GA4. */
+            ga_client_id?: string;
+            /** @description GA4 session number from the `_ga_<id>` cookie. */
+            ga_session_id?: string;
+            /** @description The site's first-party visitor id, up to 64 characters. Meta gets its SHA-256 as `external_id`. */
+            vid?: string;
+            /**
+             * @description True when the visitor refused tracking. Tracking is on until the
+             *     visitor refuses (owner decision 2026-11-22, as on vinoandco.events).
+             *     A refusal sends nothing to Meta or GA4; the anonymous funnel counts
+             *     the step all the same.
+             */
+            tracking_declined?: boolean;
+            data?: components["schemas"]["SiteTrackData"];
+        };
+        /** @description The event was taken. The answer never says what was done with it. */
+        SiteTrackAccepted: {
+            /**
+             * @description Always "accepted".
+             * @example accepted
+             */
+            status: string;
+        };
+        /** @description Clicks to partner box offices on one day. */
+        OutboundClicksDay: {
+            /** @description `YYYY-MM-DD` in the venue's zone. */
+            day: string;
+            /**
+             * Format: int64
+             * @description Number of clicks.
+             */
+            clicks: number;
+        };
+        /** @description Clicks to one partner box office. */
+        OutboundClicksSeller: {
+            /** @description Name of the box office; empty when the site sent none. */
+            seller: string;
+            /**
+             * Format: int64
+             * @description Number of clicks.
+             */
+            clicks: number;
+        };
+        /** @description Clicks that came from one traffic source. */
+        OutboundClicksSource: {
+            /** @description The source; empty for direct visits. */
+            utm_source: string;
+            /**
+             * Format: int64
+             * @description Number of clicks.
+             */
+            clicks: number;
+        };
+        /** @description Clicks from the event's page on a static site to partner box offices. */
+        OutboundClicksResponse: {
+            /**
+             * Format: uuid
+             * @description The event.
+             */
+            event_id: string;
+            /** @description First day of the window. */
+            from: string;
+            /** @description Last day of the window. */
+            to: string;
+            /** @description IANA zone of the venue the days are read in. */
+            timezone?: string | null;
+            /**
+             * Format: int64
+             * @description All clicks of the window.
+             */
+            total: number;
+            /**
+             * Format: int64
+             * @description Visits of the event page on the site in the same window.
+             */
+            visits: number;
+            /** @description `total` divided by `visits`; null when there were no visits. */
+            share_of_visitors?: number | null;
+            /** @description Clicks per day, oldest first. */
+            by_day: components["schemas"]["OutboundClicksDay"][];
+            /** @description Clicks per box office, the biggest first, at most 50. */
+            by_seller: components["schemas"]["OutboundClicksSeller"][];
+            /** @description Clicks per traffic source, the biggest first, at most 50. */
+            by_source: components["schemas"]["OutboundClicksSource"][];
         };
         /** @description A subscription to an organization's mailings from a static site's form. */
         SiteMarketingSubscriptionRequest: {
@@ -69645,7 +69870,7 @@ export interface operations {
                     "application/json": components["schemas"]["OrganizerContactAccepted"];
                 };
             };
-            /** @description Invalid topic, name, last name, e-mail, phone, message, missing consent or a malformed body (`contact.invalid_*`, `contact.consent_required`). */
+            /** @description Invalid topic, name, last name, company, city, website, e-mail, phone, message, missing consent or a malformed body (`contact.invalid_*`, `contact.consent_required`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -69700,6 +69925,85 @@ export interface operations {
                 };
             };
             /** @description Database unavailable, the message could not be stored (`contact.send_failed`, retry), or the captcha is not configured or cannot be checked (`contact.captcha_not_configured`, `contact.captcha_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    trackSiteEvent: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The channel's tracking secret, added by the site's nginx. */
+                "X-Site-Key"?: string;
+                /** @description The visitor's address, trusted only together with a valid `X-Site-Key`. */
+                "X-Site-Client-IP"?: string;
+                /** @description The visitor's browser, trusted only together with a valid `X-Site-Key`. */
+                "X-Site-User-Agent"?: string;
+            };
+            path: {
+                /** @description The site channel's feed token. */
+                feed_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SiteTrackRequest"];
+            };
+        };
+        responses: {
+            /** @description Taken. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteTrackAccepted"];
+                };
+            };
+            /** @description The body is not a JSON object of this shape (`track.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The token is unknown or the channel has no site origin (`track.not_available`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is larger than 8 KiB (`track.too_large`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many events (`track.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The service is unavailable (`track.unavailable`, `dependency.database_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -78750,6 +79054,81 @@ export interface operations {
                 };
             };
             /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdEventsEventIdOutboundClicks: {
+        parameters: {
+            query?: {
+                /** @description First day, `YYYY-MM-DD`. Default 29 days before `to`. */
+                from?: string;
+                /** @description Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone. */
+                to?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The clicks of the window. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboundClicksResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID or the window is wrong (`outbound_clicks.invalid_date`, `outbound_clicks.invalid_range`, `outbound_clicks.range_too_long`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `report.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found, or not part of this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

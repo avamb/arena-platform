@@ -308,6 +308,7 @@ export const API = {
   eventPageStatsCsv: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/page-stats.csv" },
   // A7: the buyer sales funnel of the event (spec 50).
   eventFunnel: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/funnel" },
+  eventOutboundClicks: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/outbound-clicks" },
   // M2: the tickets of a session with their entry at the door.
   sessionTickets: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/tickets" },
   // QL-12: tracked sales links and their QR codes (spec 43). A PATCH sends the
