@@ -210,9 +210,9 @@ const (
 
 // Defines values for CancelTicketRequestRefundMode.
 const (
-	Automatic CancelTicketRequestRefundMode = "automatic"
-	Manual    CancelTicketRequestRefundMode = "manual"
-	None      CancelTicketRequestRefundMode = "none"
+	CancelTicketRequestRefundModeAutomatic CancelTicketRequestRefundMode = "automatic"
+	CancelTicketRequestRefundModeManual    CancelTicketRequestRefundMode = "manual"
+	CancelTicketRequestRefundModeNone      CancelTicketRequestRefundMode = "none"
 )
 
 // Defines values for CheckoutSessionItemState.
@@ -247,6 +247,12 @@ const (
 const (
 	ComplimentaryIssuanceStatusIssued  ComplimentaryIssuanceStatus = "issued"
 	ComplimentaryIssuanceStatusRevoked ComplimentaryIssuanceStatus = "revoked"
+)
+
+// Defines values for ContentTranslationItemSource.
+const (
+	ContentTranslationItemSourceMachine ContentTranslationItemSource = "machine"
+	ContentTranslationItemSourceManual  ContentTranslationItemSource = "manual"
 )
 
 // Defines values for CreateBarcodeAuthorityRequestType.
@@ -6504,6 +6510,78 @@ type ConnectShopModuleRequest struct {
 	StartsOn *openapi_types.Date `json:"starts_on"`
 }
 
+// ContentTranslationItem One translation of an event's texts into one locale.
+type ContentTranslationItem struct {
+	// DescriptionHtml The translated description as sanitized HTML, null when not set.
+	DescriptionHtml *string `json:"description_html"`
+
+	// Locale The locale of the translation, one of `supported_locales`.
+	Locale string `json:"locale"`
+
+	// Name The translated name, null when the translation keeps the original name. The machine never fills it.
+	Name *string `json:"name"`
+
+	// ReportTextHtml The translated photo-report text as sanitized HTML, null when not set.
+	ReportTextHtml *string `json:"report_text_html"`
+
+	// ShortDescription The translated short description, null when not set.
+	ShortDescription *string `json:"short_description"`
+
+	// Source Who wrote it. A `manual` translation is never replaced by the machine.
+	Source ContentTranslationItemSource `json:"source"`
+
+	// TranslationStale True when the original texts changed after this translation was made; it is still served to buyers.
+	TranslationStale bool `json:"translation_stale"`
+
+	// UpdatedAt When the translation was last written.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// UpdatedBy The person who wrote it, null for an API key or when the person is gone.
+	UpdatedBy *openapi_types.UUID `json:"updated_by"`
+}
+
+// ContentTranslationItemSource Who wrote it. A `manual` translation is never replaced by the machine.
+type ContentTranslationItemSource string
+
+// ContentTranslationList The original texts of an event and its translations.
+type ContentTranslationList struct {
+	// ContentLocale The language of the original texts, two lowercase letters.
+	ContentLocale string `json:"content_locale"`
+
+	// MachineAvailable True when machine translation is switched on (the model key is set), false hides the button.
+	MachineAvailable bool `json:"machine_available"`
+
+	// Original The original texts.
+	Original ContentTranslationOriginal `json:"original"`
+
+	// SiteLocales The distinct union of the languages of the organization's sites (`settings.site.locales` of its sales channels), restricted to the supported locales.
+	SiteLocales []string `json:"site_locales"`
+
+	// SourceHash Hash of the original texts now; a translation whose hash differs is stale.
+	SourceHash string `json:"source_hash"`
+
+	// SupportedLocales Every locale a translation may be made for.
+	SupportedLocales []string `json:"supported_locales"`
+
+	// Translations The stored translations, ordered by locale.
+	Translations []ContentTranslationItem `json:"translations"`
+}
+
+// ContentTranslationOriginal The original texts of an event, the source of its translations.
+type ContentTranslationOriginal struct {
+	// DescriptionHtml The description rendered to sanitized HTML whatever its stored format, null when empty.
+	DescriptionHtml *string `json:"description_html"`
+
+	// Name The event name in the content locale.
+	Name string `json:"name"`
+
+	// ReportTextHtml The photo-report text as sanitized HTML, null when empty.
+	ReportTextHtml *string `json:"report_text_html"`
+
+	// ShortDescription The short description, null when empty.
+	ShortDescription *string `json:"short_description"`
+}
+
 // ConversionSettings An organization's server-side conversion credentials. The two secrets
 // are write-only: only whether one is set is reported.
 type ConversionSettings struct {
@@ -8629,6 +8707,12 @@ type EventItem struct {
 	// Tri-state PATCH: absent=keep, null=clear, value=set.
 	AgeRating *string `json:"age_rating"`
 
+	// AvailableLocales Public feed only. The original language first, then every language that has a translation of the event.
+	AvailableLocales *[]string `json:"available_locales,omitempty"`
+
+	// ContentLocale Public feed only. The language of the texts served (`short_description`, `description_html` and `description_text` are translated when a translation was asked for with `?locale=` and exists). Two lowercase letters.
+	ContentLocale *string `json:"content_locale,omitempty"`
+
 	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
 	CreatedAt time.Time `json:"created_at"`
 
@@ -8810,6 +8894,9 @@ type EventItem struct {
 	// TrailerUrl URL to the full event trailer (AB-45c).
 	// Tri-state PATCH: absent=keep, null=clear, value=set.
 	TrailerUrl *string `json:"trailer_url"`
+
+	// TranslationStale Public feed only. True when the translation served was made from an older original than the current one; it is still served.
+	TranslationStale *bool `json:"translation_stale,omitempty"`
 
 	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update.
 	UpdatedAt time.Time `json:"updated_at"`
@@ -9138,6 +9225,12 @@ type EventReportPhotoList struct {
 type EventReportPhotoOrderRequest struct {
 	// PhotoIds Every photo id of the report exactly once, in the new display order.
 	PhotoIds []openapi_types.UUID `json:"photo_ids"`
+}
+
+// EventReportText The stored photo-report text of the original.
+type EventReportText struct {
+	// ReportTextHtml The sanitized text as stored, null when cleared.
+	ReportTextHtml *string `json:"report_text_html"`
 }
 
 // EventSalesSummary The top level of EventSummary for one event, without the per-category
@@ -11614,6 +11707,21 @@ type MACSWebhookSubscriber struct {
 
 	// UpdatedAt ISO 8601 last-update timestamp.
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+}
+
+// MachineTranslateAccepted The queued machine translation.
+type MachineTranslateAccepted struct {
+	// JobId Id of the worker job `content.translate`.
+	JobId string `json:"job_id"`
+
+	// Locales The normalized, distinct locales that were queued. Locales with a manual translation are skipped by the job, not refused here.
+	Locales []string `json:"locales"`
+}
+
+// MachineTranslateRequest Body of POST .../translations/machine.
+type MachineTranslateRequest struct {
+	// Locales The locales to translate into. Each must be supported and differ from the content locale (422 `translation.invalid_locale`).
+	Locales []string `json:"locales"`
 }
 
 // MapPointCheck Advisory verdict on a map point against the cities of the event's venues.
@@ -16060,6 +16168,9 @@ type PublicEventMaterials struct {
 	// that moves, and stays empty for an event without a live session.
 	ReportPhotos []PublicMaterialPhoto `json:"report_photos"`
 
+	// ReportTextHtml The photo-report text as sanitized HTML (translated when `?locale=` names a language that has it), shown after the event ended. Null when there is none or the event is not over yet.
+	ReportTextHtml *string `json:"report_text_html"`
+
 	// Videos Video links in display order (at most 4).
 	Videos []PublicMaterialVideo `json:"videos"`
 }
@@ -16525,6 +16636,21 @@ type PublishEventRequest struct {
 	// FeedTokenId UUIDv7 of the agent feed token to publish the event to.
 	// Must reference an existing row in `agent_feed_tokens`.
 	FeedTokenId openapi_types.UUID `json:"feed_token_id"`
+}
+
+// PutContentTranslationRequest Body of PUT .../translations/{locale}. The row of the locale is replaced as a whole, an absent or blank member clears that text.
+type PutContentTranslationRequest struct {
+	// DescriptionHtml The translated description as HTML, sanitized by the rich-text description profile.
+	DescriptionHtml *string `json:"description_html"`
+
+	// Name The translated name, up to 200 characters. Leave empty to keep the original name.
+	Name *string `json:"name"`
+
+	// ReportTextHtml The translated photo-report text as HTML, sanitized the same way.
+	ReportTextHtml *string `json:"report_text_html"`
+
+	// ShortDescription The translated short description, up to 500 characters.
+	ShortDescription *string `json:"short_description"`
 }
 
 // PutTierPriceScheduleRequest Replace-all body for PUT .../price-schedule. Overlapping windows
@@ -20190,6 +20316,12 @@ type SetEventPromoterRequest struct {
 	// PromoterId An active promoter of the organization, or null (or absent) to
 	// make the organization itself the promoter again.
 	PromoterId *openapi_types.UUID `json:"promoter_id"`
+}
+
+// SetEventReportTextRequest Body of PUT .../events/{event_id}/report-text.
+type SetEventReportTextRequest struct {
+	// ReportTextHtml The photo-report text of the original as HTML, sanitized by the rich-text description profile. Null or blank clears it.
+	ReportTextHtml *string `json:"report_text_html"`
 }
 
 // SetSessionSalesStateRequest The state to set.
@@ -26312,12 +26444,21 @@ type ListPublicFeedEventsParams struct {
 	// Offset Pagination offset.
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 
+	// Locale Content language of the texts, for example `cs` or `de`. Events that have a translation into it are served translated; an unsupported locale or an event without a translation falls back to the original.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+
 	// IncludeRemoved With `true` the answer also carries `removed_events`: every event
 	// that left this feed token's list within the last 30 days, with a
 	// terminal status and the removal time. It is how a site builder
 	// tells "removed" from "the answer is incomplete". The `events`
 	// list and its pagination are not affected.
 	IncludeRemoved *bool `form:"include_removed,omitempty" json:"include_removed,omitempty"`
+}
+
+// GetPublicFeedEventParams defines parameters for GetPublicFeedEvent.
+type GetPublicFeedEventParams struct {
+	// Locale Content language of the texts, for example `cs` or `de`. A translation into it is served when it exists (also `materials.report_text_html`); an unsupported locale or a missing translation falls back to the original.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
 // CreateSiteMarketingSubscriptionParams defines parameters for CreateSiteMarketingSubscription.
@@ -26993,6 +27134,9 @@ type UpdateEventReportPhotoJSONRequestBody = UpdateEventReportPhotoRequest
 // PutV1OrganizationsOrgIdEventsEventIdReferralProgramJSONRequestBody defines body for PutV1OrganizationsOrgIdEventsEventIdReferralProgram for application/json ContentType.
 type PutV1OrganizationsOrgIdEventsEventIdReferralProgramJSONRequestBody = ReferralProgramRequest
 
+// SetEventReportTextJSONRequestBody defines body for SetEventReportText for application/json ContentType.
+type SetEventReportTextJSONRequestBody = SetEventReportTextRequest
+
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = CreateSessionRequest
 
@@ -27031,6 +27175,12 @@ type UpdateTicketTierJSONRequestBody = UpdateTicketTierRequest
 
 // PutTierPriceScheduleJSONRequestBody defines body for PutTierPriceSchedule for application/json ContentType.
 type PutTierPriceScheduleJSONRequestBody = PutTierPriceScheduleRequest
+
+// RequestEventMachineTranslationJSONRequestBody defines body for RequestEventMachineTranslation for application/json ContentType.
+type RequestEventMachineTranslationJSONRequestBody = MachineTranslateRequest
+
+// PutEventContentTranslationJSONRequestBody defines body for PutEventContentTranslation for application/json ContentType.
+type PutEventContentTranslationJSONRequestBody = PutContentTranslationRequest
 
 // AddEventVideoJSONRequestBody defines body for AddEventVideo for application/json ContentType.
 type AddEventVideoJSONRequestBody = EventVideoAddRequest

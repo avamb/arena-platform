@@ -4576,6 +4576,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/{event_id}/translations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the original texts and the translations of an event
+         * @description Returns the original texts of the event in its content language, the hash of
+         *     that original, the stored translations (each with `translation_stale`), the
+         *     platform's supported locales and the languages of the organization's sites.
+         *     `machine_available` is false when machine translation is switched off.
+         *     Requires `event.read` and membership of the organization.
+         */
+        get: operations["listEventContentTranslations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/translations/machine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue a machine translation of an event
+         * @description Queues the worker job `content.translate` and answers 202. The job translates
+         *     only what is missing or out of date, and never replaces a manual translation
+         *     (there is no way to ask for that: delete the manual translation first).
+         *     Answers 503 `translation.not_configured` when machine translation is switched off.
+         *     Requires `event.update` and membership of the organization.
+         */
+        post: operations["requestEventMachineTranslation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/translations/{locale}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Write a manual translation of an event
+         * @description Replaces the translation of one locale as a whole and marks it `manual`. The
+         *     texts are sanitized; the translation is stamped with the hash of the current
+         *     original, so it is fresh until the original changes.
+         *     Requires `event.update` and membership of the organization.
+         */
+        put: operations["putEventContentTranslation"];
+        post?: never;
+        /**
+         * Remove a translation of an event
+         * @description Removes the translation of one locale, manual or machine. This is also how a
+         *     manual text is made replaceable by the machine.
+         *     Requires `event.update` and membership of the organization.
+         */
+        delete: operations["deleteEventContentTranslation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/report-text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the photo-report text of an event
+         * @description Writes the photo-report text of the original event, sanitized by the rich-text
+         *     description profile. A null or blank text clears it. A translation of it is
+         *     written with `PUT .../translations/{locale}`.
+         *     Requires `event.update` and membership of the organization.
+         */
+        put: operations["setEventReportText"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/events/{event_id}/photo-report": {
         parameters: {
             query?: never;
@@ -23785,6 +23885,15 @@ export interface components {
              */
             short_description?: string | null;
             /**
+             * @description Public feed only. The language of the texts served (`short_description`, `description_html` and `description_text` are translated when a translation was asked for with `?locale=` and exists). Two lowercase letters.
+             * @example en
+             */
+            content_locale?: string;
+            /** @description Public feed only. The original language first, then every language that has a translation of the event. */
+            available_locales?: string[];
+            /** @description Public feed only. True when the translation served was made from an older original than the current one; it is still served. */
+            translation_stale?: boolean;
+            /**
              * @description Event genre/category (AB-45c). E.g. "concert", "festival", "theatre".
              *     Tri-state PATCH: absent=keep, null=clear, value=set.
              * @example festival
@@ -24816,6 +24925,8 @@ export interface components {
              *     that moves, and stays empty for an event without a live session.
              */
             report_photos: components["schemas"]["PublicMaterialPhoto"][];
+            /** @description The photo-report text as sanitized HTML (translated when `?locale=` names a language that has it), shown after the event ended. Null when there is none or the event is not over yet. */
+            report_text_html?: string | null;
         };
         /**
          * @description Body of POST /v1/t and POST /v1/me/t, the product analytics receivers
@@ -26990,6 +27101,103 @@ export interface components {
             url?: string;
             /** @description A new seller name, 1 to 120 characters. Blank keeps the current name (or, when the address changed and the name was derived from the old one, derives it again). */
             seller_name?: string;
+        };
+        /** @description The original texts of an event, the source of its translations. */
+        ContentTranslationOriginal: {
+            /** @description The event name in the content locale. */
+            name: string;
+            /** @description The short description, null when empty. */
+            short_description: string | null;
+            /** @description The description rendered to sanitized HTML whatever its stored format, null when empty. */
+            description_html: string | null;
+            /** @description The photo-report text as sanitized HTML, null when empty. */
+            report_text_html: string | null;
+        };
+        /** @description One translation of an event's texts into one locale. */
+        ContentTranslationItem: {
+            /**
+             * @description The locale of the translation, one of `supported_locales`.
+             * @example cs
+             */
+            locale: string;
+            /** @description The translated name, null when the translation keeps the original name. The machine never fills it. */
+            name: string | null;
+            /** @description The translated short description, null when not set. */
+            short_description: string | null;
+            /** @description The translated description as sanitized HTML, null when not set. */
+            description_html: string | null;
+            /** @description The translated photo-report text as sanitized HTML, null when not set. */
+            report_text_html: string | null;
+            /**
+             * @description Who wrote it. A `manual` translation is never replaced by the machine.
+             * @enum {string}
+             */
+            source: "manual" | "machine";
+            /** @description True when the original texts changed after this translation was made; it is still served to buyers. */
+            translation_stale: boolean;
+            /**
+             * Format: date-time
+             * @description When the translation was last written.
+             */
+            updated_at: string;
+            /**
+             * Format: uuid
+             * @description The person who wrote it, null for an API key or when the person is gone.
+             */
+            updated_by: string | null;
+        };
+        /** @description The original texts of an event and its translations. */
+        ContentTranslationList: {
+            /**
+             * @description The language of the original texts, two lowercase letters.
+             * @example en
+             */
+            content_locale: string;
+            /** @description The original texts. */
+            original: components["schemas"]["ContentTranslationOriginal"];
+            /** @description Hash of the original texts now; a translation whose hash differs is stale. */
+            source_hash: string;
+            /** @description True when machine translation is switched on (the model key is set), false hides the button. */
+            machine_available: boolean;
+            /** @description Every locale a translation may be made for. */
+            supported_locales: string[];
+            /** @description The distinct union of the languages of the organization's sites (`settings.site.locales` of its sales channels), restricted to the supported locales. */
+            site_locales: string[];
+            /** @description The stored translations, ordered by locale. */
+            translations: components["schemas"]["ContentTranslationItem"][];
+        };
+        /** @description Body of PUT .../translations/{locale}. The row of the locale is replaced as a whole, an absent or blank member clears that text. */
+        PutContentTranslationRequest: {
+            /** @description The translated name, up to 200 characters. Leave empty to keep the original name. */
+            name?: string | null;
+            /** @description The translated short description, up to 500 characters. */
+            short_description?: string | null;
+            /** @description The translated description as HTML, sanitized by the rich-text description profile. */
+            description_html?: string | null;
+            /** @description The translated photo-report text as HTML, sanitized the same way. */
+            report_text_html?: string | null;
+        };
+        /** @description Body of POST .../translations/machine. */
+        MachineTranslateRequest: {
+            /** @description The locales to translate into. Each must be supported and differ from the content locale (422 `translation.invalid_locale`). */
+            locales: string[];
+        };
+        /** @description The queued machine translation. */
+        MachineTranslateAccepted: {
+            /** @description Id of the worker job `content.translate`. */
+            job_id: string;
+            /** @description The normalized, distinct locales that were queued. Locales with a manual translation are skipped by the job, not refused here. */
+            locales: string[];
+        };
+        /** @description Body of PUT .../events/{event_id}/report-text. */
+        SetEventReportTextRequest: {
+            /** @description The photo-report text of the original as HTML, sanitized by the rich-text description profile. Null or blank clears it. */
+            report_text_html?: string | null;
+        };
+        /** @description The stored photo-report text of the original. */
+        EventReportText: {
+            /** @description The sanitized text as stored, null when cleared. */
+            report_text_html: string | null;
         };
         /** @description Body of PUT .../partner-links/order. */
         EventPartnerLinkOrderRequest: {
@@ -55143,6 +55351,424 @@ export interface operations {
             };
         };
     };
+    listEventContentTranslations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The original and its translations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentTranslationList"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`translation.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    requestEventMachineTranslation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MachineTranslateRequest"];
+            };
+        };
+        responses: {
+            /** @description The job is queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MachineTranslateAccepted"];
+                };
+            };
+            /** @description Invalid body (`translation.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description An empty list, an unsupported locale or the content locale (`translation.invalid_locale`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`translation.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Machine translation is switched off (`translation.not_configured`) or the database is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putEventContentTranslation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+                /** @description A supported locale other than the content locale, for example `cs`. */
+                locale: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutContentTranslationRequest"];
+            };
+        };
+        responses: {
+            /** @description The translation as stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentTranslationItem"];
+                };
+            };
+            /** @description Invalid body (`translation.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description An unsupported locale or the content locale (`translation.invalid_locale`), or a refused text (`translation.invalid_field`, with `details.field` and `details.reason`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`translation.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteEventContentTranslation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+                /** @description The locale of the translation to remove, for example `cs`. */
+                locale: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`) or no translation for the locale (`translation.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`translation.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setEventReportText: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetEventReportTextRequest"];
+            };
+        };
+        responses: {
+            /** @description The text as stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventReportText"];
+                };
+            };
+            /** @description Invalid body (`translation.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A refused text (`translation.invalid_field`, with `details.field` and `details.reason`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`translation.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     listEventReportPhotos: {
         parameters: {
             query?: never;
@@ -67641,6 +68267,8 @@ export interface operations {
                 limit?: number;
                 /** @description Pagination offset. */
                 offset?: number;
+                /** @description Content language of the texts, for example `cs` or `de`. Events that have a translation into it are served translated; an unsupported locale or an event without a translation falls back to the original. */
+                locale?: string;
                 /**
                  * @description With `true` the answer also carries `removed_events`: every event
                  *     that left this feed token's list within the last 30 days, with a
@@ -67754,7 +68382,10 @@ export interface operations {
     };
     getPublicFeedEvent: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Content language of the texts, for example `cs` or `de`. A translation into it is served when it exists (also `materials.report_text_html`); an unsupported locale or a missing translation falls back to the original. */
+                locale?: string;
+            };
             header?: never;
             path: {
                 /** @description Opaque feed token (from `agent_feed_tokens.token`). */

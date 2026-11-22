@@ -74,14 +74,20 @@ type publicFeedEventResponse struct {
 	// DescriptionHTML and DescriptionText are the safe HTML and the plain text of
 	// Description, read with the event's format flag (spec 44, RT-03a). nil when
 	// there is no description. Description itself stays the raw stored value.
-	DescriptionHTML *string  `json:"description_html"`
-	DescriptionText *string  `json:"description_text"`
-	Status          string   `json:"status"`
-	FirstSessionAt  *string  `json:"first_session_at"`
-	LastSessionAt   *string  `json:"last_session_at"`
-	VenueNames      []string `json:"venue_names"`
-	Visibility      string   `json:"visibility"`
-	ImageURL        *string  `json:"image_url"`
+	DescriptionHTML *string `json:"description_html"`
+	DescriptionText *string `json:"description_text"`
+	// ContentLocale is the language of the text served; AvailableLocales is the
+	// original language plus the languages with a translation; TranslationStale
+	// is true when a served translation was made from another original (spec 63 §16.3).
+	ContentLocale    string   `json:"content_locale"`
+	AvailableLocales []string `json:"available_locales"`
+	TranslationStale bool     `json:"translation_stale"`
+	Status           string   `json:"status"`
+	FirstSessionAt   *string  `json:"first_session_at"`
+	LastSessionAt    *string  `json:"last_session_at"`
+	VenueNames       []string `json:"venue_names"`
+	Visibility       string   `json:"visibility"`
+	ImageURL         *string  `json:"image_url"`
 	// PosterMediaID is the event-level default poster (AB-47/AB-47c). Sessions
 	// fall back to this cover when they don't set their own poster_media_id.
 	PosterMediaID *string `json:"poster_media_id"`
@@ -697,6 +703,7 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 	}
 	h.hydrateFeedVenueNames(ctx, events)
 	h.hydrateFeedDescriptions(ctx, events)
+	h.hydrateFeedTranslations(ctx, events, requestedLocale(r))
 
 	totalPages := int(total) / perPage
 	if int(total)%perPage != 0 {
@@ -794,11 +801,13 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	var reportHTML *string
 	eventResp := h.publicFeedEventFromRow(ctx, event)
 	{
 		hydrated := []publicFeedEventResponse{eventResp}
 		h.hydrateFeedVenueNames(ctx, hydrated)
 		h.hydrateFeedDescriptions(ctx, hydrated)
+		reportHTML = h.hydrateFeedTranslations(ctx, hydrated, requestedLocale(r))[eventID]
 		eventResp = hydrated[0]
 	}
 
@@ -819,6 +828,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 		Materials:               h.loadPublicMaterials(ctx, eventID, time.Now().UTC()),
 		Venues:                  []publicVenue{},
 	}
+	detail.Materials.ReportTextHTML = reportHTML
 	if vs := h.loadPublicVenues(ctx, []uuid.UUID{eventID})[eventID]; len(vs) > 0 {
 		detail.Venues = vs
 	}
