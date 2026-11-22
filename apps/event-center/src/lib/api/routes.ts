@@ -80,6 +80,12 @@ export const API = {
   promoters: { method: "GET", path: "/v1/organizations/{org_id}/promoters" },
   promoterCreate: { method: "POST", path: "/v1/organizations/{org_id}/promoters" },
   promoterUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/promoters/{id}" },
+  // Spec 63 L-2: tours (event series).
+  seriesList: { method: "GET", path: "/v1/organizations/{org_id}/series" },
+  seriesCreate: { method: "POST", path: "/v1/organizations/{org_id}/series" },
+  seriesGet: { method: "GET", path: "/v1/organizations/{org_id}/series/{series_id}" },
+  seriesUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/series/{series_id}" },
+  seriesArchive: { method: "DELETE", path: "/v1/organizations/{org_id}/series/{series_id}" },
   // Spec 51-1: cart reminder and marketing consent.
   growthSettings: { method: "GET", path: "/v1/organizations/{org_id}/growth-settings" },
   growthSettingsUpdate: { method: "PUT", path: "/v1/organizations/{org_id}/growth-settings" },

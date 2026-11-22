@@ -49,6 +49,11 @@ function EventRow({ orgId, event, summary }: { orgId: string; event: EventItem; 
         <span className="card-meta">
           <SalesStateBadge event={event} />
           {event.status === "draft" && <Badge tone="neutral">{t("events.draft")}</Badge>}
+          {typeof event.series_name === "string" && event.series_name !== "" && (
+            <span data-testid="event-series-badge">
+              <Badge tone="neutral">{t("series.event.badge", { name: event.series_name })}</Badge>
+            </span>
+          )}
           <span>
             {date !== null
               ? t("events.next", { date: formatDate(date, nextSessionZone(summary, date), locale) })

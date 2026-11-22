@@ -418,6 +418,11 @@ export function EventScreen() {
         {event.promoter_name !== null && event.promoter_name !== undefined && (
           <span>{t("event.promoter", { name: event.promoter_name })}</span>
         )}
+        {typeof event.series_id === "string" && typeof event.series_name === "string" && event.series_name !== "" && access.can("event.read") && (
+          <Link to="/o/$orgId/series/$seriesId" params={{ orgId, seriesId: event.series_id }} data-testid="event-series-link">
+            {t("series.event.badge", { name: event.series_name })}
+          </Link>
+        )}
       </p>
 
       {!canSales && (

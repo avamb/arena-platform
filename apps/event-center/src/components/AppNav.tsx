@@ -322,6 +322,12 @@ function NavSheet({ mode, orgId, access, shopMode, orgCount, onLogout, onClose }
             {label}
           </Link>
         );
+      case "nav-series":
+        return (
+          <Link to="/o/$orgId/series" params={{ orgId }} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
       case "nav-promoters":
         return (
           <Link to="/o/$orgId/promoters" params={{ orgId }} {...item} data-testid={id}>

@@ -81,6 +81,12 @@ export type PaymentProviderConfigItem = S["PaymentProviderConfigItem"];
 export type Promoter = S["Promoter"];
 export type PromoterListEnvelope = S["PromoterListEnvelope"];
 export type PromoterEnvelope = S["PromoterEnvelope"];
+export type Series = S["Series"];
+export type SeriesDetail = S["SeriesDetail"];
+export type SeriesEventCard = S["SeriesEventCard"];
+export type SeriesListEnvelope = S["SeriesListEnvelope"];
+export type SeriesCreateRequest = S["CreateSeriesRequest"];
+export type SeriesUpdateRequest = S["UpdateSeriesRequest"];
 // 4-3: promo codes.
 export type PromoCodeItem = S["PromoCodeItem"];
 // Spec 51-1: cart reminder, marketing tick and its subscribers.
