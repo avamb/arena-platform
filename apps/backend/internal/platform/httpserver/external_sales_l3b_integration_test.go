@@ -27,7 +27,7 @@ import (
 )
 
 // l3bDo is sstDo for a platform superadmin: it adds the X-Admin-Reason header.
-func l3bDo(t *testing.T, srv *Server, method, path, token, channel, body string) (int, map[string]any) {
+func l3bDo(t *testing.T, srv *Server, method, path, token, _, body string) (int, map[string]any) {
 	t.Helper()
 	req := httptest.NewRequest(method, path, bytes.NewReader([]byte(body)))
 	req.Header.Set("Content-Type", "application/json")
