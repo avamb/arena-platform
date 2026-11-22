@@ -337,17 +337,7 @@ func (h *Handler) HandleListSeatingPlanVersions(w http.ResponseWriter, r *http.R
 		return
 	}
 	// Verify the plan exists and is visible to the caller.
-	if _, err := h.queries.GetSeatingPlanByID(ctx, planID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-				"seating_plan.not_found", "seating plan not found", r,
-			))
-			return
-		}
-		h.logger.Error("seating_plan: get for version list failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"seating_plan.get_failed", "failed to look up seating plan", r,
-		))
+	if !h.requireReadablePlan(w, r, planID, "seating_plan.not_found", "seating plan not found") {
 		return
 	}
 	rows, err := h.queries.ListSeatingPlanVersionsByPlan(ctx, planID)
@@ -371,8 +361,42 @@ func (h *Handler) HandleListSeatingPlanVersions(w http.ResponseWriter, r *http.R
 // GET /v1/seating-plans/{id}/versions/{n}
 // ─────────────────────────────────────────────────────────────────────────────
 
+// requireReadablePlan loads plan planID and reports whether the caller may
+// read it (see planReadAccess). A missing or unreadable plan answers 404 with
+// notFoundCode; a lookup failure answers 500. On false the response is
+// already written.
+func (h *Handler) requireReadablePlan(w http.ResponseWriter, r *http.Request, planID uuid.UUID, notFoundCode, notFoundMsg string) bool {
+	ctx := r.Context()
+	plan, err := h.queries.GetSeatingPlanByID(ctx, planID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(notFoundCode, notFoundMsg, r))
+			return false
+		}
+		h.logger.Error("seating_plan: plan lookup for read failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"seating_plan.get_failed", "failed to look up seating plan", r,
+		))
+		return false
+	}
+	visible, err := newPlanReadAccess(ctx, h.queries).canRead(plan)
+	if err != nil {
+		h.logger.Error("seating_plan: plan access check failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"seating_plan.get_failed", "failed to look up seating plan", r,
+		))
+		return false
+	}
+	if !visible {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(notFoundCode, notFoundMsg, r))
+		return false
+	}
+	return true
+}
+
 // HandleGetSeatingPlanVersion serves the read-one-version endpoint. `n` is a
 // 1-based positional version number scoped to the plan; not a version UUID.
+// A plan the caller may not read answers 404 seating_plan.version_not_found.
 func (h *Handler) HandleGetSeatingPlanVersion(w http.ResponseWriter, r *http.Request) {
 	if h.queries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
@@ -401,6 +425,11 @@ func (h *Handler) HandleGetSeatingPlanVersion(w http.ResponseWriter, r *http.Req
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 			"seating_plan.version_not_found", "seating plan version not found", r,
 		))
+		return
+	}
+	// A plan that does not exist or that the caller may not read has no
+	// version the caller can see.
+	if !h.requireReadablePlan(w, r, planID, "seating_plan.version_not_found", "seating plan version not found") {
 		return
 	}
 	v, err := h.queries.GetSeatingPlanVersionByNumber(ctx, planID, int32(n)) //nolint:gosec // G109 false positive: n is bounded by the math.MaxInt32 guard above

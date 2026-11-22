@@ -289,6 +289,13 @@ export interface paths {
          *     `Cache-Control: no-cache`: the seat map turns over on every
          *     reservation, so caches MUST revalidate. A matching
          *     `If-None-Match` short-circuits with 304.
+         *
+         *     The plan's decor is drawing only: scripts, embedded documents,
+         *     animations, event attributes and references outside the document
+         *     (other than embedded PNG, JPEG, GIF and WebP pictures) are left
+         *     out. The answer carries `Content-Security-Policy: default-src
+         *     'none'; img-src data:; style-src 'unsafe-inline'; font-src data:;
+         *     sandbox` and `X-Content-Type-Options: nosniff`.
          */
         get: operations["getBil24SeatingPlanImage"];
         put?: never;
@@ -3414,9 +3421,13 @@ export interface paths {
         };
         /**
          * List seating plans attached to a venue
-         * @description Returns every non-deleted seating plan whose venue_id matches the
-         *     path parameter, newest first. Requires JWT authentication and the
-         *     seating_plan.read permission on the seating scope.
+         * @description Returns the non-deleted seating plans whose venue_id matches the
+         *     path parameter, newest first, that the caller may read: every plan
+         *     whose visibility is not private, and the private plans of the
+         *     caller's own organizations (an organization API key reads those of
+         *     its organization). A platform superadmin reads every plan. Requires
+         *     JWT authentication and the seating_plan.read permission on the
+         *     seating scope.
          */
         get: operations["listSeatingPlansByVenue"];
         put?: never;
@@ -3443,8 +3454,10 @@ export interface paths {
         };
         /**
          * Get a single seating plan by ID
-         * @description Returns a single active seating plan regardless of owning organization.
-         *     Requires JWT authentication and the seating_plan.read permission.
+         * @description Returns a single seating plan. A private plan is read only by its
+         *     owner organization and by a platform superadmin; for any other
+         *     caller it answers 404 seating_plan.not_found. Requires JWT
+         *     authentication and the seating_plan.read permission.
          */
         get: operations["getSeatingPlan"];
         put?: never;
@@ -3621,7 +3634,10 @@ export interface paths {
          *     (version_number descending), so the admin drawer can render a version
          *     history table. The plan's current version is identified by matching
          *     each row's `id` against the parent plan's `current_version_id`.
-         *     Requires JWT authentication and the seating_plan.read permission.
+         *     A private plan is read only by its owner organization and by a
+         *     platform superadmin; for any other caller it answers 404
+         *     seating_plan.not_found. Requires JWT authentication and the
+         *     seating_plan.read permission.
          */
         get: operations["listSeatingPlanVersions"];
         put?: never;
@@ -3659,8 +3675,11 @@ export interface paths {
         /**
          * Get a single seating plan version by positional version number
          * @description Reads a single seating_plan_versions row identified by its plan-scoped
-         *     1-based version_number (not the version UUID). Requires JWT
-         *     authentication and the seating_plan.read permission.
+         *     1-based version_number (not the version UUID). A version of a
+         *     private plan is read only by the plan's owner organization and by a
+         *     platform superadmin; for any other caller it answers 404
+         *     seating_plan.version_not_found. Requires JWT authentication and the
+         *     seating_plan.read permission.
          */
         get: operations["getSeatingPlanVersion"];
         put?: never;
@@ -3831,6 +3850,13 @@ export interface paths {
          *     every reservation, so edge caches MUST NOT store the payload
          *     without revalidation. Matching `If-None-Match` short-circuits
          *     with a 304.
+         *
+         *     The plan's decor is drawing only: scripts, embedded documents,
+         *     animations, event attributes and references outside the document
+         *     (other than embedded PNG, JPEG, GIF and WebP pictures) are left
+         *     out. The answer carries `Content-Security-Policy: default-src
+         *     'none'; img-src data:; style-src 'unsafe-inline'; font-src data:;
+         *     sandbox` and `X-Content-Type-Options: nosniff`.
          */
         get: operations["getPublicSessionLayoutSVG"];
         put?: never;

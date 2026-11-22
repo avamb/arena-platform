@@ -52,6 +52,7 @@ package hseating
 import (
 	"bytes"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -155,11 +156,14 @@ func RenderSBT10SVG(
 	buf.WriteString(`  </metadata>` + "\n")
 
 	// ── <g id="Decor">: backdrop + GA zones, never reservable ───────────
-	decor := strings.TrimSpace(g.DecorSVG)
+	// Stored decor is read back through the decor writer, so it holds
+	// drawing only (see seating.SanitizeDecorSVG).
+	decorSVG := seating.SanitizeDecorSVG(g.DecorSVG)
+	decor := strings.TrimSpace(decorSVG)
 	gaZones := gaZonePolygons(sortedCats)
 	if decor != "" || gaZones != "" {
 		buf.WriteString(`  <g id="Decor">`)
-		buf.WriteString(g.DecorSVG)
+		buf.WriteString(decorSVG)
 		buf.WriteString(gaZones)
 		buf.WriteString(`</g>` + "\n")
 	}
@@ -331,3 +335,17 @@ const SBT10CacheControl = layoutSVGCacheControl
 // charset is explicit because the plan carries section / row names in UTF-8
 // and some proxies otherwise guess latin-1.
 const SBT10ContentType = "image/svg+xml; charset=utf-8"
+
+// PlanSVGContentSecurityPolicy is the Content-Security-Policy of every
+// seating-plan SVG answer: the document loads nothing, runs nothing and is
+// sandboxed even when it is opened as a page. Inline styles and data: images
+// and fonts stay allowed because a plan's decor uses them.
+const PlanSVGContentSecurityPolicy = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; sandbox"
+
+// SetPlanSVGHeaders sets the content type, the Content-Security-Policy and
+// nosniff of a seating-plan SVG answer.
+func SetPlanSVGHeaders(h http.Header) {
+	h.Set("Content-Type", SBT10ContentType)
+	h.Set("Content-Security-Policy", PlanSVGContentSecurityPolicy)
+	h.Set("X-Content-Type-Options", "nosniff")
+}
