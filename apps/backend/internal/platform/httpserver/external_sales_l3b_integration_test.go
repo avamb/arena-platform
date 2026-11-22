@@ -12,8 +12,11 @@
 package httpserver
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -22,6 +25,22 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 )
+
+// l3bDo is sstDo for a platform superadmin: it adds the X-Admin-Reason header.
+func l3bDo(t *testing.T, srv *Server, method, path, token, channel, body string) (int, map[string]any) {
+	t.Helper()
+	req := httptest.NewRequest(method, path, bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("X-Admin-Reason", "L3 integration test")
+	}
+	rec := httptest.NewRecorder()
+	srv.router.ServeHTTP(rec, req)
+	out := map[string]any{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	return rec.Code, out
+}
 
 func l3bErrCode(out map[string]any) string {
 	e, _ := out["error"].(map[string]any)
@@ -43,6 +62,12 @@ func TestL3b_SessionSalesMode_APIAndFeed(t *testing.T) {
 	if _, err := q.InsertMembership(ctx, user.ID, f.orgID, "organizer"); err != nil {
 		t.Fatalf("InsertMembership: %v", err)
 	}
+	// session.create is held by an administrator role, not by the plain
+	// membership: grant the platform superadmin role to the caller.
+	if _, err := pool.Exec(ctx, `INSERT INTO user_roles (user_id, role_id, org_id)
+		SELECT $1, id, NULL FROM roles WHERE name = 'platform_superadmin' AND org_id IS NULL`, user.ID); err != nil {
+		t.Fatalf("grant superadmin: %v", err)
+	}
 	token, _, err := auth.IssueJWT(secret, user.ID, nil, nil, "arena-api", "arena-api", time.Hour)
 	if err != nil {
 		t.Fatalf("IssueJWT: %v", err)
@@ -58,6 +83,7 @@ func TestL3b_SessionSalesMode_APIAndFeed(t *testing.T) {
 			{`DELETE FROM sessions WHERE event_id = $1 AND id <> $2`, []any{f.eventID, f.sessionID}},
 			{`UPDATE sessions SET deleted_at = NULL WHERE id = $1`, []any{f.sessionID}},
 			{`DELETE FROM memberships WHERE org_id = $1`, []any{f.orgID}},
+			{`DELETE FROM user_roles WHERE user_id = $1`, []any{user.ID}},
 			{`DELETE FROM users WHERE id = $1`, []any{user.ID}},
 		} {
 			if _, err := pool.Exec(ctx, s.sql, s.args...); err != nil {
@@ -76,7 +102,7 @@ func TestL3b_SessionSalesMode_APIAndFeed(t *testing.T) {
 	const goodExternal = `,"sales_mode":"external","external":{"url":"https://www.eventim.de/event/77","seller_name":"Eventim","price_from":39.5,"currency":"EUR"}`
 
 	// The fixture session owns a tier: it cannot be handed to a partner.
-	st, out := sstDo(t, srv, http.MethodPatch, base+"/"+f.sessionID.String(), token, "",
+	st, out := l3bDo(t, srv, http.MethodPatch, base+"/"+f.sessionID.String(), token, "",
 		`{"sales_mode":"external","external":{"url":"https://www.eventim.de/event/1","seller_name":"Eventim"}}`)
 	if st != http.StatusConflict || l3bErrCode(out) != "session.sales_mode_locked" {
 		t.Fatalf("PATCH to external on a session with a tier = %d %v, want 409 session.sales_mode_locked", st, out)
@@ -92,17 +118,17 @@ func TestL3b_SessionSalesMode_APIAndFeed(t *testing.T) {
 		"no block":          `,"sales_mode":"external"`,
 		"block on platform": `,"external":{"url":"https://www.eventim.de/x","seller_name":"E"}`,
 	} {
-		if st, out := sstDo(t, srv, http.MethodPost, base, token, "", createBody(extra)); st != http.StatusUnprocessableEntity {
+		if st, out := l3bDo(t, srv, http.MethodPost, base, token, "", createBody(extra)); st != http.StatusUnprocessableEntity {
 			t.Errorf("%s: POST = %d %v, want 422", name, st, out)
 		}
 	}
-	if st, out := sstDo(t, srv, http.MethodPost, base, token, "", createBody(`,"sales_mode":"partner"`)); st != http.StatusBadRequest ||
+	if st, out := l3bDo(t, srv, http.MethodPost, base, token, "", createBody(`,"sales_mode":"partner"`)); st != http.StatusBadRequest ||
 		l3bErrCode(out) != "session.invalid_sales_mode" {
 		t.Errorf("unknown mode: POST = %d %v, want 400 session.invalid_sales_mode", st, out)
 	}
 
 	// Create a partner-sold session.
-	st, out = sstDo(t, srv, http.MethodPost, base, token, "", createBody(goodExternal))
+	st, out = l3bDo(t, srv, http.MethodPost, base, token, "", createBody(goodExternal))
 	if st != http.StatusCreated {
 		t.Fatalf("POST external session = %d %v", st, out)
 	}
@@ -115,7 +141,7 @@ func TestL3b_SessionSalesMode_APIAndFeed(t *testing.T) {
 	}
 
 	// It owns no tiers.
-	st, out = sstDo(t, srv, http.MethodPost, base+"/"+extID+"/tiers", token, "",
+	st, out = l3bDo(t, srv, http.MethodPost, base+"/"+extID+"/tiers", token, "",
 		`{"name":"General","pricing_mode":"fixed","price_amount":1000,"capacity":10}`)
 	if st != http.StatusConflict || l3bErrCode(out) != "session.sold_externally" {
 		t.Fatalf("POST tier on an external session = %d %v, want 409 session.sold_externally", st, out)
@@ -124,7 +150,7 @@ func TestL3b_SessionSalesMode_APIAndFeed(t *testing.T) {
 	// The feed: the partner block, state "external", no tiers.
 	feedSession := func(id string) map[string]any {
 		t.Helper()
-		st, out := sstDo(t, srv, http.MethodGet, "/v1/public/feeds/"+f.feedToken+"/events/"+f.eventID.String(), "", "", "")
+		st, out := l3bDo(t, srv, http.MethodGet, "/v1/public/feeds/"+f.feedToken+"/events/"+f.eventID.String(), "", "", "")
 		if st != http.StatusOK {
 			t.Fatalf("public feed = %d %v", st, out)
 		}
@@ -155,7 +181,7 @@ func TestL3b_SessionSalesMode_APIAndFeed(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE sessions SET deleted_at = now() WHERE id = $1`, f.sessionID); err != nil {
 		t.Fatalf("withdraw the platform session: %v", err)
 	}
-	st, out = sstDo(t, srv, http.MethodGet, "/v1/public/feeds/"+f.feedToken+"/events", "", "", "")
+	st, out = l3bDo(t, srv, http.MethodGet, "/v1/public/feeds/"+f.feedToken+"/events", "", "", "")
 	if st != http.StatusOK {
 		t.Fatalf("feed list = %d %v", st, out)
 	}
@@ -171,18 +197,18 @@ func TestL3b_SessionSalesMode_APIAndFeed(t *testing.T) {
 	}
 
 	// Back to the platform while it owns nothing; then to a partner again.
-	st, out = sstDo(t, srv, http.MethodPatch, base+"/"+extID, token, "", `{"sales_mode":"platform"}`)
+	st, out = l3bDo(t, srv, http.MethodPatch, base+"/"+extID, token, "", `{"sales_mode":"platform"}`)
 	if sess, _ := out["session"].(map[string]any); st != http.StatusOK || sess["sales_mode"] != "platform" || sess["external"] != nil {
 		t.Fatalf("PATCH to platform = %d %v", st, out)
 	}
-	st, out = sstDo(t, srv, http.MethodPatch, base+"/"+extID, token, "",
+	st, out = l3bDo(t, srv, http.MethodPatch, base+"/"+extID, token, "",
 		`{"sales_mode":"external","external":{"url":"https://tickets.example.cz/x","seller_name":"Ticketportal"}}`)
 	if sess, _ := out["session"].(map[string]any); st != http.StatusOK || sess["sales_mode"] != "external" {
 		t.Fatalf("PATCH back to external = %d %v", st, out)
 	}
 
 	// An order or a hold blocks the hand-over: put a hold on a platform session.
-	st, out = sstDo(t, srv, http.MethodPatch, base+"/"+extID, token, "", `{"sales_mode":"platform"}`)
+	st, out = l3bDo(t, srv, http.MethodPatch, base+"/"+extID, token, "", `{"sales_mode":"platform"}`)
 	if st != http.StatusOK {
 		t.Fatalf("PATCH to platform (2) = %d %v", st, out)
 	}
@@ -191,7 +217,7 @@ func TestL3b_SessionSalesMode_APIAndFeed(t *testing.T) {
 		uuid.New(), f.orgID, f.channelID, extID); err != nil {
 		t.Fatalf("insert a hold: %v", err)
 	}
-	st, out = sstDo(t, srv, http.MethodPatch, base+"/"+extID, token, "",
+	st, out = l3bDo(t, srv, http.MethodPatch, base+"/"+extID, token, "",
 		`{"sales_mode":"external","external":{"url":"https://tickets.example.cz/x","seller_name":"Ticketportal"}}`)
 	if st != http.StatusConflict || l3bErrCode(out) != "session.sales_mode_locked" {
 		t.Fatalf("PATCH to external with a hold = %d %v, want 409 session.sales_mode_locked", st, out)
