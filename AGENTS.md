@@ -571,6 +571,7 @@ Order lists and cards, resend, invitations (bot and web), MACS and door scan eve
 * POST /v1/scanner/scan-events (feed-token scan uploa…
 * The guest list's reason for a replaced ticket follows ticket_reissues.reason
 * The flat barcode and scanner routes (/v1/scan, /v1/scanner/snapshot|validate, /v1/barcodes, /v1/barcodes/{id}) are retired (2026-11-21)
+* Barcode authorities and batches are for a platform superadmin only (403 barcode.superadmin_only), one authority per type (0218); a scan upload resolves only tickets of the token's organization
 
 ### [Web event center: foundations](docs/agents/web-event-center-core.md)
 
