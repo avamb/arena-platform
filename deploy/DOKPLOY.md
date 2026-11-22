@@ -343,6 +343,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `EVENT_CENTER_PUBLIC_URL` (`https://` when set) | ● | ● | ● | — |
 | `BOT_SCHEME_BUTTON` (`off` default, `url` or `web_app`: the «Схема» button on the card of a seated date; needs `EVENT_CENTER_PUBLIC_URL` on the bot; turn it on only after the `/tg` screen of the event center is live; `web_app` opens `<EVENT_CENTER_PUBLIC_URL>/tg?next=<seats path>` and also needs `POST /v1/auth/telegram-miniapp` with `TELEGRAM_MINIAPP_SECRET_KEY` on the API) | — | — | ● | — |
 | `PUBLIC_TICKETS_BASE_URL` | ● | ● | ● | — |
+| `STRIPE_WALLET_DOMAINS` (comma-separated hosts registered as Apple Pay and Google Pay domains in each organization's Stripe account; empty = the host of `PUBLIC_TICKETS_BASE_URL`) | ● | ● | — | — |
 | `SHOP_PUBLIC_BASE_URL` (`https://` when set, the platform storefront origin; the shop order e-mail links `<this>/<org slug>/checkout/<token>` for an organization without its own `shop_domain`; empty = no status link) | — | ● | — | — |
 | `SHOP_DELIVERY_BUTTONS_ENABLED` (`true` sends the delivery group's order card with the step buttons, spec 61 section 7b; default off = a plain text message as before the buttons. Turn it on only when `arena-bot` runs with `SALES_TELEGRAM_BOT_TOKEN` and `BOT_SERVICE_TOKEN`, they are what receive the presses) | — | ● | — | — |
 | `SHORT_LINK_BASE_URL` (`https://`, host only, default `https://go.arenasoldout.com`, the host printed under a QR code; setup: `docs/ops/sales_links_ru.md`) | ● | — | — | — |

@@ -212,6 +212,13 @@ type Config struct {
 	// carry a valid return_url is refused with checkout.invalid_return_url.
 	PublicTicketsBaseURL string `env:"PUBLIC_TICKETS_BASE_URL" required:"false" default:""`
 
+	// StripeWalletDomains are the platform hosts registered as Payment method
+	// domains in every organization's Stripe account, so Apple Pay and Google
+	// Pay show on them (spec 65 section 5). STRIPE_WALLET_DOMAINS, comma
+	// separated hosts. Empty falls back to the host of PUBLIC_TICKETS_BASE_URL
+	// (see WalletPlatformDomains). Each subdomain is its own entry.
+	StripeWalletDomains []string `env:"STRIPE_WALLET_DOMAINS" required:"false" default:""`
+
 	// ShopPublicBaseURL is the platform's storefront origin for the
 	// merchandise shop (e.g. https://shop.arenasoldout.com). A shop order's
 	// e-mail links its status page as <this>/<organization slug>/checkout/<token>
@@ -818,6 +825,51 @@ func (c *Config) ShortLinkFallback() string {
 	return ""
 }
 
+// parseHostList splits a comma-separated list of hosts: lower-cased, trimmed,
+// a scheme or path tolerated and dropped, duplicates removed, order kept.
+func parseHostList(raw string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, part := range strings.Split(raw, ",") {
+		h := hostOf(part)
+		if h == "" || seen[h] {
+			continue
+		}
+		seen[h] = true
+		out = append(out, h)
+	}
+	return out
+}
+
+// hostOf returns the lower-case host (no port) of a URL or a bare host, or "".
+func hostOf(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return ""
+	}
+	if !strings.Contains(s, "://") {
+		s = "https://" + s
+	}
+	u, err := url.Parse(s)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
+}
+
+// WalletPlatformDomains returns the platform hosts to register for wallets in
+// each organization's Stripe account: STRIPE_WALLET_DOMAINS when set,
+// otherwise the host of PUBLIC_TICKETS_BASE_URL, otherwise none.
+func (c *Config) WalletPlatformDomains() []string {
+	if len(c.StripeWalletDomains) > 0 {
+		return append([]string(nil), c.StripeWalletDomains...)
+	}
+	if h := hostOf(c.PublicTicketsBaseURL); h != "" {
+		return []string{h}
+	}
+	return nil
+}
+
 // APIPublicBaseURL returns the canonical public origin of the HTTP API with
 // any trailing slash removed: API_PUBLIC_URL when set, otherwise the
 // APP_PUBLIC_URL fallback for single-host deployments, otherwise "".
@@ -1095,6 +1147,7 @@ func LoadFor(role Role) (*Config, error) {
 	// PUBLIC_TICKETS_BASE_URL / WIDGET_PAYMENT_WINDOW_SECONDS /
 	// WIDGET_PAYMENT_GRACE_SECONDS — widget hosted-payment redirect flow.
 	cfg.PublicTicketsBaseURL = strings.TrimRight(strings.TrimSpace(getenv("PUBLIC_TICKETS_BASE_URL", "")), "/")
+	cfg.StripeWalletDomains = parseHostList(getenv("STRIPE_WALLET_DOMAINS", ""))
 	cfg.ShopPublicBaseURL = strings.TrimRight(strings.TrimSpace(getenv("SHOP_PUBLIC_BASE_URL", "")), "/")
 	cfg.ShortLinkBaseURL = strings.TrimRight(strings.TrimSpace(getenv("SHORT_LINK_BASE_URL", "https://go.arenasoldout.com")), "/")
 	cfg.ShortLinkFallbackURL = strings.TrimRight(strings.TrimSpace(getenv("SHORT_LINK_FALLBACK_URL", "")), "/")
