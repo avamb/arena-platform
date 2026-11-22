@@ -7466,3 +7466,51 @@ other = "See the settings of your shop."
 
 ["bot.hp.i.sh.web"]
 other = "Open the shop in the browser."
+
+["bot.ser.wz_ask"]
+other = "Is this event part of a tour? A tour groups events under one name, for example shows in different cities. Choose a tour or skip this step."
+
+["bot.ser.wz_label"]
+other = "Tour"
+
+["bot.ser.warn_not_linked"]
+other = "The event is created, but it could not be added to the tour. Add the tour on the event card."
+
+["bot.ser.event_line"]
+other = "🧭 Tour: <b>{{.Name}}</b>"
+
+["bot.ser.event_btn"]
+other = "🧭 Tour"
+
+["bot.ser.list_now"]
+other = "🧭 Tour of this event: <b>{{.Name}}</b>"
+
+["bot.ser.list_none_now"]
+other = "🧭 This event is not in any tour."
+
+["bot.ser.list_hint"]
+other = "Press a tour to add this event to it."
+
+["bot.ser.empty"]
+other = "There are no tours yet. Create a tour in the web event center and it will appear here."
+
+["bot.ser.unbind_btn"]
+other = "Remove from tour"
+
+["bot.ser.back_btn"]
+other = "‹ To the event"
+
+["bot.ser.saved"]
+other = "The event is added to the tour \"{{.Name}}\"."
+
+["bot.ser.unbound"]
+other = "The event is removed from the tour."
+
+["bot.ser.refused"]
+other = "This tour is not available: it is archived or deleted. Here is the list as it is now."
+
+["bot.ser.gone"]
+other = "This tour is no longer in the list. Here is the list as it is now."
+
+["bot.hp.i.ge.series"]
+other = "Adds the event to a tour or removes it from a tour."

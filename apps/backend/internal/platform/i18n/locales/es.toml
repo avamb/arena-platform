@@ -7293,3 +7293,51 @@ other = "Muestra los ajustes de tu tienda."
 
 ["bot.hp.i.sh.web"]
 other = "Abre la tienda en el navegador."
+
+["bot.ser.wz_ask"]
+other = "¿Este evento forma parte de una gira? Una gira agrupa eventos con un nombre común, por ejemplo funciones en distintas ciudades. Elija una gira u omita este paso."
+
+["bot.ser.wz_label"]
+other = "Gira"
+
+["bot.ser.warn_not_linked"]
+other = "El evento está creado, pero no se pudo añadir a la gira. Añada la gira en la ficha del evento."
+
+["bot.ser.event_line"]
+other = "🧭 Gira: <b>{{.Name}}</b>"
+
+["bot.ser.event_btn"]
+other = "🧭 Gira"
+
+["bot.ser.list_now"]
+other = "🧭 Gira de este evento: <b>{{.Name}}</b>"
+
+["bot.ser.list_none_now"]
+other = "🧭 Este evento no está en ninguna gira."
+
+["bot.ser.list_hint"]
+other = "Pulse una gira para añadir este evento a ella."
+
+["bot.ser.empty"]
+other = "Todavía no hay giras. Cree una gira en el centro web de eventos y aparecerá aquí."
+
+["bot.ser.unbind_btn"]
+other = "Quitar de la gira"
+
+["bot.ser.back_btn"]
+other = "‹ Al evento"
+
+["bot.ser.saved"]
+other = "El evento se ha añadido a la gira «{{.Name}}»."
+
+["bot.ser.unbound"]
+other = "El evento se ha quitado de la gira."
+
+["bot.ser.refused"]
+other = "Esta gira no está disponible: está archivada o eliminada. Aquí tiene la lista tal como es ahora."
+
+["bot.ser.gone"]
+other = "Esta gira ya no está en la lista. Aquí tiene la lista tal como es ahora."
+
+["bot.hp.i.ge.series"]
+other = "Añade el evento a una gira o lo quita de ella."

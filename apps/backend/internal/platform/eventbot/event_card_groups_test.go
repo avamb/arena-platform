@@ -244,8 +244,8 @@ func TestCardGroupRows(t *testing.T) {
 	unknown := cardFacts{Status: "published", SalesState: "on_sale"} // no summary
 
 	salesBase := []string{"ec:es:" + e, "or:e:" + e, "ec:gl:" + e, "ec:ce:" + e}
-	editFull := []string{"wz:edit:" + e, "ses:list:" + e, "ct:e:" + e, "ec:mt:" + e, "sample:" + e, "tf:n:" + e, "pr:ev:" + e}
-	editMulti := []string{"wz:edit:" + e, "ses:list:" + e, "ec:mt:" + e, "sample:" + e, "tf:n:" + e, "pr:ev:" + e}
+	editFull := []string{"wz:edit:" + e, "ses:list:" + e, "ct:e:" + e, "ec:mt:" + e, "sample:" + e, "tf:n:" + e, "pr:ev:" + e, "sr:e:" + e}
+	editMulti := []string{"wz:edit:" + e, "ses:list:" + e, "ec:mt:" + e, "sample:" + e, "tf:n:" + e, "pr:ev:" + e, "sr:e:" + e}
 	promo := []string{"pm:l:" + e, "iv:e:" + e, "ql:e:" + e, "rf:o:" + e}
 
 	cases := []struct {

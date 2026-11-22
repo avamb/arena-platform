@@ -298,6 +298,7 @@ func (w *Wizard) Save(ctx context.Context, io SaveIO, ws WizSession, d *Draft, d
 			d.Saved.ActionID = res.CompatIDs.ActionID
 			d.Saved.EventID = res.EventID
 		}
+		w.linkNewEventSeries(ctx, io, ws, d) // the tour of a new event (L-2)
 		if d.Mode == ModeEdit {
 			// A date added to an existing event now has an id of its own; a
 			// later retry re-sends it by that id, never under a second key.
