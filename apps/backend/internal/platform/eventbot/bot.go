@@ -708,6 +708,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.sessionsCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ses:"))
 	case "tf":
 		b.tfCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "tf:"))
+	case "tr":
+		b.trCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "tr:"))
 	case "team":
 		b.teamCallback(ctx, chatID, msgID, from, strings.TrimPrefix(strings.TrimPrefix(cq.Data, "team"), ":"))
 	}

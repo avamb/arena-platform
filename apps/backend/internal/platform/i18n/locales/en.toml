@@ -7466,3 +7466,84 @@ other = "See the settings of your shop."
 
 ["bot.hp.i.sh.web"]
 other = "Open the shop in the browser."
+
+["bot.tr.btn"]
+other = "🌐 Translations"
+
+["bot.tr.list_title"]
+other = "<b>Translations</b> · {{.Name}}"
+
+["bot.tr.list_about"]
+other = "Pick a language to read its translation of the description or to send your own. A text you send is never replaced by the machine."
+
+["bot.tr.lang_btn"]
+other = "{{.Lang}} · {{.State}}"
+
+["bot.tr.lang_label"]
+other = "Language"
+
+["bot.tr.state_none"]
+other = "none"
+
+["bot.tr.state_manual"]
+other = "written by you"
+
+["bot.tr.state_machine"]
+other = "machine"
+
+["bot.tr.state_manual_stale"]
+other = "yours, outdated"
+
+["bot.tr.state_machine_stale"]
+other = "machine, outdated"
+
+["bot.tr.machine_btn"]
+other = "🤖 Translate by machine"
+
+["bot.tr.machine_queued"]
+other = "Done. The machine translates into: {{.Langs}}. The texts appear in a few minutes. A text you wrote is never replaced."
+
+["bot.tr.machine_none"]
+other = "Every language has a translation already. The machine never replaces a text you wrote."
+
+["bot.tr.machine_off"]
+other = "Machine translation is off now. You can write a translation yourself."
+
+["bot.tr.machine_failed"]
+other = "We could not start the machine translation. Try again in a minute."
+
+["bot.tr.lang_title"]
+other = "<b>{{.Lang}}</b> · {{.Name}}"
+
+["bot.tr.lang_current"]
+other = "Translation now:\n\n{{.Text}}"
+
+["bot.tr.lang_original"]
+other = "There is no translation yet. The original text:\n\n{{.Text}}"
+
+["bot.tr.lang_empty"]
+other = "The event has no description yet, so there is nothing to translate."
+
+["bot.tr.lang_ask"]
+other = "Send your translation of the description as a message. I save it as your own text. The machine never replaces it."
+
+["bot.tr.to_list_btn"]
+other = "Languages"
+
+["bot.tr.saved"]
+other = "Done, the translation into {{.Lang}} is saved."
+
+["bot.tr.save_failed"]
+other = "We could not save the translation. Send the text again."
+
+["bot.tr.expired"]
+other = "The time for this answer is over. Open the language again."
+
+["bot.hp.i.ge.translations"]
+other = "Opens the languages of the event page. You write the translation of the description there."
+
+["bot.hp.i.tr.lang"]
+other = "Shows the translation of this language and takes your own text."
+
+["bot.hp.i.tr.machine"]
+other = "Translates the languages that have no translation. Your own texts stay as they are."

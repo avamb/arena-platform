@@ -7293,3 +7293,84 @@ other = "Muestra los ajustes de tu tienda."
 
 ["bot.hp.i.sh.web"]
 other = "Abre la tienda en el navegador."
+
+["bot.tr.btn"]
+other = "🌐 Traducciones"
+
+["bot.tr.list_title"]
+other = "<b>Traducciones</b> · {{.Name}}"
+
+["bot.tr.list_about"]
+other = "Elige un idioma para leer su traducción de la descripción o para enviar la tuya. La máquina nunca sustituye un texto que envíes."
+
+["bot.tr.lang_btn"]
+other = "{{.Lang}} · {{.State}}"
+
+["bot.tr.lang_label"]
+other = "Idioma"
+
+["bot.tr.state_none"]
+other = "no hay"
+
+["bot.tr.state_manual"]
+other = "manual"
+
+["bot.tr.state_machine"]
+other = "automática"
+
+["bot.tr.state_manual_stale"]
+other = "manual, desactualizada"
+
+["bot.tr.state_machine_stale"]
+other = "automática, desactualizada"
+
+["bot.tr.machine_btn"]
+other = "🤖 Traducir con la máquina"
+
+["bot.tr.machine_queued"]
+other = "Listo. La máquina traduce a estos idiomas: {{.Langs}}. Los textos aparecen en unos minutos. Un texto que escribiste nunca se sustituye."
+
+["bot.tr.machine_none"]
+other = "Todos los idiomas ya tienen traducción. La máquina nunca sustituye un texto que escribiste."
+
+["bot.tr.machine_off"]
+other = "La traducción automática está desactivada ahora. Puedes escribir la traducción tú mismo."
+
+["bot.tr.machine_failed"]
+other = "No pudimos iniciar la traducción automática. Inténtalo de nuevo en un minuto."
+
+["bot.tr.lang_title"]
+other = "<b>{{.Lang}}</b> · {{.Name}}"
+
+["bot.tr.lang_current"]
+other = "La traducción actual:\n\n{{.Text}}"
+
+["bot.tr.lang_original"]
+other = "Todavía no hay traducción. El texto original:\n\n{{.Text}}"
+
+["bot.tr.lang_empty"]
+other = "El evento todavía no tiene descripción, así que no hay nada que traducir."
+
+["bot.tr.lang_ask"]
+other = "Envía tu traducción de la descripción en un mensaje. La guardo como tu propio texto. La máquina nunca lo sustituye."
+
+["bot.tr.to_list_btn"]
+other = "Idiomas"
+
+["bot.tr.saved"]
+other = "Listo, la traducción al idioma «{{.Lang}}» está guardada."
+
+["bot.tr.save_failed"]
+other = "No pudimos guardar la traducción. Envía el texto otra vez."
+
+["bot.tr.expired"]
+other = "Se acabó el tiempo para esta respuesta. Abre el idioma de nuevo."
+
+["bot.hp.i.ge.translations"]
+other = "Abre los idiomas de la página del evento. Allí escribes la traducción de la descripción."
+
+["bot.hp.i.tr.lang"]
+other = "Muestra la traducción a este idioma y recibe tu propio texto."
+
+["bot.hp.i.tr.machine"]
+other = "Traduce los idiomas que no tienen traducción. Tus textos se quedan como están."

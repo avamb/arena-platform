@@ -251,6 +251,9 @@ func (b *Bot) cardGroupItems(loc string, id *Identity, eventID uuid.UUID, group 
 		if canViewSales(id) { // the owner, the manager and the operator write the text of the e-mail (RT-06)
 			items.add("ge.text", b.mnBtn(loc, "bot.tf.event_btn", "tf:n:"+ev))
 		}
+		if canViewSales(id) { // the same people write the translations (lane L1)
+			items.add("ge.translations", b.mnBtn(loc, "bot.tr.btn", trData("l", eventID)))
+		}
 		items.add("ge.promoter", b.promoterEventRow(loc, id, eventID))
 	case cardGroupPromo:
 		items.add("gp.promo", b.promoEventRow(loc, id, eventID))
