@@ -85,6 +85,10 @@ func (h *Handler) HandleCreateSeatingPlanVersion(w http.ResponseWriter, r *http.
 			))
 			return
 		}
+		// Decor sent as JSON goes through the same decor writer as an
+		// imported SVG, so the stored decor and its checksum hold drawing
+		// only.
+		g.DecorSVG = seating.SanitizeDecorSVG(g.DecorSVG)
 		geometry = seating.Canonicalize(g)
 	}
 

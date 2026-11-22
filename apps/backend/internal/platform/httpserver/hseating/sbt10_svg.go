@@ -158,7 +158,7 @@ func RenderSBT10SVG(
 	// ── <g id="Decor">: backdrop + GA zones, never reservable ───────────
 	// Stored decor is read back through the decor writer, so it holds
 	// drawing only (see seating.SanitizeDecorSVG).
-	decorSVG := seating.SanitizeDecorSVG(g.DecorSVG)
+	decorSVG := sanitizeDecorCached(g.DecorSVG)
 	decor := strings.TrimSpace(decorSVG)
 	gaZones := gaZonePolygons(sortedCats)
 	if decor != "" || gaZones != "" {

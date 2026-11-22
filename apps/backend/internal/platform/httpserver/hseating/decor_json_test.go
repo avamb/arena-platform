@@ -3,6 +3,7 @@ package hseating
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -40,6 +41,28 @@ func TestSanitizedGeometryJSON_DropsCode(t *testing.T) {
 	}
 	if out.Canvas["width"] != float64(1) {
 		t.Fatalf("canvas lost: %v", out.Canvas)
+	}
+}
+
+func TestSanitizeDecorCached(t *testing.T) {
+	t.Parallel()
+	for i := 0; i < 3; i++ {
+		if got := sanitizeDecorCached(decorWithCode); got != decorDrawingOnly {
+			t.Fatalf("round %d: %q, want %q", i, got, decorDrawingOnly)
+		}
+		if got := sanitizeDecorCached(decorDrawingOnly); got != decorDrawingOnly {
+			t.Fatalf("round %d: drawing-only decor changed to %q", i, got)
+		}
+	}
+	// The cache stays bounded however many distinct decors pass through.
+	for i := 0; i < decorCacheMaxEntries+10; i++ {
+		_ = sanitizeDecorCached(`<rect width="` + strconv.Itoa(i) + `" onclick="x()"/>`)
+	}
+	decorCache.mu.Lock()
+	n, size := len(decorCache.entries), decorCache.bytes
+	decorCache.mu.Unlock()
+	if n > decorCacheMaxEntries || size > decorCacheMaxBytes {
+		t.Fatalf("cache holds %d entries, %d bytes", n, size)
 	}
 }
 

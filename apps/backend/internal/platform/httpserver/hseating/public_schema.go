@@ -192,7 +192,7 @@ func (h *Handler) serveSessionSchema(w http.ResponseWriter, r *http.Request, adm
 		"geometry_checksum":       schemaRow.GeometryChecksum,
 		"capacity_seated":         schemaRow.CapacitySeated,
 		"capacity_standing":       schemaRow.CapacityStanding,
-		"geometry":                sanitizedGeometryJSON(json.RawMessage(schemaRow.Geometry)),
+		"geometry":                sanitizedGeometryJSONWithDecor(json.RawMessage(schemaRow.Geometry), geom.DecorSVG),
 		"category_prices":         categories,
 		// S1a: per-seat truth. seat_category_index maps seat_key to the
 		// category index (a category_prices or extra_categories entry)

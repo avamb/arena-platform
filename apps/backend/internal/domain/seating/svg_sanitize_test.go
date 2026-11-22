@@ -20,11 +20,25 @@ func TestSanitizeDecorSVG_Rules(t *testing.T) {
 		{"iframe", `<iframe src="x"/><rect/>`, `<rect/>`},
 		{"embed", `<embed src="x"/><rect/>`, `<rect/>`},
 		{"object", `<object data="x"/><rect/>`, `<rect/>`},
-		{"set", `<a href="#a"><set attributeName="href" to="x"/></a>`, `<a href="#a"></a>`},
+		{"set", `<g><set attributeName="href" to="x"/></g>`, `<g></g>`},
 		{"animate", `<rect><animate attributeName="x" to="1"/></rect>`, `<rect></rect>`},
 		{"animateTransform", `<rect><animateTransform attributeName="transform"/></rect>`, `<rect></rect>`},
 		{"event attribute", `<rect onclick="x()" width="3" onLoad="y()"/>`, `<rect width="3"/>`},
-		{"outside href on a", `<a href="https://example.com/">t</a>`, `<a>t</a>`},
+		{"link element", `<a href="https://example.com/">t</a><rect/>`, `<rect/>`},
+		{"html img", `<img src="x"/><rect/>`, `<rect/>`},
+		{"html meta", `<meta http-equiv="refresh" content="0"/><rect/>`, `<rect/>`},
+		{"html form", `<form action="x"><input name="a"/></form><rect/>`, `<rect/>`},
+		{"style element", `<style>rect{fill:red}</style><rect/>`, `<rect/>`},
+		{"foreign namespace element", `<x:div xmlns:x="http://www.w3.org/1999/xhtml">t</x:div><rect/>`, `<rect/>`},
+		{"unknown attribute", `<rect data-x="1" width="2" src="x"/>`, `<rect width="2"/>`},
+		{"local url kept", `<rect fill="url(#grad)" style="fill:url('#g');stroke:#000"/>`, `<rect fill="url(#grad)" style="fill:url(&#39;#g&#39;);stroke:#000"/>`},
+		{"outside url dropped", `<rect fill="url(https://example.com/a.svg#g)" width="1"/>`, `<rect width="1"/>`},
+		{"outside url in style dropped", `<rect style="fill:url(//example.com/x)" width="1"/>`, `<rect width="1"/>`},
+		{"import in style dropped", `<rect style="@import 'x.css'" width="1"/>`, `<rect width="1"/>`},
+		{"backslash in style dropped", `<rect style="fill:u\72l(x)" width="1"/>`, `<rect width="1"/>`},
+		{"href on rect dropped", `<rect href="#a" width="1"/>`, `<rect width="1"/>`},
+		{"gradient and clip kept", `<defs><linearGradient id="g"><stop offset="0" stop-color="#fff"/></linearGradient><clipPath id="c"><rect/></clipPath></defs>`, `<defs><linearGradient id="g"><stop offset="0" stop-color="#fff"/></linearGradient><clipPath id="c"><rect/></clipPath></defs>`},
+		{"editor metadata kept", `<sodipodi:namedview pagecolor="#fff" inkscape:zoom="1"/>`, `<sodipodi:namedview pagecolor="#fff" inkscape:zoom="1"/>`},
 		{"outside href on use", `<use href="other.svg#x"/>`, `<use/>`},
 		{"local href kept", `<use href="#seat"/>`, `<use href="#seat"/>`},
 		{"data png on image kept", `<image href="data:image/png;base64,AAAA"/>`, `<image href="data:image/png;base64,AAAA"/>`},
@@ -32,7 +46,7 @@ func TestSanitizeDecorSVG_Rules(t *testing.T) {
 		{"data svg on image dropped", `<image href="data:image/svg+xml;base64,AAAA"/>`, `<image/>`},
 		{"data png on use dropped", `<use href="data:image/png;base64,AAAA"/>`, `<use/>`},
 		{"outside image dropped", `<image href="https://example.com/a.png"/>`, `<image/>`},
-		{"javascript with whitespace", `<a href="java&#x9;script:x()">t</a>`, `<a>t</a>`},
+		{"javascript with whitespace", `<use href="java&#x9;script:x()"/>`, `<use/>`},
 		{"javascript in other attribute", `<rect style="fill:url(JavaScript:x)" width="1"/>`, `<rect width="1"/>`},
 		{"plain drawing kept", `<g id="Stage"><rect x="1" y="2" fill="#fff"/><text>Сцена &amp; зал</text></g>`, `<g id="Stage"><rect x="1" y="2" fill="#fff"/><text>Сцена &amp; зал</text></g>`},
 		{"known prefixes kept", `<svg:g inkscape:label="Stage" sodipodi:nodetypes="cc"><svg:path d="M0 0"/></svg:g>`, `<svg:g inkscape:label="Stage" sodipodi:nodetypes="cc"><svg:path d="M0 0"/></svg:g>`},
@@ -60,7 +74,7 @@ func TestImportSVG_DecorDropsCode(t *testing.T) {
 		t.Fatalf("parse: %v", err)
 	}
 	got := renderDecorSVG(root, nil, nil, nil)
-	want := `<svg:rect width="5"/><svg:a>t</svg:a>`
+	want := `<svg:rect width="5"/>`
 	if got != want {
 		t.Fatalf("decor = %q, want %q", got, want)
 	}
@@ -73,7 +87,14 @@ func TestImportSVG_DecorDropsCode(t *testing.T) {
 // fixture reads back byte-identically.
 func TestSanitizeDecorSVG_FixturesUnchanged(t *testing.T) {
 	t.Parallel()
-	for _, tc := range keyGoldenCases {
+	cases := append([]keyGoldenCase(nil), keyGoldenCases...)
+	for _, name := range []string{"v2_quarantine.svg", "v2_render.svg", "v2_schematic.svg", "v2_service_render.svg"} {
+		cases = append(cases, keyGoldenCase{
+			name: name,
+			path: []string{"..", "..", "..", "..", "venue-svg-generator", "arena_export", "testdata", name},
+		})
+	}
+	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -89,7 +110,7 @@ func TestSanitizeDecorSVG_FixturesUnchanged(t *testing.T) {
 				}
 				decor = plan.Geometry.DecorSVG
 			} else {
-				g, _, errs := ImportSVG(raw)
+				g, _, errs := ImportAnySVG(raw)
 				if len(errs) != 0 {
 					t.Fatalf("import errors: %v", errs)
 				}

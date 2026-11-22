@@ -81,7 +81,7 @@ func TestSeatingPlanSVG_HeadersAndDecor(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wantDecor := `<rect x="1" y="1" width="9" height="9" fill="#eee"/><a>t</a>`
+	wantDecor := `<rect x="1" y="1" width="9" height="9" fill="#eee"/>`
 	checkSVG := func(t *testing.T, path string) {
 		t.Helper()
 		resp := integDoRequest(t, f.ts.Client(), http.MethodGet, f.ts.URL+path, "", "")

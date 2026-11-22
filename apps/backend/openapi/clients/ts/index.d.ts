@@ -290,10 +290,12 @@ export interface paths {
          *     reservation, so caches MUST revalidate. A matching
          *     `If-None-Match` short-circuits with 304.
          *
-         *     The plan's decor is drawing only: scripts, embedded documents,
-         *     animations, event attributes and references outside the document
-         *     (other than embedded PNG, JPEG, GIF and WebP pictures) are left
-         *     out. The answer carries `Content-Security-Policy: default-src
+         *     The plan's decor is drawing only: it keeps an allowlist of SVG
+         *     drawing elements and attributes plus Inkscape and Sodipodi
+         *     metadata; scripts, style elements, HTML, event attributes and
+         *     references outside the document (other than embedded PNG, JPEG,
+         *     GIF and WebP pictures) are left out. The ETag describes the stored
+         *     geometry. The answer carries `Content-Security-Policy: default-src
          *     'none'; img-src data:; style-src 'unsafe-inline'; font-src data:;
          *     sandbox` and `X-Content-Type-Options: nosniff`.
          */
@@ -3648,7 +3650,9 @@ export interface paths {
          *     + checksums the result; validation errors are returned with 422
          *     including per-element details. The plan's current_version_id is
          *     atomically bumped to the newly-created version in the same
-         *     transaction. Requires JWT authentication and the
+         *     transaction. The decor of either input is stored through the decor
+         *     allowlist (drawing only), and the checksum is computed over the
+         *     stored geometry. Requires JWT authentication and the
          *     seating_plan.update.own permission. A plan that a platform
          *     superadmin verified (`visibility` `operator_verified`) is a template
          *     and must not change without a new verification: when the OWNER
@@ -3851,10 +3855,12 @@ export interface paths {
          *     without revalidation. Matching `If-None-Match` short-circuits
          *     with a 304.
          *
-         *     The plan's decor is drawing only: scripts, embedded documents,
-         *     animations, event attributes and references outside the document
-         *     (other than embedded PNG, JPEG, GIF and WebP pictures) are left
-         *     out. The answer carries `Content-Security-Policy: default-src
+         *     The plan's decor is drawing only: it keeps an allowlist of SVG
+         *     drawing elements and attributes plus Inkscape and Sodipodi
+         *     metadata; scripts, style elements, HTML, event attributes and
+         *     references outside the document (other than embedded PNG, JPEG,
+         *     GIF and WebP pictures) are left out. The ETag describes the stored
+         *     geometry. The answer carries `Content-Security-Policy: default-src
          *     'none'; img-src data:; style-src 'unsafe-inline'; font-src data:;
          *     sandbox` and `X-Content-Type-Options: nosniff`.
          */
@@ -18333,11 +18339,20 @@ export interface components {
             seating_plan_id: string;
             /** @description 1-based positional version number scoped to the plan. */
             version_number: number;
-            /** @description Canonical geometry blob (see §5.3 of the seating backlog). */
+            /**
+             * @description Canonical geometry blob (see §5.3 of the seating backlog). Its
+             *     `decor_svg` holds drawing only: a version written from SVG or from
+             *     geometry JSON stores it through the decor allowlist, and decor
+             *     stored earlier is served through the same allowlist.
+             */
             geometry: {
                 [key: string]: unknown;
             };
-            /** @description Lowercase hex sha256 of the canonical JSON encoding of `geometry`. */
+            /**
+             * @description Lowercase hex sha256 of the canonical JSON encoding of the STORED
+             *     geometry. It is not recomputed when the served `decor_svg` differs
+             *     from the stored one.
+             */
             geometry_checksum: string;
             /**
              * Format: uuid
@@ -32783,7 +32798,7 @@ export interface components {
              * @description Session-scoped monotonic version cursor for seat status. Also returned by seat-status endpoints so the client can resume with `since_version`.
              */
             seat_status_version: number;
-            /** @description sha256 hex digest of the canonicalised geometry JSON. Doubles as the strong ETag for this endpoint. */
+            /** @description sha256 hex digest of the canonicalised STORED geometry JSON. Doubles as the strong ETag for this endpoint. It is not recomputed when the served `geometry.decor_svg` differs from the stored one (decor is served drawing only). */
             geometry_checksum: string;
             /** @description Seated capacity of the plan version (informational). */
             capacity_seated: number;

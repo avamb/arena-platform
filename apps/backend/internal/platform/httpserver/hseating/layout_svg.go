@@ -283,7 +283,7 @@ func RenderBSSLayoutSVG(
 	// Decor first so it renders under the seats. The stored fragment is
 	// read back through the decor writer (seating.SanitizeDecorSVG), so it
 	// holds drawing only, and spliced in inside a <g id="Decor"> wrapper.
-	if decorSVG := seating.SanitizeDecorSVG(g.DecorSVG); strings.TrimSpace(decorSVG) != "" {
+	if decorSVG := sanitizeDecorCached(g.DecorSVG); strings.TrimSpace(decorSVG) != "" {
 		buf.WriteString(`  <g id="Decor">`)
 		buf.WriteString(decorSVG)
 		buf.WriteString(`</g>` + "\n")

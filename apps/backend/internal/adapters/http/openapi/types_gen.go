@@ -19048,10 +19048,15 @@ type SeatingPlanVersion struct {
 	// CreatedAt RFC 3339 UTC timestamp of row creation.
 	CreatedAt time.Time `json:"created_at"`
 
-	// Geometry Canonical geometry blob (see §5.3 of the seating backlog).
+	// Geometry Canonical geometry blob (see §5.3 of the seating backlog). Its
+	// `decor_svg` holds drawing only: a version written from SVG or from
+	// geometry JSON stores it through the decor allowlist, and decor
+	// stored earlier is served through the same allowlist.
 	Geometry map[string]interface{} `json:"geometry"`
 
-	// GeometryChecksum Lowercase hex sha256 of the canonical JSON encoding of `geometry`.
+	// GeometryChecksum Lowercase hex sha256 of the canonical JSON encoding of the STORED
+	// geometry. It is not recomputed when the served `decor_svg` differs
+	// from the stored one.
 	GeometryChecksum string `json:"geometry_checksum"`
 
 	// Id UUIDv7 primary key of the seating_plan_versions row.
@@ -19105,7 +19110,7 @@ type SeatingSchemaResponse struct {
 	// Geometry Canonical geometry JSON per seating_backlog.md §5.3. Opaque schema — clients render it directly.
 	Geometry map[string]interface{} `json:"geometry"`
 
-	// GeometryChecksum sha256 hex digest of the canonicalised geometry JSON. Doubles as the strong ETag for this endpoint.
+	// GeometryChecksum sha256 hex digest of the canonicalised STORED geometry JSON. Doubles as the strong ETag for this endpoint. It is not recomputed when the served `geometry.decor_svg` differs from the stored one (decor is served drawing only).
 	GeometryChecksum string `json:"geometry_checksum"`
 
 	// SeatCategoryIndex Per-seat category truth (S1a). Maps `seat_key` to the category

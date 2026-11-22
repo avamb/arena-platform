@@ -12,6 +12,7 @@ package httpserver
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -83,6 +84,31 @@ func TestSeatingPlanReadAccess_NonPrivatePlan(t *testing.T) {
 	}
 	e.readsPlan(t, plan, e.adminB)
 	e.readsPlan(t, plan, e.adminA)
+}
+
+// TestSeatingPlanVersion_GeometryJSONDecorIsDrawingOnly: a version sent as
+// geometry JSON stores its decor through the decor writer, like an SVG.
+func TestSeatingPlanVersion_GeometryJSONDecorIsDrawingOnly(t *testing.T) {
+	e := newSPVEnv(t)
+	plan := e.plan(t, e.orgA, e.adminA, "Geometry JSON decor")
+	p := "/v1/seating-plans/" + plan.String()
+	v1 := e.call(t, http.StatusOK, "", "GET", p+"/versions/1", e.adminA, "", "")
+	geom := v1["seating_plan_version"].(map[string]any)["geometry"].(map[string]any)
+	geom["decor_svg"] = `<rect width="4" onclick="x()"/><script>x()</script><img src="x"/>`
+	body, err := json.Marshal(map[string]any{"geometry": geom})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.call(t, http.StatusCreated, "", "POST", p+"/versions", e.adminA, "", string(body))
+	var stored string
+	if err := e.srv.pgxPool.QueryRow(context.Background(),
+		`SELECT geometry->>'decor_svg' FROM seating_plan_versions WHERE seating_plan_id = $1 AND version_number = 2`, plan).
+		Scan(&stored); err != nil {
+		t.Fatalf("read stored decor: %v", err)
+	}
+	if want := `<rect width="4"/>`; stored != want {
+		t.Fatalf("stored decor_svg = %q, want %q", stored, want)
+	}
 }
 
 func TestSeatingPlanReadAccess_ListKeepsOwnAndNonPrivate(t *testing.T) {
