@@ -101,46 +101,57 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 		}
 	}
 
-	orderedTiers, cats, err := h.upsertArenaTiers(ctx, q, tx, plan, sessionID, seated.seatedEntries(), warnings)
+	// A session a partner box office sells (actionEvent.externalSale) owns no
+	// category, place or ledger row: the whole category pipeline is skipped.
+	external, err := applyArenaExternalSale(ctx, q, plan, sessionID, eventID, seated)
 	if err != nil {
 		return importResult{}, err
 	}
-	if seated != nil {
-		if err := materializeArenaSeating(ctx, q, eventID, sessionID, seated, orderedTiers); err != nil {
+	var orderedTiers []uuid.UUID
+	var seatingOut seatingOutcome
+	if !external {
+		var cats []importedCategory
+		orderedTiers, cats, err = h.upsertArenaTiers(ctx, q, tx, plan, sessionID, seated.seatedEntries(), warnings)
+		if err != nil {
 			return importResult{}, err
 		}
-	}
-	if err := markPricingOnly(ctx, q, plan, eventID, sessionID, seated, cats); err != nil {
-		return importResult{}, err
-	}
-	if err := refuseSeatedChainLinks(ctx, q, plan, sessionID, orderedTiers); err != nil {
-		return importResult{}, err
-	}
+		if seated != nil {
+			if err := materializeArenaSeating(ctx, q, eventID, sessionID, seated, orderedTiers); err != nil {
+				return importResult{}, err
+			}
+		}
+		if err := markPricingOnly(ctx, q, plan, eventID, sessionID, seated, cats); err != nil {
+			return importResult{}, err
+		}
+		if err := refuseSeatedChainLinks(ctx, q, plan, sessionID, orderedTiers); err != nil {
+			return importResult{}, err
+		}
 
-	// Plan 08_architecture/23 step 7 — the same category-quota rules the
-	// Bil24-format importer follows. A category without places mints its own
-	// General Admission places; a category whose places are plan seats is
-	// left alone (gaquota.CategoryKind), and a plan GA zone already owns the
-	// places seatmint wrote, so the bundle's availability only resizes it.
-	chain, err := applyArenaCategoryExtras(ctx, q, plan, sessionID, orderedTiers)
-	if err != nil {
-		return importResult{}, err
-	}
-	if err := syncImportedCategoryQuotas(ctx, q, sessionID, cats, true, true, chain, warnings); err != nil {
-		return importResult{}, err
-	}
-	// A quantity step selling now owns exactly its limit; the rest of the hall
-	// waits in the next, still closed category (migration 0114).
-	if _, err := gaquota.RebalanceSession(ctx, q, sessionID); err != nil {
-		return importResult{}, fmt.Errorf("apply category sell limits: %w", err)
-	}
+		// Plan 08_architecture/23 step 7 — the same category-quota rules the
+		// Bil24-format importer follows. A category without places mints its own
+		// General Admission places; a category whose places are plan seats is
+		// left alone (gaquota.CategoryKind), and a plan GA zone already owns the
+		// places seatmint wrote, so the bundle's availability only resizes it.
+		chain, err := applyArenaCategoryExtras(ctx, q, plan, sessionID, orderedTiers)
+		if err != nil {
+			return importResult{}, err
+		}
+		if err := syncImportedCategoryQuotas(ctx, q, sessionID, cats, true, true, chain, warnings); err != nil {
+			return importResult{}, err
+		}
+		// A quantity step selling now owns exactly its limit; the rest of the hall
+		// waits in the next, still closed category (migration 0114).
+		if _, err := gaquota.RebalanceSession(ctx, q, sessionID); err != nil {
+			return importResult{}, fmt.Errorf("apply category sell limits: %w", err)
+		}
 
-	if err := h.syncInventoryLedger(ctx, q, eventID, sessionID); err != nil {
-		return importResult{}, err
-	}
-	seatingOut, err := arenaSeatingOutcome(ctx, q, eventID, sessionID)
-	if err != nil {
-		return importResult{}, err
+		if err := h.syncInventoryLedger(ctx, q, eventID, sessionID); err != nil {
+			return importResult{}, err
+		}
+		seatingOut, err = arenaSeatingOutcome(ctx, q, eventID, sessionID)
+		if err != nil {
+			return importResult{}, err
+		}
 	}
 	var publishedNow bool
 	if plan.Request.Publish {
@@ -626,6 +637,11 @@ func (h *Handler) upsertArenaSession(
 			// A session created from a plan starts with the plan's declared
 			// capacity; the places written next make it exact (Recompute).
 			capacity = seatmint.PlanCapacity(seated.mode, seated.version)
+		}
+		if kind, _, _ := plan.Request.ActionEvent.ParseExternalSale(); capacity <= 0 && kind == bil24compat.ExternalSaleObject {
+			// A partner-sold session has no categories to sum: capacity_total only
+			// has to satisfy its CHECK (> 0), like a session created through the API.
+			capacity = 1
 		}
 		if capacity <= 0 {
 			return uuid.Nil, false, errCapacityRequired()

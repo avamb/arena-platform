@@ -7335,6 +7335,12 @@ type CreateSessionRequest struct {
 	// EndAt Session end time (RFC 3339, UTC). Must be strictly after `start_at`.
 	EndAt time.Time `json:"end_at"`
 
+	// External The partner box office, only with `sales_mode` `external` (422
+	// `session.external_not_applicable` otherwise). Refused with 422
+	// `session.invalid_external_url`, `session.invalid_external_seller_name`,
+	// `session.invalid_external_price` or `session.invalid_external_currency`.
+	External *SessionExternalSaleInput `json:"external"`
+
 	// PosterMediaId Optional session-level poster artwork (AB-47). When set, this
 	// overrides the event-level `poster_media_id` for this session.
 	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
@@ -7343,6 +7349,13 @@ type CreateSessionRequest struct {
 	// the session start. Every surface stops selling new tickets after
 	// it; a category's own sale_window_end can only close sooner.
 	SalesEndAt *time.Time `json:"sales_end_at"`
+
+	// SalesMode Who sells the tickets: `platform` or `external` (migration 0218).
+	// Any other value is 400 `session.invalid_sales_mode`. `external`
+	// needs the `external` object (422 `session.external_required`).
+	// A session with a seating plan cannot be external
+	// (409 `session.sales_mode_locked`).
+	SalesMode *string `json:"sales_mode,omitempty"`
 
 	// SeatingPlanVersionId Seating plan version to bind. Required when admission_mode is
 	// `assigned_seats`/`hybrid` (400
@@ -10260,6 +10273,22 @@ type ImpersonateResponse struct {
 	Token *string `json:"token,omitempty"`
 }
 
+// ImportBil24ExternalSale The partner box office of actionEvent.externalSale (arena extension,
+// source=arena only).
+type ImportBil24ExternalSale struct {
+	// Currency ISO 4217 code of `priceFrom`. Optional, only together with it.
+	Currency *string `json:"currency"`
+
+	// PriceFrom The lowest price in MAJOR units of `currency` (39.5 means 39.50). Optional.
+	PriceFrom *float32 `json:"priceFrom"`
+
+	// SellerName The box office name shown to buyers, 1 to 80 characters.
+	SellerName string `json:"sellerName"`
+
+	// Url The box office address, https only, at most 2048 characters.
+	Url string `json:"url"`
+}
+
 // ImportBil24SessionAction Bil24 "action" block — becomes an arena event. Property names keep the
 // legacy Bil24 camelCase spelling because the payload is forwarded
 // verbatim from a Bil24 GET_ALL_ACTIONS response by the site-side import
@@ -10406,6 +10435,22 @@ type ImportBil24SessionActionEvent struct {
 	// means the session ends the NEXT calendar day. Omitted — the import
 	// keeps its default session duration (currently 3 hours).
 	EndTime *string `json:"endTime,omitempty"`
+
+	// ExternalSale Arena extension, source=arena only (migration 0218): who sells
+	// this session's tickets. Absent keeps the session's sales mode;
+	// null puts it back on sale on the platform; an object hands it to
+	// a partner box office (`url` https only, a host name, not a
+	// platform host, at most 2048 characters; `sellerName` 1 to 80
+	// characters; `priceFrom` in MAJOR units with `currency`, both or
+	// neither; else 422 import.invalid_external_sale). A partner-sold
+	// session owns no categories: the bundle then needs no
+	// `categoryList`, and one that carries it is refused with 409
+	// session.sold_externally. A session that already has orders,
+	// holds, seats or categories cannot be handed over, and an
+	// external one with seats or categories cannot come back (409
+	// session.sales_mode_locked). The event-bundle read returns the
+	// object for an external session and leaves the key out otherwise.
+	ExternalSale *ImportBil24ExternalSale `json:"externalSale"`
 
 	// SeatingPlanId Bil24 seating-plan identifier. Accepted and range-checked but not
 	// yet materialised by this endpoint. Ignored entirely (with
@@ -19473,6 +19518,42 @@ type SessionEnvelope struct {
 	Warnings *[]SessionWarning `json:"warnings,omitempty"`
 }
 
+// SessionExternalSale The partner box office that sells the tickets of an external session
+// (migration 0218, spec 63 section 14). The platform shows a button to
+// `url` instead of its own ticket picker.
+type SessionExternalSale struct {
+	// Currency ISO 4217 code of `price_from`, null together with it.
+	Currency *string `json:"currency"`
+
+	// PriceFrom The lowest price for the storefront in MAJOR units of `currency`
+	// (39.5 means 39.50), or null when the organizer gave none.
+	PriceFrom *float32 `json:"price_from"`
+
+	// SellerName The box office name shown to buyers, 1 to 80 characters.
+	SellerName string `json:"seller_name"`
+
+	// Url The box office address, https only, at most 2048 characters.
+	Url string `json:"url"`
+}
+
+// SessionExternalSaleInput The partner box office of an external session, as an organizer writes
+// it. The address must be https, a host name (no IP address) and not a
+// platform host; the name 1 to 80 characters. `price_from` and
+// `currency` go together or not at all.
+type SessionExternalSaleInput struct {
+	// Currency ISO 4217 code of `price_from`. Optional, only together with it.
+	Currency *string `json:"currency"`
+
+	// PriceFrom The lowest price in MAJOR units of `currency` (39.5 means 39.50). Optional.
+	PriceFrom *float32 `json:"price_from"`
+
+	// SellerName The box office name shown to buyers, 1 to 80 characters.
+	SellerName string `json:"seller_name"`
+
+	// Url The box office address, https only, at most 2048 characters.
+	Url string `json:"url"`
+}
+
 // SessionItem A single dated session (time slot) of an event at a venue. Since
 // Wave 4 (AB-36/AB-38) the session — not the event — owns the venue,
 // the seating bind and the currency, matching the Bil24 ActionEvent
@@ -19526,6 +19607,10 @@ type SessionItem struct {
 	// owner-org check is enforced via the parent event row.
 	EventId openapi_types.UUID `json:"event_id"`
 
+	// External The partner box office of an external session, null for a
+	// session the platform sells.
+	External *SessionExternalSale `json:"external"`
+
 	// HasOverlappingSessions True when this session overlaps with at least one other active
 	// session for the same event. Computed at the application layer
 	// from CountOverlappingSessions for single-session responses, or
@@ -19551,10 +19636,18 @@ type SessionItem struct {
 	// own sale_window_end can only close that category sooner.
 	SalesEndAt time.Time `json:"sales_end_at"`
 
+	// SalesMode Who sells the tickets of this session (migration 0218): `platform`
+	// (default) or `external`. An external session is sold by a partner
+	// box office at `external.url`; the platform holds and sells nothing
+	// for it (409 `session.sold_externally`) and the session owns no
+	// tiers, seats or inventory.
+	SalesMode string `json:"sales_mode"`
+
 	// SalesState The session's sales state, the one every sales channel follows
 	// (migration 0183): `open`, `soon`, `sold_out`, `ended` or
-	// `cancelled`. Present on the session list and the single read;
-	// absent on the create and update answers.
+	// `cancelled`, or `external` when a partner box office sells the
+	// session (migration 0218). Present on the session list and the
+	// single read; absent on the create and update answers.
 	SalesState *string `json:"sales_state,omitempty"`
 
 	// SeatingPlanVersionId The bound seating plan version. Null for pure
@@ -23355,6 +23448,14 @@ type UpdateSessionRequest struct {
 	// start_at.
 	EndAt *time.Time `json:"end_at"`
 
+	// External The partner box office. With `sales_mode` `external` (or on a
+	// session that is already external) it sets or replaces the block;
+	// null without `sales_mode` puts the session back on `platform`.
+	// Sending it for a session that stays on the platform is 422
+	// `session.external_not_applicable`; a missing block for a switch to
+	// external is 422 `session.external_required`.
+	External *SessionExternalSaleInput `json:"external"`
+
 	// Notice What the organizer wants to say to the buyers of a session that is
 	// being moved or cancelled. Shown under the standard, localized wording
 	// of the letter.
@@ -23369,6 +23470,14 @@ type UpdateSessionRequest struct {
 	// end along by the same amount. Some events sell after the start,
 	// for those who come late — the organizer decides.
 	SalesEndAt *time.Time `json:"sales_end_at"`
+
+	// SalesMode Change who sells the tickets: `platform` or `external` (migration
+	// 0218). Absent keeps it. `platform` to `external` is allowed only
+	// while the session has no orders, tickets, holds, seats or tiers;
+	// `external` back to `platform` only while it has no seats or tiers;
+	// otherwise 409 `session.sales_mode_locked`. Any other value is 400
+	// `session.invalid_sales_mode`.
+	SalesMode *string `json:"sales_mode,omitempty"`
 
 	// StartAt New session start time (RFC 3339, UTC). Empty leaves unchanged.
 	StartAt *time.Time `json:"start_at"`

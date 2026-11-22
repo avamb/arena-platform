@@ -42,6 +42,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventtext"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/extsale"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
@@ -363,6 +364,12 @@ type publicFeedSessionResponse struct {
 	// the picker. "" only when the state could not be loaded.
 	SalesState string                   `json:"sales_state"`
 	Tiers      []publicFeedTierResponse `json:"tiers"`
+	// SalesMode is who sells the tickets: "platform" or "external" (migration
+	// 0218). For "external" the sales_state is "external", tiers is empty and
+	// External carries the partner's box office; buyers go there instead of
+	// buying here. External is null for a platform session.
+	SalesMode string        `json:"sales_mode"`
+	External  *extsale.View `json:"external"`
 	// PosterMediaID / PosterURL are the resolved cover (AB-47c): the session
 	// value when set, otherwise the event fallback. Same on both fields.
 	// The widget uses PosterURL directly; media_id is exposed for callers
@@ -417,6 +424,11 @@ func (h *Handler) publicFeedSessionFromRow(ctx context.Context, s gen.SessionRow
 		BuyerFields:   buyerFields,
 		Tiers:         []publicFeedTierResponse{},
 		MediaGallery:  []publicFeedMediaItem{},
+		SalesMode:     s.SalesMode,
+		External:      extsale.ViewFromRow(s),
+	}
+	if resp.SalesMode == "" {
+		resp.SalesMode = gen.SessionSalesModePlatform
 	}
 	if s.DoorsOpenAt != nil {
 		d := s.DoorsOpenAt.UTC().Format(time.RFC3339)
@@ -933,6 +945,11 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 						sessionWithdrawn = true
 					}
 				}
+				sellable := hcheckout.SessionSellable(sess.SalesMode)
+				if !sellable && sessResp.SalesState != salesstate.Cancelled {
+					// Also when the facts could not be loaded.
+					sessResp.SalesState = salesstate.External
+				}
 				sessResp.ServiceFeePercent = serviceFeePercent
 				sessResp.PaymentWindowSeconds = windowSeconds(paymentWindow)
 				sessResp.PromoCodesAvailable = promoCodesAvailable
@@ -945,7 +962,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 				// A cancelled session stays in the payload with
 				// its status, so a buyer who holds tickets still sees the date
 				// as cancelled — but it offers no seat map.
-				if !sessionWithdrawn {
+				if !sessionWithdrawn && sellable {
 					sessResp.applySeatingLinks(admissionByID[sess.ID.String()])
 				}
 				sessResp.applyPosterFallback(eventResp.PosterMediaID, eventResp.PosterURL)
@@ -966,8 +983,8 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 					}
 				}
 
-				// Fetch tiers for each session.
-				if h.tierQueries != nil {
+				// Fetch tiers for each session. A partner-sold session has none.
+				if h.tierQueries != nil && sellable {
 					tiers, err := h.tierQueries.ListTicketTiersBySession(ctx, sess.ID)
 					if err != nil {
 						h.logger.Error("public_feed: list tiers failed",

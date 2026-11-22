@@ -7961,7 +7961,18 @@ export interface paths {
          *         `sold_out`, every tier reports `available: 0`, the session has
          *         no seat map links and every hold is refused; the widget shows
          *         the state instead of the picker. `""` only when it could not be
-         *         loaded.
+         *         loaded. A session a partner box office sells (see `sales_mode`)
+         *         reports the sixth state `external`.
+         *       * `sales_mode` — who sells the tickets of the session (migration
+         *         0218): `platform` or `external`.
+         *       * `external` — null for a platform session. For an external one the
+         *         partner's box office: `{ url, seller_name, price_from, currency }`
+         *         with `price_from` in MAJOR units of `currency` (both null when the
+         *         organizer gave no price). The session's `tiers` is `[]`, it has no
+         *         seat map links and every hold is refused (409
+         *         `session.sold_externally`); the widget and the hosted page show a
+         *         button to `url` instead of the picker. An event whose sessions are
+         *         all external stays in the feed list.
          *       * `service_fee_percent` — the channel's service charge as a
          *         decimal string (`"5.00"` = 5 %, `"0.00"` = none), applied on
          *         top of the ticket prices at checkout; the widget shows it as
@@ -26154,8 +26165,9 @@ export interface components {
             /**
              * @description The session's sales state, the one every sales channel follows
              *     (migration 0183): `open`, `soon`, `sold_out`, `ended` or
-             *     `cancelled`. Present on the session list and the single read;
-             *     absent on the create and update answers.
+             *     `cancelled`, or `external` when a partner box office sells the
+             *     session (migration 0218). Present on the session list and the
+             *     single read; absent on the create and update answers.
              * @example open
              */
             sales_state?: string;
@@ -26250,6 +26262,76 @@ export interface components {
              * @example false
              */
             has_overlapping_sessions: boolean;
+            /**
+             * @description Who sells the tickets of this session (migration 0218): `platform`
+             *     (default) or `external`. An external session is sold by a partner
+             *     box office at `external.url`; the platform holds and sells nothing
+             *     for it (409 `session.sold_externally`) and the session owns no
+             *     tiers, seats or inventory.
+             * @example platform
+             */
+            sales_mode: string;
+            /**
+             * @description The partner box office of an external session, null for a
+             *     session the platform sells.
+             */
+            external: components["schemas"]["SessionExternalSale"] | null;
+        };
+        /**
+         * @description The partner box office that sells the tickets of an external session
+         *     (migration 0218, spec 63 section 14). The platform shows a button to
+         *     `url` instead of its own ticket picker.
+         */
+        SessionExternalSale: {
+            /**
+             * @description The box office address, https only, at most 2048 characters.
+             * @example https://www.eventim.de/event/12345
+             */
+            url: string;
+            /**
+             * @description The box office name shown to buyers, 1 to 80 characters.
+             * @example Eventim
+             */
+            seller_name: string;
+            /**
+             * @description The lowest price for the storefront in MAJOR units of `currency`
+             *     (39.5 means 39.50), or null when the organizer gave none.
+             * @example 39
+             */
+            price_from: number | null;
+            /**
+             * @description ISO 4217 code of `price_from`, null together with it.
+             * @example EUR
+             */
+            currency: string | null;
+        };
+        /**
+         * @description The partner box office of an external session, as an organizer writes
+         *     it. The address must be https, a host name (no IP address) and not a
+         *     platform host; the name 1 to 80 characters. `price_from` and
+         *     `currency` go together or not at all.
+         */
+        SessionExternalSaleInput: {
+            /**
+             * @description The box office address, https only, at most 2048 characters.
+             * @example https://www.eventim.de/event/12345
+             */
+            url: string;
+            /**
+             * @description The box office name shown to buyers, 1 to 80 characters.
+             * @example Eventim
+             */
+            seller_name: string;
+            /**
+             * @description The lowest price in MAJOR units of `currency` (39.5 means 39.50). Optional.
+             * @example 39
+             */
+            price_from?: number | null;
+            /**
+             * @description ISO 4217 code of `price_from`. Optional, only together with it.
+             * @example EUR
+             */
+            currency?: string | null;
         };
         /**
          * @description Create-time payload for POST
@@ -26364,6 +26446,22 @@ export interface components {
              * @example EUR
              */
             currency?: string | null;
+            /**
+             * @description Who sells the tickets: `platform` or `external` (migration 0218).
+             *     Any other value is 400 `session.invalid_sales_mode`. `external`
+             *     needs the `external` object (422 `session.external_required`).
+             *     A session with a seating plan cannot be external
+             *     (409 `session.sales_mode_locked`).
+             * @example external
+             */
+            sales_mode?: string;
+            /**
+             * @description The partner box office, only with `sales_mode` `external` (422
+             *     `session.external_not_applicable` otherwise). Refused with 422
+             *     `session.invalid_external_url`, `session.invalid_external_seller_name`,
+             *     `session.invalid_external_price` or `session.invalid_external_currency`.
+             */
+            external?: components["schemas"]["SessionExternalSaleInput"] | null;
         };
         /**
          * @description Partial update for PATCH
@@ -26464,6 +26562,25 @@ export interface components {
              *     nothing a buyer can see changes.
              */
             notice?: components["schemas"]["SessionChangeNotice"];
+            /**
+             * @description Change who sells the tickets: `platform` or `external` (migration
+             *     0218). Absent keeps it. `platform` to `external` is allowed only
+             *     while the session has no orders, tickets, holds, seats or tiers;
+             *     `external` back to `platform` only while it has no seats or tiers;
+             *     otherwise 409 `session.sales_mode_locked`. Any other value is 400
+             *     `session.invalid_sales_mode`.
+             * @example external
+             */
+            sales_mode?: string;
+            /**
+             * @description The partner box office. With `sales_mode` `external` (or on a
+             *     session that is already external) it sets or replaces the block;
+             *     null without `sales_mode` puts the session back on `platform`.
+             *     Sending it for a session that stays on the platform is 422
+             *     `session.external_not_applicable`; a missing block for a switch to
+             *     external is 422 `session.external_required`.
+             */
+            external?: components["schemas"]["SessionExternalSaleInput"] | null;
         };
         /**
          * @description What the organizer wants to say to the buyers of a session that is
@@ -34250,6 +34367,32 @@ export interface components {
             emailNoteFormat?: string;
         };
         /**
+         * @description The partner box office of actionEvent.externalSale (arena extension,
+         *     source=arena only).
+         */
+        ImportBil24ExternalSale: {
+            /**
+             * @description The box office address, https only, at most 2048 characters.
+             * @example https://www.eventim.de/event/12345
+             */
+            url: string;
+            /**
+             * @description The box office name shown to buyers, 1 to 80 characters.
+             * @example Eventim
+             */
+            sellerName: string;
+            /**
+             * @description The lowest price in MAJOR units of `currency` (39.5 means 39.50). Optional.
+             * @example 39
+             */
+            priceFrom?: number | null;
+            /**
+             * @description ISO 4217 code of `priceFrom`. Optional, only together with it.
+             * @example EUR
+             */
+            currency?: string | null;
+        };
+        /**
          * @description Bil24 "actionEvent" block — becomes an arena session. This block's
          *     actionEventId is the idempotency key of the whole import.
          */
@@ -34282,6 +34425,23 @@ export interface components {
              *     plan or touches places. Omitted when empty.
              */
             arenaSeatingPlanVersionId?: string;
+            /**
+             * @description Arena extension, source=arena only (migration 0218): who sells
+             *     this session's tickets. Absent keeps the session's sales mode;
+             *     null puts it back on sale on the platform; an object hands it to
+             *     a partner box office (`url` https only, a host name, not a
+             *     platform host, at most 2048 characters; `sellerName` 1 to 80
+             *     characters; `priceFrom` in MAJOR units with `currency`, both or
+             *     neither; else 422 import.invalid_external_sale). A partner-sold
+             *     session owns no categories: the bundle then needs no
+             *     `categoryList`, and one that carries it is refused with 409
+             *     session.sold_externally. A session that already has orders,
+             *     holds, seats or categories cannot be handed over, and an
+             *     external one with seats or categories cannot come back (409
+             *     session.sales_mode_locked). The event-bundle read returns the
+             *     object for an external session and leaves the key out otherwise.
+             */
+            externalSale?: components["schemas"]["ImportBil24ExternalSale"] | null;
             /**
              * Format: int64
              * @description Bil24 action-event identifier and the idempotency key of the
@@ -57737,9 +57897,10 @@ export interface operations {
              *     `session.venue_not_found`, `session.invalid_admission_mode`,
              *     `session.missing_seating_plan_version`,
              *     `session.invalid_seating_plan_version`,
-             *     `session.seating_plan_not_applicable`, plus the seating bind
-             *     errors (`seating.version_not_found`, ...) when a seated
-             *     create fails its inline bind.
+             *     `session.seating_plan_not_applicable`, `session.invalid_sales_mode`
+             *     (`sales_mode` is neither `platform` nor `external`), plus the
+             *     seating bind errors (`seating.version_not_found`, ...) when a
+             *     seated create fails its inline bind.
              *     A `poster_media_id` that is not a UUID is `session.invalid_poster_media_id`.
              */
             400: {
@@ -57768,10 +57929,23 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description `session.sales_mode_locked`: a session with a seating plan cannot be sold by a partner box office. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /**
              * @description Semantically invalid. Possible error codes:
              *     `session.venue_org_mismatch`, `session.invalid_currency`,
-             *     `session.currency_unresolvable`.
+             *     `session.currency_unresolvable`, and for a partner-sold session
+             *     (`sales_mode` `external`) `session.external_required`,
+             *     `session.external_not_applicable`, `session.invalid_external_url`,
+             *     `session.invalid_external_seller_name`,
+             *     `session.invalid_external_price`, `session.invalid_external_currency`.
              *     A `poster_media_id` that is not a media object of this organization is `session.invalid_poster_media_id`.
              */
             422: {
@@ -58033,7 +58207,8 @@ export interface operations {
              *     `error.details.reason = "category_sum"`),
              *     `session.invalid_venue_id`, `session.venue_not_found`,
              *     `session.invalid_message_format` (`notice.message_format` is neither
-             *     `text` nor `art`).
+             *     `text` nor `art`), `session.invalid_sales_mode` (`sales_mode` is
+             *     neither `platform` nor `external`).
              *     A `poster_media_id` that is not a UUID is `session.invalid_poster_media_id`.
              */
             400: {
@@ -58072,6 +58247,20 @@ export interface operations {
                 };
             };
             /**
+             * @description `session.sales_mode_locked`: the session cannot change who sells
+             *     its tickets. `platform` to `external` needs a session with no
+             *     orders, tickets, holds, seats or tiers; `external` back to
+             *     `platform` one with no seats or tiers.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
              * @description Semantically invalid. Possible error codes:
              *     `session.invalid_transition` (status transition not allowed;
              *     `error.details.current_status` /
@@ -58086,7 +58275,11 @@ export interface operations {
              *     through a website), `session.change_message_too_long`
              *     (`notice.message` over 1000 visible characters),
              *     `session.change_message_invalid` (`notice.message` has forbidden
-             *     characters or too many links; `error.details.reason`).
+             *     characters or too many links; `error.details.reason`), and for
+             *     the sales mode (migration 0218) `session.external_required`,
+             *     `session.external_not_applicable`, `session.invalid_external_url`,
+             *     `session.invalid_external_seller_name`,
+             *     `session.invalid_external_price`, `session.invalid_external_currency`.
              *     A `poster_media_id` that is not a media object of this organization is `session.invalid_poster_media_id`.
              */
             422: {
@@ -59042,6 +59235,15 @@ export interface operations {
             };
             /** @description Parent session not found (`session.not_found`). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A partner box office sells the session (`session.sold_externally`); it owns no tiers. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -80940,7 +81142,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A new tier has the name of a live category of the session (`seat_batch.tier_name_taken`). Nothing was written. */
+            /** @description A new tier has the name of a live category of the session (`seat_batch.tier_name_taken`), or a partner box office sells the session and it owns no seats (`session.sold_externally`). Nothing was written. */
             409: {
                 headers: {
                     [name: string]: unknown;

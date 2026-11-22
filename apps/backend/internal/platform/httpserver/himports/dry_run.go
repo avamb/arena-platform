@@ -213,6 +213,9 @@ func checkBundleFields(plan importPlan, issues *issueSink) {
 		if _, _, err := importEmailNote(plan.Source, req.Action); err != nil {
 			issues.add(err)
 		}
+		if _, _, err := importExternalSale(req.ActionEvent); err != nil {
+			issues.add(err)
+		}
 	}
 	for i, c := range req.CategoryList {
 		issues.add(checkCategoryPrice(i, c.PriceMinorUnits()))

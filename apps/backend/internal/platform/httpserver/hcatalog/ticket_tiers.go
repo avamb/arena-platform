@@ -297,6 +297,12 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A session a partner box office sells owns no tiers (migration 0218).
+	if _, _, _, salesMode, smErr := h.tierQueries.GetSessionSalesState(ctx, sessionID); smErr == nil && salesMode == gen.SessionSalesModeExternal {
+		writeSoldExternally(w, r)
+		return
+	}
+
 	// Currency follows the session (AB-38). Resolved after every syntactic
 	// validation so cheap 400s never cost a DB round trip; resolving it
 	// also verifies the session exists before the INSERT.

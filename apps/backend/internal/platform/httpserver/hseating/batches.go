@@ -28,6 +28,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
@@ -180,6 +181,14 @@ func (h *Handler) batchScope(w http.ResponseWriter, r *http.Request) (orgID, ses
 func (h *Handler) HandleCreateSeatBatch(w http.ResponseWriter, r *http.Request) {
 	orgID, sessionID, ok := h.batchScope(w, r)
 	if !ok {
+		return
+	}
+	// A session a partner box office sells owns no seats (migration 0218).
+	if _, _, _, salesMode, smErr := h.queries.GetSessionSalesState(r.Context(), sessionID); smErr == nil && salesMode == gen.SessionSalesModeExternal {
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+			"session.sold_externally",
+			"this session is sold by a partner box office, so it has no tiers or seats here", r,
+		))
 		return
 	}
 	var req seatBatchRequest

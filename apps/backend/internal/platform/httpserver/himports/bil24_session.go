@@ -285,7 +285,14 @@ func (h *Handler) prepareImport(
 			}
 		}
 	}
-	if len(req.CategoryList) == 0 && issues.add(failImportAt(http.StatusUnprocessableEntity,
+	// A partner-sold session (actionEvent.externalSale, source=arena) owns no
+	// category, so its bundle needs none.
+	externalBundle := false
+	if source == bil24compat.SourceArena {
+		kind, _, _ := req.ActionEvent.ParseExternalSale()
+		externalBundle = kind == bil24compat.ExternalSaleObject
+	}
+	if len(req.CategoryList) == 0 && !externalBundle && issues.add(failImportAt(http.StatusUnprocessableEntity,
 		"import.categories_required", "/categoryList", "categoryList must contain at least one category")) {
 		return prep
 	}
