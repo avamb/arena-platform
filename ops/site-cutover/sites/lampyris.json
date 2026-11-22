@@ -1,0 +1,45 @@
+{
+  "name": "lampyris",
+  "host": "lampyrisevents.com",
+  "cert_resolver": "letsencrypt",
+  "site_url": null,
+  "wp_url": null,
+  "site_always_rule": "PathRegexp(`^/([a-z]{2}/)?(order-status|my-tickets)(/|$)`) || PathPrefix(`/_site/`)",
+  "wp_routes": [
+    {
+      "name": "wp-stripe-webhook",
+      "priority": 2000,
+      "rule": "Query(`wc-api`, `wc_stripe`)"
+    },
+    {
+      "name": "wp-bil24-notification",
+      "priority": 2000,
+      "rule": "PathPrefix(`/wp-json/bil24/`)"
+    },
+    {
+      "name": "wp-lops-rest",
+      "priority": 2000,
+      "rule": "PathPrefix(`/wp-json/lops/`)"
+    },
+    {
+      "name": "wp-admin",
+      "priority": 2000,
+      "rule": "PathPrefix(`/wp-admin/`) || Path(`/wp-login.php`)"
+    },
+    {
+      "name": "wp-order-pay",
+      "priority": 2000,
+      "rule": "PathRegexp(`^/([a-z]{2}/)?checkout/order-pay/`)"
+    },
+    {
+      "name": "wp-old-order-pages",
+      "priority": 2000,
+      "rule": "PathRegexp(`^/([a-z]{2}/)?(payment-successful|my-account)(/|$)`) && (QueryRegexp(`order_id`, `.+`) || QueryRegexp(`order_key`, `.+`) || QueryRegexp(`key`, `.+`) || QueryRegexp(`login`, `.+`))"
+    }
+  ],
+  "wp_cookie_assets": {
+    "cookie": "wordpress_logged_in_",
+    "priority": 1500,
+    "rule": "PathPrefix(`/wp-json/`) || PathPrefix(`/wp-content/`) || PathPrefix(`/wp-includes/`)"
+  }
+}
