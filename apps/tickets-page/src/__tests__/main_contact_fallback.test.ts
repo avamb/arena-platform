@@ -12,6 +12,10 @@ vi.mock('../lib/api.ts', async (importOriginal) => {
     fetchHostedPage: vi.fn(async () => {
       throw new real.ApiError(404, 'not found');
     }),
+    // The event 404 now tries the tour of the same slug; it is gone too.
+    fetchSeriesPage: vi.fn(async () => {
+      throw new real.ApiError(404, 'not found');
+    }),
   };
 });
 
