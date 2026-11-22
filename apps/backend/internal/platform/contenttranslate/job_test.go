@@ -131,7 +131,7 @@ func TestRun_ContentLocaleSkippedAndOnlyNonEmptySent(t *testing.T) {
 
 func TestRun_AlteredNameWritesNothing(t *testing.T) {
 	st, p := newFixture()
-	tr := &fakeTranslator{out: func(in TranslateInput) (Fields, error) {
+	tr := &fakeTranslator{out: func(_ TranslateInput) (Fields, error) {
 		d := "Navstivte Mesicni festival dnes vecer"
 		return Fields{DescriptionHTML: &d}, nil
 	}}

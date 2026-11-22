@@ -33,7 +33,7 @@ func TestSourceHash_StableAndNilEqualsEmpty(t *testing.T) {
 	if SourceHash(a) != SourceHash(b) {
 		t.Fatal("nil and empty ReportTextHTML must hash the same")
 	}
-	if SourceHash(a) != SourceHash(a) {
+	if first, again := SourceHash(a), SourceHash(a); first != again {
 		t.Fatal("hash is not stable")
 	}
 	if len(SourceHash(a)) != 64 {
