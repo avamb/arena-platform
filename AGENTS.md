@@ -388,6 +388,18 @@ Stripe, Flitt and AllPay hosted checkout, payment modules, webhook state machine
 * A buyer e-mail is checked by emailaddr.Valid befor…
 * The legacy webhook routes bind an event to the organization whose secret verified it
 
+### [Meta integration](docs/agents/meta-integration.md)
+
+Connection of an organizer's Meta business, the encrypted BISU token, CAPI through the connection (spec 66).
+
+* The Meta token is the first secret encrypted at rest (secretbox, META_TOKEN_ENC_KEY)
+* One connection per organization: org_meta_connections + org_meta_assets (migration 0218)
+* The login is the server redirect with config_id; the event center does NOT load the Facebook JS SDK
+* The callback never answers JSON on a Meta outcome, it redirects to the event center
+* Which Graph edges list ad accounts and pages is not confirmed for BISU: META_ASSET_EDGES decides
+* CAPI takes the connection first, the manual token second; only code 190 breaks the connection
+* META_GRAPH_BASE_URL is a test seam and is refused in production
+
 ### [Refunds](docs/agents/refunds.md)
 
 The refund engine, provider refund events, organizer refund API, refund retry and the bot and web refund screens.

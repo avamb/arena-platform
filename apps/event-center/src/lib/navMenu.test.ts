@@ -33,6 +33,7 @@ describe("navGroups", () => {
       ["promotion", ["nav-promo", "nav-invitations", "nav-links", "nav-growth"]],
       ["entrance", ["nav-scanner", "nav-guest-list"]],
       ["shop", ["nav-shop"]],
+      ["ads", ["nav-ads-meta"]],
       [
         "settings",
         ["nav-org-data", "nav-payments", "nav-team", "nav-promoters", "nav-venues", "nav-notifications", "nav-billing", "nav-switch-org"],

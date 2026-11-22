@@ -60,6 +60,8 @@ import { ShopProductEditScreen, ShopProductNewScreen } from "@/screens/ShopProdu
 import { ShopOrdersScreen } from "@/screens/ShopOrdersScreen";
 import { ShopOrderScreen } from "@/screens/ShopOrderScreen";
 import { ShopSettingsScreen } from "@/screens/ShopSettingsScreen";
+import { MetaAdsScreen } from "@/screens/MetaAdsScreen";
+import { parseMetaSearch } from "@/lib/metaConnect";
 import { shopGated } from "@/screens/ShopGate";
 import { parseProductCardSearch, parseProductsSearch, parseShopOrdersSearch } from "@/lib/shop";
 
@@ -341,6 +343,15 @@ const orgDataRoute = createRoute({
   component: OrgDataScreen,
 });
 
+// Spec 66: "Advertising -> Meta". The callback comes back to this address with ?meta=connected or
+// ?meta=error&reason=<code>. The screen itself explains it is the owner's.
+const metaAdsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/ads/meta",
+  validateSearch: parseMetaSearch,
+  component: MetaAdsScreen,
+});
+
 // 6-1a: the event wizard. "new" is a static segment, so it wins over "$eventId".
 // The screen itself shows "not found" unless the build has VITE_FEATURE_WIZARD=1.
 const eventNewRoute = createRoute({
@@ -463,6 +474,7 @@ export const routeTree = rootRoute.addChildren([
     promoCodeRoute,
     teamRoute,
     orgDataRoute,
+    metaAdsRoute,
     eventNewRoute,
     linksRoute,
     linkNewRoute,
