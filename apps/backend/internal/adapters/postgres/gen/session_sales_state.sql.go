@@ -26,6 +26,13 @@ type SessionSalesFactsRow struct {
 	HeldPlaces      int64
 	Selling         bool
 	OpensLater      bool
+	// SalesMode is who sells the tickets (migration 0220): "platform" or
+	// "external". The partner fields are set only for an external session.
+	SalesMode             string
+	ExternalTicketURL     *string
+	ExternalSellerName    *string
+	DisplayPriceFromMinor *int64
+	DisplayCurrency       *string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -53,7 +60,12 @@ SELECT s.id,
        COALESCE(p.free, 0)::bigint,
        COALESCE(p.held, 0)::bigint,
        COALESCE(p.selling, false),
-       COALESCE(p.opens_later, false)
+       COALESCE(p.opens_later, false),
+       s.sales_mode,
+       s.external_ticket_url,
+       s.external_seller_name,
+       s.display_price_from_minor,
+       trim(s.display_currency)::text
 FROM   sessions s
 LEFT   JOIN session_sales_states st ON st.session_id = s.id
 LEFT   JOIN LATERAL (
@@ -96,6 +108,7 @@ func (q *Queries) ListSessionSalesFacts(ctx context.Context, sessionIDs []uuid.U
 		if err := rows.Scan(
 			&r.SessionID, &r.Status, &r.SalesEndAt, &r.Manual, &r.ManualChangedAt, &r.ManualChangeID,
 			&r.Categories, &r.TotalPlaces, &r.FreePlaces, &r.HeldPlaces, &r.Selling, &r.OpensLater,
+			&r.SalesMode, &r.ExternalTicketURL, &r.ExternalSellerName, &r.DisplayPriceFromMinor, &r.DisplayCurrency,
 		); err != nil {
 			return nil, err
 		}

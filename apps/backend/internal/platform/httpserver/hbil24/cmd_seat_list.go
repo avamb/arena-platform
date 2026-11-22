@@ -143,6 +143,16 @@ func (h *Handler) handleBil24GetSeatList(w http.ResponseWriter, r *http.Request,
 		}
 	}
 
+	// A session a partner box office sells (sessions.sales_mode =
+	// 'external', migration 0220) does not exist for the gateway: the
+	// catalog leaves it out, so its seat list answers "not found" too.
+	if h.tierQueries != nil {
+		if _, _, _, mode, serr := h.tierQueries.GetSessionSalesState(ctx, sessionID); serr == nil && !hcheckout.SessionSellable(mode) {
+			writeBil24JSON(w, http.StatusOK, bil24Error(req.Command, ResultCodeNotFound, "session not found"))
+			return
+		}
+	}
+
 	// Resolve admission_mode when the seating dependency is wired. A
 	// missing dependency or a lookup failure degrades to general_admission
 	// — the most conservative shape (empty seatList, no placement key).
@@ -318,7 +328,7 @@ func (h *Handler) buildSeatListCategories(
 		manual   string
 	)
 	if h.tierQueries != nil {
-		if end, _, m, err := h.tierQueries.GetSessionSalesState(ctx, sessionID); err == nil {
+		if end, _, m, _, err := h.tierQueries.GetSessionSalesState(ctx, sessionID); err == nil {
 			salesEnd, manual = end, m
 		}
 	}

@@ -61,7 +61,31 @@ var (
 	// ErrSessionSoldOut — the organizer declared the session sold out
 	// (session_sales_states, migration 0183), whatever places are left.
 	ErrSessionSoldOut = errors.New("hcheckout: session is sold out")
+	// ErrSessionSoldExternally — a partner box office sells the tickets of
+	// the session (sessions.sales_mode = 'external', migration 0220). The
+	// platform never holds or sells its places: REST 409
+	// session.sold_externally, gateway 101.
+	ErrSessionSoldExternally = errors.New("hcheckout: session is sold by a partner box office")
 )
+
+// SessionSellable reports whether the platform itself sells the tickets of
+// a session with the given sales mode (sessions.sales_mode, migration
+// 0220). It is the ONE predicate of spec 63 §14.2: every hold path reaches
+// it through CheckSessionSalesOpen, and the gateway catalog and seat list
+// use it to leave an external session out. An empty mode (a row read
+// without the column) counts as the platform's.
+func SessionSellable(mode string) bool {
+	return mode != gen.SessionSalesModeExternal
+}
+
+// SalesModeRefusal reports the refusal for a session a partner box office
+// sells (ErrSessionSoldExternally), or nil.
+func SalesModeRefusal(mode string, tierID uuid.UUID, now time.Time) error {
+	if !SessionSellable(mode) {
+		return &CategoryNotSellableError{TierID: tierID, Reason: ErrSessionSoldExternally, Now: now}
+	}
+	return nil
+}
 
 // CategoryNotSellableError reports which category refused the hold and
 // why. Start / End carry the stored sale window when the reason is
@@ -88,6 +112,8 @@ func (e *CategoryNotSellableError) Error() string {
 		return "hcheckout: session sales have not started"
 	case errors.Is(e.Reason, ErrSessionSoldOut):
 		return "hcheckout: session is sold out"
+	case errors.Is(e.Reason, ErrSessionSoldExternally):
+		return "hcheckout: session is sold by a partner box office"
 	case e.Start != nil && e.Now.Before(*e.Start):
 		return fmt.Sprintf("hcheckout: category %s is not on sale until %s",
 			e.TierID, e.Start.UTC().Format(time.RFC3339))
@@ -197,18 +223,22 @@ func ManualSalesStateRefusal(manual string, tierID uuid.UUID, now time.Time) err
 	return nil
 }
 
-// CheckSessionSalesOpen refuses a NEW hold on a cancelled session
+// CheckSessionSalesOpen refuses a NEW hold on a session a partner box office
+// sells (SalesModeRefusal, checked first), on a cancelled session
 // (SessionStatusRefusal), on a session the organizer set to "coming soon" or
 // "sold out" (ManualSalesStateRefusal) and once the session's sales end has
 // passed. A session row it cannot find is left to the category checks
 // (they answer ErrCategoryNotFound for its categories).
 func CheckSessionSalesOpen(ctx context.Context, txq *gen.Queries, sessionID, tierID uuid.UUID, now time.Time) error {
-	end, status, manual, err := txq.GetSessionSalesState(ctx, sessionID)
+	end, status, manual, mode, err := txq.GetSessionSalesState(ctx, sessionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
 		return fmt.Errorf("hcheckout: load session sales state: %w", err)
+	}
+	if err := SalesModeRefusal(mode, tierID, now); err != nil {
+		return err
 	}
 	if err := SessionStatusRefusal(status, tierID, now); err != nil {
 		return err
@@ -217,6 +247,25 @@ func CheckSessionSalesOpen(ctx context.Context, txq *gen.Queries, sessionID, tie
 		return err
 	}
 	return SessionSalesClosed(end, tierID, now)
+}
+
+// CheckSessionSellable is the sales-mode half of CheckSessionSalesOpen alone:
+// ErrSessionSoldExternally for a session a partner box office sells, nil
+// otherwise. The public checkout/start and checkout/quote run it right after
+// resolving the session, before any tier lookup, because an external session
+// has no tiers and would otherwise answer a misleading tier error. It is a
+// best-effort early answer: a session row it cannot read, or nil queries,
+// is left to the later checks, and the hold itself still runs
+// CheckSessionSalesOpen inside its transaction.
+func CheckSessionSellable(ctx context.Context, q *gen.Queries, sessionID uuid.UUID, now time.Time) error {
+	if q == nil {
+		return nil
+	}
+	_, _, _, mode, err := q.GetSessionSalesState(ctx, sessionID)
+	if err != nil {
+		return nil //nolint:nilerr // best effort, see above
+	}
+	return SalesModeRefusal(mode, uuid.Nil, now)
 }
 
 // checkCategory is CheckCategorySellable without the session-wide check.
@@ -407,6 +456,8 @@ func CheckSeatCategoriesSellable(ctx context.Context, txq *gen.Queries, sessionI
 // widget error envelope code, or "" when err is not one.
 func CategoryGateErrorCode(err error) string {
 	switch {
+	case errors.Is(err, ErrSessionSoldExternally):
+		return "session.sold_externally"
 	case errors.Is(err, ErrSessionCancelled):
 		return "session.cancelled"
 	case errors.Is(err, ErrSessionSalesSoon):
@@ -429,6 +480,8 @@ func CategoryGateErrorCode(err error) string {
 // CategoryGateMessage is the human-readable half of CategoryGateErrorCode.
 func CategoryGateMessage(err error) string {
 	switch {
+	case errors.Is(err, ErrSessionSoldExternally):
+		return "tickets for this session are sold by a partner box office"
 	case errors.Is(err, ErrSessionCancelled):
 		return "this session has been cancelled"
 	case errors.Is(err, ErrSessionSalesSoon):

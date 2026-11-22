@@ -1,5 +1,7 @@
 import { HelpPopover } from "@/components/HelpPopover";
 import { Link, useParams } from "@tanstack/react-router";
+import { ExternalLine } from "@/components/ExternalSaleFields";
+import { useIsExternalSession } from "@/lib/useExternalSession";
 import { SessionInvitations } from "@/components/staffInvitations/SessionInvitations";
 import { useI18n } from "@/lib/i18n";
 import { useOrg } from "@/screens/OrgLayout";
@@ -16,6 +18,8 @@ export function SessionInvitationsScreen() {
   const { t } = useI18n();
   const { orgId, access } = useOrg();
   const { eventId, sessionId } = useParams({ from: "/o/$orgId/events/$eventId/sessions/$sessionId/invitations" });
+  // Spec 63, L-3: a date a partner box office sells has no guests of the platform.
+  const external = useIsExternalSession(orgId, eventId, sessionId, access.can("session.read"));
 
   return (
     <article aria-labelledby="seat-inv-title" className="inv-article">
@@ -28,7 +32,7 @@ export function SessionInvitationsScreen() {
         {t("seatInv.title")}
         <HelpPopover textKey="help.invitations" testId="help-invitations" />
       </h1>
-      <SessionInvitations orgId={orgId} eventId={eventId} sessionId={sessionId} can={access.can} withCsv />
+      {external ? <ExternalLine /> : <SessionInvitations orgId={orgId} eventId={eventId} sessionId={sessionId} can={access.can} withCsv />}
     </article>
   );
 }

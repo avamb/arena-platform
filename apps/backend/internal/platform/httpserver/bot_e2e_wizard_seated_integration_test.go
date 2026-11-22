@@ -131,7 +131,8 @@ func TestBotE2E_WizardSeatedDate(t *testing.T) {
 
 	// ── create ──────────────────────────────────────────────────────────────
 	eventName := "Seated show " + suffix
-	owner.press("wz:new", "Как называется")
+	owner.press("wz:new", "Кто продаёт билеты?")
+	owner.press("wz:seller:platform", "Как называется")
 	owner.say(eventName, "Возраст")
 	owner.press("wz:age:16+", "Под каким брендом")
 	owner.press("wz:prom:org", "афишу")

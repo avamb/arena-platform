@@ -33,6 +33,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customers"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/extsale"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/invitations"
@@ -357,6 +358,20 @@ func issueTarget(ctx context.Context, txq *gen.Queries, orgID, sessionID uuid.UU
 	}
 	if err != nil {
 		return target, fmt.Errorf("hinvitations: session lookup: %w", err)
+	}
+	// A session a partner box office sells (sessions.sales_mode = 'external',
+	// migration 0220) never gets a ticket here, not even an invitation (spec
+	// 63 §14.2). Read under the sessions row lock bumpSessionVersion took.
+	mode, err := txq.LockSessionSalesMode(ctx, sessionID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return target, refuse(http.StatusNotFound, "session.not_found", "session not found", nil)
+	}
+	if err != nil {
+		return target, fmt.Errorf("hinvitations: session sales mode: %w", err)
+	}
+	if !hcheckout.SessionSellable(mode) {
+		return target, refuse(http.StatusConflict, extsale.CodeSoldExternally,
+			"this session is sold by a partner box office, no invitation can be issued for it", nil)
 	}
 	if target.Status == "cancelled" {
 		return target, refuse(http.StatusUnprocessableEntity, "invitation.session_cancelled",

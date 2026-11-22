@@ -476,6 +476,11 @@ func (w *Wizard) pickVenue(ctx context.Context, ws WizSession, d *Draft, v Venue
 	}
 	d.Scratch.PlanAfter = planAfterCapacity
 	d.Scratch.NoPlanVenueID = ""
+	if d.External != nil && d.extOf(d.Cur) != nil {
+		// A partner sells this date: no hall plan, no places to ask.
+		_, _ = w.finishSession(ws.Locale, d) // never fails; a repeated date goes back to the date question
+		return
+	}
 	if w.offerPlans(ctx, ws, d) {
 		return
 	}

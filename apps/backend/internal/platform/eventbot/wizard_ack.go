@@ -60,6 +60,23 @@ func (w *Wizard) ack(ws WizSession, step string, d *Draft) string {
 		}
 	}
 	switch step {
+	case stEvSeller:
+		if d.External != nil {
+			return line("bot.wz.ack_seller", t("bot.wz.ack_seller_partner", nil))
+		}
+		return line("bot.wz.ack_seller", t("bot.wz.ack_seller_us", nil))
+	case stExtURL:
+		return line("bot.wz.ack_ext_url", Esc(d.extCurrent().URL))
+	case stExtName:
+		return line("bot.wz.ack_ext_name", Esc(d.extCurrent().SellerName))
+	case stExtPrice:
+		if d.Mode == ModeEdit {
+			return "" // the card follows: its list of changes says it
+		}
+		if e := d.extCurrent(); e.PriceFromMinor != nil {
+			return line("bot.wz.ack_ext_price", FormatMoney(*e.PriceFromMinor, cur, loc))
+		}
+		return line("bot.wz.ack_ext_price", t("bot.wz.ack_none", nil))
 	case stEvName:
 		return line("bot.wz.ack_name", Esc(d.Event.Name))
 	case stEvAge:

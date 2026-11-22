@@ -285,7 +285,23 @@ func (h *Handler) prepareImport(
 			}
 		}
 	}
-	if len(req.CategoryList) == 0 && issues.add(failImportAt(http.StatusUnprocessableEntity,
+	// A partner-sold session (actionEvent.externalSale, source=arena) owns no
+	// category, so its bundle needs none.
+	externalBundle := false
+	if source == bil24compat.SourceArena {
+		kind, _, _ := req.ActionEvent.ParseExternalSale()
+		externalBundle = kind == bil24compat.ExternalSaleObject
+		// Spec: an absent externalSale leaves the session's sales mode untouched.
+		// A bundle for an existing session with no externalSale and no categories
+		// is fine when that session is partner-sold, so its categories check
+		// waits for the session (executeArenaImport).
+		if kind == bil24compat.ExternalSaleAbsent && len(req.CategoryList) == 0 &&
+			strings.TrimSpace(req.ActionEvent.ArenaSessionID) != "" {
+			externalBundle = true
+			prep.plan.CategoriesDeferred = true
+		}
+	}
+	if len(req.CategoryList) == 0 && !externalBundle && issues.add(failImportAt(http.StatusUnprocessableEntity,
 		"import.categories_required", "/categoryList", "categoryList must contain at least one category")) {
 		return prep
 	}

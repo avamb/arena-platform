@@ -8,6 +8,12 @@ var wizardKeys = []string{
 	"bot.wz.cal_week", "bot.wz.cal_month", "bot.wz.date_confirm_one", "bot.wz.date_confirm_many",
 	"bot.wz.date_retry_btn", "bot.wz.date_limit_suffix", "bot.wz.err_date_past", "bot.wz.err_date_early", "bot.wz.err_date_late",
 	"bot.wz.new_event_btn",
+	// who sells the tickets: the platform or a partner box office (wizard_external.go)
+	"bot.wz.ask_seller", "bot.wz.seller_platform_btn", "bot.wz.seller_partner_btn", "bot.wz.err_seller_first",
+	"bot.wz.ask_ext_url", "bot.wz.err_ext_url", "bot.wz.ask_ext_name", "bot.wz.err_ext_name", "bot.wz.ask_ext_price", "bot.wz.err_ext_price",
+	"bot.wz.ack_seller", "bot.wz.ack_seller_us", "bot.wz.ack_seller_partner", "bot.wz.ack_ext_url", "bot.wz.ack_ext_name", "bot.wz.ack_ext_price",
+	"bot.wz.summary_external", "bot.wz.summary_external_price", "bot.wz.summary_session_ext", "bot.wz.session_external",
+	"bot.wz.edit_field_external", "bot.wz.edit_b_external", "bot.wz.edit_ext_btn", "bot.wz.edit_chg_date_ext", "bot.wz.preview_new_date_ext",
 	"bot.wz.t_cat_addon_btn", "bot.wz.ask_t_cat_addon", "bot.wz.err_addon_all", "bot.wz.addon_mark",
 	"bot.wz.cancel_btn",
 	"bot.wz.back_btn",

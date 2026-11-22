@@ -1618,7 +1618,7 @@ other = "Archivo · {{.N}}"
 other = "<b>Eventos: {{.Org}}</b>\n{{.Filter}}. Página {{.Page}} de {{.Pages}}.{{.Search}}\n{{.Legend}}\nPulsa un evento para abrir su ficha. Para buscar por nombre, escribe unas letras."
 
 ["bot.ec.legend"]
-other = "● a la venta  ○ pronto  ✕ agotado  ✓ archivo"
+other = "● a la venta  ○ pronto  ✕ agotado  ↗ lo vende un socio  ✓ archivo"
 
 ["bot.ec.search_line"]
 other = "Búsqueda: «{{.Query}}» — encontrados {{.N}}."
@@ -7374,3 +7374,78 @@ other = "Muestra la traducción a este idioma y recibe tu propio texto."
 
 ["bot.hp.i.tr.machine"]
 other = "Traduce los idiomas que no tienen traducción. Tus textos se quedan como están."
+
+["bot.wz.ask_seller"]
+other = "¿Quién vende las entradas?\n\nSi las vende usted, los compradores las consiguen en su página y en el widget. Si las vende un socio, la página del evento tendrá un botón a la taquilla del socio."
+
+["bot.wz.seller_platform_btn"]
+other = "Nosotros, en la web y en el widget"
+
+["bot.wz.seller_partner_btn"]
+other = "Un socio"
+
+["bot.wz.err_seller_first"]
+other = "Primero elija quién vende las entradas: pulse uno de los botones."
+
+["bot.wz.ask_ext_url"]
+other = "Envíe el enlace a la taquilla del socio: la página donde se compran las entradas de este evento. La dirección empieza por https://.{{if .Value}}\n\nAhora: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_url"]
+other = "Necesito el enlace a la taquilla del socio. Empieza por https://, lleva a la web del socio por su nombre (no a una dirección IP) y no a nuestra web."
+
+["bot.wz.ask_ext_name"]
+other = "¿Cómo se llama la taquilla? Los compradores verán este nombre en el botón, por ejemplo «Eventim».{{if .Value}}\n\nAhora: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_name"]
+other = "Indique el nombre de la taquilla, hasta 80 caracteres."
+
+["bot.wz.ask_ext_price"]
+other = "Un precio «desde» para la página del evento, por ejemplo 25 o 39,90. Es una referencia para los compradores: las entradas las vende el socio. La moneda es la del evento, se la preguntaré más tarde.\n\n¿Sin precio? Pulse «Omitir».{{if .Value}}\n\nAhora: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_price"]
+other = "No he podido leer el precio. Escriba un número, por ejemplo 25 o 39,90, o pulse «Omitir»."
+
+["bot.wz.ack_seller"]
+other = "Vende"
+
+["bot.wz.ack_seller_us"]
+other = "nosotros, en la web y en el widget"
+
+["bot.wz.ack_seller_partner"]
+other = "un socio"
+
+["bot.wz.ack_ext_url"]
+other = "Enlace a la taquilla"
+
+["bot.wz.ack_ext_name"]
+other = "Taquilla"
+
+["bot.wz.ack_ext_price"]
+other = "Precio desde"
+
+["bot.wz.summary_external"]
+other = "Vende un socio: {{.Name}}, {{.Url}}{{.Price}}"
+
+["bot.wz.summary_external_price"]
+other = ", desde {{.Price}}"
+
+["bot.wz.summary_session_ext"]
+other = "{{.When}} {{.Venue}}"
+
+["bot.wz.session_external"]
+other = "Vende un socio: {{.Name}}\n{{.Url}}"
+
+["bot.wz.edit_field_external"]
+other = "Taquilla del socio"
+
+["bot.wz.edit_b_external"]
+other = "Taquilla del socio"
+
+["bot.wz.edit_ext_btn"]
+other = "Cambiar la taquilla"
+
+["bot.wz.edit_chg_date_ext"]
+other = "Nueva fecha {{.When}} · {{.Venue}}. {{.List}}"
+
+["bot.wz.preview_new_date_ext"]
+other = "Nueva fecha {{.When}} · {{.Venue}}. {{.List}}"

@@ -63,6 +63,11 @@ type ActionEventRow struct {
 	SeatsTotal         int32      `json:"seats_total"`
 	SeatsAvailable     int32      `json:"seats_available"`
 	LedgerAvailable    int32      `json:"ledger_available"`
+	// SalesMode is sessions.sales_mode (migration 0220). The gateway never
+	// lists an external session (hcheckout.SessionSellable); it is projected
+	// rather than filtered so the handler can also drop an event whose
+	// every listed session is external.
+	SalesMode string `json:"sales_mode"`
 }
 
 const listActionEventsByOrg = `-- name: ListActionEventsByOrg :many
@@ -91,7 +96,8 @@ SELECT s.id                                        AS session_id,
        COALESCE((SELECT il.capacity_total - il.capacity_sold - il.capacity_held
                    FROM   inventory_ledger il
                    WHERE  il.session_id = s.id
-                     AND  il.tier_id IS NULL), 0)::int AS ledger_available
+                     AND  il.tier_id IS NULL), 0)::int AS ledger_available,
+       s.sales_mode
 FROM   sessions s
 JOIN   events   e ON e.id = s.event_id
 JOIN   venues   v ON v.id = s.venue_id
@@ -143,6 +149,7 @@ func (q *Queries) ListActionEventsByOrg(ctx context.Context, orgID uuid.UUID) ([
 			&r.SeatsTotal,
 			&r.SeatsAvailable,
 			&r.LedgerAvailable,
+			&r.SalesMode,
 		); err != nil {
 			return nil, err
 		}

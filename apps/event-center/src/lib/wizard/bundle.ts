@@ -17,6 +17,7 @@
  *
  * It is a pure function of the draft and an options object.
  */
+import { bundleExternalSale, type BundleExternalSale } from "@/lib/externalSale";
 import { venueCapacity, venueTimezone, type WizardDraft } from "@/lib/wizard/draft";
 import { effectiveTickets, type DateEntry, type TicketsPart } from "@/lib/wizard/datesDraft";
 import { doorsOffset, majorOf, parseCount, parsePriceMinor, parseTime, salesEndOffset } from "@/lib/wizard/parse";
@@ -50,6 +51,11 @@ export interface BundleActionEvent {
   doorsOpenTime?: string;
   /** The seating plan version a new date is sold by (seating.ts); absent = free seating. */
   arenaSeatingPlanVersionId?: string;
+  /**
+   * Spec 63, L-3: the date is sold by a partner box office, not by the platform. Present only for such a date
+   * (an absent key leaves the sales mode alone), and then the bundle has no `categoryList`.
+   */
+  externalSale?: BundleExternalSale;
 }
 
 export interface BundleVenue {
@@ -99,6 +105,7 @@ export interface EventBundle {
   action: BundleAction;
   actionEvent: BundleActionEvent;
   venue: BundleVenue;
+  /** Absent for a date a partner box office sells (`actionEvent.externalSale`): such a date owns no categories. */
   categoryList: BundleCategory[];
   publish: boolean;
 }
@@ -242,10 +249,13 @@ export function buildBundle(draft: WizardDraft, opts: BuildOptions, index = 0): 
     const before = date.doors.trim() === "" ? null : doorsOffset(time, parseTime(date.doors) ?? "");
     if (before !== null) actionEvent.doorsOpenTime = formatRfc3339(start - before * 60_000, tz);
   }
-  const seated = isSeatedDraft(draft);
+  // A date a partner sells has no tickets and no hall plan: the box office replaces both.
+  const external = date.sales === "external";
+  const seated = isSeatedDraft(draft) && !external;
   if (seated) actionEvent.arenaSeatingPlanVersionId = draft.seating.versionId;
+  if (external) actionEvent.externalSale = bundleExternalSale(date.external, actionEvent.currency);
 
-  return {
+  const bundle: EventBundle = {
     source: "arena",
     externalRef: opts.externalRef ?? `web:${opts.orgId}:${draft.id}:${index + 1}`,
     action: {
@@ -262,6 +272,9 @@ export function buildBundle(draft: WizardDraft, opts: BuildOptions, index = 0): 
     categoryList: seated ? seatedCategoryList(draft.seating) : categoryList(tickets, datePlaces(draft, date), tz),
     publish: false,
   };
+  // The server refuses a partner date that carries categories (409 session.sold_externally): leave the key out.
+  if (external) delete (bundle as Partial<EventBundle>).categoryList;
+  return bundle;
 }
 
 /** One bundle per date, in the order of the draft. */

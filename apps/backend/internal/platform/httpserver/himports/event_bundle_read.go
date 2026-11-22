@@ -70,6 +70,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/extsale"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
@@ -443,6 +444,17 @@ func buildEventBundles(src bundleSource) EventBundleReadResponse {
 			doors = s.DoorsOpenAt.In(loc).Format(time.RFC3339)
 		}
 		ae.DoorsOpenTime = &doors
+		if v := extsale.ViewFromRow(s); v != nil {
+			// A partner-sold session reads back as externalSale (migration 0220);
+			// a platform session leaves the key out, which keeps the mode.
+			sale := bil24compat.ImportExternalSale{URL: v.URL, SellerName: v.SellerName, PriceFrom: v.PriceFrom}
+			if v.Currency != nil {
+				sale.Currency = *v.Currency
+			}
+			if raw, err := json.Marshal(sale); err == nil {
+				ae.ExternalSale = raw
+			}
+		}
 		checkBundleTimes(ae, s, loc, warn)
 		checkBundleInstants(ss, src.Windows, warn)
 

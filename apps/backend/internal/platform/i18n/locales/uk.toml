@@ -2126,7 +2126,7 @@ other = "Архів · {{.N}}"
 other = "<b>Заходи: {{.Org}}</b>\n{{.Filter}}. Сторінка {{.Page}} з {{.Pages}}.{{.Search}}\n{{.Legend}}\nНатисніть на захід, щоб відкрити картку. Щоб знайти за назвою, просто напишіть кілька літер."
 
 ["bot.ec.legend"]
-other = "● тривають  ○ незабаром  ✕ розпродано  ✓ архів"
+other = "● тривають  ○ незабаром  ✕ розпродано  ↗ продає партнер  ✓ архів"
 
 ["bot.ec.search_line"]
 other = "Пошук: «{{.Query}}» — знайдено {{.N}}."
@@ -7553,3 +7553,78 @@ other = "Показує переклад цією мовою та приймає
 
 ["bot.hp.i.tr.machine"]
 other = "Перекладає мови, у яких немає перекладу. Ваші тексти лишаються як є."
+
+["bot.wz.ask_seller"]
+other = "Хто продає квитки?\n\nЯкщо квитки продаєте ви самі, їх можна купити на вашій сторінці й у віджеті. Якщо квитки продає партнер, на сторінці заходу буде кнопка на його касу."
+
+["bot.wz.seller_platform_btn"]
+other = "Ми, на сайті й у віджеті"
+
+["bot.wz.seller_partner_btn"]
+other = "Партнер"
+
+["bot.wz.err_seller_first"]
+other = "Спершу виберіть, хто продає квитки: натисніть одну з кнопок."
+
+["bot.wz.ask_ext_url"]
+other = "Надішліть посилання на касу партнера: сторінку, де купують квитки на цей захід. Адреса починається з https://.{{if .Value}}\n\nЗараз: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_url"]
+other = "Потрібне посилання на касу партнера. Воно починається з https://, веде на сайт партнера з назвою (не на IP-адресу) і не на наш сайт."
+
+["bot.wz.ask_ext_name"]
+other = "Як називається каса? Цю назву покупці побачать на кнопці, наприклад «Eventim».{{if .Value}}\n\nЗараз: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_name"]
+other = "Вкажіть назву каси, до 80 знаків."
+
+["bot.wz.ask_ext_price"]
+other = "Ціна «від» для сторінки заходу, наприклад 25 або 39,90. Це орієнтир для покупців: квитки продає партнер. Валюта та сама, що й у заходу, її я запитаю пізніше.\n\nЦіни немає? Натисніть «Пропустити».{{if .Value}}\n\nЗараз: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_price"]
+other = "Не вдалося прочитати ціну. Напишіть число, наприклад 25 або 39,90, або натисніть «Пропустити»."
+
+["bot.wz.ack_seller"]
+other = "Продає"
+
+["bot.wz.ack_seller_us"]
+other = "ми, на сайті й у віджеті"
+
+["bot.wz.ack_seller_partner"]
+other = "партнер"
+
+["bot.wz.ack_ext_url"]
+other = "Посилання на касу"
+
+["bot.wz.ack_ext_name"]
+other = "Каса"
+
+["bot.wz.ack_ext_price"]
+other = "Ціна від"
+
+["bot.wz.summary_external"]
+other = "Продає партнер: {{.Name}}, {{.Url}}{{.Price}}"
+
+["bot.wz.summary_external_price"]
+other = ", ціна від {{.Price}}"
+
+["bot.wz.summary_session_ext"]
+other = "{{.When}} {{.Venue}}"
+
+["bot.wz.session_external"]
+other = "Продає партнер: {{.Name}}\n{{.Url}}"
+
+["bot.wz.edit_field_external"]
+other = "Каса партнера"
+
+["bot.wz.edit_b_external"]
+other = "Каса партнера"
+
+["bot.wz.edit_ext_btn"]
+other = "Змінити касу"
+
+["bot.wz.edit_chg_date_ext"]
+other = "Новий сеанс {{.When}} · {{.Venue}}. {{.List}}"
+
+["bot.wz.preview_new_date_ext"]
+other = "Новий сеанс {{.When}} · {{.Venue}}. {{.List}}"

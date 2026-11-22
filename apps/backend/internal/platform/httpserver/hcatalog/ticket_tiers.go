@@ -30,6 +30,16 @@ const (
 	admissionAssignedSeats    = "assigned_seats"
 )
 
+// Refusals of the tier-create transaction, read back by HandleCreateTier.
+var (
+	// errTierSoldExternally: the session is sold by a partner box office
+	// (sessions.sales_mode = 'external', migration 0220), read under the
+	// session row lock.
+	errTierSoldExternally = errors.New("hcatalog: session is sold by a partner box office")
+	// errTierSessionGone: the session row vanished before its lock.
+	errTierSessionGone = errors.New("hcatalog: session not found")
+)
+
 // ValidPricingModes lists the allowed pricing_mode values.
 var ValidPricingModes = map[string]bool{
 	string(catalogdomain.PricingModeFixed): true,
@@ -297,6 +307,12 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A session a partner box office sells owns no tiers (migration 0220).
+	if _, _, _, salesMode, smErr := h.tierQueries.GetSessionSalesState(ctx, sessionID); smErr == nil && salesMode == gen.SessionSalesModeExternal {
+		writeSoldExternally(w, r)
+		return
+	}
+
 	// Currency follows the session (AB-38). Resolved after every syntactic
 	// validation so cheap 400s never cost a DB round trip; resolving it
 	// also verifies the session exists before the INSERT.
@@ -325,6 +341,20 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 
 	var tier gen.TicketTierRow
 	insert := func(txq *gen.Queries) error {
+		// The session row lock FIRST (lock order: sessions first), and the
+		// sales mode re-read under it: a concurrent PATCH switching the
+		// session to 'external' takes the same row lock, so it either sees
+		// this tier (and refuses the switch) or this check sees 'external'.
+		mode, lockErr := txq.LockSessionSalesMode(ctx, sessionID)
+		if errors.Is(lockErr, pgx.ErrNoRows) {
+			return errTierSessionGone
+		}
+		if lockErr != nil {
+			return lockErr
+		}
+		if mode == gen.SessionSalesModeExternal {
+			return errTierSoldExternally
+		}
 		row, insErr := txq.InsertTicketTier(ctx,
 			sessionID,
 			req.Name, req.PricingMode,
@@ -370,6 +400,16 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := gaquota.InTx(ctx, h.pool, h.tierQueries, insert); err != nil {
+		if errors.Is(err, errTierSoldExternally) {
+			writeSoldExternally(w, r)
+			return
+		}
+		if errors.Is(err, errTierSessionGone) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"session.not_found", "session not found", r,
+			))
+			return
+		}
 		h.logger.Error("tier: insert failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"tier.insert_failed", "failed to create ticket tier", r,

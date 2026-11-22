@@ -143,6 +143,7 @@ func FactsFromRow(r gen.SessionSalesFactsRow) Facts {
 		FreePlaces:  int(r.FreePlaces),
 		Selling:     r.Selling,
 		OpensLater:  r.OpensLater,
+		External:    r.SalesMode == gen.SessionSalesModeExternal,
 	}
 }
 

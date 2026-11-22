@@ -22,6 +22,10 @@
 --                    category, open or not (a closed category or a sale that
 --                    has not started is "upcoming", an empty hall "sold out");
 --                    a session the organizer declared sold out has none
+--   future_external_sessions
+--                    future sessions a partner box office sells (sales_mode
+--                    'external', migration 0220); they own no seats, so they
+--                    are never selling and have no places left here
 SELECT s.event_id,
        count(*)::bigint                                   AS session_count,
        count(*) FILTER (WHERE s.end_at > now())::bigint   AS future_sessions,
@@ -51,7 +55,9 @@ SELECT s.event_id,
                WHERE  ss.session_id = s.id
                  AND  ss.status     = 'available'
                  AND  tt.deleted_at IS NULL)
-       ), false)                                          AS places_left
+       ), false)                                          AS places_left,
+       count(*) FILTER (WHERE s.end_at > now()
+                          AND s.sales_mode = 'external')::bigint AS future_external_sessions
 FROM   sessions s
 WHERE  s.event_id = ANY($1::uuid[])
   AND  s.deleted_at IS NULL

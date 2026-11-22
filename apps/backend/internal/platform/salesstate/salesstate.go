@@ -25,6 +25,7 @@ const (
 	SoldOut   = "sold_out"  // set by hand, or no free place is left
 	Ended     = "ended"     // the session's sales end has passed
 	Cancelled = "cancelled" // the session itself was cancelled
+	External  = "external"  // a partner box office sells it (migration 0220)
 )
 
 // Sources of a change, recorded in session_sales_state_changes.source: the
@@ -64,6 +65,9 @@ type Facts struct {
 	// its window has not ended (the organizer may still open it, or it waits
 	// its turn in a chain of categories).
 	OpensLater bool
+	// External is true when a partner box office sells the session (sales_mode
+	// external): the platform sells nothing, whatever its places say.
+	External bool
 }
 
 // Effective decides the state of a session. manual is the organizer's state
@@ -80,6 +84,9 @@ type Facts struct {
 func Effective(manual string, f Facts, now time.Time) string {
 	if f.Status == "cancelled" {
 		return Cancelled
+	}
+	if f.External {
+		return External
 	}
 	if ValidManual(manual) {
 		return manual

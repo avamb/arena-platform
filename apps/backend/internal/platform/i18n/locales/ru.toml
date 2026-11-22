@@ -1784,7 +1784,7 @@ other = "Архив · {{.N}}"
 other = "<b>Мероприятия: {{.Org}}</b>\n{{.Filter}}. Страница {{.Page}} из {{.Pages}}.{{.Search}}\n{{.Legend}}\nНажмите на мероприятие, чтобы открыть карточку. Чтобы найти по названию, просто напишите несколько букв."
 
 ["bot.ec.legend"]
-other = "● идут  ○ скоро  ✕ распродано  ✓ архив"
+other = "● идут  ○ скоро  ✕ распродано  ↗ продаёт партнёр  ✓ архив"
 
 ["bot.ec.search_line"]
 other = "Поиск: «{{.Query}}» — найдено {{.N}}."
@@ -7541,3 +7541,78 @@ other = "Показывает перевод на этот язык и прин�
 
 ["bot.hp.i.tr.machine"]
 other = "Переводит языки, у которых нет перевода. Ваши тексты остаются как есть."
+
+["bot.wz.ask_seller"]
+other = "Кто продаёт билеты?\n\nЕсли билеты продаёте вы сами, их можно купить на вашей странице и в виджете. Если билеты продаёт партнёр, на странице мероприятия будет кнопка на его кассу."
+
+["bot.wz.seller_platform_btn"]
+other = "Мы, на сайте и в виджете"
+
+["bot.wz.seller_partner_btn"]
+other = "Партнёр"
+
+["bot.wz.err_seller_first"]
+other = "Сначала выберите, кто продаёт билеты: нажмите одну из кнопок."
+
+["bot.wz.ask_ext_url"]
+other = "Пришлите ссылку на кассу партнёра: страницу, где покупают билеты на это мероприятие. Адрес начинается с https://.{{if .Value}}\n\nСейчас: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_url"]
+other = "Нужна ссылка на кассу партнёра. Она начинается с https://, ведёт на сайт партнёра с названием (не на IP-адрес) и не на наш сайт."
+
+["bot.wz.ask_ext_name"]
+other = "Как называется касса? Это название покупатели увидят на кнопке, например «Eventim».{{if .Value}}\n\nСейчас: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_name"]
+other = "Укажите название кассы, до 80 знаков."
+
+["bot.wz.ask_ext_price"]
+other = "Цена «от» для страницы мероприятия, например 25 или 39,90. Это ориентир для покупателей: билеты продаёт партнёр. Валюта та же, что у мероприятия, её я спрошу позже.\n\nЦены нет? Нажмите «Пропустить».{{if .Value}}\n\nСейчас: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_price"]
+other = "Не получилось прочитать цену. Напишите число, например 25 или 39,90, либо нажмите «Пропустить»."
+
+["bot.wz.ack_seller"]
+other = "Продаёт"
+
+["bot.wz.ack_seller_us"]
+other = "мы, на сайте и в виджете"
+
+["bot.wz.ack_seller_partner"]
+other = "партнёр"
+
+["bot.wz.ack_ext_url"]
+other = "Ссылка на кассу"
+
+["bot.wz.ack_ext_name"]
+other = "Касса"
+
+["bot.wz.ack_ext_price"]
+other = "Цена от"
+
+["bot.wz.summary_external"]
+other = "Продаёт партнёр: {{.Name}}, {{.Url}}{{.Price}}"
+
+["bot.wz.summary_external_price"]
+other = ", цена от {{.Price}}"
+
+["bot.wz.summary_session_ext"]
+other = "{{.When}} {{.Venue}}"
+
+["bot.wz.session_external"]
+other = "Продаёт партнёр: {{.Name}}\n{{.Url}}"
+
+["bot.wz.edit_field_external"]
+other = "Касса партнёра"
+
+["bot.wz.edit_b_external"]
+other = "Касса партнёра"
+
+["bot.wz.edit_ext_btn"]
+other = "Изменить кассу"
+
+["bot.wz.edit_chg_date_ext"]
+other = "Новая дата {{.When}} · {{.Venue}}. {{.List}}"
+
+["bot.wz.preview_new_date_ext"]
+other = "Новая дата {{.When}} · {{.Venue}}. {{.List}}"

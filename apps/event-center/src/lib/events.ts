@@ -76,7 +76,7 @@ export function moneyLines(money: readonly SummaryMoneyItem[]): SummaryMoneyItem
 }
 
 /** The server's sales states, in the bot's order. Unknown values stay as they are. */
-export const SALES_STATES = ["on_sale", "upcoming", "sold_out", "archived"] as const;
+export const SALES_STATES = ["on_sale", "upcoming", "sold_out", "archived", "external"] as const;
 export type SalesState = (typeof SALES_STATES)[number];
 
 export function isKnownSalesState(s: string): s is SalesState {

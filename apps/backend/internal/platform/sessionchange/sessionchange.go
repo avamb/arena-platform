@@ -81,11 +81,22 @@ type Session struct {
 	EventID uuid.UUID
 	OrgID   uuid.UUID
 	State   State
+	// SalesMode is sessions.sales_mode (migration 0220). A session a
+	// partner box office sells ("external") has no buyers on the platform:
+	// Apply journals its change but queues no letter.
+	SalesMode string
 }
+
+// External reports whether a partner box office sells the session.
+func (s Session) External() bool { return s.SalesMode == salesModeExternal }
+
+// salesModeExternal mirrors gen.SessionSalesModeExternal (sessions.sales_mode).
+const salesModeExternal = "external"
 
 const loadSessionSQL = `
 SELECT s.id, s.event_id, e.org_id, s.start_at, s.end_at, s.venue_id,
-       COALESCE(v.name, ''), COALESCE(v.timezone, ''), s.status, s.deleted_at IS NOT NULL
+       COALESCE(v.name, ''), COALESCE(v.timezone, ''), s.status, s.deleted_at IS NOT NULL,
+       s.sales_mode
 FROM   sessions s
 JOIN   events   e ON e.id = s.event_id
 LEFT   JOIN venues v ON v.id = s.venue_id
@@ -102,7 +113,8 @@ func Load(ctx context.Context, db DB, sessionID uuid.UUID, lock bool) (Session, 
 	var s Session
 	err := db.QueryRow(ctx, q, sessionID).Scan(&s.ID, &s.EventID, &s.OrgID,
 		&s.State.StartAt, &s.State.EndAt, &s.State.VenueID,
-		&s.State.VenueName, &s.State.Timezone, &s.State.Status, &s.State.Deleted)
+		&s.State.VenueName, &s.State.Timezone, &s.State.Status, &s.State.Deleted,
+		&s.SalesMode)
 	return s, err
 }
 
@@ -388,7 +400,8 @@ func Preview(ctx context.Context, db DB, sess Session, proposed State) (Impact, 
 		return Impact{}, err
 	}
 	imp.Contact = contact
-	if len(imp.Kinds) == 0 {
+	if len(imp.Kinds) == 0 || sess.External() {
+		// An external session's buyers bought from the partner: no letter.
 		return imp, nil
 	}
 	orders, err := AffectedOrders(ctx, db, sess.ID)
@@ -471,9 +484,14 @@ func Apply(ctx context.Context, tx DB, in Input) (Result, error) {
 	if len(kinds) == 0 {
 		return Result{}, nil
 	}
-	orders, err := AffectedOrders(ctx, tx, sess.ID)
-	if err != nil {
-		return Result{}, err
+	// A session a partner box office sells (migration 0220) has no buyers
+	// on the platform: the change is journaled, no letter is queued.
+	var orders []AffectedOrder
+	if !sess.External() {
+		orders, err = AffectedOrders(ctx, tx, sess.ID)
+		if err != nil {
+			return Result{}, err
+		}
 	}
 	var tickets int
 	for _, o := range orders {

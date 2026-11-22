@@ -59,6 +59,9 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 	}
 
 	switch d.Step {
+	case stEvSeller, stExtURL, stExtName, stExtPrice:
+		return w.renderExternal(ws, d, header, nav), nil
+
 	case stEvName:
 		if d.singleEdit() {
 			return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.edit_ask_name", map[string]any{"Value": Esc(d.Event.Name)}), Buttons: nav()}, nil
@@ -462,11 +465,16 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		} else {
 			text += "\n\n" + t("bot.wz.edit_card_clean", nil)
 		}
+		ticketsBtn := Button{Label: mark("tickets", "bot.wz.edit_b_tickets"), Data: "e:tickets"}
+		if d.External != nil {
+			// A partner sells the tickets: the button opens the box office.
+			ticketsBtn.Label = mark("external", "bot.wz.edit_b_external")
+		}
 		rows = append(rows,
 			[]Button{{Label: mark("name", "bot.wz.edit_b_name"), Data: "e:name"}, {Label: mark("description", "bot.wz.edit_b_desc"), Data: "e:desc"}},
 			[]Button{{Label: mark("poster", "bot.wz.edit_b_poster"), Data: "e:poster"}, {Label: mark("age", "bot.wz.edit_b_age"), Data: "e:age"}},
 			[]Button{{Label: mark("promoter", "bot.wz.edit_b_promoter"), Data: "e:promoter"}, {Label: mark("currency", "bot.wz.edit_b_currency"), Data: "e:currency"}},
-			[]Button{{Label: mark("dates", "bot.wz.edit_b_date"), Data: "e:date"}, {Label: mark("tickets", "bot.wz.edit_b_tickets"), Data: "e:tickets"}},
+			[]Button{{Label: mark("dates", "bot.wz.edit_b_date"), Data: "e:date"}, ticketsBtn},
 			[]Button{btn("bot.ses.open_btn", "e:sessions")},
 			[]Button{btn("bot.wz.edit_exit_btn", "cancel")},
 		)
@@ -511,10 +519,14 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 			text = header(5, title) + w.Summary(loc, d) + "\n\n" + t("bot.wz.edit_footer", nil)
 			primary = btn("bot.wz.save_changes_btn", "publish")
 		}
+		ticketsKey := "bot.wz.edit_tickets_btn"
+		if d.External != nil {
+			ticketsKey = "bot.wz.edit_ext_btn"
+		}
 		rows := [][]Button{
 			{primary},
 			{btn("bot.wz.edit_event_btn", "edit:event"), btn("bot.wz.edit_when_btn", "edit:when")},
-			{btn("bot.wz.edit_tickets_btn", "edit:tickets"), btn("bot.wz.edit_extra_btn", "edit:extra")},
+			{btn(ticketsKey, "edit:tickets"), btn("bot.wz.edit_extra_btn", "edit:extra")},
 			{btn("bot.wz.cancel_btn", "cancel")},
 		}
 		return Screen{Text: text, Buttons: rows}, nil
@@ -537,14 +549,21 @@ func (w *Wizard) Summary(loc string, d *Draft) string {
 	b.WriteString(t("bot.wz.summary_event", map[string]any{"Name": Esc(d.Event.Name), "Age": d.Event.Age, "Promoter": promoter, "Poster": poster}))
 	b.WriteString("\n")
 	sessions := []string{}
-	for _, s := range d.Sessions {
-		sessions = append(sessions, t("bot.wz.summary_session", map[string]any{
+	for i, s := range d.Sessions {
+		key := "bot.wz.summary_session"
+		if d.extOf(i) != nil {
+			key = "bot.wz.summary_session_ext" // a partner sells it: no places to tell
+		}
+		sessions = append(sessions, t(key, map[string]any{
 			"When": DisplayDate(s.Date) + " " + s.Time, "Venue": Esc(s.VenueName), "Capacity": s.Capacity,
 		}))
 	}
 	b.WriteString(t("bot.wz.summary_sessions", map[string]any{"N": len(d.Sessions), "List": strings.Join(sessions, "; ")}))
 	b.WriteString("\n")
-	if d.ticketsDiffer() {
+	if d.anyExternal() {
+		// A partner sells the tickets: who, and where, instead of categories.
+		b.WriteString(w.salesLines(loc, d))
+	} else if d.ticketsDiffer() {
 		// The dates sell different categories: each date on its own line.
 		b.WriteString(w.ticketsByDate(loc, d))
 	} else {
