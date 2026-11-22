@@ -1790,7 +1790,7 @@ other = "Archive · {{.N}}"
 other = "<b>Events: {{.Org}}</b>\n{{.Filter}}. Page {{.Page}} of {{.Pages}}.{{.Search}}\n{{.Legend}}\nTap an event to open its card. To search by name, type some letters of the name."
 
 ["bot.ec.legend"]
-other = "● on sale  ○ sale not open  ✕ sold out  ✓ archive"
+other = "● on sale  ○ sale not open  ✕ sold out  ↗ sold by a partner  ✓ archive"
 
 ["bot.ec.search_line"]
 other = "Search: “{{.Query}}”. Found: {{.N}}."

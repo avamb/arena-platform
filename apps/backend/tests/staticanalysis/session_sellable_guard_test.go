@@ -52,12 +52,14 @@ var holdWriters = map[string]string{
 	filepath.Join("internal", "platform", "httpserver", "hfeed", "public_feed_checkout.go"): "",
 	// Public checkout recover: a new hold for an expired cart.
 	filepath.Join("internal", "platform", "httpserver", "hfeed", "public_checkout_recover.go"): "",
+	// Staff and bot invitations (single and batch, via issueTarget): an
+	// invitation is a ticket too, so an external session refuses it.
+	filepath.Join("internal", "platform", "httpserver", "hinvitations", "issue.go"): "",
 
 	// Exempt, with the reason:
 	filepath.Join("internal", "platform", "httpserver", "hcheckout", "ga_units.go"):     "AllocateGAUnitsTx is a helper run inside a gated hold transaction",
 	filepath.Join("internal", "platform", "httpserver", "hcheckout", "price_lock.go"):   "WriteReservationPriceLinesTx is a helper run inside a gated hold transaction",
 	filepath.Join("internal", "platform", "httpserver", "hcheckout", "late_payment.go"): "re-acquires the places of an order already paid (decision 1 of plan 23: an order already placed is not gated)",
-	filepath.Join("internal", "platform", "httpserver", "hinvitations", "issue.go"):     "a staff invitation is not a sale; it needs a category, and an external session has none",
 }
 
 // gateChain is the chain every gate function must keep: function -> a

@@ -213,6 +213,7 @@ export const en = {
   "state.upcoming": "Sales not open",
   "state.sold_out": "Sold out",
   "state.archived": "Finished",
+  "state.external": "Sold by a partner",
 
   "figures.sold": "Sold {sold} of {total}",
   "figures.free": "Free: {count}",

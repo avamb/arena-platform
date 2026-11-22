@@ -204,10 +204,9 @@ func (w *Wizard) applyExternal(ws WizSession, d *Draft, text, data string) (stri
 
 	case stExtPrice:
 		e := d.extEntry()
-		switch {
-		case data == "skip":
+		if data == "skip" {
 			e.PriceFromMinor = nil
-		default:
+		} else {
 			p, ok := ParsePriceMinor(text)
 			if !ok || p > maxExternalPriceMinor {
 				return d.reject("err_ext_price", t("bot.wz.err_ext_price", nil)), nil

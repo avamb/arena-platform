@@ -8788,10 +8788,13 @@ type EventItem struct {
 	// (future sessions exist but none is selling: the sale has not
 	// opened yet, only a closed category has places, or sales ended
 	// before the start), `draft` (future sessions exist but the event
-	// is not published, so nobody can buy, whatever its sessions say)
-	// and `archived` (every session has ended, the event has no
-	// session, or the event is cancelled/archived). Empty only when
-	// the lookup failed.
+	// is not published, so nobody can buy, whatever its sessions
+	// say), `external` (every future session is sold by a partner box
+	// office, `sales_mode` `external`, migration 0218; such sessions
+	// own no places here, so an event with platform sessions as well
+	// follows the rules above over those) and `archived` (every
+	// session has ended, the event has no session, or the event is
+	// cancelled/archived). Empty only when the lookup failed.
 	SalesState string `json:"sales_state"`
 
 	// SessionCount Number of active, non-cancelled sessions of the event, past ones

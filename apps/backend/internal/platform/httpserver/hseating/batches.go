@@ -30,6 +30,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/extsale"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/seatlayout"
@@ -177,6 +178,16 @@ func (h *Handler) batchScope(w http.ResponseWriter, r *http.Request) (orgID, ses
 	return orgID, sessionID, true
 }
 
+// writeSoldExternally answers 409 session.sold_externally: a partner box
+// office sells the session (sessions.sales_mode = 'external', migration
+// 0218), so it has no seating plan, seats or categories here.
+func writeSoldExternally(w http.ResponseWriter, r *http.Request) {
+	httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+		extsale.CodeSoldExternally,
+		"this session is sold by a partner box office, so it has no tiers or seats here", r,
+	))
+}
+
 // HandleCreateSeatBatch serves POST .../sessions/{session_id}/seat-batches.
 func (h *Handler) HandleCreateSeatBatch(w http.ResponseWriter, r *http.Request) {
 	orgID, sessionID, ok := h.batchScope(w, r)
@@ -184,11 +195,10 @@ func (h *Handler) HandleCreateSeatBatch(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	// A session a partner box office sells owns no seats (migration 0218).
+	// This early answer is best effort; ApplyBatch re-reads the mode under
+	// the sessions row lock (seatlayout.ErrSessionSoldExternally).
 	if _, _, _, salesMode, smErr := h.queries.GetSessionSalesState(r.Context(), sessionID); smErr == nil && salesMode == gen.SessionSalesModeExternal {
-		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
-			"session.sold_externally",
-			"this session is sold by a partner box office, so it has no tiers or seats here", r,
-		))
+		writeSoldExternally(w, r)
 		return
 	}
 	var req seatBatchRequest
@@ -361,6 +371,8 @@ func (h *Handler) writeBatchError(w http.ResponseWriter, r *http.Request, err er
 		))
 	case errors.Is(err, seatlayout.ErrSessionNotFound):
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("session.not_found", "session not found", r))
+	case errors.Is(err, seatlayout.ErrSessionSoldExternally):
+		writeSoldExternally(w, r)
 	case errors.Is(err, seatlayout.ErrBatchNotFound):
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("seat_batch.not_found", "seat batch not found", r))
 	case errors.Is(err, seatlayout.ErrAlreadyReverted):

@@ -45,6 +45,32 @@ func TestValidateURL(t *testing.T) {
 	}
 }
 
+// The database CHECK is LIKE 'https://%': an upper- or mixed-case scheme is
+// stored in lower case, the rest of the address untouched.
+func TestValidateURL_LowerCasesScheme(t *testing.T) {
+	cases := map[string]string{
+		"HTTPS://Shop.Example.com/A?b=C":   "https://Shop.Example.com/A?b=C",
+		"  HttpS://tickets.example.cz/x  ": "https://tickets.example.cz/x",
+		"https://www.eventim.de/event/1":   "https://www.eventim.de/event/1",
+	}
+	for in, want := range cases {
+		got, err := ValidateURL(in)
+		if err != nil {
+			t.Fatalf("ValidateURL(%q) = %v", in, err)
+		}
+		if got != want {
+			t.Errorf("ValidateURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+	sale, err := Normalize(Input{URL: "HTTPS://Shop.Example.com/", SellerName: "Shop"})
+	if err != nil {
+		t.Fatalf("Normalize: %v", err)
+	}
+	if !strings.HasPrefix(sale.URL, "https://") {
+		t.Errorf("Normalize URL = %q, want an https:// prefix", sale.URL)
+	}
+}
+
 func TestValidateSellerName(t *testing.T) {
 	if got, err := ValidateSellerName("  Eventim "); err != nil || got != "Eventim" {
 		t.Fatalf("got %q, %v", got, err)

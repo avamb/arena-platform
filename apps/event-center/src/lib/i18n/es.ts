@@ -213,6 +213,7 @@ export const es: Record<MessageKey, string> = {
   "state.upcoming": "Venta no abierta",
   "state.sold_out": "Agotado",
   "state.archived": "Terminado",
+  "state.external": "Lo vende un socio",
 
   "figures.sold": "Vendidas {sold} de {total}",
   "figures.free": "Libres: {count}",

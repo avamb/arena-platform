@@ -193,9 +193,13 @@ type Batch struct {
 // Errors.
 var (
 	ErrSessionNotFound = errors.New("seatlayout: session not found")
-	ErrBatchNotFound   = errors.New("seatlayout: batch not found")
-	ErrAlreadyReverted = errors.New("seatlayout: batch already reverted")
-	ErrRevertOfRevert  = errors.New("seatlayout: a revert batch cannot be reverted")
+	// ErrSessionSoldExternally: a partner box office sells the session
+	// (sessions.sales_mode = 'external', migration 0218); it owns no seats
+	// or categories here. Read under the sessions row lock.
+	ErrSessionSoldExternally = errors.New("seatlayout: session is sold by a partner box office")
+	ErrBatchNotFound         = errors.New("seatlayout: batch not found")
+	ErrAlreadyReverted       = errors.New("seatlayout: batch already reverted")
+	ErrRevertOfRevert        = errors.New("seatlayout: a revert batch cannot be reverted")
 )
 
 // InputError is a request the batch refuses before touching the database.
@@ -672,6 +676,15 @@ func lockSession(ctx context.Context, txq *gen.Queries, sessionID, wantOrg uuid.
 		}
 		return 0, uuid.Nil, fmt.Errorf("seatlayout: bump seat_status_version: %w", err)
 	}
+	// Under the row lock just taken: a concurrent switch to 'external'
+	// (PATCH .../sessions/{id}) serializes on the same row.
+	mode, err := txq.LockSessionSalesMode(ctx, sessionID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, uuid.Nil, ErrSessionNotFound
+		}
+		return 0, uuid.Nil, fmt.Errorf("seatlayout: session sales mode: %w", err)
+	}
 	orgRow, err := txq.GetSessionOrgContext(ctx, sessionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -681,6 +694,9 @@ func lockSession(ctx context.Context, txq *gen.Queries, sessionID, wantOrg uuid.
 	}
 	if wantOrg != uuid.Nil && orgRow.OrgID != wantOrg {
 		return 0, uuid.Nil, ErrSessionNotFound
+	}
+	if mode == gen.SessionSalesModeExternal {
+		return 0, uuid.Nil, ErrSessionSoldExternally
 	}
 	return version, orgRow.OrgID, nil
 }

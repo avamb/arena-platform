@@ -111,6 +111,10 @@ func ValidateURL(raw string) (string, *FieldError) {
 			return bad("url must lead to a partner box office, not to this platform")
 		}
 	}
+	// The scheme is case-insensitive (RFC 3986 §3.1) but the database CHECK
+	// is LIKE 'https://%': store it in lower case. Only the scheme is
+	// rewritten, the rest of the address stays as the caller wrote it.
+	s = "https" + s[len(u.Scheme):]
 	return s, nil
 }
 

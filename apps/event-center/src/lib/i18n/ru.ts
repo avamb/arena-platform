@@ -213,6 +213,7 @@ export const ru: Record<MessageKey, string> = {
   "state.upcoming": "Продажи не открыты",
   "state.sold_out": "Распродано",
   "state.archived": "Прошло",
+  "state.external": "Продаёт партнёр",
 
   "figures.sold": "Продано {sold} из {total}",
   "figures.free": "Свободно: {count}",

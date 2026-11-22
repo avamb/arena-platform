@@ -1618,7 +1618,7 @@ other = "Archivo · {{.N}}"
 other = "<b>Eventos: {{.Org}}</b>\n{{.Filter}}. Página {{.Page}} de {{.Pages}}.{{.Search}}\n{{.Legend}}\nPulsa un evento para abrir su ficha. Para buscar por nombre, escribe unas letras."
 
 ["bot.ec.legend"]
-other = "● a la venta  ○ pronto  ✕ agotado  ✓ archivo"
+other = "● a la venta  ○ pronto  ✕ agotado  ↗ lo vende un socio  ✓ archivo"
 
 ["bot.ec.search_line"]
 other = "Búsqueda: «{{.Query}}» — encontrados {{.N}}."

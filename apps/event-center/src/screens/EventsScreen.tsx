@@ -18,7 +18,7 @@ import { useOrg } from "@/screens/OrgLayout";
 
 export const EVENTS_PAGE_SIZE = 10;
 
-const STATE_TONE: Record<string, Tone> = { on_sale: "ok", upcoming: "wait", sold_out: "bad", archived: "neutral" };
+const STATE_TONE: Record<string, Tone> = { on_sale: "ok", upcoming: "wait", sold_out: "bad", archived: "neutral", external: "neutral" };
 
 export function useEventsList(orgId: string) {
   const { locale } = useI18n();

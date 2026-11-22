@@ -204,6 +204,7 @@ export const uk: Record<MessageKey, string> = {
   "state.upcoming": "Продаж не відкрито",
   "state.sold_out": "Розпродано",
   "state.archived": "Завершено",
+  "state.external": "Продає партнер",
   "figures.sold": "Продано {sold} з {total}",
   "figures.free": "Вільно: {count}",
   "figures.held": "У броні: {count}",
