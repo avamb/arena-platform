@@ -358,3 +358,15 @@ func MarkTokenInvalid(ctx context.Context, q Querier, orgID uuid.UUID, reason st
 	}
 	return tag.RowsAffected() > 0, nil
 }
+
+// RecordError stores reason (a short code, never a token) as the last_error
+// of an ACTIVE connection without changing its status: a failure that does
+// not break the connection (no permission on one pixel, codes 10 and
+// 200-299) stays visible in the connection's status.
+func RecordError(ctx context.Context, q Querier, orgID uuid.UUID, reason string) error {
+	_, err := q.Exec(ctx, `
+		UPDATE org_meta_connections
+		   SET last_error = $2, checked_at = now(), updated_at = now()
+		 WHERE org_id = $1 AND status = 'active'`, orgID, clip(reason, 200))
+	return err
+}

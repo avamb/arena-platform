@@ -7165,6 +7165,18 @@ other = "<b>Продвижение</b>\nЭти инструменты помог
 ["bot.mn.door_title"]
 other = "<b>Вход на мероприятие</b>\nПроверяйте билеты на входе и смотрите список гостей."
 
+["bot.mn.meta_ok"]
+other = "Meta: подключено"
+
+["bot.mn.meta_off"]
+other = "Meta: не подключено"
+
+["bot.mn.meta_error"]
+other = "Meta: ошибка подключения"
+
+["bot.mn.meta_btn"]
+other = "Реклама Meta в браузере"
+
 ["bot.mn.settings_title"]
 other = "<b>Настройки</b>\nВаша организация, приём оплаты, команда и ваши личные настройки."
 

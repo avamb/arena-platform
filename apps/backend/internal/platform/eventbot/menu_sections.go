@@ -167,6 +167,10 @@ func (b *Bot) menuSectionCallback(ctx context.Context, chatID int64, msgID int, 
 		helpScreen = hpDoor
 	case "set":
 		text, rows = b.texts.T(loc, "bot.mn.settings_title", nil), b.settingsSectionRows(ctx, loc, id, jwt)
+		if line, row := b.metaSettingsBlock(ctx, loc, id, jwt); line != "" {
+			text += "\n\n" + line
+			rows = append(rows, row)
+		}
 		helpScreen = hpSettings
 	case "mail":
 		if !canViewSales(id) {

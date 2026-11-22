@@ -163,13 +163,16 @@ type graphStub struct {
 
 func (g *graphStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	g.sawQuery = append(g.sawQuery, r.URL.RawQuery)
-	if strings.Contains(r.URL.RawQuery, "access_token") || strings.Contains(r.URL.RawQuery, "client_secret") || strings.Contains(r.URL.RawQuery, "code=") {
-		g.t.Errorf("a secret travelled in the URL: %s", r.URL.String())
-	}
 	path := strings.TrimPrefix(r.URL.Path, "/v25.0/")
+	// Only the code exchange carries secrets in its URL (Meta documents it
+	// as GET with query parameters); an access token never does.
+	if strings.Contains(r.URL.RawQuery, "access_token") ||
+		(path != "oauth/access_token" && (strings.Contains(r.URL.RawQuery, "client_secret") || strings.Contains(r.URL.RawQuery, "code="))) {
+		g.t.Errorf("a secret travelled in the URL: %s", r.URL.Path)
+	}
 	if path == "oauth/access_token" {
-		_ = r.ParseForm()
-		if r.Method != http.MethodPost || r.PostForm.Get("client_secret") != testSecret || r.PostForm.Get("code") != "the-code" {
+		q := r.URL.Query()
+		if r.Method != http.MethodGet || q.Get("client_id") != "app1" || q.Get("client_secret") != testSecret || q.Get("code") != "the-code" {
 			w.WriteHeader(400)
 			_, _ = w.Write([]byte(`{"error":{"code":100,"type":"OAuthException"}}`))
 			return
@@ -251,6 +254,19 @@ func TestClient_FlowAgainstStub(t *testing.T) {
 	// A 190 on an edge is fatal.
 	if _, _, err := c.Assets(ctx, "WRONG-token-zzz", "777", edges); !IsTokenInvalid(err) {
 		t.Fatalf("edge 190 = %v", err)
+	}
+}
+
+func TestParseGraphError_KeepsCodesOnly(t *testing.T) {
+	ge := ParseGraphError(400, []byte(`{"error":{"message":"Invalid token EAAB-secret-tok","code":190,"error_subcode":460,"type":"OAuthException","fbtrace_id":"x"}}`))
+	if ge.Code != 190 || ge.Subcode != 460 || ge.HTTPStatus != 400 || !IsTokenInvalid(ge) {
+		t.Fatalf("ge = %+v", ge)
+	}
+	if strings.Contains(ge.Error(), "EAAB-secret-tok") || strings.Contains(ge.Error(), "Invalid token") {
+		t.Fatalf("message leaks: %v", ge)
+	}
+	if ge := ParseGraphError(502, []byte(`<html>`)); ge.Code != 0 || ge.HTTPStatus != 502 {
+		t.Fatalf("non-JSON = %+v", ge)
 	}
 }
 

@@ -79,8 +79,9 @@ func ErrorCode(err error) string {
 }
 
 // Client calls the Graph API. Access tokens travel in the Authorization
-// header only, the app secret and the code in a POST body only, so no URL
-// carries a secret.
+// header only. The code exchange is the one call whose URL carries secrets
+// (the app secret and the code, as Meta documents it), so no error of do
+// ever repeats a URL.
 type Client struct {
 	baseURL   string
 	version   string
@@ -233,7 +234,12 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	return nil
 }
 
-func parseGraphError(status int, raw []byte) error {
+func parseGraphError(status int, raw []byte) error { return ParseGraphError(status, raw) }
+
+// ParseGraphError reads the codes of a Graph error answer (status is the HTTP
+// status, raw the body). The message text is dropped: only the code, the
+// subcode and a short type are kept, so the result is safe to log or store.
+func ParseGraphError(status int, raw []byte) *GraphError {
 	var env struct {
 		Error struct {
 			Code    int    `json:"code"`
@@ -253,8 +259,11 @@ func parseGraphError(status int, raw []byte) error {
 
 // ExchangeCode trades a login code for an access token. redirectURI is
 // META_OAUTH_REDIRECT_URL for a dialog/oauth login and "" for a JS SDK one.
+// Meta documents this call as GET /oauth/access_token with query parameters,
+// so the app secret and the code travel in the URL here: do never puts the
+// URL (a *url.Error) or the answer body into an error, and nothing logs it.
 func (c *Client) ExchangeCode(ctx context.Context, code, redirectURI string) (Token, error) {
-	form := url.Values{
+	query := url.Values{
 		"client_id":     {c.appID},
 		"client_secret": {c.appSecret},
 		"code":          {code},
@@ -264,7 +273,7 @@ func (c *Client) ExchangeCode(ctx context.Context, code, redirectURI string) (To
 		AccessToken string          `json:"access_token"`
 		ExpiresIn   json.RawMessage `json:"expires_in"`
 	}
-	if err := c.do(ctx, http.MethodPost, "oauth/access_token", nil, form, "", &out); err != nil {
+	if err := c.do(ctx, http.MethodGet, "oauth/access_token", query, nil, "", &out); err != nil {
 		return Token{}, err
 	}
 	if out.AccessToken == "" {

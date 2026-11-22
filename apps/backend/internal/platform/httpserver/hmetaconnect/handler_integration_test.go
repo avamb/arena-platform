@@ -45,9 +45,10 @@ type itGraph struct {
 func (g *itGraph) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v25.0/")
 	if path == "oauth/access_token" {
-		_ = r.ParseForm()
-		want, ok := g.codes[r.PostForm.Get("code")]
-		if !ok || r.PostForm.Get("client_secret") != itSecret || r.PostForm.Get("redirect_uri") != want {
+		// Meta documents the exchange as GET with query parameters.
+		q := r.URL.Query()
+		want, ok := g.codes[q.Get("code")]
+		if !ok || r.Method != http.MethodGet || q.Get("client_secret") != itSecret || q.Get("redirect_uri") != want {
 			w.WriteHeader(400)
 			_, _ = w.Write([]byte(`{"error":{"code":100,"type":"OAuthException"}}`))
 			return

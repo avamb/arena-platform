@@ -11,6 +11,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/metaconnect"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/secretbox"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/trackingconsent"
 )
 
@@ -18,12 +20,22 @@ import (
 // secrets never leave the process: no route returns them and no log line
 // carries them.
 type Settings struct {
-	MetaPixelID       string
-	MetaCAPIToken     string
+	MetaPixelID   string
+	MetaCAPIToken string
+	// MetaTokenSource says where MetaPixelID and MetaCAPIToken come from:
+	// TokenSourceConnection (the organization's Meta connection, spec 66
+	// section 4.4), TokenSourceManual (org_conversion_settings) or "" (none).
+	MetaTokenSource   string
 	MetaTestEventCode string
 	GA4MeasurementID  string
 	GA4APISecret      string
 }
+
+// Meta token sources of Settings.MetaTokenSource.
+const (
+	TokenSourceConnection = "connection"
+	TokenSourceManual     = "manual"
+)
 
 // MetaReady reports whether Meta CAPI can be used.
 func (s Settings) MetaReady() bool { return s.MetaPixelID != "" && s.MetaCAPIToken != "" }
@@ -71,13 +83,32 @@ type Store interface {
 }
 
 // PGStore is the PostgreSQL Store.
-type PGStore struct{ pool *pgxpool.Pool }
+type PGStore struct {
+	pool *pgxpool.Pool
+	// box opens the token of the organization's Meta connection. nil (or a
+	// disabled Box) means the connection is ignored and only
+	// org_conversion_settings is read.
+	box *secretbox.Box
+}
 
 // NewPGStore wraps a pool.
 func NewPGStore(pool *pgxpool.Pool) *PGStore { return &PGStore{pool: pool} }
 
+// WithMetaBox lets the store use the organization's Meta connection (spec 66
+// section 4.4) as the first source of the Meta pixel and token. A nil or
+// disabled box leaves the manual path alone.
+func (s *PGStore) WithMetaBox(box *secretbox.Box) *PGStore {
+	s.box = box
+	return s
+}
+
+// connectionOn reports whether the Meta connection is read at all.
+func (s *PGStore) connectionOn() bool { return s.box != nil && s.box.CurrentKeyID() != "" }
+
 // Enqueue queues one delivery per ready provider of the order's organization,
-// only for an order that has a stored buyer context (a site checkout).
+// only for an order that has a stored buyer context (a site checkout). Meta is
+// ready with a manual pixel and token, or (when the connection is on) with an
+// active Meta connection that has a token and a selected dataset.
 // Idempotent: an outbox retry or a repeated event queues nothing twice.
 func (s *PGStore) Enqueue(ctx context.Context, orderID uuid.UUID) error {
 	_, err := s.pool.Exec(ctx, `
@@ -85,13 +116,18 @@ func (s *PGStore) Enqueue(ctx context.Context, orderID uuid.UUID) error {
 		SELECT o.id, o.org_id, p.provider
 		  FROM orders o
 		  JOIN checkout_buyer_contexts bc ON bc.order_id = o.id
-		  JOIN org_conversion_settings st ON st.org_id = o.org_id
+		  LEFT JOIN org_conversion_settings st ON st.org_id = o.org_id
 		 CROSS JOIN LATERAL (VALUES
-		        ('meta'::text, COALESCE(st.meta_pixel_id, '') <> '' AND COALESCE(st.meta_capi_token, '') <> ''),
+		        ('meta'::text, (COALESCE(st.meta_pixel_id, '') <> '' AND COALESCE(st.meta_capi_token, '') <> '')
+		                       OR ($2::boolean AND EXISTS (
+		                             SELECT 1
+		                               FROM org_meta_connections c
+		                               JOIN org_meta_assets a ON a.org_id = c.org_id AND a.kind = 'dataset' AND a.selected
+		                              WHERE c.org_id = o.org_id AND c.status = 'active' AND c.access_token_enc IS NOT NULL))),
 		        ('ga4'::text,  COALESCE(st.ga4_measurement_id, '') <> '' AND COALESCE(st.ga4_api_secret, '') <> '')
 		       ) AS p(provider, ready)
 		 WHERE o.id = $1 AND p.ready
-		ON CONFLICT (order_id, provider, kind) DO NOTHING`, orderID)
+		ON CONFLICT (order_id, provider, kind) DO NOTHING`, orderID, s.connectionOn())
 	return err
 }
 
@@ -125,18 +161,65 @@ func (s *PGStore) ClaimDue(ctx context.Context, limit int) ([]Delivery, error) {
 	return out, rows.Err()
 }
 
-// Settings loads the organization's credentials; ok is false when none are stored.
+// Settings loads the organization's credentials; ok is false when none are
+// stored. The Meta pixel and token come from the active Meta connection with
+// a selected dataset first (when the connection is on), else from
+// org_conversion_settings; the test event code and GA4 always come from
+// org_conversion_settings.
 func (s *PGStore) Settings(ctx context.Context, orgID uuid.UUID) (Settings, bool, error) {
 	var st Settings
+	manual := true
 	err := s.pool.QueryRow(ctx, `
 		SELECT COALESCE(meta_pixel_id, ''), COALESCE(meta_capi_token, ''), COALESCE(meta_test_event_code, ''),
 		       COALESCE(ga4_measurement_id, ''), COALESCE(ga4_api_secret, '')
 		  FROM org_conversion_settings WHERE org_id = $1`, orgID).
 		Scan(&st.MetaPixelID, &st.MetaCAPIToken, &st.MetaTestEventCode, &st.GA4MeasurementID, &st.GA4APISecret)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Settings{}, false, nil
+		st, manual = Settings{}, false
+	} else if err != nil {
+		return Settings{}, false, err
 	}
-	return st, err == nil, err
+	var pixelID, token string
+	conn := false
+	if s.connectionOn() {
+		pixelID, token, conn, err = metaconnect.ActiveDataset(ctx, s.pool, s.box, orgID)
+		if err != nil {
+			// A database or key error: never fall back to another pixel
+			// silently, the delivery retries. secretbox errors carry no
+			// secret.
+			return Settings{}, false, errors.New("meta connection: " + err.Error())
+		}
+	}
+	st, ok := chooseMeta(st, manual, pixelID, token, conn)
+	return st, ok, nil
+}
+
+// chooseMeta picks the Meta source: the connection's pixel and token when
+// conn, else the manual ones of org_conversion_settings when they are both
+// set, else none. The test event code and GA4 stay those of manual.
+func chooseMeta(manual Settings, manualOK bool, connPixel, connToken string, conn bool) (Settings, bool) {
+	st := manual
+	st.MetaTokenSource = ""
+	if conn && connPixel != "" && connToken != "" {
+		st.MetaPixelID, st.MetaCAPIToken, st.MetaTokenSource = connPixel, connToken, TokenSourceConnection
+		return st, true
+	}
+	if st.MetaReady() {
+		st.MetaTokenSource = TokenSourceManual
+	}
+	return st, manualOK
+}
+
+// MarkMetaTokenInvalid moves the organization's active Meta connection to
+// error (metaconnect.MarkTokenInvalid); changed is true only once.
+func (s *PGStore) MarkMetaTokenInvalid(ctx context.Context, orgID uuid.UUID, reason string) (bool, error) {
+	return metaconnect.MarkTokenInvalid(ctx, s.pool, orgID, reason)
+}
+
+// RecordMetaError stores reason as the last_error of the organization's
+// active Meta connection without changing its status.
+func (s *PGStore) RecordMetaError(ctx context.Context, orgID uuid.UUID, reason string) error {
+	return metaconnect.RecordError(ctx, s.pool, orgID, reason)
 }
 
 // Order loads the paid order and its stored buyer context.

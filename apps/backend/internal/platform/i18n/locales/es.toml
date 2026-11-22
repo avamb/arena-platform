@@ -6998,6 +6998,18 @@ other = "<b>Promoción</b>\nEstas herramientas te ayudan a vender más entradas.
 ["bot.mn.door_title"]
 other = "<b>Entrada al evento</b>\nComprueba las entradas en la puerta y mira la lista de invitados."
 
+["bot.mn.meta_ok"]
+other = "Meta: conectado"
+
+["bot.mn.meta_off"]
+other = "Meta: no conectado"
+
+["bot.mn.meta_error"]
+other = "Meta: error de conexión"
+
+["bot.mn.meta_btn"]
+other = "Anuncios de Meta en el navegador"
+
 ["bot.mn.settings_title"]
 other = "<b>Ajustes</b>\nTu organización, los pagos, el equipo y tus propios ajustes."
 
