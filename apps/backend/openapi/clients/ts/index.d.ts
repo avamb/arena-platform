@@ -23824,7 +23824,8 @@ export interface components {
             /**
              * Format: uuid
              * @description The tour (event series, migration 0218) the event belongs to.
-             *     Null when the event stands alone. Set by PATCH
+             *     Null when the event stands alone (the public feed leaves the
+             *     field out then). Set by PATCH
              *     .../events/{id} `series_id`.
              */
             series_id?: string | null;

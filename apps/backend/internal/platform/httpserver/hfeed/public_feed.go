@@ -88,9 +88,10 @@ type publicFeedEventResponse struct {
 	// PosterURL is the public URL for the event-level poster cover (nil when
 	// no cover is set). Sessions can override this per-session (AB-47c).
 	PosterURL *string `json:"poster_url"`
-	// SeriesID is the tour (event_series) the event belongs to, null when it
-	// has none. Read in one batch by hydrateFeedSeriesIDs, never via EventRow.
-	SeriesID  *string `json:"series_id"`
+	// SeriesID is the tour (event_series) the event belongs to, absent when it
+	// has none, so the feed of an event without a tour keeps its old fields.
+	// Read in one batch by hydrateFeedSeriesIDs, never via EventRow.
+	SeriesID  *string `json:"series_id,omitempty"`
 	CreatedAt string  `json:"created_at"`
 	UpdatedAt string  `json:"updated_at"`
 }

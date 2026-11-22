@@ -8820,7 +8820,8 @@ type EventItem struct {
 	SalesState string `json:"sales_state"`
 
 	// SeriesId The tour (event series, migration 0218) the event belongs to.
-	// Null when the event stands alone. Set by PATCH
+	// Null when the event stands alone (the public feed leaves the
+	// field out then). Set by PATCH
 	// .../events/{id} `series_id`.
 	SeriesId *openapi_types.UUID `json:"series_id"`
 
