@@ -4,6 +4,7 @@ package hapikeys
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -79,6 +80,40 @@ func (h *Handler) requireOrgMembership(w http.ResponseWriter, r *http.Request, o
 			"org.access_denied", "caller is not a member of this organization", r,
 		))
 		return false
+	}
+	return true
+}
+
+// requireScopesHeld lets a new key carry only permissions its creator holds
+// inside orgID, asked of the same checker the route's gate used
+// (permissions.ActionAllowedInOrg). A code no role holds, an unknown one
+// included, is refused. A platform superadmin is not limited. The rule applies
+// when a key is issued; keys issued earlier keep their scopes.
+func (h *Handler) requireScopesHeld(w http.ResponseWriter, r *http.Request, orgID uuid.UUID, scopes []string) bool {
+	if auth.HasSuperadminOrgAccess(r.Context()) {
+		return true
+	}
+	seen := make(map[string]struct{}, len(scopes))
+	for _, scope := range scopes {
+		if _, dup := seen[scope]; dup {
+			continue
+		}
+		seen[scope] = struct{}{}
+		allowed, err := permissions.ActionAllowedInOrg(r.Context(), scope, orgID)
+		if err != nil {
+			h.logger.Error("api_key: scope check failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"api_key.create_failed", "failed to create api key", r,
+			))
+			return false
+		}
+		if !allowed {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+				"api_key.scope_not_held", "a key may only carry permissions the caller holds in this organization", r,
+				map[string]any{"scope": scope},
+			))
+			return false
+		}
 	}
 	return true
 }
