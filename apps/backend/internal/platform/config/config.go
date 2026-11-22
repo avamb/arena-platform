@@ -681,6 +681,15 @@ type Config struct {
 	// counters live in the memory of one arena-api process.
 	TextFormatsPerUserPerDay int `env:"TEXT_FORMATS_PER_USER_PER_DAY" required:"false" default:"100"`
 	TextFormatsPerOrgPerDay  int `env:"TEXT_FORMATS_PER_ORG_PER_DAY" required:"false" default:"500"`
+	// TranslateLLMAPIKey is the Anthropic key of the machine translation of an
+	// event's texts (internal/platform/contenttranslate, spec 63 section 16.4,
+	// secret). arena-api reads it to answer 503 translation.not_configured and
+	// arena-worker translates with it. Empty switches machine translation off.
+	TranslateLLMAPIKey string `env:"TRANSLATE_LLM_API_KEY" required:"false" default:""`
+	// TranslateLLMModel is the model that translates.
+	TranslateLLMModel string `env:"TRANSLATE_LLM_MODEL" required:"false" default:"claude-sonnet-5-5"`
+	// TranslateLLMBaseURL is the Messages API origin (a stub in tests).
+	TranslateLLMBaseURL string `env:"TRANSLATE_LLM_BASE_URL" required:"false" default:"https://api.anthropic.com"`
 	// OpsWatchdogHeartbeatHourUTC is the UTC hour (0-23) at which the
 	// ops.watchdog job sends its once-daily "still alive" digest.
 	OpsWatchdogHeartbeatHourUTC int `env:"OPS_WATCHDOG_HEARTBEAT_HOUR_UTC" required:"false" default:"7"`
@@ -939,6 +948,9 @@ func LoadFor(role Role) (*Config, error) {
 		PosterLLMBaseURL:            getenv("POSTER_LLM_BASE_URL", DefaultPosterLLMBaseURL),
 		PosterLLMProvider:           strings.ToLower(strings.TrimSpace(getenv("POSTER_LLM_PROVIDER", PosterProviderAnthropic))),
 		PosterLLMFallbackProvider:   strings.ToLower(strings.TrimSpace(getenv("POSTER_LLM_FALLBACK_PROVIDER", ""))),
+		TranslateLLMAPIKey:          getenv("TRANSLATE_LLM_API_KEY", ""),
+		TranslateLLMModel:           strings.TrimSpace(getenv("TRANSLATE_LLM_MODEL", "claude-sonnet-5-5")),
+		TranslateLLMBaseURL:         getenv("TRANSLATE_LLM_BASE_URL", DefaultPosterLLMBaseURL),
 		GeminiAPIKey:                getenv("GEMINI_API_KEY", ""),
 		PosterGeminiModel:           strings.TrimSpace(getenv("POSTER_GEMINI_MODEL", DefaultPosterGeminiModel)),
 		PosterGeminiBaseURL:         getenv("POSTER_GEMINI_BASE_URL", DefaultPosterGeminiBaseURL),
@@ -2002,6 +2014,7 @@ func (c *Config) validateProduction() []error {
 	for _, seam := range []struct{ name, value, def string }{
 		{"BREVO_API_BASE_URL", c.BrevoAPIBaseURL, DefaultBrevoAPIBaseURL},
 		{"POSTER_LLM_BASE_URL", c.PosterLLMBaseURL, DefaultPosterLLMBaseURL},
+		{"TRANSLATE_LLM_BASE_URL", c.TranslateLLMBaseURL, DefaultPosterLLMBaseURL},
 		{"POSTER_GEMINI_BASE_URL", c.PosterGeminiBaseURL, DefaultPosterGeminiBaseURL},
 	} {
 		if v := strings.TrimRight(strings.TrimSpace(seam.value), "/"); v != "" && v != seam.def {

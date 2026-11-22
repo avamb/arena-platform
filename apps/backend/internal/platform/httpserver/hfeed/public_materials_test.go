@@ -95,7 +95,7 @@ func TestPublicMaterials_EmptyIsEmptyListsAndNullPoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"gallery":[],"videos":[],"partner_links":[],"map_point":null,"report_photos":[]}`
+	want := `{"gallery":[],"videos":[],"partner_links":[],"map_point":null,"report_photos":[],"report_text_html":null}`
 	if string(raw) != want {
 		t.Errorf("empty materials = %s, want %s", raw, want)
 	}
@@ -167,8 +167,8 @@ func TestHostedPageResponse_ExistingFieldsUnchanged(t *testing.T) {
 // TestPublicFeedEventResponse_ExistingFieldsUnchanged: the event of the widget
 // feed keeps its fields plus slug, age_rating and short_description (P-5) (the detail adds sessions, since 1-2c materials, and venues).
 func TestPublicFeedEventResponse_ExistingFieldsUnchanged(t *testing.T) {
-	const want = "age_rating,created_at,description,description_html,description_text,display_number,first_session_at,id,image_url,last_session_at,name,org_id," +
-		"poster_media_id,poster_url,short_description,slug,status,updated_at,venue_names,visibility"
+	const want = "age_rating,available_locales,content_locale,created_at,description,description_html,description_text,display_number,first_session_at,id,image_url,last_session_at,name,org_id," +
+		"poster_media_id,poster_url,short_description,slug,status,translation_stale,updated_at,venue_names,visibility"
 	if got := strings.Join(keysOf(t, publicFeedEventResponse{}), ","); got != want {
 		t.Errorf("feed event keys = %s, want %s", got, want)
 	}

@@ -5,7 +5,17 @@
  */
 import { ApiError, PAGE_READ_TIMEOUT_MS, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
-import type { GettingStarted, OutboundClicksResponse, PageStatsResponse, SalesFunnelResponse } from "@/lib/api/types";
+import type {
+  ContentTranslationItem,
+  ContentTranslationList,
+  EventReportText,
+  GettingStarted,
+  MachineTranslateAccepted,
+  OutboundClicksResponse,
+  PageStatsResponse,
+  PutContentTranslationRequest,
+  SalesFunnelResponse,
+} from "@/lib/api/types";
 import type {
   BillingAccountInvoice,
   BillingAccountInvoiceList,
@@ -1809,4 +1819,35 @@ export function fetchReferralRewards(
     params: referralParams(orgId, target),
     query: { state: query.state, cursor: query.cursor, limit: query.limit },
   });
+}
+
+// ─── Translations of an event's texts (spec 63 section 16) ───────────────────
+
+/** The original texts of an event and every stored translation. Needs event.read. */
+export function listEventTranslations(orgId: string, eventId: string): Promise<ContentTranslationList> {
+  return call<ContentTranslationList>({ route: API.eventTranslations, params: { org_id: orgId, event_id: eventId } });
+}
+
+/** Replaces the translation of one locale; the server marks it `manual`. Needs event.update. */
+export function putEventTranslation(
+  orgId: string,
+  eventId: string,
+  locale: string,
+  body: PutContentTranslationRequest,
+): Promise<ContentTranslationItem> {
+  return call<ContentTranslationItem>({ route: API.eventTranslationPut, params: { org_id: orgId, event_id: eventId, locale }, body });
+}
+
+export function deleteEventTranslation(orgId: string, eventId: string, locale: string): Promise<unknown> {
+  return call<unknown>({ route: API.eventTranslationDelete, params: { org_id: orgId, event_id: eventId, locale } });
+}
+
+/** Queues machine translation; a manual translation is skipped by the job. */
+export function queueMachineTranslation(orgId: string, eventId: string, locales: string[]): Promise<MachineTranslateAccepted> {
+  return call<MachineTranslateAccepted>({ route: API.eventTranslationsMachine, params: { org_id: orgId, event_id: eventId }, body: { locales } });
+}
+
+/** The photo-report text of the ORIGINAL. Null or blank clears it. */
+export function saveEventReportText(orgId: string, eventId: string, reportTextHtml: string | null): Promise<EventReportText> {
+  return call<EventReportText>({ route: API.eventReportText, params: { org_id: orgId, event_id: eventId }, body: { report_text_html: reportTextHtml } });
 }

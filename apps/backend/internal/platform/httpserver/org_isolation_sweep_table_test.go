@@ -464,6 +464,13 @@ var orgIsolationAuditedSafe = map[string]string{
 	// then read and written by (id, event_id), and a photo's media_id must be an
 	// event_report object of the path organization. Covered by
 	// TestEventMaterialsExtras_StayInsideTheOrganization (all routes, as an org-B owner).
+	// htranslations: every handler loads the event with contenttranslate.LoadEventOriginal(org, event)
+	// and answers 404 event.not_found; TestTranslations_ForeignEventIs404 covers all five.
+	"GET /v1/organizations/{org_id}/events/{event_id}/translations":               "htranslations",
+	"PUT /v1/organizations/{org_id}/events/{event_id}/translations/{locale}":      "htranslations",
+	"DELETE /v1/organizations/{org_id}/events/{event_id}/translations/{locale}":   "htranslations",
+	"POST /v1/organizations/{org_id}/events/{event_id}/translations/machine":      "htranslations",
+	"PUT /v1/organizations/{org_id}/events/{event_id}/report-text":                "htranslations",
 	"GET /v1/organizations/{org_id}/events/{event_id}/partner-links":              "hmaterials",
 	"POST /v1/organizations/{org_id}/events/{event_id}/partner-links":             "hmaterials",
 	"PUT /v1/organizations/{org_id}/events/{event_id}/partner-links/order":        "hmaterials",

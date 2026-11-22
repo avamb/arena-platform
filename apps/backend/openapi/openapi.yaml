@@ -10891,6 +10891,18 @@ components:
             Short marketing description shown in cards and previews (AB-45c).
             Tri-state PATCH: absent=keep, null=clear, value=set.
           example: "Open-air festival on the Tel Aviv beachfront."
+        content_locale:
+          type: string
+          description: Public feed only. The language of the texts served (`short_description`, `description_html` and `description_text` are translated when a translation was asked for with `?locale=` and exists). Two lowercase letters.
+          example: "en"
+        available_locales:
+          type: array
+          description: Public feed only. The original language first, then every language that has a translation of the event.
+          items:
+            type: string
+        translation_stale:
+          type: boolean
+          description: Public feed only. True when the translation served was made from an older original than the current one; it is still served.
         genre:
           type: [string, "null"]
           description: |
@@ -12247,6 +12259,9 @@ components:
             that moves, and stays empty for an event without a live session.
           items:
             $ref: "#/components/schemas/PublicMaterialPhoto"
+        report_text_html:
+          type: [string, "null"]
+          description: The photo-report text as sanitized HTML (translated when `?locale=` names a language that has it), shown after the event ended. Null when there is none or the event is not over yet.
 
     AnalyticsBatchRequest:
       type: object
@@ -14926,6 +14941,155 @@ components:
         seller_name:
           type: string
           description: A new seller name, 1 to 120 characters. Blank keeps the current name (or, when the address changed and the name was derived from the old one, derives it again).
+
+    ContentTranslationOriginal:
+      type: object
+      required: [name, short_description, description_html, report_text_html]
+      description: The original texts of an event, the source of its translations.
+      properties:
+        name:
+          type: string
+          description: The event name in the content locale.
+        short_description:
+          type: [string, "null"]
+          description: The short description, null when empty.
+        description_html:
+          type: [string, "null"]
+          description: The description rendered to sanitized HTML whatever its stored format, null when empty.
+        report_text_html:
+          type: [string, "null"]
+          description: The photo-report text as sanitized HTML, null when empty.
+
+    ContentTranslationItem:
+      type: object
+      required: [locale, name, short_description, description_html, report_text_html, source, translation_stale, updated_at, updated_by]
+      description: One translation of an event's texts into one locale.
+      properties:
+        locale:
+          type: string
+          description: The locale of the translation, one of `supported_locales`.
+          example: "cs"
+        name:
+          type: [string, "null"]
+          description: The translated name, null when the translation keeps the original name. The machine never fills it.
+        short_description:
+          type: [string, "null"]
+          description: The translated short description, null when not set.
+        description_html:
+          type: [string, "null"]
+          description: The translated description as sanitized HTML, null when not set.
+        report_text_html:
+          type: [string, "null"]
+          description: The translated photo-report text as sanitized HTML, null when not set.
+        source:
+          type: string
+          enum: [manual, machine]
+          description: Who wrote it. A `manual` translation is never replaced by the machine.
+        translation_stale:
+          type: boolean
+          description: True when the original texts changed after this translation was made; it is still served to buyers.
+        updated_at:
+          type: string
+          format: date-time
+          description: When the translation was last written.
+        updated_by:
+          type: [string, "null"]
+          format: uuid
+          description: The person who wrote it, null for an API key or when the person is gone.
+
+    ContentTranslationList:
+      type: object
+      required: [content_locale, original, source_hash, machine_available, supported_locales, site_locales, translations]
+      description: The original texts of an event and its translations.
+      properties:
+        content_locale:
+          type: string
+          description: The language of the original texts, two lowercase letters.
+          example: "en"
+        original:
+          allOf:
+            - $ref: "#/components/schemas/ContentTranslationOriginal"
+          description: The original texts.
+        source_hash:
+          type: string
+          description: Hash of the original texts now; a translation whose hash differs is stale.
+        machine_available:
+          type: boolean
+          description: True when machine translation is switched on (the model key is set), false hides the button.
+        supported_locales:
+          type: array
+          description: Every locale a translation may be made for.
+          items:
+            type: string
+        site_locales:
+          type: array
+          description: The distinct union of the languages of the organization's sites (`settings.site.locales` of its sales channels), restricted to the supported locales.
+          items:
+            type: string
+        translations:
+          type: array
+          description: The stored translations, ordered by locale.
+          items:
+            $ref: "#/components/schemas/ContentTranslationItem"
+
+    PutContentTranslationRequest:
+      type: object
+      description: Body of PUT .../translations/{locale}. The row of the locale is replaced as a whole, an absent or blank member clears that text.
+      properties:
+        name:
+          type: [string, "null"]
+          description: The translated name, up to 200 characters. Leave empty to keep the original name.
+        short_description:
+          type: [string, "null"]
+          description: The translated short description, up to 500 characters.
+        description_html:
+          type: [string, "null"]
+          description: The translated description as HTML, sanitized by the rich-text description profile.
+        report_text_html:
+          type: [string, "null"]
+          description: The translated photo-report text as HTML, sanitized the same way.
+
+    MachineTranslateRequest:
+      type: object
+      required: [locales]
+      description: Body of POST .../translations/machine.
+      properties:
+        locales:
+          type: array
+          description: The locales to translate into. Each must be supported and differ from the content locale (422 `translation.invalid_locale`).
+          items:
+            type: string
+
+    MachineTranslateAccepted:
+      type: object
+      required: [job_id, locales]
+      description: The queued machine translation.
+      properties:
+        job_id:
+          type: string
+          description: Id of the worker job `content.translate`.
+        locales:
+          type: array
+          description: The normalized, distinct locales that were queued. Locales with a manual translation are skipped by the job, not refused here.
+          items:
+            type: string
+
+    SetEventReportTextRequest:
+      type: object
+      description: Body of PUT .../events/{event_id}/report-text.
+      properties:
+        report_text_html:
+          type: [string, "null"]
+          description: The photo-report text of the original as HTML, sanitized by the rich-text description profile. Null or blank clears it.
+
+    EventReportText:
+      type: object
+      required: [report_text_html]
+      description: The stored photo-report text of the original.
+      properties:
+        report_text_html:
+          type: [string, "null"]
+          description: The sanitized text as stored, null when cleared.
 
     EventPartnerLinkOrderRequest:
       type: object
@@ -44700,6 +44864,371 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
 
+  /v1/organizations/{org_id}/events/{event_id}/translations:
+    get:
+      operationId: listEventContentTranslations
+      summary: Read the original texts and the translations of an event
+      description: |
+        Returns the original texts of the event in its content language, the hash of
+        that original, the stored translations (each with `translation_stale`), the
+        platform's supported locales and the languages of the organization's sites.
+        `machine_available` is false when machine translation is switched off.
+        Requires `event.read` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The original and its translations.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentTranslationList"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.read` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`translation.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/translations/machine:
+    post:
+      operationId: requestEventMachineTranslation
+      summary: Queue a machine translation of an event
+      description: |
+        Queues the worker job `content.translate` and answers 202. The job translates
+        only what is missing or out of date, and never replaces a manual translation
+        (there is no way to ask for that: delete the manual translation first).
+        Answers 503 `translation.not_configured` when machine translation is switched off.
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MachineTranslateRequest"
+      responses:
+        "202":
+          description: The job is queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MachineTranslateAccepted"
+        "400":
+          description: Invalid body (`translation.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: An empty list, an unsupported locale or the content locale (`translation.invalid_locale`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`translation.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Machine translation is switched off (`translation.not_configured`) or the database is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/translations/{locale}:
+    put:
+      operationId: putEventContentTranslation
+      summary: Write a manual translation of an event
+      description: |
+        Replaces the translation of one locale as a whole and marks it `manual`. The
+        texts are sanitized; the translation is stamped with the hash of the current
+        original, so it is fresh until the original changes.
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+        - name: locale
+          in: path
+          required: true
+          description: A supported locale other than the content locale, for example `cs`.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutContentTranslationRequest"
+      responses:
+        "200":
+          description: The translation as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentTranslationItem"
+        "400":
+          description: Invalid body (`translation.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: An unsupported locale or the content locale (`translation.invalid_locale`), or a refused text (`translation.invalid_field`, with `details.field` and `details.reason`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`translation.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    delete:
+      operationId: deleteEventContentTranslation
+      summary: Remove a translation of an event
+      description: |
+        Removes the translation of one locale, manual or machine. This is also how a
+        manual text is made replaceable by the machine.
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+        - name: locale
+          in: path
+          required: true
+          description: The locale of the translation to remove, for example `cs`.
+          schema: { type: string }
+      responses:
+        "204":
+          description: Removed.
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`) or no translation for the locale (`translation.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`translation.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/report-text:
+    put:
+      operationId: setEventReportText
+      summary: Set the photo-report text of an event
+      description: |
+        Writes the photo-report text of the original event, sanitized by the rich-text
+        description profile. A null or blank text clears it. A translation of it is
+        written with `PUT .../translations/{locale}`.
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetEventReportTextRequest"
+      responses:
+        "200":
+          description: The text as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventReportText"
+        "400":
+          description: Invalid body (`translation.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: A refused text (`translation.invalid_field`, with `details.field` and `details.reason`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`translation.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{org_id}/events/{event_id}/photo-report:
     get:
       operationId: listEventReportPhotos
@@ -57369,6 +57898,12 @@ paths:
             type: integer
             default: 0
           description: Pagination offset.
+        - name: locale
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Content language of the texts, for example `cs` or `de`. Events that have a translation into it are served translated; an unsupported locale or an event without a translation falls back to the original.
         - name: include_removed
           in: query
           required: false
@@ -57573,6 +58108,12 @@ paths:
             type: string
             format: uuid
           description: The UUID of the event.
+        - name: locale
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Content language of the texts, for example `cs` or `de`. A translation into it is served when it exists (also `materials.report_text_html`); an unsupported locale or a missing translation falls back to the original.
       responses:
         "200":
           description: The requested event.

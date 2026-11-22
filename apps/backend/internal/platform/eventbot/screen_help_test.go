@@ -37,6 +37,11 @@ func helpScreens(t *testing.T, b *Bot, loc string) map[string]screenItems {
 		}
 	}
 
+	trList := openapi.ContentTranslationList{ContentLocale: "ru", SupportedLocales: []string{"en", "ru", "uk"}, MachineAvailable: true}
+	out["translations/machine"] = b.trItems(loc, ev, trList)
+	trList.MachineAvailable = false
+	out["translations/no-machine"] = b.trItems(loc, ev, trList)
+
 	shopOn := &openapi.ShopSettings{Enabled: true}
 	shopOff := &openapi.ShopSettings{Enabled: false}
 	out["shop/open"], out["shop/closed"], out["shop/orders-only"] = b.shopHomeItems(loc, shopOn), b.shopHomeItems(loc, shopOff), b.shopHomeItems(loc, nil)
@@ -144,7 +149,7 @@ func TestScreenHelp_LinesAreTheVisibleButtons(t *testing.T) {
 		{"card past: sales first", b.cardItems("en", owner, ev, cardFacts{Status: "published", SalesState: "archived", HasLink: true}), []string{"ec.s", "ec.link", "ec.e", "ec.p", "ec.m"}},
 		{"sales, owner", b.cardGroupItems("en", owner, ev, cardGroupSales, onSale), []string{"gs.summary", "gs.orders", "gs.guests", "gs.csv", "gs.dates"}},
 		{"sales, no sales rights", b.cardGroupItems("en", agent, ev, cardGroupSales, onSale), nil},
-		{"edit, owner, one live date", b.cardGroupItems("en", owner, ev, cardGroupEdit, draft), []string{"ge.edit", "ge.sessions", "ge.cat", "ge.materials", "ge.sample", "ge.text", "ge.promoter"}},
+		{"edit, owner, one live date", b.cardGroupItems("en", owner, ev, cardGroupEdit, draft), []string{"ge.edit", "ge.sessions", "ge.cat", "ge.materials", "ge.sample", "ge.text", "ge.translations", "ge.promoter"}},
 		{"edit, no sales rights", b.cardGroupItems("en", agent, ev, cardGroupEdit, draft), []string{"ge.edit", "ge.sessions", "ge.materials", "ge.sample"}},
 		{"promotion, owner", b.cardGroupItems("en", owner, ev, cardGroupPromo, onSale), []string{"gp.promo", "gp.invite", "gp.links", "gp.referral"}},
 		{"more, draft", b.cardGroupItems("en", owner, ev, cardGroupMore, draft), []string{"gm.copy", "gm.publish", "gm.delete"}},

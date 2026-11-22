@@ -3565,3 +3565,21 @@ fieldset legend {
   min-height: var(--tap);
   overflow-wrap: anywhere;
 }
+
+/* Translations of an event (spec 63 section 16): the original and the translation side by side, stacked on a phone. */
+.tr-pair {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem 1.5rem;
+  margin-block: 0.75rem;
+}
+
+@media (min-width: 720px) {
+  .tr-pair {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.tr-cell {
+  min-width: 0;
+}

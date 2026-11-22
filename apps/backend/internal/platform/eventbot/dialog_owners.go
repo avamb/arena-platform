@@ -87,6 +87,7 @@ var dialogOwners = map[string]dialogOwner{
 	salesLinkDialogKind:     {owns: prefixIs("ql"), leave: (*Bot).leaveSalesLink},
 	salesLinkListDialogKind: {owns: prefixIs("ql"), leave: (*Bot).leaveSalesLinkList},
 	tfDialogKind:            {owns: prefixIs("tf"), leave: (*Bot).clearTextFmtDialog},
+	trDialogKind:            {owns: prefixIs("tr"), leave: (*Bot).clearTranslationsDialog},
 	planIntakeDialogKind:    {owns: prefixIs("pi"), leave: (*Bot).leavePlanIntake},
 	// The typed word of a dispute answer: any other dp press ends it, so the
 	// word typed after going back answers nothing.
@@ -118,6 +119,7 @@ var dialogTexts = map[string]dialogTextHandler{
 	salesLinkDialogKind:     (*Bot).salesLinkText,
 	salesLinkListDialogKind: (*Bot).salesLinkListText,
 	tfDialogKind:            (*Bot).tfText,
+	trDialogKind:            (*Bot).translationsText,
 	planIntakeDialogKind:    (*Bot).planIntakeText,
 	disputeDialogKind:       (*Bot).disputeText,
 }
@@ -165,7 +167,7 @@ var dialogOwnerOrder = []string{
 	resendDialogKind, reissueDialogKind, evsDialogKind, inviteDialogKind, promoDialogKind,
 	promoterDialogKind, referralDialogKind, categoryDialogKind, seatLayoutDialogKind, orgDataDialogKind, sesDialogKind,
 	materialsDialogKind, teamDialogKind, salesLinkDialogKind, salesLinkListDialogKind, tfDialogKind,
-	disputeDialogKind, planIntakeDialogKind,
+	trDialogKind, disputeDialogKind, planIntakeDialogKind,
 }
 
 // leaveSessions ends the "Sessions" dialog (move, cancel, contact question).
