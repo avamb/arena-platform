@@ -22075,7 +22075,7 @@ type SiteTrackData struct {
 
 // SiteTrackRequest One event of a static site's visitor (spec 63 section 19).
 type SiteTrackRequest struct {
-	// Data What the site knows about the event it reports; every field is optional and bounded.
+	// Data Extra fields of the event, for example the contact of a `lead`.
 	Data *SiteTrackData `json:"data,omitempty"`
 
 	// Event What happened. `outbound_ticket_click` (a click to a partner's box

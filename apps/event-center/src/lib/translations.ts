@@ -31,7 +31,7 @@ export function translationRows(list: ContentTranslationList): TranslationRow[] 
     return {
       locale,
       state: item === null ? "none" : item.translation_stale ? "stale" : "ok",
-      source: item === null ? null : item.source,
+      source: item === null ? null : item.source === "manual" ? "manual" : "machine",
       site: site.has(locale),
       item,
     };

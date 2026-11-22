@@ -442,6 +442,10 @@ var orgIsolationAuditedSafe = map[string]string{
 	// hsalesfunnel (spec 50 A7): GetEventPageStatsHeader is keyed by (event, org)
 	// and answers the route's own 404 for an event of another organization.
 	"GET /v1/organizations/{org_id}/events/{event_id}/funnel": "hsalesfunnel",
+	// hsalesfunnel outbound clicks (spec 63, L-10): the same
+	// GetEventPageStatsHeader(event, org) gate, 404 event.not_found for a
+	// foreign event; every click query is keyed by (event, org).
+	"GET /v1/organizations/{org_id}/events/{event_id}/outbound-clicks": "hsalesfunnel",
 	// himports.HandleEventBundleRead (task 3-2): GetEventRaw, then the event's
 	// organization must equal the path organization (404 event.not_found).
 	// TestEventBundleRead_OrganizationBoundary drives a foreign, unknown and

@@ -12014,7 +12014,9 @@ components:
             A refusal sends nothing to Meta or GA4; the anonymous funnel counts
             the step all the same.
         data:
-          $ref: "#/components/schemas/SiteTrackData"
+          description: Extra fields of the event, for example the contact of a `lead`.
+          allOf:
+            - $ref: "#/components/schemas/SiteTrackData"
 
     SiteTrackAccepted:
       type: object
@@ -12081,8 +12083,7 @@ components:
           type: string
           description: Last day of the window.
         timezone:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: IANA zone of the venue the days are read in.
         total:
           type: integer
@@ -12093,8 +12094,7 @@ components:
           format: int64
           description: Visits of the event page on the site in the same window.
         share_of_visitors:
-          type: number
-          nullable: true
+          type: [number, "null"]
           description: "`total` divided by `visits`; null when there were no visits."
         by_day:
           type: array

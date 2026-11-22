@@ -25093,6 +25093,7 @@ export interface components {
              *     the step all the same.
              */
             tracking_declined?: boolean;
+            /** @description Extra fields of the event, for example the contact of a `lead`. */
             data?: components["schemas"]["SiteTrackData"];
         };
         /** @description The event was taken. The answer never says what was done with it. */
