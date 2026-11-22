@@ -24,6 +24,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	paymodules "github.com/abhteam/arena_new/apps/backend/internal/app/payments"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/accountclaim"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/geoslug"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sellerinfo"
@@ -89,10 +90,13 @@ type WorkspaceInput struct {
 
 // Workspace is what was created.
 type Workspace struct {
-	OrgID        uuid.UUID
-	Slug         string
-	ChannelID    uuid.UUID
-	OwnerID      uuid.UUID
+	OrgID     uuid.UUID
+	Slug      string
+	ChannelID uuid.UUID
+	OwnerID   uuid.UUID
+	// OwnerCreated is true when the owner's set-your-password letter was
+	// queued: a new account, or an existing one whose address was never
+	// confirmed and whose password was replaced (accountclaim).
 	OwnerCreated bool
 	// CreatedCountry is set when the organization's country was not in the
 	// arena reference and CreateWorkspace added it from the world table
@@ -195,7 +199,8 @@ WHERE id = $1`,
 }
 
 // ensureOwner finds or creates the owner, gives them the owner membership and,
-// for a brand-new account, queues the set-your-password e-mail.
+// for a brand-new account or an existing one whose address was never
+// confirmed (accountclaim), queues the set-your-password e-mail.
 func ensureOwner(ctx context.Context, tx pgx.Tx, q *gen.Queries, ws *Workspace, email string, in WorkspaceInput, locale, orgName string) error {
 	existing, err := q.GetUserByEmail(ctx, email)
 	switch {
@@ -204,6 +209,19 @@ func ensureOwner(ctx context.Context, tx pgx.Tx, q *gen.Queries, ws *Workspace, 
 			return errors.New("provisioning: the owner's account is deactivated")
 		}
 		ws.OwnerID = existing.ID
+		// An account whose address was never confirmed gets a fresh secret
+		// and the set-your-password letter, like a new account.
+		claimed, _, claimErr := accountclaim.Claim(ctx, tx, existing.EmailVerifiedAt, accountclaim.SetupLetter{
+			UserID:      existing.ID,
+			Email:       email,
+			OrgName:     orgName,
+			ExpiresAt:   in.Now.Add(passwordSetupTTL),
+			MaxAttempts: passwordSetupEmailMaxAttempts,
+		})
+		if claimErr != nil {
+			return fmt.Errorf("provisioning: reset unconfirmed owner: %w", claimErr)
+		}
+		ws.OwnerCreated = claimed
 	case errors.Is(err, pgx.ErrNoRows):
 		secret, tokenErr := users.GenerateVerificationToken()
 		if tokenErr != nil {

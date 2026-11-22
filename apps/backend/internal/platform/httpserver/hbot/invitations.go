@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/accountclaim"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
@@ -267,6 +268,21 @@ func (h *Handler) HandleCreateInvitation(w http.ResponseWriter, r *http.Request)
 	}
 	effectiveRole := BotRoleFor(membershipRole)
 
+	// An existing account whose address was never confirmed gets a fresh
+	// secret with its new membership, and the set-your-password letter goes
+	// with the invitation (accountclaim).
+	accountReset := false
+	if !userCreated && membershipCreated && accountclaim.NeedsReset(userRow.EmailVerifiedAt) {
+		if err := accountclaim.ResetCredentials(ctx, tx, userID); err != nil {
+			h.logger.Error("hbot: reset unconfirmed account failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"bot.invite_failed", "failed to prepare the invited account", r,
+			))
+			return
+		}
+		accountReset = true
+	}
+
 	// 3. The invitation row and its e-mail, in the same transaction.
 	var invitedBy *uuid.UUID
 	if id := actorUserID(ctx); id != "" {
@@ -282,7 +298,7 @@ func (h *Handler) HandleCreateInvitation(w http.ResponseWriter, r *http.Request)
 		inv, jobID, err = h.webInvitation(ctx, tx, q, webInvitationInput{
 			OrgID: orgID, OrgName: org.Name, UserID: userID, Email: email, Role: effectiveRole,
 			Locale: locale, InvitedBy: invitedBy, ExpiresAt: expiresAt,
-			UserCreated: userCreated, MembershipCreated: membershipCreated,
+			UserCreated: userCreated || accountReset, MembershipCreated: membershipCreated,
 		})
 		if err != nil {
 			h.logger.Error("hbot: web invitation failed", slog.String("error", err.Error()))
@@ -316,6 +332,18 @@ func (h *Handler) HandleCreateInvitation(w http.ResponseWriter, r *http.Request)
 			))
 			return
 		}
+		if accountReset {
+			if _, err := accountclaim.QueueSetupLetter(ctx, tx, accountclaim.SetupLetter{
+				UserID: userID, Email: email, OrgName: org.Name, Locale: locale,
+				ExpiresAt: expiresAt, MaxAttempts: invitationEmailMaxAttempts,
+			}); err != nil {
+				h.logger.Error("hbot: enqueue setup email failed", slog.String("error", err.Error()))
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+					"bot.invite_failed", "failed to queue the invitation email", r,
+				))
+				return
+			}
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		h.logger.Error("hbot: commit failed", slog.String("error", err.Error()))
@@ -331,6 +359,7 @@ func (h *Handler) HandleCreateInvitation(w http.ResponseWriter, r *http.Request)
 		"role":            effectiveRole,
 		"membership_role": membershipRole,
 		"user_created":    userCreated,
+		"account_reset":   accountReset,
 		"channel":         channel,
 		"superadmin":      superadmin,
 	})

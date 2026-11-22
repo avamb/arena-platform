@@ -38,6 +38,13 @@ SET email_verified_at = now()
 WHERE id = $1
 RETURNING id, email, email_verified_at;
 
+-- name: MarkEmailVerifiedIfUnset :exec
+-- Sets email_verified_at when it is still NULL. A completed password reset
+-- proves the address is read by the account's owner.
+UPDATE users
+SET email_verified_at = now()
+WHERE id = $1 AND email_verified_at IS NULL;
+
 -- name: MarkVerificationTokenUsed :exec
 -- Stamps used_at on the token so replay attempts are rejected with 410.
 UPDATE email_verification_tokens

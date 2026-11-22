@@ -611,7 +611,10 @@ export interface paths {
          *     The email is normalised (lowercased, trimmed) before storage.
          *     On success a verification email is dispatched (outbox pattern) and the
          *     caller receives the new user_id, normalised email, and a message asking
-         *     them to check their inbox. Requires no authentication.
+         *     them to check their inbox. An address that already has an account gets
+         *     the same 201 answer (a random user_id, the normalised email, the current
+         *     time); nothing is written and no letter is sent. Requests are limited
+         *     per client address and per e-mail address. Requires no authentication.
          */
         post: operations["postV1AuthRegister"];
         delete?: never;
@@ -1301,9 +1304,11 @@ export interface paths {
         /**
          * Confirm password reset with a one-time token
          * @description Accepts a valid, unexpired, single-use reset token and a new password.
-         *     Updates the user's password hash and marks the token as used. Returns
-         *     410 Gone when the token has already been consumed or has expired.
-         *     No Authorization header required.
+         *     Updates the user's password hash, marks the token as used and, when
+         *     the account's e-mail address was not confirmed yet, confirms it.
+         *     Returns 410 Gone when the token has already been consumed or has
+         *     expired. Requests are limited per client address. No Authorization
+         *     header required.
          */
         post: operations["postV1AuthPasswordResetConfirm"];
         delete?: never;
@@ -41389,7 +41394,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description User created — verification email dispatched */
+            /** @description Request accepted — a verification email is dispatched for a new account */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -41407,8 +41412,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Email address is already registered */
-            409: {
+            /** @description Too many requests from this client address or for this e-mail address (`auth.rate_limited`, with `retry_after_seconds` and `Retry-After` in seconds). */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -42667,6 +42672,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Too many requests from this client address or for this e-mail address (`auth.rate_limited`, with `retry_after_seconds` and `Retry-After` in seconds). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Database pool not available */
             503: {
                 headers: {
@@ -42727,6 +42741,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Too many requests from this client address (`auth.rate_limited`, with `retry_after_seconds` and `Retry-After` in seconds). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Database pool not available */
             503: {
                 headers: {
@@ -42770,6 +42793,15 @@ export interface operations {
             };
             /** @description Token not found or already used */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this client address (`auth.rate_limited`, with `retry_after_seconds` and `Retry-After` in seconds). */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

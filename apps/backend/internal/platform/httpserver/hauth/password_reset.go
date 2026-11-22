@@ -24,7 +24,8 @@
 //	  5. In the transaction, consume the token in one conditional UPDATE
 //	     (unused and unexpired only), so it is used at most once; when
 //	     nothing was consumed, answer as in step 3.
-//	  6. UPDATE users SET password_hash = … WHERE id = token.user_id.
+//	  6. UPDATE users SET password_hash = … WHERE id = token.user_id, and set
+//	     email_verified_at = now() when it is still NULL.
 //	  7. PR2-03: Revoke ALL active refresh tokens for the user (same tx)
 //	     so that old sessions cannot persist after account recovery.
 //	  8. Write audit event (same tx).
@@ -89,6 +90,10 @@ func (h *Handler) PasswordResetRequest(w http.ResponseWriter, r *http.Request) {
 			"validation.email_required", "email is required", r,
 			map[string]any{"field": "email"},
 		))
+		return
+	}
+
+	if !h.allowAccountRequest(w, r, h.accountLimits.resetRequestIP, h.accountLimits.resetRequestEmail, email) {
 		return
 	}
 
@@ -211,6 +216,10 @@ func (h *Handler) PasswordResetConfirm(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := logging.FromContext(ctx)
 
+	if !h.allowAccountRequest(w, r, h.accountLimits.resetConfirmIP, nil, "") {
+		return
+	}
+
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("http.invalid_body", "cannot read request body: "+err.Error(), r))
@@ -318,6 +327,14 @@ func (h *Handler) PasswordResetConfirm(w http.ResponseWriter, r *http.Request) {
 
 	if err := q.UpdateUserPassword(ctx, userID, pwHash); err != nil {
 		logger.Error("auth.password_reset.confirm: update password failed", "error", err, "user_id", userID)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.update_failed", "failed to update password", r))
+		return
+	}
+
+	// The reset link reached the account's mailbox, so the address is
+	// confirmed now; an earlier confirmation keeps its time.
+	if err := q.MarkEmailVerifiedIfUnset(ctx, userID); err != nil {
+		logger.Error("auth.password_reset.confirm: confirm email failed", "error", err, "user_id", userID)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.update_failed", "failed to update password", r))
 		return
 	}
