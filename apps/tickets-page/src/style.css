@@ -1222,3 +1222,21 @@ a {
   font-size: 0.9em;
   opacity: 0.85;
 }
+
+/* Tour (event series) page */
+.asa-series-hero__image,
+.asa-series-poster {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+.asa-series-poster {
+  margin: 1rem 0;
+}
+.asa-series-summary {
+  font-weight: 600;
+}
+.asa-series-partners {
+  margin-top: 2rem;
+}

@@ -106,9 +106,9 @@ func trStateKey(t *openapi.ContentTranslationItem) string {
 	switch {
 	case t == nil:
 		return "bot.tr.state_none"
-	case t.Source == openapi.ContentTranslationItemSourceManual && t.TranslationStale:
+	case t.Source == "manual" && t.TranslationStale:
 		return "bot.tr.state_manual_stale"
-	case t.Source == openapi.ContentTranslationItemSourceManual:
+	case t.Source == "manual":
 		return "bot.tr.state_manual"
 	case t.TranslationStale:
 		return "bot.tr.state_machine_stale"

@@ -255,6 +255,7 @@ func (b *Bot) cardGroupItems(loc string, id *Identity, eventID uuid.UUID, group 
 			items.add("ge.translations", b.mnBtn(loc, "bot.tr.btn", trData("l", eventID)))
 		}
 		items.add("ge.promoter", b.promoterEventRow(loc, id, eventID))
+		items.add("ge.series", b.seriesEventRow(loc, id, eventID))
 	case cardGroupPromo:
 		items.add("gp.promo", b.promoEventRow(loc, id, eventID))
 		if canInvite(id) {

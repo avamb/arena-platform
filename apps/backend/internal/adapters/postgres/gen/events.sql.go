@@ -634,10 +634,16 @@ SELECT EXISTS (
     WHERE  org_id = $1
       AND  lower(slug) = lower($2)
       AND  deleted_at IS NULL
+) OR EXISTS (
+    SELECT 1 FROM event_series
+    WHERE  org_id = $1
+      AND  lower(slug) = lower($2)
 )`
 
 // EventSlugTaken reports whether an active event of the organization already
-// uses the slug (case-insensitive, like events_org_slug_unique).
+// uses the slug (case-insensitive, like events_org_slug_unique), or a tour of
+// the organization does: tour and event slugs share one namespace (migration
+// 0221), so eventslug.Assign skips a tour's slug.
 func (q *Queries) EventSlugTaken(ctx context.Context, orgID uuid.UUID, slug string) (bool, error) {
 	var taken bool
 	err := q.db.QueryRow(ctx, eventSlugTaken, orgID, slug).Scan(&taken)

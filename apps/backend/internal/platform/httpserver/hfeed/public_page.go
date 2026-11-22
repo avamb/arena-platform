@@ -29,6 +29,7 @@
 package hfeed
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -382,15 +383,25 @@ func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	resp.Events = h.hostedPageEventItems(ctx, orgSlug, events)
+
+	w.Header().Set("Cache-Control", "public, max-age=30, stale-while-revalidate=15")
+	httputil.WriteJSON(w, http.StatusOK, resp)
+}
+
+// hostedPageEventItems builds the event cards of a list page (the promoter
+// page and the tour page share them). Venue names are hydrated in one batch
+// call, same reused query and same "never fail the page over presentational
+// data" convention as HandlePublicPage.
+func (h *Handler) hostedPageEventItems(ctx context.Context, orgSlug string, events []gen.HostedPromoterPageEventRow) []hostedPageEventResponse {
+	items := make([]hostedPageEventResponse, 0, len(events))
 	eventIDs := make([]uuid.UUID, len(events))
 	for i, e := range events {
 		eventIDs[i] = e.EventID
 	}
-	// Venue names are hydrated in one batch call, same reused query and same
-	// "never fail the page over presentational data" convention as
-	// HandlePublicPage.
 	var venueNames map[uuid.UUID][]string
 	if len(eventIDs) > 0 {
+		var err error
 		venueNames, err = h.publicFeedQueries.ListEventVenueNames(ctx, eventIDs)
 		if err != nil {
 			h.logger.Warn("public_page: promoter venue-name hydration failed",
@@ -433,11 +444,9 @@ func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Reques
 		if vn, ok := venueNames[e.EventID]; ok {
 			item.VenueNames = vn
 		}
-		resp.Events = append(resp.Events, item)
+		items = append(items, item)
 	}
-
-	w.Header().Set("Cache-Control", "public, max-age=30, stale-while-revalidate=15")
-	httputil.WriteJSON(w, http.StatusOK, resp)
+	return items
 }
 
 // rfc3339UTC formats an optional instant for the hosted-page JSON.

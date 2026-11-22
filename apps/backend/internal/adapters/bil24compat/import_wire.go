@@ -66,6 +66,41 @@ func KnownImportSource(s string) bool {
 	return s == SourceBil24 || s == SourceArena
 }
 
+// NullableString is a JSON string that tells an ABSENT key from an explicit
+// null and from a value: Present is false when the key was not sent, Value is
+// nil for null. Marshalling writes null or the string; with `omitzero` an
+// absent value leaves the key out.
+type NullableString struct {
+	Present bool
+	Value   *string
+}
+
+// UnmarshalJSON records that the key was sent.
+func (n *NullableString) UnmarshalJSON(data []byte) error {
+	n.Present = true
+	if string(data) == "null" {
+		n.Value = nil
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	n.Value = &s
+	return nil
+}
+
+// MarshalJSON writes null or the string.
+func (n NullableString) MarshalJSON() ([]byte, error) {
+	if n.Value == nil {
+		return []byte("null"), nil
+	}
+	return json.Marshal(*n.Value)
+}
+
+// IsZero reports an absent key, for the `omitzero` tag.
+func (n NullableString) IsZero() bool { return !n.Present }
+
 // ImportSessionAction is the Bil24 "action" (arena: event) block.
 type ImportSessionAction struct {
 	ActionID       int64  `json:"actionId"`
@@ -85,6 +120,11 @@ type ImportSessionAction struct {
 	// (the organization itself is the promoter), a UUID names one of the
 	// organization's active promoters. The Bil24-format importer ignores it.
 	PromoterID *string `json:"promoterId"`
+	// ArenaSeriesID is an arena-native event-bundle extension (migration 0221,
+	// source=arena only): absent keeps the event's tour as it is, null or ""
+	// removes the link, a UUID links one of the organization's active tours
+	// (422 import.invalid_series at /action/arenaSeriesId otherwise).
+	ArenaSeriesID NullableString `json:"arenaSeriesId,omitzero"`
 	// EmailNote is an arena-native event-bundle extension (EC-31, migration
 	// 0161, source=arena only): the organizer's own text that the ticket and
 	// session-change letters print under "About the event". Absent or null

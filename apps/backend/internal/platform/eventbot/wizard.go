@@ -44,6 +44,7 @@ const (
 	stEvName        = "ev_name"
 	stEvAge         = "ev_age"
 	stEvPromoter    = "ev_promoter"
+	stEvSeries      = "ev_series"
 	stPromoterName  = "promoter_name"
 	stPromoterLegal = "promoter_legal"
 	stEvPoster      = "ev_poster"
@@ -183,12 +184,16 @@ type DraftEvent struct {
 	// (ModeEdit): the arena id the bundle addresses, and the event's
 	// updated_at at load time, so a change made elsewhere meanwhile is
 	// noticed before the save.
-	EventID       string `json:"event_id,omitempty"`
-	UpdatedAt     string `json:"updated_at,omitempty"`
-	Name          string `json:"name"`
-	Age           string `json:"age"`
-	PromoterID    string `json:"promoter_id"` // "" = the organization itself
-	PromoterName  string `json:"promoter_name"`
+	EventID      string `json:"event_id,omitempty"`
+	UpdatedAt    string `json:"updated_at,omitempty"`
+	Name         string `json:"name"`
+	Age          string `json:"age"`
+	PromoterID   string `json:"promoter_id"` // "" = the organization itself
+	PromoterName string `json:"promoter_name"`
+	// SeriesID/SeriesName name the tour a NEW event is bound to ("" = none);
+	// the bind rides on PATCH right after the first date is saved.
+	SeriesID      string `json:"series_id,omitempty"`
+	SeriesName    string `json:"series_name,omitempty"`
 	PosterMediaID string `json:"poster_media_id"`
 	PosterW       int    `json:"poster_w"`
 	PosterH       int    `json:"poster_h"`
@@ -377,6 +382,8 @@ type DraftSaved struct {
 	Sessions   []SavedSession `json:"sessions"`
 	Warnings   []string       `json:"warnings"`
 	LastReason string         `json:"last_reason"`
+	// SeriesDone is set once the new event's tour bind was tried (L-2).
+	SeriesDone bool `json:"series_done,omitempty"`
 }
 
 // SavedSession records one saved date. Done is what the retry looks at: an
@@ -1028,7 +1035,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		switch {
 		case data == "prom:org":
 			d.Event.PromoterID, d.Event.PromoterName = "", ""
-			d.next(stEvPoster)
+			w.afterPromoter(ctx, ws, d)
 		case data == "prom:new":
 			d.goTo(stPromoterName)
 		case data == "keep":
@@ -1041,7 +1048,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			for _, p := range promoters {
 				if p.ID == ws.Defaults.PromoterID {
 					d.Event.PromoterID, d.Event.PromoterName = p.ID, p.Name
-					d.next(stEvPoster)
+					w.afterPromoter(ctx, ws, d)
 					return "", nil
 				}
 			}
@@ -1054,10 +1061,15 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			for _, p := range promoters {
 				if p.ID == id {
 					d.Event.PromoterID, d.Event.PromoterName = p.ID, p.Name
-					d.next(stEvPoster)
+					w.afterPromoter(ctx, ws, d)
 					return "", nil
 				}
 			}
+		}
+
+	case stEvSeries:
+		if err := w.applySeries(ctx, ws, d, data); err != nil {
+			return "", err
 		}
 
 	case stPromoterName:
@@ -1093,7 +1105,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		}
 		d.Event.PromoterID, d.Event.PromoterName = p.ID, p.Name
 		d.Scratch.NewPromo = ""
-		d.next(stEvPoster)
+		w.afterPromoter(ctx, ws, d)
 
 	case stEvPoster:
 		switch {

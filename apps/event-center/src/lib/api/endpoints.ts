@@ -90,6 +90,11 @@ import type {
   ReferralWarning,
   SellerProfile,
   PromoterEnvelope,
+  Series,
+  SeriesCreateRequest,
+  SeriesDetail,
+  SeriesListEnvelope,
+  SeriesUpdateRequest,
   PromoterListEnvelope,
   PromoCodeEnvelope,
   PromoCodeListResponse,
@@ -424,6 +429,46 @@ export type PromoterPatch = Partial<{
 
 export function updatePromoter(orgId: string, promoterId: string, body: PromoterPatch): Promise<PromoterEnvelope> {
   return call<PromoterEnvelope>({ route: API.promoterUpdate, params: { org_id: orgId, id: promoterId }, body });
+}
+
+// ── Spec 63 L-2: tours (event series) ──────────────────────────────────
+
+/** Every tour of the organization, archived ones included (the screen filters). */
+export function listSeries(orgId: string): Promise<SeriesListEnvelope> {
+  return call<SeriesListEnvelope>({ route: API.seriesList, params: { org_id: orgId }, query: { include_archived: "true" } });
+}
+
+export function getSeries(orgId: string, seriesId: string): Promise<SeriesDetail> {
+  return call<SeriesDetail>({ route: API.seriesGet, params: { org_id: orgId, series_id: seriesId } });
+}
+
+export function createSeries(orgId: string, body: SeriesCreateRequest): Promise<Series> {
+  return call<Series>({ route: API.seriesCreate, params: { org_id: orgId }, body });
+}
+
+/** Partial like the API: an absent key keeps the value, null clears a nullable one. */
+export function updateSeries(orgId: string, seriesId: string, body: SeriesUpdateRequest): Promise<Series> {
+  return call<Series>({ route: API.seriesUpdate, params: { org_id: orgId, series_id: seriesId }, body });
+}
+
+/** Archives the tour: its events keep the link. There is no way back in the API. */
+export function archiveSeries(orgId: string, seriesId: string): Promise<void> {
+  return call<void>({ route: API.seriesArchive, params: { org_id: orgId, series_id: seriesId } });
+}
+
+/** Uploads a picture of a tour (`owner_type=event_series`, `media.write`): the answer is `{ media_object }`. */
+export function uploadSeriesImage(orgId: string, file: Blob, contentType: string, signal?: AbortSignal): Promise<{ media_object: MediaObject }> {
+  const form = new FormData();
+  form.append("owner_type", "event_series");
+  form.append("org_id", orgId);
+  form.append("content_type", contentType);
+  form.append("file", file, contentType === "image/png" ? "tour.png" : "tour.jpg");
+  return call<{ media_object: MediaObject }>({ route: API.mediaUpload, form, signal, timeoutMs: UPLOAD_TIMEOUT_MS });
+}
+
+/** Links an event to a tour (a UUID) or unlinks it (null): ONE field of the PATCH, `event.update`. */
+export function setEventSeries(orgId: string, eventId: string, seriesId: string | null): Promise<EventEnvelope> {
+  return call<EventEnvelope>({ route: API.eventUpdate, params: { org_id: orgId, id: eventId }, body: { series_id: seriesId } });
 }
 
 // ── 4-3: promo codes ───────────────────────────────────────────────────

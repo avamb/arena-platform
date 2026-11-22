@@ -132,6 +132,13 @@ describe("screen help: lines follow what the person sees", () => {
     expect(screenHelp("notifications", manager)?.back).toEqual(["nav.more", "nav.section.settings", "nav.notifications"]);
   });
 
+  it("tours: a person who may read events sees the Tours item and its help, one who may not sees neither", () => {
+    const h = screenHelp("series", owner);
+    expect(h && helpLineIds(h)).toEqual(["nav-series"]);
+    expect(h?.back).toEqual(["nav.more", "nav.section.events", "nav.series"]);
+    expect(screenHelp("series", person(["event.read"]))).toBeNull();
+  });
+
   it("promotion screens list the entry points the person sees, in the order of the sheet", () => {
     const h = screenHelp("links", owner);
     expect(h && helpLineIds(h)).toEqual(["nav-promo", "nav-invitations", "nav-links", "nav-growth"]);

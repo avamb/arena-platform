@@ -33,6 +33,7 @@ export const ITEM_HELP: Record<string, MessageKey> = {
   "nav-org-data": "screenHelp.item.orgData",
   "nav-payments": "screenHelp.item.payments",
   "nav-team": "screenHelp.item.team",
+  "nav-series": "screenHelp.item.series",
   "nav-promoters": "screenHelp.item.promoters",
   "nav-venues": "screenHelp.item.venues",
   "nav-notifications": "screenHelp.item.notifications",
@@ -95,6 +96,7 @@ export type ScreenId =
   | "orgData"
   | "team"
   | "promoters"
+  | "series"
   | "venues"
   | "notifications"
   | "billing";
@@ -119,6 +121,7 @@ const SCREENS: Record<Exclude<ScreenId, "event">, ScreenDef> = {
   orgData: { primary: "nav-org-data", items: ["nav-org-data", "nav-payments"] },
   team: { primary: "nav-team", items: ["nav-team"] },
   promoters: { primary: "nav-promoters", items: ["nav-promoters"] },
+  series: { primary: "nav-series", items: ["nav-series"] },
   venues: { primary: "nav-venues", items: ["nav-venues"] },
   notifications: { primary: "nav-notifications", items: ["nav-notifications"] },
   billing: { primary: "nav-billing", items: ["nav-billing"] },

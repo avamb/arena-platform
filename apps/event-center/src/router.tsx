@@ -39,11 +39,13 @@ import { VenuesScreen } from "@/screens/VenuesScreen";
 import { VenuePlanIntakeScreen } from "@/screens/VenuePlanIntakeScreen";
 import { parseIntakeSearch } from "@/lib/venuePlan/intakeState";
 import { PromoterScreen } from "@/screens/PromoterScreen";
+import { SeriesScreen } from "@/screens/SeriesScreen";
+import { SeriesDetailScreen } from "@/screens/SeriesDetailScreen";
 import { NotFoundScreen } from "@/screens/NotFoundScreen";
 import { OrgDataScreen } from "@/screens/OrgDataScreen";
 import { EntranceScreen } from "@/screens/EntranceScreen";
 import { HelpScreen } from "@/screens/HelpScreen";
-import { parseEventsSearch, parseLoginSearch, parseOrdersSearch, parsePromotersSearch } from "@/lib/search";
+import { parseEventsSearch, parseLoginSearch, parseOrdersSearch, parsePromotersSearch, parseSeriesSearch } from "@/lib/search";
 import { parseBalanceSearch } from "@/lib/billingPacks";
 import { PromoListScreen } from "@/screens/PromoListScreen";
 import { PromoCreateScreen } from "@/screens/PromoCreateScreen";
@@ -301,6 +303,20 @@ const promoterRoute = createRoute({
   component: PromoterScreen,
 });
 
+// Spec 63 L-2: tours (event series).
+const seriesRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/series",
+  validateSearch: parseSeriesSearch,
+  component: SeriesScreen,
+});
+
+const seriesDetailRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/series/$seriesId",
+  component: SeriesDetailScreen,
+});
+
 // Spec 64 section 2.1.1: the venue chooser and the venue card.
 const venuesRoute = createRoute({ getParentRoute: () => orgRoute, path: "/venues", component: VenuesScreen });
 const venueRoute = createRoute({ getParentRoute: () => orgRoute, path: "/venues/$venueId", component: VenuesScreen });
@@ -464,6 +480,8 @@ export const routeTree = rootRoute.addChildren([
     billingInvoicesRoute,
     promotersRoute,
     promoterRoute,
+    seriesRoute,
+    seriesDetailRoute,
     venuesRoute,
     venueRoute,
     venuePlanIntakeRoute,

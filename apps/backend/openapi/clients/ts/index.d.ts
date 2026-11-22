@@ -5111,6 +5111,70 @@ export interface paths {
         patch: operations["updatePromoter"];
         trace?: never;
     };
+    "/v1/organizations/{org_id}/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the organization's tours
+         * @description Returns the organization's active tours ordered by position, then name
+         *     (migration 0221). `?include_archived=true` adds archived ones. Requires
+         *     `event.read` and membership of the organization.
+         */
+        get: operations["listSeries"];
+        put?: never;
+        /**
+         * Create a tour
+         * @description Adds a tour to the organization. Requires `event.update` and
+         *     membership of the organization. Without `slug` the address is derived
+         *     from the name. Answers 409 `series.slug_taken` when the typed slug is
+         *     used by another tour or an active event of the organization, 422
+         *     `series.invalid` for a bad name, slug, video link, text or a media
+         *     object of another organization.
+         */
+        post: operations["createSeries"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/series/{series_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a tour with its events
+         * @description Returns the tour with the short cards of its active events. Requires
+         *     `event.read` and membership of the organization. Another
+         *     organization's tour answers 404.
+         */
+        get: operations["getSeries"];
+        put?: never;
+        post?: never;
+        /**
+         * Archive a tour
+         * @description Sets `archived_at`. The events keep their `series_id`; an archived
+         *     tour can no longer be linked to an event and its page answers 404.
+         *     Requires `event.update` and membership of the organization.
+         */
+        delete: operations["archiveSeries"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a tour
+         * @description Partial update (absent = keep, null = clear a nullable field).
+         *     Requires `event.update` and membership of the organization.
+         */
+        patch: operations["updateSeries"];
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/conversion-settings": {
         parameters: {
             query?: never;
@@ -8023,6 +8087,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/feeds/{feed_token}/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the tours visible in a feed
+         * @description Returns the non-archived tours that have at least one event visible in
+         *     THIS feed (the same visibility as `/events`). No JWT required: the
+         *     feed token in the path is the credential. Rate-limited per token and
+         *     per IP.
+         */
+        get: operations["listPublicFeedSeries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/feeds/{feed_token}/series/{series_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one tour visible in a feed
+         * @description Returns the tour. Answers 404 when it is archived, belongs to another
+         *     organization or has no event visible in this feed. No JWT required.
+         *     Rate-limited per token and per IP.
+         */
+        get: operations["getPublicFeedSeries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/feeds/{feed_token}/events/{event_id}": {
         parameters: {
             query?: never;
@@ -8309,6 +8418,32 @@ export interface paths {
          *     publication/token state can change at any time.
          */
         get: operations["getPublicPromoterPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/pages/{org_slug}/series/{series_slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve the page of a tour
+         * @description Backs the page `https://tickets.arenasoldout.com/{org_slug}/{series_slug}`
+         *     of a tour. Answers the tour, its events visible on the hosted page and
+         *     the same organization, seller and contact-form blocks as the
+         *     organization page. 404 `page.not_found` when the organization or the
+         *     tour is unknown, the tour is archived or none of its events is
+         *     published on the hosted-page channel. No JWT required. Rate-limited
+         *     per client IP.
+         */
+        get: operations["getPublicSeriesPage"];
         put?: never;
         post?: never;
         delete?: never;
@@ -15404,9 +15539,11 @@ export interface components {
              *     photo report. `shop_product` (migration 0172) is a picture of a
              *     merchandise shop product; `shop_digital` is the file a digital
              *     shop product sells (offered to the buyer only after payment).
+             *     `event_series` (migration 0221) is the poster or the wide photo
+             *     of a tour.
              * @enum {string}
              */
-            owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report" | "shop_product" | "shop_digital";
+            owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report" | "shop_product" | "shop_digital" | "event_series";
             /**
              * Format: uuid
              * @description UUID of the owning row in the table implied by
@@ -23860,6 +23997,19 @@ export interface components {
              */
             promoter_name?: string | null;
             /**
+             * Format: uuid
+             * @description The tour (event series, migration 0221) the event belongs to.
+             *     Null when the event stands alone (the public feed leaves the
+             *     field out then). Set by PATCH
+             *     .../events/{id} `series_id`.
+             */
+            series_id?: string | null;
+            /**
+             * @description Name of the event's tour. Filled by the organizer API only; null
+             *     in the public feed (read the tour by `series_id` there).
+             */
+            series_name?: string | null;
+            /**
              * @description Buyers' page of the event on the hosted sales site:
              *     `<PUBLIC_TICKETS_BASE_URL>/<page slug>/<event slug>`, where the
              *     page slug is the promoter's slug when the event has an active
@@ -24208,6 +24358,301 @@ export interface components {
              *     make the organization itself the promoter again.
              */
             promoter_id?: string | null;
+        };
+        /**
+         * @description A tour (event series, migration 0221, spec 63): several events under
+         *     one name, public address and set of page materials. The slug shares
+         *     one address space with the organization's active event slugs.
+         */
+        Series: {
+            /**
+             * Format: uuid
+             * @description UUID of the tour.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUID of the owning organization.
+             */
+            org_id: string;
+            /**
+             * @description Public address of the tour (`<page>/<slug>`): 1-120 characters of
+             *     Latin letters, digits and single hyphens.
+             * @example summer-tour
+             */
+            slug: string;
+            /**
+             * @description Name of the tour, 1-200 characters.
+             * @example Summer tour 2027
+             */
+            name: string;
+            /** @description Description of the tour as filtered HTML (the event description filter). Null when none. */
+            description_html: string | null;
+            /**
+             * Format: uuid
+             * @description Portrait poster 4:5 (a media object of owner type `event_series`). Null when none.
+             */
+            poster_media_id: string | null;
+            /** @description URL of the poster, null when there is none. */
+            poster_url: string | null;
+            /**
+             * Format: uuid
+             * @description Wide photo 16:9 (a media object of owner type `event_series`). Null when none.
+             */
+            hero_media_id: string | null;
+            /** @description URL of the wide photo, null when there is none. */
+            hero_url: string | null;
+            /** @description An https YouTube or Vimeo link shown at the top of the tour page. Null when none. */
+            hero_video_url: string | null;
+            /** @description Text about the partners of the tour as filtered HTML. Null when none. */
+            partners_text_html: string | null;
+            /** @description When true the events of the tour are left out of the page lists, the tour card stands for them. */
+            hide_children_in_lists: boolean;
+            /**
+             * Format: int32
+             * @description Sort position of the tour among the organization's tours (ascending).
+             */
+            position: number;
+            /** @description Number of active events of the tour. */
+            event_count: number;
+            /**
+             * Format: date-time
+             * @description When the tour was archived. Null for an active tour.
+             */
+            archived_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the tour was created.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the tour was last changed.
+             */
+            updated_at: string;
+            /**
+             * @description Reserved for the translated texts of a tour: locale to
+             *     `{description_html, partners_text_html}`. Always an empty object
+             *     for now; ignored on write.
+             */
+            translations: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description Short card of an event inside a tour. */
+        SeriesEventCard: {
+            /**
+             * Format: uuid
+             * @description UUID of the event.
+             */
+            id: string;
+            /** @description Name of the event. */
+            name: string;
+            /** @description Public address of the event. Null while it has none. */
+            slug: string | null;
+            /** @description Status of the event (draft, published, archived, ...). */
+            status: string;
+            /**
+             * Format: date-time
+             * @description Start of the first session of the event. Null while it has no sessions.
+             */
+            first_session_at: string | null;
+        };
+        /** @description A tour with its events. */
+        SeriesDetail: components["schemas"]["Series"] & {
+            /** @description Active events of the tour by first session (events without sessions last). */
+            events: components["schemas"]["SeriesEventCard"][];
+        };
+        /** @description List-tours response. */
+        SeriesListEnvelope: {
+            /** @description The organization's tours ordered by position, then name. */
+            items: components["schemas"]["Series"][];
+        };
+        /** @description Body of POST /v1/organizations/{org_id}/series. */
+        CreateSeriesRequest: {
+            /** @description Name of the tour, 1-200 characters. */
+            name: string;
+            /**
+             * @description Public address. Absent, null or empty: derived from the name
+             *     (with a numeric suffix while taken). A typed one that an event or
+             *     another tour of the organization uses answers 409
+             *     `series.slug_taken`.
+             */
+            slug?: string | null;
+            /** @description Description as HTML, passed through the event description filter. */
+            description_html?: string | null;
+            /**
+             * Format: uuid
+             * @description A media object of the organization (owner type `event_series`).
+             */
+            poster_media_id?: string | null;
+            /**
+             * Format: uuid
+             * @description A media object of the organization (owner type `event_series`).
+             */
+            hero_media_id?: string | null;
+            /** @description An https YouTube or Vimeo link. */
+            hero_video_url?: string | null;
+            /** @description Text about the partners as HTML, passed through the event description filter. */
+            partners_text_html?: string | null;
+            /** @description Leave the events of the tour out of the page lists. Default true. */
+            hide_children_in_lists?: boolean;
+            /**
+             * Format: int32
+             * @description Sort position, ascending. Default 0.
+             */
+            position?: number;
+            /** @description Reserved for translated texts; ignored. */
+            translations?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * @description Body of PATCH /v1/organizations/{org_id}/series/{series_id}. Absent
+         *     keeps a field, null clears a nullable one.
+         */
+        UpdateSeriesRequest: {
+            /** @description Name of the tour, 1-200 characters. Cannot be null. */
+            name?: string;
+            /** @description New public address. Cannot be null. A taken one answers 409 `series.slug_taken`. */
+            slug?: string;
+            /** @description Description as HTML, passed through the event description filter. Null clears. */
+            description_html?: string | null;
+            /**
+             * Format: uuid
+             * @description A media object of the organization. Null clears.
+             */
+            poster_media_id?: string | null;
+            /**
+             * Format: uuid
+             * @description A media object of the organization. Null clears.
+             */
+            hero_media_id?: string | null;
+            /** @description An https YouTube or Vimeo link. Null clears. */
+            hero_video_url?: string | null;
+            /** @description Text about the partners as HTML. Null clears. */
+            partners_text_html?: string | null;
+            /** @description Leave the events of the tour out of the page lists. */
+            hide_children_in_lists?: boolean;
+            /**
+             * Format: int32
+             * @description Sort position, ascending.
+             */
+            position?: number;
+            /** @description Reserved for translated texts; ignored. */
+            translations?: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description The nearest upcoming session of a tour. */
+        FeedSeriesNextSession: {
+            /**
+             * Format: uuid
+             * @description UUID of the event of the session.
+             */
+            event_id: string;
+            /**
+             * Format: uuid
+             * @description UUID of the session.
+             */
+            session_id: string;
+            /**
+             * Format: date-time
+             * @description Start of the session.
+             */
+            starts_at: string;
+            /** @description City of the session's venue. Null when unknown. */
+            city: string | null;
+        };
+        /** @description The lowest open price of a tour in one currency. */
+        FeedSeriesPrice: {
+            /** @description ISO 4217 currency code. */
+            currency: string;
+            /** @description The price in MAJOR units (19.5 for 1950 minor units of EUR). */
+            amount: number;
+        };
+        /** @description The "at a glance" block of a tour, over the events visible in the feed. */
+        FeedSeriesSummary: {
+            /**
+             * Format: date-time
+             * @description Start of the first session of the visible events. Null when there is none.
+             */
+            date_from: string | null;
+            /**
+             * Format: date-time
+             * @description Start of the last session of the visible events. Null when there is none.
+             */
+            date_to: string | null;
+            /** @description Number of distinct cities of the sessions. */
+            cities_count: number;
+            /** @description Number of cities with a session whose sales state is open. */
+            cities_on_sale_count: number;
+            /** @description The nearest upcoming session. Null when there is none. */
+            next_session: components["schemas"]["FeedSeriesNextSession"] | null;
+            /** @description The minimum open category price per currency, sorted by currency. */
+            price_from: components["schemas"]["FeedSeriesPrice"][];
+        };
+        /** @description A tour as the public feed and the hosted page show it. */
+        FeedSeries: {
+            /**
+             * Format: uuid
+             * @description UUID of the tour.
+             */
+            id: string;
+            /** @description Public address of the tour. */
+            slug: string;
+            /** @description Name of the tour. */
+            name: string;
+            /** @description Description as safe HTML. Null when none. */
+            description_html: string | null;
+            /** @description Text about the partners as safe HTML. Null when none. */
+            partners_text_html: string | null;
+            /** @description URL of the poster. Null when none. */
+            poster_url: string | null;
+            /** @description URL of the wide photo. Null when none. */
+            hero_url: string | null;
+            /** @description An https YouTube or Vimeo link. Null when none. */
+            hero_video_url: string | null;
+            /** @description When true the events of the tour are left out of the page lists, the tour card stands for them. */
+            hide_children_in_lists: boolean;
+            /**
+             * Format: int32
+             * @description Sort position among the tours (ascending).
+             */
+            position: number;
+            /** @description UUIDs of the events of the tour visible in this feed, by first session. */
+            event_ids: string[];
+            /** @description The "at a glance" block of the tour. */
+            summary: components["schemas"]["FeedSeriesSummary"];
+            /** @description Reserved for translated texts. Always an empty object for now. */
+            translations: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description List-tours response of a feed. */
+        FeedSeriesListEnvelope: {
+            /** @description Tours with at least one event visible in this feed. */
+            items: components["schemas"]["FeedSeries"][];
+        };
+        /**
+         * @description Response of GET /v1/public/pages/{org_slug}/series/{series_slug}: the
+         *     tour page. `org`, `events`, `seller` and `contact_form` are the same
+         *     as on the organization page (`HostedPromoterPageResponse`); `events`
+         *     are the tour's events visible on the hosted page.
+         */
+        HostedSeriesPageResponse: {
+            /** @description Public-safe organization branding. */
+            org: components["schemas"]["HostedPageOrg"];
+            /** @description Organization default locale, used when no `?lang=` is present. */
+            default_locale: string;
+            /** @description The tour. */
+            series: components["schemas"]["FeedSeries"];
+            /** @description The tour's events visible on the hosted page, upcoming first. */
+            events: components["schemas"]["HostedPageEvent"][];
+            /** @description Legal identity of the seller, omitted as on the organization page. */
+            seller?: components["schemas"]["HostedPageSeller"];
+            /** @description Present when the page offers the "Write to the organizer" form. */
+            contact_form?: components["schemas"]["HostedPageContactForm"];
         };
         /** @description The promoter of an event after PUT .../events/{id}/promoter. */
         EventPromoterResponse: {
@@ -26168,6 +26613,14 @@ export interface components {
              * @example text
              */
             email_note_format?: string;
+            /**
+             * Format: uuid
+             * @description The event's tour (migration 0221). Absent keeps the link, null
+             *     (or an empty string) removes it, a UUID links an ACTIVE tour of
+             *     the organization. An unknown, foreign or archived tour answers
+             *     422 `event.invalid_series`.
+             */
+            series_id?: string | null;
         };
         /**
          * @description Status-transition body for POST
@@ -27473,11 +27926,8 @@ export interface components {
             description_html: string | null;
             /** @description The translated photo-report text as sanitized HTML, null when not set. */
             report_text_html: string | null;
-            /**
-             * @description Who wrote it. A `manual` translation is never replaced by the machine.
-             * @enum {string}
-             */
-            source: "manual" | "machine";
+            /** @description Who wrote it, `manual` or `machine`. A `manual` translation is never replaced by the machine. */
+            source: string;
             /** @description True when the original texts changed after this translation was made; it is still served to buyers. */
             translation_stale: boolean;
             /**
@@ -34777,6 +35227,16 @@ export interface components {
              *     `import.invalid_promoter`.
              */
             promoterId?: string | null;
+            /**
+             * @description Arena event-bundle extension (source=arena only; migration 0221):
+             *     absent keeps the event's tour, null or "" removes the link, a
+             *     UUID links one of the organization's active tours. Anything else
+             *     answers 422 `import.invalid_series` at `/action/arenaSeriesId`.
+             *     The dry run reports the same refusal. Reading an event back
+             *     (GET .../event-bundle) writes "" for an event without a tour and
+             *     leaves the key out for an archived tour.
+             */
+            arenaSeriesId?: string | null;
             /**
              * @description Arena event-bundle extension (source=arena only; EC-31, migration
              *     0165): the organizer's own text that the ticket and session-change
@@ -54872,8 +55332,9 @@ export interface operations {
                 };
             };
             /**
-             * @description `event.duplicate_slug`: another active event of the organization
-             *     already uses the typed `slug` (compared case-insensitively).
+             * @description `event.duplicate_slug`: another active event or a tour of the
+             *     organization already uses the typed `slug` (compared
+             *     case-insensitively; events and tours share one address space).
              */
             409: {
                 headers: {
@@ -54889,7 +55350,9 @@ export interface operations {
              *     description or a description stored earlier that must be converted
              *     with it is refused (`event.invalid_description`,
              *     `error.details.reason` names why), or the letter text `email_note`
-             *     is refused (`event.invalid_email_note`, same details).
+             *     is refused (`event.invalid_email_note`, same details), or
+             *     `series_id` is not an active tour of the organization
+             *     (`event.invalid_series`).
              */
             422: {
                 headers: {
@@ -58099,6 +58562,361 @@ export interface operations {
             };
             /** @description The new name (or restoring) collides with an active promoter (`promoter.duplicate_name`). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listSeries: {
+        parameters: {
+            query?: {
+                /** @description Include archived tours (true/false, default false). */
+                include_archived?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's tours. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeriesListEnvelope"];
+                };
+            };
+            /** @description Invalid include_archived value (`series.invalid_query`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createSeries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSeriesRequest"];
+            };
+        };
+        responses: {
+            /** @description Tour created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Series"];
+                };
+            };
+            /** @description Empty or malformed body (`series.empty_body`, `series.invalid_json`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The slug is used by another tour or an event of the organization (`series.slug_taken`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invalid field (`series.invalid`, `error.details.field` names it). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getSeries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the tour. */
+                series_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tour. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeriesDetail"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such tour in this organization (`series.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    archiveSeries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the tour. */
+                series_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tour archived (also when it already was). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such tour in this organization (`series.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateSeries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the tour. */
+                series_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSeriesRequest"];
+            };
+        };
+        responses: {
+            /** @description The tour after the update. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Series"];
+                };
+            };
+            /** @description Empty or malformed body (`series.empty_body`, `series.invalid_json`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such tour in this organization (`series.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The new slug is used by another tour or an event of the organization (`series.slug_taken`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invalid field (`series.invalid`, `error.details.field` names it). */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -67720,7 +68538,7 @@ export interface operations {
                     /** Format: binary */
                     file: string;
                     /** @enum {string} */
-                    owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report" | "shop_product" | "shop_digital";
+                    owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report" | "shop_product" | "shop_digital" | "event_series";
                     /** Format: uuid */
                     owner_id?: string;
                     /** Format: uuid */
@@ -68810,6 +69628,114 @@ export interface operations {
             };
         };
     };
+    listPublicFeedSeries: {
+        parameters: {
+            query?: {
+                /** @description Reserved for translated texts; accepted and ignored for now. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Opaque feed token (from `agent_feed_tokens.token`). */
+                feed_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tours. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedSeriesListEnvelope"];
+                };
+            };
+            /** @description Unknown feed token (`feed.token_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicFeedSeries: {
+        parameters: {
+            query?: {
+                /** @description Reserved for translated texts; accepted and ignored for now. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Opaque feed token (from `agent_feed_tokens.token`). */
+                feed_token: string;
+                /** @description UUID of the tour. */
+                series_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tour. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedSeries"];
+                };
+            };
+            /** @description No such tour in this feed, or it is archived or has no visible event (`series.not_found`; `feed.token_not_found` for an unknown token). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getPublicFeedEvent: {
         parameters: {
             query?: {
@@ -69081,6 +70007,58 @@ export interface operations {
                 };
             };
             /** @description Page not found (see resolution rule above — one indistinguishable outcome for every miss). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicSeriesPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization slug, matched case-insensitively. */
+                org_slug: string;
+                /** @description Slug of the tour, matched case-insensitively. */
+                series_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tour page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostedSeriesPageResponse"];
+                };
+            };
+            /** @description Page not found (one indistinguishable outcome for every miss). */
             404: {
                 headers: {
                     [name: string]: unknown;

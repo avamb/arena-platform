@@ -110,7 +110,7 @@ var helpItemIDs = []string{
 	"el.filters", "el.search", "el.event", "el.paging", "el.clear",
 	"ec.publish", "ec.link", "ec.s", "ec.e", "ec.p", "ec.m",
 	"gs.summary", "gs.orders", "gs.guests", "gs.csv", "gs.dates",
-	"ge.edit", "ge.sessions", "ge.cat", "ge.materials", "ge.sample", "ge.text", "ge.translations", "ge.promoter",
+	"ge.edit", "ge.sessions", "ge.cat", "ge.materials", "ge.sample", "ge.text", "ge.translations", "ge.promoter", "ge.series",
 	"tr.lang", "tr.machine",
 	"gp.promo", "gp.invite", "gp.links", "gp.referral",
 	"gm.copy", "gm.publish", "gm.off", "gm.archive", "gm.delete",

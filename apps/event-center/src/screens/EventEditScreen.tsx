@@ -4,6 +4,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { EmailNoteSection } from "@/components/EmailNoteSection";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { EventPoster } from "@/components/EventPoster";
+import { EventSeriesSection } from "@/components/EventSeriesSection";
 import { HelpPopover } from "@/components/HelpPopover";
 import { TextField } from "@/components/FormField";
 import { RichTextField } from "@/components/RichTextField";
@@ -61,6 +62,13 @@ export function EventEditScreen() {
         name={event.name}
         description={descriptionBaseOf(event)}
         descriptionFormat={event.description_format}
+      />
+      <EventSeriesSection
+        key={`series:${orgId}:${eventId}:${event.series_id ?? ""}`}
+        orgId={orgId}
+        eventId={eventId}
+        seriesId={event.series_id ?? null}
+        seriesName={event.series_name ?? null}
       />
       <EventPoster
         key={`poster:${orgId}:${eventId}`}

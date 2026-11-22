@@ -61,6 +61,7 @@ var AllowedOwnerTypes = map[string]struct{}{
 	"event_report":     {}, // HP-1 (0153): a photo of an event photo report
 	"shop_product":     {}, // shop (0172): a photo of a shop product
 	"shop_digital":     {}, // shop (0172): the file a digital product sells, never a picture
+	"event_series":     {}, // tour (0221, spec 63 Л-2): the poster and the wide photo of a tour
 }
 
 // OwnerPaymentReceipt is the owner type of an archived payment provider

@@ -193,6 +193,11 @@ type EventResponse struct {
 	// promoter. Hydrated by hydrateEvents, never by EventFromRow.
 	PromoterID   *string `json:"promoter_id"`
 	PromoterName *string `json:"promoter_name"`
+	// SeriesID / SeriesName name the event's tour (migration 0221). Both nil
+	// means the event stands alone. Hydrated by hydrateEvents, never by
+	// EventFromRow.
+	SeriesID   *string `json:"series_id"`
+	SeriesName *string `json:"series_name"`
 	// promoterSlug is the linked promoter's page address, "" when it has none
 	// or is archived. Internal input for PublicURL, never serialized.
 	promoterSlug string
@@ -272,6 +277,7 @@ func EventFromRow(e gen.EventRow) EventResponse {
 func (h *Handler) hydrateEvents(ctx context.Context, responses []eventResponse) {
 	h.hydrateVenueNames(ctx, responses)
 	h.hydratePromoters(ctx, responses)
+	h.hydrateSeries(ctx, responses)
 	h.hydratePublicURLs(ctx, responses)
 	h.hydrateSalesStates(ctx, responses)
 	h.hydrateEmailNotes(ctx, responses)
@@ -728,6 +734,9 @@ type updateEventRequest struct {
 	// EmailNoteFormat says how email_note is written: "text" (default) or
 	// "art" (HTML, spec 44).
 	EmailNoteFormat string `json:"email_note_format"`
+	// SeriesID links the event to a tour of the organization (migration
+	// 0221): absent keeps, null or "" unlinks, a UUID links.
+	SeriesID optionalString `json:"series_id"`
 }
 
 func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
@@ -794,6 +803,30 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		req.Slug.Value = &norm
 	}
 
+	// series_id is checked BEFORE anything is written: it must name an active
+	// tour of this organization (422 event.invalid_series).
+	var seriesID *uuid.UUID
+	if req.SeriesID.Present && req.SeriesID.Value != nil && strings.TrimSpace(*req.SeriesID.Value) != "" {
+		parsed, parseErr := uuid.Parse(strings.TrimSpace(*req.SeriesID.Value))
+		if parseErr != nil {
+			writeInvalidSeries(w, r)
+			return
+		}
+		s, sErr := h.eventQueries.GetEventSeries(ctx, parsed, orgID)
+		if sErr != nil && !errors.Is(sErr, pgx.ErrNoRows) {
+			h.logger.Error("event: series lookup failed", slog.String("error", sErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"event.update_failed", "failed to update event", r,
+			))
+			return
+		}
+		if sErr != nil || s.ArchivedAt != nil {
+			writeInvalidSeries(w, r)
+			return
+		}
+		seriesID = &parsed
+	}
+
 	// email_note (EC-31) is checked BEFORE anything is written, so a refused
 	// text leaves the event as it was.
 	emailNoteFormat, ok := parseTextFormat(w, r, req.EmailNoteFormat, "email_note_format", "event.invalid_email_note_format")
@@ -858,7 +891,7 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 	// the request keeps its old, untransacted shape.
 	q := h.eventQueries
 	var tx pgx.Tx
-	if emailNoteSet || description != nil || len(descTranslations) > 0 {
+	if emailNoteSet || description != nil || len(descTranslations) > 0 || req.SeriesID.Present {
 		var beginErr error
 		if tx, beginErr = h.pool.BeginTx(ctx, pgx.TxOptions{}); beginErr != nil {
 			h.logger.Error("event: update begin failed", slog.String("error", beginErr.Error()))
@@ -903,6 +936,20 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 			"event.update_failed", "failed to update event", r,
 		))
 		return
+	}
+
+	if req.SeriesID.Present {
+		if err := SetEventSeriesTx(ctx, q, eventID, orgID, seriesID); err != nil {
+			if errors.Is(err, ErrInvalidSeries) {
+				writeInvalidSeries(w, r)
+				return
+			}
+			h.logger.Error("event: set series failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"event.update_failed", "failed to update event", r,
+			))
+			return
+		}
 	}
 
 	if emailNoteSet {

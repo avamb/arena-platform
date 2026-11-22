@@ -144,6 +144,10 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		}
 		return Screen{Text: header(1, "bot.wz.title_event") + ask, Buttons: nav(rows...)}, nil
 
+	case stEvSeries:
+		rows := seriesButtons(w.activeSeriesFor(ctx, ws), d.Event.SeriesID, t("bot.wz.skip_btn", nil))
+		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.ser.wz_ask", nil), Buttons: nav(rows...)}, nil
+
 	case stPromoterName:
 		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_promoter_name", nil), Buttons: nav()}, nil
 

@@ -64,6 +64,9 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 	if err := applyArenaPromoter(ctx, q, plan, eventID); err != nil {
 		return importResult{}, err
 	}
+	if err := applyArenaSeries(ctx, q, plan, eventID); err != nil {
+		return importResult{}, err
+	}
 	if err := applyArenaEmailNote(ctx, q, plan, eventID); err != nil {
 		return importResult{}, err
 	}
@@ -1023,6 +1026,61 @@ func resolveArenaPromoter(ctx context.Context, q *gen.Queries, plan importPlan) 
 		return promoterChange{}, invalid
 	}
 	return promoterChange{set: true, promoterID: p.ID}, nil
+}
+
+// applyArenaSeries applies action.arenaSeriesId (migration 0221) inside the
+// import transaction: absent keeps the event's tour, null or "" removes the
+// link, a UUID links one of the organization's ACTIVE tours. Anything else is
+// 422 import.invalid_series, the rule of PATCH .../events/{id} series_id.
+func applyArenaSeries(ctx context.Context, q *gen.Queries, plan importPlan, eventID uuid.UUID) error {
+	change, err := resolveArenaSeries(ctx, q, plan)
+	if err != nil || !change.set {
+		return err
+	}
+	var target *uuid.UUID
+	if change.seriesID != uuid.Nil {
+		id := change.seriesID
+		target = &id
+	}
+	if _, err := q.SetEventSeries(ctx, eventID, plan.OrgID, target); err != nil {
+		return fmt.Errorf("set event series: %w", err)
+	}
+	return nil
+}
+
+// seriesChange is what action.arenaSeriesId asks for: nothing (set false),
+// removing the link (seriesID uuid.Nil) or linking one tour.
+type seriesChange struct {
+	set      bool
+	seriesID uuid.UUID
+}
+
+// resolveArenaSeries reads action.arenaSeriesId and checks, reading only,
+// that a named tour is an active one of the organization.
+func resolveArenaSeries(ctx context.Context, q *gen.Queries, plan importPlan) (seriesChange, error) {
+	field := plan.Request.Action.ArenaSeriesID
+	if !field.Present {
+		return seriesChange{}, nil
+	}
+	if field.Value == nil || strings.TrimSpace(*field.Value) == "" {
+		return seriesChange{set: true}, nil
+	}
+	invalid := failImportAt(http.StatusUnprocessableEntity, "import.invalid_series", "/action/arenaSeriesId",
+		"action.arenaSeriesId is not an active tour of this organization")
+	seriesID, err := uuid.Parse(strings.TrimSpace(*field.Value))
+	if err != nil {
+		return seriesChange{}, invalid
+	}
+	s, err := q.GetEventSeries(ctx, seriesID, plan.OrgID)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return seriesChange{}, invalid
+	case err != nil:
+		return seriesChange{}, fmt.Errorf("read series %s: %w", seriesID, err)
+	case s.ArchivedAt != nil:
+		return seriesChange{}, invalid
+	}
+	return seriesChange{set: true, seriesID: s.ID}, nil
 }
 
 // categoryColorRE is the #rrggbb form of a category's seat-map colour

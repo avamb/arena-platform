@@ -94,6 +94,8 @@ func (w *Wizard) ack(ws WizSession, step string, d *Draft) string {
 			return line("bot.wz.ack_promoter", t("bot.wz.ack_promoter_org", nil))
 		}
 		return line("bot.wz.ack_promoter", Esc(d.Event.PromoterName))
+	case stEvSeries:
+		return line("bot.ser.wz_label", Esc(d.Event.SeriesName))
 	case stEvPoster:
 		if d.Event.PosterMediaID == "" {
 			return line("bot.wz.ack_poster", t("bot.wz.ack_poster_none", nil))
