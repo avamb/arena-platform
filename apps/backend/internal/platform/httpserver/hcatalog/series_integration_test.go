@@ -334,7 +334,7 @@ func TestSeriesAPI_MediaOwnerTypeAndDefaults(t *testing.T) {
 		t.Helper()
 		id := uuid.New()
 		if _, err := rig.pool.Exec(ctx, `INSERT INTO media_objects (id, org_id, owner_type, storage_backend, storage_key, content_type, byte_size, checksum_sha256)
-			VALUES ($1, $2, $3, 'local', $4, 'image/png', 10, 'abc')`, id, orgID, ownerType, "series-test/"+id.String()); err != nil {
+			VALUES ($1, $2, $3, 'local', $4, 'image/png', 10, repeat('a', 64))`, id, orgID, ownerType, "series-test/"+id.String()); err != nil {
 			t.Fatalf("insert media: %v", err)
 		}
 		t.Cleanup(func() { _, _ = rig.pool.Exec(context.Background(), `DELETE FROM media_objects WHERE id = $1`, id) })

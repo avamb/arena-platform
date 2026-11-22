@@ -549,7 +549,7 @@ func (h *Handler) HandleCreateSeries(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = tx.Rollback(ctx) }()
 	qtx := h.eventQueries.WithTx(tx)
 
-	var p gen.EventSeriesParams
+	p := gen.EventSeriesParams{HideChildrenInLists: true} // spec 15.1: DEFAULT true
 	typed, ok := h.applySeriesRequest(w, r, qtx, orgID, req, &p, true)
 	if !ok {
 		return
