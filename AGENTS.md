@@ -405,6 +405,11 @@ Connection of an organizer's Meta business, the encrypted BISU token, CAPI throu
 * Meta's app webhook is GET|POST /v1/integrations/meta/webhook: verify token, X-Hub-Signature-256, only business_integration_uninstall deletes
 * Meta's deauthorize deletes the connection at once, like data deletion; only the owner's disconnect leaves revoked
 * The Page preview GET .../integrations/meta/page is read live and never stored; the picture comes as a data: URL
+* Meta spend lives in ad_spend_daily (0220), one upserted row per org + ad + day, account timezone and currency
+* The sync is meta.insights_sweep (10 min, DB only) queuing meta.insights_sync: backfill 90 d, scheduled, interval, manual
+* Every M2 Graph call is counted in meta_graph_calls (Access Tier: 500 calls / 15 days, errors < 15 %)
+* Orders are tied to Meta ads by ids in the attribution only; a shared campaign is not split, MER only in one currency
+* The daily summary goes to sales chats of kind ads, claimed once per org and day
 
 ### [Refunds](docs/agents/refunds.md)
 
