@@ -33,7 +33,6 @@ export function EventSeriesSection({ orgId, eventId, seriesId, seriesName }: Eve
     mutationFn: (next: string) => setEventSeries(orgId, eventId, next === "" ? null : next),
     onSuccess: () => {
       setSaved(true);
-      setChoice(null);
       void queryClient.invalidateQueries({ queryKey: ["events", orgId] });
       void queryClient.invalidateQueries({ queryKey: ["series", orgId] });
     },

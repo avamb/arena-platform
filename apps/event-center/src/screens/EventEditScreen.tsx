@@ -64,7 +64,7 @@ export function EventEditScreen() {
         descriptionFormat={event.description_format}
       />
       <EventSeriesSection
-        key={`series:${orgId}:${eventId}:${event.series_id ?? ""}`}
+        key={`series:${orgId}:${eventId}`}
         orgId={orgId}
         eventId={eventId}
         seriesId={event.series_id ?? null}
