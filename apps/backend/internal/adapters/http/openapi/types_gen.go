@@ -9860,6 +9860,27 @@ type FeedSeriesSummary struct {
 	PriceFrom []FeedSeriesPrice `json:"price_from"`
 }
 
+// FeedSiteSettings Public settings of a static site that sells through a feed token.
+type FeedSiteSettings struct {
+	// ThankYou The thank-you block, or null when the organizer set none.
+	ThankYou *FeedSiteThankYou `json:"thank_you"`
+}
+
+// FeedSiteThankYou The organizer's block for the thank-you page of a static site, trimmed and length-capped by the server.
+type FeedSiteThankYou struct {
+	// PromoCode Promo code to show to the buyer, at most 64 characters, or null.
+	PromoCode *string `json:"promo_code"`
+
+	// Text Body text, at most 1000 characters. May be empty when the title is set.
+	Text string `json:"text"`
+
+	// Title Heading of the block, at most 120 characters. May be empty when the text is set.
+	Title string `json:"title"`
+
+	// Url Absolute https link of the block, or null.
+	Url *string `json:"url"`
+}
+
 // FeedToken A long-lived bearer token that grants a scanner device read access to the
 // agent feed for a specific sales channel. Presented as
 // `Authorization: Bearer <token>` to authenticated feed endpoints.

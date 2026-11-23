@@ -11575,6 +11575,35 @@ components:
           description: Reserved for translated texts. Always an empty object for now.
           additionalProperties: true
 
+    FeedSiteThankYou:
+      type: object
+      required: [title, text, promo_code, url]
+      description: The organizer's block for the thank-you page of a static site, trimmed and length-capped by the server.
+      properties:
+        title:
+          type: string
+          description: Heading of the block, at most 120 characters. May be empty when the text is set.
+        text:
+          type: string
+          description: Body text, at most 1000 characters. May be empty when the title is set.
+        promo_code:
+          type: [string, "null"]
+          description: Promo code to show to the buyer, at most 64 characters, or null.
+        url:
+          type: [string, "null"]
+          description: Absolute https link of the block, or null.
+
+    FeedSiteSettings:
+      type: object
+      required: [thank_you]
+      description: Public settings of a static site that sells through a feed token.
+      properties:
+        thank_you:
+          description: The thank-you block, or null when the organizer set none.
+          oneOf:
+            - $ref: "#/components/schemas/FeedSiteThankYou"
+            - type: "null"
+
     FeedSeriesListEnvelope:
       type: object
       required: [items]
@@ -60059,6 +60088,50 @@ paths:
           description: Batch accepted (all valid events persisted; unknown types skipped).
         "400":
           description: Invalid JSON body, empty batch, or batch exceeds maximum size.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/feeds/{feed_token}/site:
+    get:
+      operationId: getPublicFeedSite
+      summary: Get the public settings of a static site
+      description: |
+        Returns the organizer's own block for the "thank you" page of a static
+        site, read from the sales channel of the feed token. Only the
+        `thank_you` block is ever returned, no other channel setting. No JWT
+        required: the feed token in the path is the credential. Rate-limited
+        per token and per IP. Cached publicly for a short time.
+      tags: [PublicFeed]
+      parameters:
+        - name: feed_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Opaque feed token (from `agent_feed_tokens.token`).
+      responses:
+        "200":
+          description: The site settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedSiteSettings"
+        "404":
+          description: Unknown or inactive feed token (`feed.token_not_found`).
           content:
             application/json:
               schema:
