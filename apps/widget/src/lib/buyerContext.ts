@@ -212,3 +212,16 @@ export function buildBuyerContext(i: BuyerContextInput): BuyerContextPayload | n
   if (page) ctx.page_url = page;
   return ctx;
 }
+
+/**
+ * The page's cookie string, or '' when the browser refuses. Lives here so the
+ * root component never touches a browser storage itself (the embedded payment
+ * guard in widget_embedded_payment.test.ts).
+ */
+export function readBrowserCookies(): string {
+  try {
+    return typeof document === 'undefined' ? '' : document.cookie;
+  } catch {
+    return '';
+  }
+}

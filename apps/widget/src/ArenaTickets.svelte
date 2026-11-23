@@ -53,7 +53,7 @@
   import { consentErrorMessage, consentPayload, forceConsent } from './lib/consent.js';
   import { isMarketingRewardRefusal, marketingErrorMessage, marketingPayload } from './lib/marketing.js';
   import { captureAttribution, type AttributionPayload } from './lib/attribution.js';
-  import { buildBuyerContext, captureClickIds, isTrackingGranted, persistClickIds, type ClickIds } from './lib/buyerContext.js';
+  import { buildBuyerContext, captureClickIds, isTrackingGranted, persistClickIds, readBrowserCookies, type ClickIds } from './lib/buyerContext.js';
   import { createFunnel, parseFunnelHost, type Funnel, type FunnelStep } from './lib/funnel.js';
   import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
   import { dispatchWidgetEvent, ARENA_EVENTS } from './lib/events.js';
@@ -829,12 +829,7 @@
       if (returnUrl) payload.return_url = returnUrl;
       // Tracking context for server-side Meta / GA4: only when the host page
       // answered granted or denied; read now, the attribute may change later.
-      let cookies = '';
-      try {
-        cookies = document.cookie;
-      } catch {
-        cookies = '';
-      }
+      const cookies = readBrowserCookies();
       // Consent given after mount: the ids seen on this page are kept now.
       if (isTrackingGranted(trackingConsent)) persistClickIds(normFeedToken, clickIds);
       const buyerCtx = buildBuyerContext({
