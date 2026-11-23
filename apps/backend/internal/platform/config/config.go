@@ -741,6 +741,12 @@ type Config struct {
 	// /v1/integrations/meta/webhook is refused; POST is still checked by the
 	// X-Hub-Signature-256 of META_APP_SECRET.
 	MetaWebhookVerifyToken string `env:"META_WEBHOOK_VERIFY_TOKEN" required:"false" default:""`
+	// MetaInsightsEvery optionally runs the Meta insights sync of every
+	// connected organization this often (Go duration, at least
+	// MinMetaInsightsEvery), on top of the nightly run: the pilot's call
+	// volume for the Marketing API Access Tier. 0 (unset) = nightly only.
+	// Worker only.
+	MetaInsightsEvery time.Duration `env:"META_INSIGHTS_EVERY" required:"false" default:""`
 
 	// -------------------------------------------------------------------------
 	// Metrics endpoint authentication
@@ -1336,6 +1342,12 @@ func LoadFor(role Role) (*Config, error) {
 	}
 	cfg.SenderVerificationPollInterval = d
 
+	d, err = getenvDuration("META_INSIGHTS_EVERY", 0, false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.MetaInsightsEvery = d
+
 	d, err = getenvDuration("WORKER_JOB_TIMEOUT", 5*time.Minute, false)
 	if err != nil {
 		parseErrs = append(parseErrs, err)
@@ -1644,6 +1656,13 @@ func (c *Config) Validate() error {
 	if c.uses(capMeta) && c.MetaGraphVersion != "" && !metaGraphVersionPattern.MatchString(c.MetaGraphVersion) {
 		errs = append(errs, fmt.Errorf(
 			"META_GRAPH_VERSION must look like v25.0 (got %q)", c.MetaGraphVersion,
+		))
+	}
+
+	// --- Meta insights sync (worker) ----------------------------------------
+	if c.uses(capMetaInsights) && c.MetaInsightsEvery != 0 && c.MetaInsightsEvery < MinMetaInsightsEvery {
+		errs = append(errs, fmt.Errorf(
+			"META_INSIGHTS_EVERY must be empty or at least %s (got %s)", MinMetaInsightsEvery, c.MetaInsightsEvery,
 		))
 	}
 
@@ -2171,6 +2190,9 @@ const DefaultMetaGraphVersion = "v25.0"
 const DefaultMetaDataDeletionStatusURL = "https://arenasoldout.com/legal/data-deletion"
 
 var metaGraphVersionPattern = regexp.MustCompile(`^v\d+\.\d+$`)
+
+// MinMetaInsightsEvery is the shortest META_INSIGHTS_EVERY the worker accepts.
+const MinMetaInsightsEvery = 15 * time.Minute
 
 // MetaEnabled reports whether the Meta connection is switched on: the app id,
 // the app secret, the login configuration id and the token key are all set

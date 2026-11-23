@@ -448,3 +448,6 @@ other = "prodeje obchodu (bez údajů kupujícího)"
 ["salesnotify.bot.kind.shop_delivery"]
 other = "objednávky obchodu k doručení"
 
+["salesnotify.bot.kind.ads"]
+other = "denní souhrn reklam Meta"
+

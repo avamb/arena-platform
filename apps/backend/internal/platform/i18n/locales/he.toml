@@ -448,3 +448,6 @@ other = "מכירות בחנות (בלי פרטי הקונה)"
 ["salesnotify.bot.kind.shop_delivery"]
 other = "הזמנות מהחנות למשלוח"
 
+["salesnotify.bot.kind.ads"]
+other = "סיכום יומי של מודעות Meta"
+

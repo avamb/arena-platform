@@ -43,6 +43,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/metaconnect"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/metainsights"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/secretbox"
 )
 
@@ -831,6 +832,10 @@ func (h *Handler) HandleDataDeletion(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, org := range orgs {
 		if err := metaconnect.Delete(ctx, tx, org); err != nil {
+			h.unavailable(w, r)
+			return
+		}
+		if err := metainsights.DeleteOrgData(ctx, tx, org); err != nil {
 			h.unavailable(w, r)
 			return
 		}

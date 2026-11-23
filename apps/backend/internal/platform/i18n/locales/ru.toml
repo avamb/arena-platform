@@ -6877,6 +6877,9 @@ other = "продажи магазина (без данных покупател
 ["salesnotify.bot.kind.shop_delivery"]
 other = "заказы магазина для доставки"
 
+["salesnotify.bot.kind.ads"]
+other = "ежедневная сводка рекламы Meta"
+
 ["bot.reissue.btn"]
 other = "🔁 Заменить билеты"
 

@@ -304,6 +304,8 @@ func run() error {
 	registerOpsWatchdogHandler(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerEventWatchHandler(registry, pool.Pool, cfg, salesNotifier, logger)
 	registerSalesAlertWatch(registry, pool.Pool, salesNotifier, logger)
+	metaInsights := buildMetaInsights(pool.Pool, cfg, salesNotifier, logger)
+	registerMetaInsights(registry, metaInsights, cfg, logger)
 	registerContactFormHandler(registry, pool.Pool, cfg, salesNotifier, opsNotifier, logger)
 	registerOnboardingHandlers(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerRefundSweepHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
@@ -412,6 +414,7 @@ func run() error {
 		// Non-fatal: the organizer hears about a sell-out a little later.
 		logger.Warn("could not schedule initial sales state watch job", "error", err.Error())
 	}
+	scheduleMetaInsights(rootCtx, pool.Pool, metaInsights, logger)
 	if err := guestlist.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: the first guest list goes out a minute later.
 		logger.Warn("could not schedule initial guest list job", "error", err.Error())

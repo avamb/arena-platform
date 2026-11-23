@@ -73,6 +73,9 @@ const (
 	KindTickets      = "tickets"
 	KindShopSale     = "shop_sale"
 	KindShopDelivery = "shop_delivery"
+	// KindAds is the daily Meta ad summary (spec 66 M2, migration 0220, which
+	// gave it to every organization subscription with 'tickets').
+	KindAds = "ads"
 )
 
 // queueSize bounds the events waiting for Telegram. A burst beyond it is
@@ -409,6 +412,44 @@ func (d *Dispatcher) AnnounceToOrg(ctx context.Context, orgID, text string) (cha
 		}
 	}
 	return chats, delivered, nil
+}
+
+// AnnounceKindToOrg posts text once per key to the organization's OWN chats
+// that hear kind (never an operator chat). key is claimed in
+// sales_notification_deliveries only when at least one chat hears kind, so a
+// later chat still gets a key nobody heard; a claimed key is never sent
+// again. It answers how many chats hear kind and how many took the text. A
+// dispatcher without a Telegram sender has no chats.
+func (d *Dispatcher) AnnounceKindToOrg(ctx context.Context, orgID, kind, key, text string) (chats, delivered int, err error) {
+	if d == nil || d.sender == nil || orgID == "" || kind == "" || key == "" {
+		return 0, 0, nil
+	}
+	subs, err := d.store.Subscriptions(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	var targets []Subscription
+	for _, sub := range subs {
+		if sub.OrgID == orgID && sub.Hears(kind) {
+			targets = append(targets, sub)
+		}
+	}
+	if len(targets) == 0 {
+		return 0, 0, nil
+	}
+	first, err := d.store.Claim(ctx, key)
+	if err != nil {
+		return len(targets), 0, err
+	}
+	if !first {
+		return len(targets), 0, nil
+	}
+	for _, sub := range targets {
+		if d.deliver(ctx, sub, text) == nil {
+			delivered++
+		}
+	}
+	return len(targets), delivered, nil
 }
 
 // deliver sends text to one chat, following a supergroup migration once and

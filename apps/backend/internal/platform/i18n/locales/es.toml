@@ -6710,6 +6710,9 @@ other = "ventas de la tienda (sin datos del comprador)"
 ["salesnotify.bot.kind.shop_delivery"]
 other = "pedidos de la tienda para entregar"
 
+["salesnotify.bot.kind.ads"]
+other = "el resumen diario de anuncios de Meta"
+
 ["bot.reissue.btn"]
 other = "🔁 Reemitir entradas"
 

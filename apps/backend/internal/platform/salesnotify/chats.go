@@ -77,7 +77,7 @@ func NormalizeKinds(kinds []string) ([]string, error) {
 	for _, k := range kinds {
 		k = strings.TrimSpace(k)
 		switch k {
-		case KindTickets, KindShopSale, KindShopDelivery:
+		case KindTickets, KindShopSale, KindShopDelivery, KindAds:
 			seen[k] = true
 		default:
 			return nil, ErrInvalidKinds
@@ -87,7 +87,7 @@ func NormalizeKinds(kinds []string) ([]string, error) {
 		return nil, ErrInvalidKinds
 	}
 	out := make([]string, 0, len(seen))
-	for _, k := range []string{KindTickets, KindShopSale, KindShopDelivery} {
+	for _, k := range []string{KindTickets, KindShopSale, KindShopDelivery, KindAds} {
 		if seen[k] {
 			out = append(out, k)
 		}
@@ -411,6 +411,8 @@ func kindRank(k string) int {
 		return 0
 	case KindShopSale:
 		return 1
+	case KindShopDelivery:
+		return 2
 	}
-	return 2
+	return 3
 }
