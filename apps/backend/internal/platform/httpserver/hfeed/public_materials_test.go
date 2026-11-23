@@ -153,7 +153,7 @@ func TestHostedPageResponse_ExistingFieldsUnchanged(t *testing.T) {
 		}
 	}
 
-	if got, want := strings.Join(keysOf(t, hostedPageOrgResponse{}), ","), "logo_url,name,slug"; got != want {
+	if got, want := strings.Join(keysOf(t, hostedPageOrgResponse{}), ","), "logo_url,name,slug,tracking_enabled"; got != want {
 		t.Errorf("org keys = %s, want %s", got, want)
 	}
 	const wantEvent = "age_rating,description,description_html,description_text,feed_token,first_session_at,first_session_doors_at,first_session_timezone," +
