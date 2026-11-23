@@ -1,0 +1,122 @@
+id: sell-tickets-from-poster-short
+fps: 30
+languages: [ru, en, es]
+title:
+  ru: "Афиша → билеты, 30 секунд"
+  en: "Poster → tickets, 30 seconds"
+  es: "Cartel → entradas, 30 segundos"
+
+# Short vertical version of sell-tickets-from-poster (section 6 of docs/video/01_first_video_script_ru.md).
+# It uses the pictures of sell-tickets-from-poster. zoom x,y is the point that the close-up looks at.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [9x16]
+background: "#4f46e5"
+
+scenes:
+  - id: p1-poster
+    narration:
+      ru: "У вас есть афиша? Начните продавать билеты через несколько минут."
+      en: "Do you have a poster? Start selling tickets in a few minutes."
+      es: "¿Tienes un cartel? Empieza a vender entradas en unos minutos."
+    pause_after: 0.2
+    shots:
+      - image: ../sell-tickets-from-poster/assets/poster_vecher_dzhaza_4x5.png
+        frame: phone
+        title: { ru: "Афиша → билеты", en: "Poster → tickets", es: "Cartel → entradas" }
+        zoom: { from: 1.0, to: 1.12, x: 0.5, y: 0.45 }
+
+  - id: p2-bot
+    narration:
+      ru: "Отправьте афишу боту Arena Sold Out. Он прочитает название, дату и цену. Вы подтверждаете кнопками и получаете ссылку для покупателей."
+      en: "Send the poster to the Arena Sold Out bot. It reads the name, the date and the price. You confirm with buttons and get a link for your buyers."
+      es: "Envía el cartel al bot de Arena Sold Out. Lee el nombre, la fecha y el precio. Confirmas con botones y recibes un enlace para los compradores."
+    pause_after: 0.4
+    shots:
+      - image: ../sell-tickets-from-poster/captures/r_03_sent.png
+        frame: phone
+        title: { ru: "Бот читает афишу", en: "The bot reads the poster", es: "El bot lee el cartel" }
+        zoom: { from: 1.0, to: 1.2, x: 0.5, y: 0.8 }
+      - image: ../sell-tickets-from-poster/captures/r_04_read.png
+        frame: phone
+        title: { ru: "Бот читает афишу", en: "The bot reads the poster", es: "El bot lee el cartel" }
+        weight: 2
+        zoom: { from: 1.14, to: 1.2, x: 0.3, y: 0.2 }
+        highlight: { x: 0.02, y: 0.085, w: 0.75, h: 0.215 }
+        per_language:
+          en: { highlight: { x: 0.02, y: 0.112, w: 0.75, h: 0.225 } }
+      - image: ../sell-tickets-from-poster/captures/r_16_price_q_close.png
+        frame: phone
+        title: { ru: "Вы подтверждаете кнопкой", en: "You confirm with a button", es: "Confirmas con un botón" }
+        weight: 2
+        scroll: { from: 0.92, to: 1.0 }
+        highlight: { x: 0.026, y: 0.586, w: 0.95, h: 0.0375 }
+      - image: ../sell-tickets-from-poster/captures/r_20_done.png
+        frame: phone
+        title: { ru: "Ссылка готова", en: "The link is ready", es: "Enlace listo" }
+        weight: 2
+        zoom: { from: 1.14, to: 1.2, x: 0.3, y: 0.16 }
+        highlight: { x: 0.02, y: 0.165, w: 0.75, h: 0.065 }
+        per_language:
+          en: { highlight: { x: 0.02, y: 0.243, w: 0.75, h: 0.058 } }
+
+  - id: p3-buyer
+    narration:
+      ru: "Покупатель платит картой, билет приходит ему на почту."
+      en: "The buyer pays by card, and the ticket arrives by e-mail."
+      es: "El comprador paga con tarjeta y la entrada le llega por correo electrónico."
+    pause_after: 1.5
+    shots:
+      - image: ../sell-tickets-from-poster/captures/b_03_cart_close.png
+        frame: phone
+        scroll: { from: 0.9, to: 1.0 }
+        # es: the widget has English parts in Spanish; the es pictures keep them out of the frame
+        per_language:
+          es: { scroll: { from: 0, to: 0 } }
+        title: { ru: "Оплата картой", en: "Card payment", es: "Pago con tarjeta" }
+      - image: ../sell-tickets-from-poster/captures/b_04_form_close.png
+        frame: phone
+        title: { ru: "Оплата картой", en: "Card payment", es: "Pago con tarjeta" }
+        scroll: { from: 0.9, to: 1.0 }
+        highlight: { x: 0.04, y: 0.619, w: 0.92, h: 0.0311 }
+        per_language:
+          es: { highlight: { x: 0.04, y: 0.522, w: 0.92, h: 0.032 } }
+      # The production letter template, rendered again in Russian with the data of the order.
+      - image: ../sell-tickets-from-poster/captures/l_01_letter.png
+        frame: phone
+        title: { ru: "Письмо с билетами", en: "E-mail with tickets", es: "Correo con las entradas" }
+        scroll: { from: 0, to: 0.7 }
+
+  - id: p4-money
+    narration:
+      ru: "Деньги поступают напрямую на ваш счёт. О каждой продаже приходит сообщение в Telegram."
+      en: "The money goes directly to your account. You get a Telegram message about every sale."
+      es: "El dinero llega directamente a tu cuenta. Recibes un mensaje en Telegram por cada venta."
+    pause_after: 0.6
+    shots:
+      # The payment page of the stand: test badge hidden, merchant name replaced.
+      - image: ../sell-tickets-from-poster/captures/b_06_stripe_crop.png
+        frame: browser
+        title: { ru: "Оплата через Stripe — деньги сразу на ваш счёт", en: "Payment through Stripe — money goes straight to your account", es: "Pago con Stripe: el dinero va directo a tu cuenta" }
+      # Reconstruction (../sell-tickets-from-poster/reconstructions/sale_message.html), not a screenshot.
+      - image: ../sell-tickets-from-poster/captures/s_01_sale_reconstruction.png
+        frame: phone
+        title: { ru: "Сообщение о продаже", en: "Sale message", es: "Mensaje de venta" }
+        zoom: { from: 1.15, to: 1.22, x: 0.5, y: 0.33 }
+
+  - id: p5-cta
+    narration:
+      ru: "Оставьте заявку на arenasoldout.com. Мы ждём вас."
+      en: "Apply at arenasoldout.com. We look forward to working with you."
+      es: "Deja tu solicitud en arenasoldout.com. Te esperamos."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Оставьте заявку", en: "Apply now", es: "Deja tu solicitud" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"

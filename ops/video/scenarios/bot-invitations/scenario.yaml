@@ -1,0 +1,110 @@
+id: bot-invitations
+fps: 30
+# To add a language: add it here, add its text to every narration, title and heading,
+# and put its pictures in captures/<language>/. Nothing else changes.
+languages: [ru, en, es]
+title:
+  ru: "Бесплатные билеты для гостей"
+  en: "Free tickets for guests"
+  es: "Entradas gratuitas para invitados"
+
+# Instruction film about the event-center bot: how to give free tickets (invitations) to guests.
+# Pictures are made on the staging stand with the test Telegram account in the organization
+# "Luna Events" (see README, "Bot instruction films") and are not committed.
+# Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in apply-in-telegram-bot.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [9x16, 4x5]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-result
+    narration:
+      ru: "Хотите пригласить гостей бесплатно? Выдайте им билеты в боте Arena Sold Out. Каждый гость получит билет на почту."
+      en: "Do you want to invite guests for free? Give them tickets in the Arena Sold Out bot. Each guest gets a ticket by e-mail."
+      es: "¿Quieres invitar a alguien gratis? Emite sus entradas en el bot de Arena Sold Out. Cada invitado recibe su entrada por e-mail."
+    pause_after: 0.4
+    shots:
+      - image: captures/i_07_sent.png
+        frame: phone
+        title: { ru: "Приглашения — из бота", en: "Invitations — from the bot", es: "Invitaciones, desde el bot" }
+        scroll: { from: 0.4, to: 0.8 }
+
+  - id: s2-open
+    narration:
+      ru: "Откройте карточку мероприятия, нажмите «Продвижение» и «Бесплатные билеты». Выберите дату и категорию."
+      en: "Open the event card, press «Promotion» and «Free tickets». Select the date and the category."
+      es: "Abre la ficha del evento, pulsa «Promoción» y «Entradas gratuitas». Elige la fecha y la categoría."
+    pause_after: 0.6
+    shots:
+      - image: captures/i_00b_card.png
+        frame: phone
+        title: { ru: "Карточка → «Продвижение»", en: "Event card → «Promotion»", es: "Ficha → «Promoción»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/i_01_promo.png
+        frame: phone
+        title: { ru: "«Бесплатные билеты»", en: "«Free tickets»", es: "«Entradas gratuitas»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/i_02_date.png
+        frame: phone
+        title: { ru: "Дата", en: "Date", es: "Fecha" }
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/i_03_cat.png
+        frame: phone
+        title: { ru: "Категория", en: "Category", es: "Categoría" }
+        scroll: { from: 0.6, to: 1.0 }
+
+  - id: s3-guests
+    narration:
+      ru: "Укажите число билетов и пришлите гостей: имя и e-mail, каждый с новой строки или отдельным сообщением."
+      en: "Give the number of tickets and send the guests: a name and an e-mail, each on a new line or in a separate message."
+      es: "Indica cuántas entradas y envía los datos de los invitados: nombre y e-mail, cada uno en una línea o en un mensaje aparte."
+    pause_after: 0.6
+    shots:
+      - image: captures/i_04_count.png
+        frame: phone
+        title: { ru: "Сколько билетов", en: "How many tickets", es: "Cuántas entradas" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/i_05b_one.png
+        frame: phone
+        title: { ru: "Имя и e-mail гостя", en: "Name and e-mail of the guest", es: "Nombre y e-mail del invitado" }
+        weight: 3
+        scroll: { from: 0.5, to: 0.9 }
+
+  - id: s4-send
+    narration:
+      ru: "Проверьте список и нажмите «Отправить». Это настоящие билеты со штрихкодом: они занимают места категории, а позже любое приглашение можно отменить."
+      en: "Examine the list and press «Send». These are real tickets with a barcode: they take seats of the category, and you can cancel each invitation later."
+      es: "Revisa la lista y pulsa «Enviar». Son entradas reales con código de barras: ocupan plazas de la categoría, y más tarde puedes anular cualquier invitación."
+    pause_after: 0.8
+    shots:
+      - image: captures/i_06_check.png
+        frame: phone
+        title: { ru: "Проверьте список", en: "Examine the list", es: "Revisa la lista" }
+        weight: 3
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/i_07_sent.png
+        frame: phone
+        title: { ru: "Приглашения выданы", en: "The invitations are issued", es: "Invitaciones emitidas" }
+        weight: 2
+        scroll: { from: 0.5, to: 0.9 }
+
+  - id: cta
+    narration:
+      ru: "Оставьте заявку на arenasoldout.com или в нашем Telegram-боте. Мы ждём вас."
+      en: "Apply at arenasoldout.com or in our Telegram bot. We look forward to working with you."
+      es: "Deja tu solicitud en arenasoldout.com o en nuestro bot de Telegram. Te esperamos."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Оставьте заявку", en: "Apply now", es: "Deja tu solicitud" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"

@@ -32,7 +32,6 @@ func (s *Server) barcodeHandler() *hbarcode.Handler {
 // live in hbarcode without importing that package directly.
 
 type barcodeAuthorityResponse = hbarcode.BarcodeAuthorityResponse
-type barcodeResponse = hbarcode.BarcodeResponse
 
 // ─── pure-function forwarders ─────────────────────────────────────────────────
 // Tests call these unqualified — keep the lowercase names live in package
@@ -41,10 +40,6 @@ type barcodeResponse = hbarcode.BarcodeResponse
 
 func barcodeAuthorityFromRow(r gen.BarcodeAuthorityRow) barcodeAuthorityResponse {
 	return hbarcode.BarcodeAuthorityFromRow(r)
-}
-
-func barcodeFromRow(r gen.BarcodeRow) barcodeResponse {
-	return hbarcode.BarcodeFromRow(r)
 }
 
 func parseBarcodeBatchCSV(r io.Reader) ([]string, error) {
@@ -70,22 +65,6 @@ func (s *Server) handleCreateBarcodeAuthority(w http.ResponseWriter, r *http.Req
 
 func (s *Server) handleListBarcodeAuthorities(w http.ResponseWriter, r *http.Request) {
 	s.barcodeHandler().HandleListBarcodeAuthorities(w, r)
-}
-
-func (s *Server) handleRegisterBarcode(w http.ResponseWriter, r *http.Request) {
-	s.barcodeHandler().HandleRegisterBarcode(w, r)
-}
-
-func (s *Server) handleGetBarcode(w http.ResponseWriter, r *http.Request) {
-	s.barcodeHandler().HandleGetBarcode(w, r)
-}
-
-func (s *Server) handleRevokeBarcode(w http.ResponseWriter, r *http.Request) {
-	s.barcodeHandler().HandleRevokeBarcode(w, r)
-}
-
-func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
-	s.barcodeHandler().HandleScan(w, r)
 }
 
 // ─── barcode-batch handler shims ──────────────────────────────────────────────

@@ -116,6 +116,7 @@ const getBarcodeAuthorityByType = `-- name: GetBarcodeAuthorityByType :one
 SELECT id, type, label, created_at
 FROM   barcode_authorities
 WHERE  type = $1
+ORDER  BY created_at, id
 LIMIT  1`
 
 // GetBarcodeAuthorityByType resolves an authority by its type string.
@@ -358,7 +359,7 @@ OFFSET $4`
 // updated_at > since). Pass time.Time{} to retrieve the full snapshot, which
 // leaves revoked codes out; a delta (since after 1970-01-01) includes them
 // with status 'revoked', so a device drops a code it cached (spec 63, R-1).
-// Used by GET /v1/scanner/snapshot for offline scanner cache hydration.
+// Written for the offline scanner snapshot route (retired 2026-11-21).
 func (q *Queries) ListSnapshotBarcodesBySession(ctx context.Context, sessionID uuid.UUID, since time.Time, limit, offset int32) ([]BarcodeRow, error) {
 	rows, err := q.db.Query(ctx, listSnapshotBarcodesBySession, sessionID, since, limit, offset)
 	if err != nil {
@@ -390,8 +391,8 @@ WHERE  t.session_id  = $1
   AND  b.updated_at  > $2`
 
 // CountSnapshotBarcodesBySession returns the total count of the barcodes
-// ListSnapshotBarcodesBySession pages through, under the same rule. Used to populate pagination metadata
-// in the GET /v1/scanner/snapshot response.
+// ListSnapshotBarcodesBySession pages through, under the same rule. Written
+// for the pagination of the offline scanner snapshot route (retired 2026-11-21).
 func (q *Queries) CountSnapshotBarcodesBySession(ctx context.Context, sessionID uuid.UUID, since time.Time) (int64, error) {
 	var count int64
 	err := q.db.QueryRow(ctx, countSnapshotBarcodesBySession, sessionID, since).Scan(&count)

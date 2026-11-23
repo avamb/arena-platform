@@ -5,16 +5,15 @@ package httpserver
 // U-3: an invitation is a ticket like any other, so it carries a platform
 // EAN-13 and the gate finds it by that code. The scenario issues invitations
 // through the real router (the same call the bot makes), then checks the
-// barcodes row (authority platform), the ean13 credential, the lookups the
-// scanner (/v1/scanner/validate) and the Bil24 SCAN_TICKET use, the
-// idempotent replay (no second code) and the revoke (barcode and credential
-// both revoked, the scanner refuses the code).
+// barcodes row (authority platform), the ean13 credential, the lookup the
+// Bil24 SCAN_TICKET uses with the barcode and ticket state the gate decides
+// on, the idempotent replay (no second code) and the revoke (barcode and
+// credential both revoked, the gate refuses the code).
 
 import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -83,19 +82,28 @@ func TestComplimentaryU3_InvitationGetsAScannableEAN13(t *testing.T) {
 		t.Fatal("two invitations got the same code")
 	}
 
-	validate := func(ref string) (int, map[string]any) {
-		req := httptest.NewRequest(http.MethodPost, "/v1/scanner/validate",
-			strings.NewReader(`{"external_ref":"`+ref+`","authority_type":"platform"}`))
-		req.Header.Set("Content-Type", "application/json")
-		rec := httptest.NewRecorder()
-		e.srv.scannerHandler().HandleScannerValidate(rec, req)
-		var out map[string]any
-		_ = json.Unmarshal(rec.Body.Bytes(), &out)
-		return rec.Code, out
+	// admits answers what the gate decides from the stored rows: SCAN_TICKET
+	// finds the code on any authority and refuses a barcode that is not
+	// active, and the ticket behind it must be active too.
+	admits := func(ref string) (bool, string) {
+		t.Helper()
+		bc, err := q.GetBarcodeByExternalRefAny(ctx, ref)
+		if err != nil {
+			return false, "lookup: " + err.Error()
+		}
+		if bc.TicketID == nil {
+			return false, "barcode without a ticket"
+		}
+		tk, err := q.GetTicketByID(ctx, *bc.TicketID)
+		if err != nil {
+			return false, "ticket: " + err.Error()
+		}
+		return bc.Status == "active" && tk.Status == "active",
+			"barcode " + bc.Status + ", ticket " + tk.Status + ", ticket id " + tk.ID.String()
 	}
 	first := created.Tickets[0].ID
-	if status, out := validate(codes[first]); status != http.StatusOK || out["valid"] != true || out["ticket_id"] != first.String() {
-		t.Fatalf("scanner validate of the invitation: %d %v", status, out)
+	if ok, why := admits(codes[first]); !ok || !strings.Contains(why, first.String()) {
+		t.Fatalf("the gate must admit the invitation: %s", why)
 	}
 
 	count := func(sql string) int {
@@ -135,8 +143,8 @@ func TestComplimentaryU3_InvitationGetsAScannableEAN13(t *testing.T) {
 			t.Errorf("ean13 credential of ticket %s after revoke: %+v, %v", tk.ID, cred, err)
 		}
 	}
-	if status, out := validate(codes[first]); status != http.StatusOK || out["valid"] != false {
-		t.Errorf("a revoked invitation must not validate: %d %v", status, out)
+	if ok, why := admits(codes[first]); ok {
+		t.Errorf("the gate must refuse a revoked invitation: %s", why)
 	}
 }
 

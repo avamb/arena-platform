@@ -224,7 +224,8 @@ func TestBotE2E_DescriptionIsFormattedAndPreviewedBeforeItIsSaved(t *testing.T) 
 
 	// ── The event, created through the wizard; its description is scenario A:
 	// the model marks the text up correctly and the preview shows it.
-	press("wz:new", "Как называется")
+	press("wz:new", "Кто продаёт билеты?")
+	press("wz:seller:platform", "Как называется")
 	say(eventName, "Возраст")
 	press("wz:age:16+", "Под каким брендом")
 	press("wz:prom:org", "афишу")

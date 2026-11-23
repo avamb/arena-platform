@@ -1,0 +1,990 @@
+[
+  {
+    "platform": "pretix (pretix.eu hosted + self-hosted Community/Enterprise)",
+    "website": "https://pretix.eu",
+    "hq_country": "DE",
+    "segment": "conferences, festivals, theatres, exhibitions; self-serve SaaS or self-hosted open source; non-profit friendly",
+    "markets": [
+      {
+        "market": "Hosted (pretix.eu), all countries (business customers only)",
+        "currency": "EUR",
+        "vat_note": "prices exclude VAT; German-resident organizers (and EU without VAT ID) get 19% VAT added on pretix's invoice; fee is computed on the net ticket price",
+        "model": "percent",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "Buyer pays into the organizer's own bank / PayPal / Stripe / Mollie etc. (pretix integrates providers; organizer picks). pretix bills its fee by monthly invoice (SEPA debit, card or bank transfer). No payout from pretix.",
+        "plans": [
+          {"name": "pretix Hosted (pay as you sell)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 2.5, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": 15.00, "includes": "all features: shop, access control, point-of-sale, unlimited users, email+phone support, API; seating plugin included on hosted", "notes": "2.5% of net ticket price (also applied to non-ticket products), capped at EUR 15 per ticket (reached at ~EUR 600 tickets); for other currencies a cap of roughly EUR 15 equivalent; only successfully paid orders are charged; no minimum term"},
+          {"name": "pretix Hosted for non-profits", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 2.0, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": 15.00, "includes": "same as above", "notes": "applied for after account creation, decided case-by-case by pretix independent of legal charity status; free-ticket price EUR 0.10 and free quota 2,500/yr"}
+        ],
+        "prepaid": [],
+        "processing": {"included": false, "processors": ["bank transfer", "PayPal", "Stripe", "Mollie", "others via plugins"], "own_processor_allowed": true, "rate_note": "organizer pays provider fees directly to the provider (pretix links special Mollie conditions)", "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer (pretix invoices organizer); organizer can add a service fee to buyer price via plugin/settings",
+        "free_tickets": "first 500 free tickets per calendar year are free; quota grows by 1 for every paid ticket sold; beyond that EUR 0.50 per free ticket (non-profit: 2,500 free quota, EUR 0.10)",
+        "seating": "Seating plugin is a proprietary plugin (3 license points on Enterprise); on Hosted it is included in the standard price (page says price includes almost all features)",
+        "payouts": "N/A - money goes directly to organizer's payment account",
+        "refunds_chargebacks": "no cancellation fee; fees already paid on cancelled orders are NOT refunded but credited against the next invoice",
+        "fine_print": ["only for businesses/associations/non-profits, not consumers", "Peppol / Italy / Portugal e-invoicing add-on EUR 0.20 per invoice", "lead scanning add-on EUR 25 per exhibitor that scanned at least one lead", "discounts for large customers on request", "invoice monthly"],
+        "add_ons": [{"name": "Lead scanning (pretixLEAD)", "price": "EUR 25 per exhibitor"}, {"name": "Peppol / e-invoicing", "price": "EUR 0.20 per invoice"}, {"name": "pretixPOS / SCAN / KIOSK apps and hardware rental", "price": "included in %, hardware rental price not captured"}],
+        "enterprise": "volume discounts on request via sales",
+        "sources": [{"url": "https://pretix.eu/about/en/pricing", "read": "2026-10-09", "what": "hosted pricing + FAQ"}, {"url": "https://pretix.eu/about/en/pricing?nonprofit=true", "read": "2026-10-09", "what": "non-profit pricing"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Self-hosted / on-premise licence (global)",
+        "currency": "EUR",
+        "vat_note": "VAT or other taxes added depending on location",
+        "model": "subscription",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "Software is run by the organizer; no per-ticket fee to pretix; payments go to organizer's own providers.",
+        "plans": [
+          {"name": "Community", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "open source AGPLv3, unlimited volume, open-source plugins, community support only", "notes": "needs Linux server admin skills; no proprietary plugins (seating, POS, etc.)"},
+          {"name": "Enterprise Starter", "monthly_fee": null, "annual_fee": "499 (<=10k orders and <=30k revenue) / 900 (<=20k orders, <=60k rev) / 2000 (<=50k, <=150k) / 3600 (<=100k, <=300k) / 8100 (<=250k, <=750k) / 14500 (<=500k, <=1.5M) / 26100 (<=1M, <=3M) / 44000 (>1M orders, >3M)", "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "pretix Enterprise licence, 3 plugin license points, email support next business day", "notes": "tier chosen by orders per year and turnover excl. VAT; volume reported at licence-year end and retroactively upgraded if exceeded; auto-renews yearly, 4 weeks notice; payment upfront for the year"},
+          {"name": "Enterprise Professional", "monthly_fee": null, "annual_fee": "750 / 1300 / 2900 / 5200 / 11700 / 21000 / 37800 / 62000 (same 8 volume steps)", "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "10 license points, phone support subject to availability", "notes": "see Starter for steps"},
+          {"name": "Enterprise Ultimate", "monthly_fee": null, "annual_fee": "950 / 1700 / 3800 / 6800 / 15300 / 27500 / 49500 / 85000 (same 8 volume steps)", "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "20 license points, contact sales", "notes": "see Starter for steps"}
+        ],
+        "prepaid": [],
+        "processing": {"included": false, "processors": ["any supported plugin"], "own_processor_allowed": true, "rate_note": "organizer deals with providers directly", "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer",
+        "free_tickets": "unlimited (volume counts every order incl. free ones)",
+        "seating": "Seating plugin costs 3 license points",
+        "payouts": "N/A",
+        "refunds_chargebacks": "N/A (no per-ticket fee)",
+        "fine_print": ["plugin license points: Seating 3, Exhibitors/Lead scanning 3, pretixPOS 2, Resellers 2, Shipping 2, TICKeos 2, HubSpot 2, most others 1", "default Enterprise licence does NOT allow running the software for third-party organizers (reselling as a service needs an individual offer)", "one production server per licence; multi-server by offer", "custom development billed by hour or negotiated contribution share"],
+        "add_ons": [],
+        "enterprise": "multi-tenant / white-label for third parties: individual offer",
+        "sources": [{"url": "https://pretix.eu/about/en/pricing/selfhosted", "read": "2026-10-09", "what": "self-hosted licence table + FAQ"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Closest model to Arena: organizer's own payment account, platform fee invoiced monthly. Cheapest large-ticket option: 2.5% capped at EUR 15. Seat-map plugin only via hosted or licence points."
+  },
+  {
+    "platform": "Eventim.Light (CTS Eventim self-service; Ticketcorner.Light in CH, oeticket.Light in AT, billetlugen.Light DK, lippu.light FI)",
+    "website": "https://www.eventim-light.com",
+    "hq_country": "DE",
+    "segment": "small/independent organizers who want own ticket shop plus optional access to the big Eventim network (eventim.de, oeticket, ticketcorner, etc.)",
+    "markets": [
+      {
+        "market": "Germany",
+        "currency": "EUR",
+        "vat_note": "fees gross: payment gateway fees and VAT already included in the ticket fee",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "Eventim collects payments; settlement within 5 working days after organizer marks the event 'Abgeschlossen' (completed); payout to the bank account stored in profile; cancelled/postponed events settle only after refund claims are cleared. Fee deducted from proceeds.",
+        "plans": [
+          {"name": "Own ticket shop + box office", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 3.5, "per_ticket_fixed": 0.49, "min_per_ticket": null, "cap_per_ticket": null, "includes": "own shop (iframe), box office function, scan app, seat map, reporting, no setup cost, payment processing + VAT included", "notes": "EUR 0.49 per ticket up to base price EUR 6.99, EUR 0.99 per ticket from EUR 7.00; gross incl. VAT"},
+          {"name": "Optional EVENTIM network (eventim.de + ~10,000 outlets)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 10, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "listing on eventim.de and presale outlets, Eventim marketing", "notes": "+10% advance-sale fee on base price, ON TOP of the ticket fee; event reviewed by e-commerce team"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["not detailed"], "own_processor_allowed": false, "rate_note": "payment fees included in ticket fee", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable (organizer decides to absorb the fee or pass it to the buyer); network orders may add buyer booking and shipping fees",
+        "free_tickets": "not stated on pricing page (in AT own-sale/free tickets cost EUR 0.39 + VAT each, see AT)",
+        "seating": "seat map creation included, no surcharge stated",
+        "payouts": "within 5 working days after event closed; Premium contracts negotiable",
+        "refunds_chargebacks": "on event cancellation, ticket-dependent fees and sales commissions may still be charged to the organizer",
+        "fine_print": ["no contract term, no fixed cost", "no setup cost", "cancelled events: fees may apply", "network orders: buyer may pay extra booking fee + shipping"],
+        "add_ons": [],
+        "enterprise": "Premium contracts on request in Nordics; DE not stated",
+        "sources": [{"url": "https://www.eventim-light.de/preise/", "read": "2026-10-09", "what": "German pricing page + FAQ"}, {"url": "https://futuratickets.ae/revista/eventim-light-comisiones-condiciones-alemania-paises-bajos-espana", "read": "2026-10-09", "what": "third-party comparison confirming DE/NL/ES rates (dated 8 Sep 2026)"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Austria (oeticket.Light)",
+        "currency": "EUR",
+        "vat_note": "payment fees and VAT included in ticket fee; own-sale fee is plus VAT",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "same Eventim settlement model; payout after event closed (AT page FAQ not captured, DE/CH FAQ says 5 working days)",
+        "plans": [
+          {"name": "Own ticket shop", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 5, "per_ticket_fixed": null, "min_per_ticket": 0.39, "cap_per_ticket": null, "includes": "shop, box office, scan app", "notes": "5% of base price, minimum EUR 0.39 in own shop; fee is paid by the ticket buyer per page wording (organizer decides to carry or pass on)"},
+          {"name": "oeticket network", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 10, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "oeticket.com + ~4,000 outlets in Austria", "notes": "+10% advance-sale fee on base price"},
+          {"name": "Own-sale tickets (door/offline) and free tickets", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": null, "per_ticket_fixed": 0.39, "min_per_ticket": null, "cap_per_ticket": null, "includes": "", "notes": "EUR 0.39 plus VAT per booked own-sale ticket (cancelled ones too) and free tickets incl. free tickets in the light shop; invoiced / netted in final settlement"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "included", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable",
+        "free_tickets": "EUR 0.39 + VAT each (free tickets are charged in AT)",
+        "seating": null,
+        "payouts": "after event closed (assumed same as DE)",
+        "refunds_chargebacks": "cancelled event: ticket-dependent charges and sales commissions may apply",
+        "fine_print": ["network orders may add buyer booking fees and shipping"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://www.oeticket-light.com/preise/", "read": "2026-10-09", "what": "Austrian pricing page"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Netherlands",
+        "currency": "EUR",
+        "vat_note": "transaction costs and VAT included in ticket fee",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "payment 5 working days after event marked finished (per third-party article citing NL FAQ); cancelled/postponed events paid after refunds processed",
+        "plans": [
+          {"name": "Own ticket shop", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 2, "per_ticket_fixed": 0.49, "min_per_ticket": null, "cap_per_ticket": null, "includes": "shop, box office, scan app", "notes": "2% + EUR 0.49 for base price up to EUR 15.99; flat EUR 0.99 per ticket from EUR 16.00"},
+          {"name": "eventim.nl network", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 10, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "eventim.nl (4M visits/yr)", "notes": "+10% on base price; third-party article: requires min 150 tickets, price >= EUR 10, >= 6 weeks on sale, Dutch description"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "included", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "5 working days after event closed",
+        "refunds_chargebacks": "fees may be charged on cancellation",
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://www.eventim-light.nl/prijzen/", "read": "2026-10-09", "what": "Dutch pricing page"}, {"url": "https://futuratickets.ae/revista/eventim-light-comisiones-condiciones-alemania-paises-bajos-espana", "read": "2026-10-09", "what": "third-party summary of NL FAQ"}],
+        "confidence": "page"
+      },
+      {
+        "market": "France",
+        "currency": "EUR",
+        "vat_note": "transaction fees and VAT included",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "Eventim collects (payout timing not captured on FR page)",
+        "plans": [
+          {"name": "Own website shop", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 2.5, "per_ticket_fixed": 0.50, "min_per_ticket": null, "cap_per_ticket": null, "includes": "site/shop in own design included, scan app, no minimum tickets", "notes": "commission EUR 0.50 + 2.5% of ticket price"},
+          {"name": "Distribution network (FNAC Spectacles, FranceBillet)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 10, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "FranceBillet marketing, FNAC Spectacles (3M views/month)", "notes": "+10% distribution fee added to final price on top of Light fee"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "included", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable (commission can be added to price)",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": "ticketing fees and commissions may be withheld on event cancellation; FranceBillet buyers may pay booking and shipping fees",
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://www.eventim-light.fr/tarifs/", "read": "2026-10-09", "what": "French pricing page"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Switzerland (Ticketcorner.Light)",
+        "currency": "CHF",
+        "vat_note": "calculator ignores VAT (MWST); fee VAT treatment not stated",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "Ticketcorner pays out ticket revenue after sales end with fees deducted beforehand; settlement within 5 working days after organizer sets event to 'Abgeschlossen'; cancelled/postponed events only after buyer refund claims cleared",
+        "plans": [
+          {"name": "Box office (Kasse)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": null, "per_ticket_fixed": 0.50, "min_per_ticket": null, "cap_per_ticket": null, "includes": "door/box office sales", "notes": "CHF 0.50 per ticket"},
+          {"name": "Own ticket shop (Ticketshop)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 4, "per_ticket_fixed": 0.50, "min_per_ticket": null, "cap_per_ticket": null, "includes": "own shop, seat plan, scan app, reporting, no setup fee", "notes": "CHF 0.50 + 4% advance-sale fee (VVK) on base price"},
+          {"name": "Ticketcorner network (ticketcorner.ch + ~120-130 outlets)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 12, "per_ticket_fixed": 0.50, "min_per_ticket": null, "cap_per_ticket": null, "includes": "reach of largest Swiss platform", "notes": "CHF 0.50 + 12% VVK on base price; buyer may additionally pay per-order service fee and shipping"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "included in fees", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable (organizer may absorb or add fee on top to buyer price)",
+        "free_tickets": null,
+        "seating": "own seat plan creation included, no surcharge stated",
+        "payouts": "after event closed, 5 working days",
+        "refunds_chargebacks": "on event cancellation ticket-dependent fees and sales commissions may be charged",
+        "fine_print": ["no contract term, no fixed costs, personal consulting free"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://www.ticketcorner-light.ch/preise/", "read": "2026-10-09", "what": "Swiss pricing page + FAQ"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Sweden",
+        "currency": "SEK",
+        "vat_note": "fee 5.2% + SEK 4 ex VAT; calculator shows incl. VAT",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "settlement sent every Friday as soon as possible after the event ends; Premium contracts can have weekly settlements and special terms",
+        "plans": [
+          {"name": "Professional", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 5.2, "per_ticket_fixed": 4, "min_per_ticket": null, "cap_per_ticket": null, "includes": "own site sales, e-mail support, seat maps, brandable web shop, iframe, publish on eventim.se, cart, door sales, scanning app, real-time reporting", "notes": "5.2% + SEK 4 per ticket ex VAT; own-shop sales"},
+          {"name": "Premium", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "tailored contract, Eventim marketing service, dedicated account manager, email+phone support, onsite support, advanced entrance, weekly settlements", "notes": "contact sales; individual terms"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "transaction fees included in ticket fee", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable",
+        "free_tickets": null,
+        "seating": "seat maps included in Professional",
+        "payouts": "every Friday after event",
+        "refunds_chargebacks": "fees may arise if event cancelled",
+        "fine_print": ["order fee SEK 15 per order only on sales via eventim.se, paid by buyer, not charged for own web shop"],
+        "add_ons": [],
+        "enterprise": "Premium: contact sales",
+        "sources": [{"url": "https://www.eventim-light.se/priser/", "read": "2026-10-09", "what": "Swedish pricing page"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Norway",
+        "currency": "NOK",
+        "vat_note": "5% per ticket excl. VAT + NOK 4",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "settlement is automatic after the event (nothing to do for organizer); Premium has weekly settlement",
+        "plans": [
+          {"name": "Professional", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 5, "per_ticket_fixed": 4, "min_per_ticket": null, "cap_per_ticket": null, "includes": "same feature list as Sweden", "notes": "5% + NOK 4 per ticket excl. VAT"},
+          {"name": "Premium", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "tailored contract, KAM, onsite support, weekly settlement", "notes": "contact sales"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "included", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable",
+        "free_tickets": null,
+        "seating": "advanced seat map included",
+        "payouts": "automatic after event",
+        "refunds_chargebacks": "fees may arise if event cancelled; buyers on eventim.no may pay order and delivery fees",
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "Premium: contact",
+        "sources": [{"url": "https://www.eventim-light.no/priser/", "read": "2026-10-09", "what": "Norwegian pricing page"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Denmark (billetlugen.Light)",
+        "currency": "DKK",
+        "vat_note": "4.8% + DKK 3.2 ex VAT",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "Eventim collects (payout timing not captured)",
+        "plans": [
+          {"name": "Standard", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 4.8, "per_ticket_fixed": 3.2, "min_per_ticket": null, "cap_per_ticket": null, "includes": "own online shop, sales on billetlugen.dk optional", "notes": "per ticket ex VAT"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "included", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["order fee DKK 10 only when selling through billetlugen.dk, not in own shop"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://www.billetlugen-light.dk/priser/", "read": "2026-10-09", "what": "Danish pricing page"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Finland (lippu.light)",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Lippu.fi collects; payout timing not captured",
+        "plans": [
+          {"name": "Standard", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 12, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "own web shop, Lippu.fi, outlets, door sale, free scan app", "notes": "service fee 12%, same in all channels incl. lippu.fi; organizer chooses whether it is included in or added on top of base price"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["Finnish online banks", "cards", "Apple Pay", "MobilePay"], "own_processor_allowed": false, "rate_note": "included in service fee", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable (default: buyer pays service fee on top, organizer can include)",
+        "free_tickets": "costs only arise for larger numbers of free tickets or extra services",
+        "seating": "seat maps available",
+        "payouts": null,
+        "refunds_chargebacks": "on cancellation base price refunded, service/order/delivery fees not refunded to buyer (consumer authority rule); organizer may incur costs",
+        "fine_print": ["order fee plus possible delivery and payment-method fees added to buyer price"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://www.lippu-light.fi/hinnoittelu/", "read": "2026-10-09", "what": "Finnish pricing page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Same product, very different rate card per country. Pattern: base fee ~3.5-5% + small fixed, +10-12% when selling via Eventim network. Spain 3.5% + EUR 0.40 (+6% entradas.com) per third-party source."
+  },
+  {
+    "platform": "Reservix (self-service ticketing for organizers)",
+    "website": "https://www.reservix.net",
+    "hq_country": "DE",
+    "segment": "organizers of any size in DE/AT wanting multichannel (own portals, 7,000+ organizers, presale-outlet network)",
+    "markets": [
+      {
+        "market": "Germany / Austria",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "Reservix sells and pays out; revenue settled at an individually agreed period",
+        "plans": [
+          {"name": "Standard organizer contract", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "web-based ticket system, own webshop, reservix.de/ADticket portals, presale-outlet network, hotlines", "notes": "organizer commission / system fee is contractual and not published; 'no running or hidden costs, fees per ticket sold'; support free; hardware and setup support may cost extra"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["PayPal", "SEPA direct debit", "Mastercard", "Visa", "Amex", "Klarna", "Google Pay", "Apple Pay"], "own_processor_allowed": false, "rate_note": "not stated", "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer pays EUR 2.00 service flat fee per ORDER (not per ticket) on Reservix portal or organizer webshop; plus shipping if posted; advance-sale fees negotiated",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "individually agreed settlement period",
+        "refunds_chargebacks": null,
+        "fine_print": ["no public price list: organizer must contact sales", "third-party Awin affiliate snippet mentions a 10% advance-sale fee (Vorverkaufsgebuehr) in the programme - snippet only", "one municipal cultural-office agreement references a separate system fee invoiced after the event (snippet)"],
+        "add_ons": [],
+        "enterprise": "contact sales; Reservix 'Zusammenarbeit Veranstalter' form",
+        "sources": [{"url": "https://www.reservix.net/zusammenarbeit-veranstalter/", "read": "2026-10-09", "what": "organizer cooperation page"}, {"url": "https://service.reservix.de/de/support/solutions/articles/15000050356-welche-geb%C3%BChren-fallen-bei-einer-online-bestellung-an-", "read": "2026-10-09", "what": "buyer fee EUR 2.00 per order"}, {"url": "https://www.weticket.com/de/vergleiche-ticketingsysteme/reservix", "read": "2026-10-09", "what": "third-party comparison confirming organizer fees not public"}, {"url": "https://ui.awin.com/merchant-profile/31293", "read": "2026-10-09", "what": "affiliate programme profile (search snippet only, not opened)"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "No self-signup price list; organizer fees contractual. Not a true self-service platform despite the brief label."
+  },
+  {
+    "platform": "ticket i/O",
+    "website": "https://www.ticket.io",
+    "hq_country": "DE",
+    "segment": "clubs, festivals, carnival associations, markets in DE/AT/HR; independent ticketing with sales team",
+    "markets": [
+      {
+        "market": "Germany / Austria / Croatia",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "mixed",
+        "money_flow": "collecting",
+        "money_flow_note": "all revenues and payouts run 100% through trust (escrow) accounts per the site; payout timing not captured",
+        "plans": [
+          {"name": "Individual offer", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "ticket shop, scanner app, seat plans, payment methods, box office (Tageskasse)", "notes": "price made of a system fee + a payment provider fee, both can be passed to buyers as booking fee (VVK-Gebuehr); hardware, staff, marketing extras priced separately; short contract terms; no numbers published"}
+        ],
+        "prepaid": [],
+        "processing": {"included": false, "processors": [], "own_processor_allowed": null, "rate_note": "payment provider fee is a separate fee line", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "100% via escrow/trust accounts",
+        "refunds_chargebacks": null,
+        "fine_print": ["'contact sales' pricing: no public numbers"],
+        "add_ons": [{"name": "hardware, personnel, marketing", "price": "on request"}],
+        "enterprise": "all pricing individual via sales@ticket.io",
+        "sources": [{"url": "https://www.ticket.io/preise/", "read": "2026-10-09", "what": "pricing page (no numbers)"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Pricing not public."
+  },
+  {
+    "platform": "Rausgegangen (Event-Zentrale ticketing add-on)",
+    "website": "https://rausgegangen.de",
+    "hq_country": "DE",
+    "segment": "German event discovery platform with integrated ticketing add-on for cultural organizers",
+    "markets": [
+      {
+        "market": "Germany",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "per a Rausgegangen ticketing cooperation agreement (2023 PDF snippet) Rausgegangen sells tickets in the name and on account of the organizers and settles with them; details not read",
+        "plans": [
+          {"name": "Free event listing", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "publishing events free on Rausgegangen", "notes": "site says events can be listed for free"},
+          {"name": "Ticketing (Event-Zentrale add-on)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "seat plan, data sovereignty, individual design, 'fair conditions'", "notes": "fees not public; a third-party comparison (eventshift.io search snippet, not opened) reports EUR 5.40 total on an EUR 80 ticket for Rausgegangen vs EUR 1.68 for pretix, EUR 2.80 Fienta, EUR 3.79 Eventim.Light"}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": ["credit card", "PayPal"], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": "seat plan available",
+        "payouts": null,
+        "refunds_chargebacks": "cancelled/postponed events: tickets bought via Rausgegangen are refunded automatically (help article)",
+        "fine_print": ["no public pricing; contact via Event Zentrale"],
+        "add_ons": [],
+        "enterprise": "contact",
+        "sources": [{"url": "https://pos.rausgegangen.de/", "read": "2026-10-09", "what": "Event Zentrale page"}, {"url": "https://eventshift.io/vergleich/ticketing-anbieter", "read": "2026-10-09", "what": "third-party comparison (page unreadable, search snippet only)"}],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "Could not find a public fee table."
+  },
+  {
+    "platform": "Weezevent (WeezTicket)",
+    "website": "https://weezevent.com",
+    "hq_country": "FR",
+    "segment": "festivals, clubs, sports, cashless events; France/Benelux/CH/Canada/UK; self-serve plus project manager",
+    "markets": [
+      {
+        "market": "Switzerland (fr-CH / de-CH)",
+        "currency": "CHF",
+        "vat_note": "CHF price stated incl. taxes (TTC)",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "Weezevent collects; revenue paid out every 15 days; banking fees included",
+        "plans": [
+          {"name": "WeezTicket online ticketing", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 2.5, "per_ticket_fixed": 0.99, "min_per_ticket": null, "cap_per_ticket": null, "includes": "no set-up fees, bank fees included, no subscription, no commitment, 24/7 customer service, free for free events", "notes": "2.5% + CHF 0.99 incl. taxes per ticket sold online"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "bank fees included", "platform_extra_processing_fee": null},
+        "who_pays_default": "not stated (fee can be shown as organizer cost or added)",
+        "free_tickets": "free for free events",
+        "seating": "numbered seating 2D/3D is a tailor-made offer (contact)",
+        "payouts": "every 15 days",
+        "refunds_chargebacks": null,
+        "fine_print": ["tailor-made offer for numbered seating, secure resale, dedicated project manager, on-site booths, virtual queue", "full price-list PDF linked on page"],
+        "add_ons": [{"name": "Access control (WeezAccess)", "price": "free"}, {"name": "Cashless payment (WeezPay)", "price": "CHF 1.40 (unit not captured on page; EUR 1.20 elsewhere)"}, {"name": "Staff & accreditation (WeezCrew)", "price": "from CHF 1,000"}, {"name": "Marketing & CRM (Gigz)", "price": "free"}],
+        "enterprise": "tailor-made offer on request",
+        "sources": [{"url": "https://weezevent.com/fr-ch/nos-tarifs/", "read": "2026-10-09", "what": "Swiss FR pricing page"}, {"url": "https://weezevent.com/en-gb/our-prices/", "read": "2026-10-09", "what": "international price page with currency tabs"}],
+        "confidence": "page"
+      },
+      {
+        "market": "France / Belgium / Euro (international page)",
+        "currency": "EUR",
+        "vat_note": "minimum EUR 0.99 incl. taxes",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "revenue paid every 15 days",
+        "plans": [
+          {"name": "WeezTicket", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 2.5, "per_ticket_fixed": null, "min_per_ticket": 0.99, "cap_per_ticket": null, "includes": "no set-up fee, banking fees included, no subscription, free for free events, support 24/7", "notes": "2.5% per ticket sold online, minimum EUR 0.99 incl. taxes"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "bank fees included", "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": "free for free events",
+        "seating": "tailor-made",
+        "payouts": "every 15 days",
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [{"name": "Cashless", "price": "EUR 1.20"}, {"name": "WeezCrew", "price": "from EUR 1,000"}],
+        "enterprise": "tailor-made offer",
+        "sources": [{"url": "https://weezevent.com/en-gb/our-prices/", "read": "2026-10-09", "what": "EUR tab"}],
+        "confidence": "page"
+      },
+      {
+        "market": "UK / Canada (for completeness)",
+        "currency": "GBP / CAD",
+        "vat_note": "GBP incl. taxes; CAD excl. taxes",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "paid every 15 days",
+        "plans": [
+          {"name": "UK", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 2.5, "per_ticket_fixed": 0.99, "min_per_ticket": null, "cap_per_ticket": null, "includes": "as above", "notes": "2.5% + GBP 0.99 incl. taxes"},
+          {"name": "Canada", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 2.75, "per_ticket_fixed": 0.99, "min_per_ticket": null, "cap_per_ticket": null, "includes": "as above", "notes": "2.75% + CAD 0.99 excl. taxes"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "bank fees included", "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": "free for free events",
+        "seating": null,
+        "payouts": "every 15 days",
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://weezevent.com/en-gb/our-prices/", "read": "2026-10-09", "what": "currency tabs"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Note wording difference: EUR page says 2.5% with EUR 0.99 minimum; CHF/GBP show 2.5% + 0.99 fixed. German and Dutch pages exist (weezevent.com/de/unsere-preise/, /nl/onze-prijzen/) but were not opened."
+  },
+  {
+    "platform": "Shotgun",
+    "website": "https://shotgun.live",
+    "hq_country": "FR",
+    "segment": "electronic music / clubs / festivals promoters in FR, ES, DE, NL, BE, IT, UK; fan marketplace app",
+    "markets": [
+      {
+        "market": "Europe (France and others)",
+        "currency": "EUR",
+        "vat_note": "price shown to buyer = organizer price + Shotgun fees, all taxes included",
+        "model": "mixed",
+        "money_flow": null,
+        "money_flow_note": "not verified; official fee and payout terms not public. Support text: organizer enters price before Shotgun fees; buyer sees price + fees. Buyer-side forum posts say fees are kept on refund even when organizer cancels.",
+        "plans": [
+          {"name": "Self-serve Smartboard", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "event creation, ticketing, waitlist, on-site ops, fan analytics", "notes": "free to create events (login page: 'in a few minutes and for free'); fee per ticket varies by market and is not published; a third-party page states 'service fee per ticket (varies by market)'"}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer (fees added on top of organizer's price)",
+        "free_tickets": "free events supported (third-party)",
+        "seating": "third-party comparison: no reserved seating",
+        "payouts": null,
+        "refunds_chargebacks": "buyer forum: service fees not refunded when event cancelled; resale fee EUR 4 reported by a Trustpilot reviewer",
+        "fine_print": ["official pricing page returned empty; fees not public"],
+        "add_ons": [],
+        "enterprise": "contact sales",
+        "sources": [{"url": "https://support-pro.shotgun.live/hc/en-us/articles/14551930820882-Set-up-your-ticketing", "read": "2026-10-09", "what": "organizer help: price before Shotgun fees"}, {"url": "https://www.ticketfairy.mx/posh-vs-shotgun", "read": "2026-10-09", "what": "third-party comparison"}],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "No public fee number found."
+  },
+  {
+    "platform": "DICE (DICE Partners / MIO self sign-up)",
+    "website": "https://dice.fm/partners",
+    "hq_country": "GB",
+    "segment": "music promoters, venues, festivals; app-first marketplace with waiting list, discovery feed",
+    "markets": [
+      {
+        "market": "UK and Ireland (self sign-up terms)",
+        "currency": "GBP",
+        "vat_note": "service and transaction fees are plus VAT",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "DICE collects all Sales Proceeds as disclosed agent; pays vendor within 5 business days after the event performance (self-payout available); can pay advances; may withhold up to 5% of proceeds for 6 months after each event as chargeback allowance; vendor pays bank charges on payouts",
+        "plans": [
+          {"name": "Standard self sign-up", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 8.5, "per_ticket_fixed": null, "min_per_ticket": 1.00, "cap_per_ticket": null, "includes": "DICE app and web, MIO dashboard, waiting list, analytics", "notes": "service fee 8.5% of face value + VAT, min GBP 1 per ticket, PLUS transaction fee 2.5% + VAT of (face value + service fee); DICE keeps 100% of both; nothing charged on free tickets; the same fees apply to paid add-on items; fees are hidden inside the displayed price (DICE shows no fee line)"},
+          {"name": "Box office / door sales", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 8, "per_ticket_fixed": null, "min_per_ticket": 1.00, "cap_per_ticket": 3.50, "includes": "DICE box office terminals", "notes": "8% commission min GBP 1 max GBP 3.50 on box office/door sales, plus 3% transaction fee on terminal sales"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "covered by the 2.5% transaction fee", "platform_extra_processing_fee": 2.5},
+        "who_pays_default": "buyer sees one all-in price; economically the fee is carved from face value / added to it per vendor agreement; help-centre text says booking fee is split between DICE and organizers",
+        "free_tickets": "free tickets carry no fee",
+        "seating": null,
+        "payouts": "5 business days after event; chargeback reserve up to 5% for 6 months",
+        "refunds_chargebacks": "organizer is responsible for chargebacks and refunds on cancellation; DICE may claim damages and invoice within 90 days; vendor must repay service-fee rebates on refunds",
+        "fine_print": ["service fee caps can be negotiated; DICE may raise cap up to 5% annually", "waiting list resale: DICE keeps price difference unless agreed", "damages payable if event cancelled, rescheduled, curtailed", "effective all-in on a GBP 20 ticket about GBP 2.45 before VAT (derived by coordinator, not a quote)"],
+        "add_ons": [],
+        "enterprise": "negotiated terms with cap for larger partners",
+        "sources": [{"url": "https://support.dice.fm/article/758-mio-ticketing-terms-and-conditions-uk", "read": "2026-10-09", "what": "DICE Self Sign-Up Terms UK & Ireland (28 Apr 2026)"}, {"url": "https://dicefm.zendesk.com/hc/en-gb/articles/19919684020113-How-DICE-fees-work", "read": "2026-10-09", "what": "fan-facing fees article"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Continental Europe (FR/DE/ES/IT/NL)",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "assumed same agent model; EU terms not located",
+        "plans": [],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["EU self-signup terms not found; a third-party blog (hi.events, Dec 2025) claims DICE charges 'around 10 percent per ticket' - snippet-level, unverified"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://blog.hi.events/best-dice-fm-alternatives-for-nightlife-promoters-in-2026/", "read": "2026-10-09", "what": "competitor blog claim"}],
+        "confidence": "third_party"
+      }
+    ],
+    "notes": "DICE keeps fee 'invisible' to buyer by design (all-in price). UK terms are the only hard numbers found."
+  },
+  {
+    "platform": "HelloAsso",
+    "website": "https://www.helloasso.com",
+    "hq_country": "FR",
+    "segment": "French associations/clubs/foundations (non-profit only): ticketing, membership, donations, crowdfunding",
+    "markets": [
+      {
+        "market": "France (associations only)",
+        "currency": "EUR",
+        "vat_note": "no platform fee; voluntary buyer contribution",
+        "model": "free_buyer_pays",
+        "money_flow": "collecting",
+        "money_flow_note": "HelloAsso is an ACPR-licensed payment institution and collects; association receives 100% of the amount collected; HelloAsso pays the payment-provider costs itself (about 20% of contributions go to transaction costs). Payout timing not captured.",
+        "plans": [
+          {"name": "Free for associations", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "ticketing, membership, donations, crowdfunding, shop, scan app, API", "notes": "0 fees, 0 commission, 0 hidden costs; financed by a voluntary contribution (tip) suggested to the payer on every transaction (pay-what-you-want style); about half of payers leave a tip per HelloAsso"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["HelloAsso (own payment institution)"], "own_processor_allowed": false, "rate_note": "absorbed by HelloAsso, bank fees shown as 1.8% for 'other platforms' in their comparison", "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer (optional tip) - organizer pays nothing",
+        "free_tickets": "free",
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["only for associations / non-profit legal forms (not for commercial organizers)", "marketing comparison claims other platforms take 2.4% commission + 1.8% bank fees (EUR 4.2 on 100 EUR)", "optional paid 'Billetterie Plus' / 'Plus par HelloAsso' offers exist (not priced on this page)"],
+        "add_ons": [{"name": "Billetterie Plus / Plus par HelloAsso", "price": "not captured"}],
+        "enterprise": null,
+        "sources": [{"url": "https://www.helloasso.com/tarifs", "read": "2026-10-09", "what": "pricing / economic model page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Tip model is the benchmark for 'free for organizer'. Not available to commercial organizers."
+  },
+  {
+    "platform": "Billetweb",
+    "website": "https://www.billetweb.fr",
+    "hq_country": "FR",
+    "segment": "French self-serve ticketing for associations, theatres, festivals, companies (25,000+ organizers), claims best price on market",
+    "markets": [
+      {
+        "market": "France",
+        "currency": "EUR",
+        "vat_note": "not stated (price presented as commission 'frais bancaires inclus')",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "Billetweb works with a specialised banking partner for funds safeguarding (cantonnement de fonds); commission deducted from online card sales; payout timing not captured",
+        "plans": [
+          {"name": "Standard (all features)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 1, "per_ticket_fixed": 0.29, "min_per_ticket": null, "cap_per_ticket": null, "includes": "all features, bank fees included, no subscription or commitment, free for free events*", "notes": "EUR 0.29 + 1% per ticket paid online; commission applies only to online (card) payments; refunds free of charge; cancellation of event refunded in one click without extra fee"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": null, "rate_note": "bank fees included in commission", "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer or buyer (organizer decides; commission can be added)",
+        "free_tickets": "free for free events (asterisk conditions not captured)",
+        "seating": "numbered seating +EUR 0.10 per ticket issued",
+        "payouts": null,
+        "refunds_chargebacks": "refunds free",
+        "fine_print": ["asterisk on 'free for free events' not captured", "price list PDF linked (binary, not readable)"],
+        "add_ons": [{"name": "Cashless", "price": "from EUR 1 per attendee"}, {"name": "Box office ticket editing (on-site sale)", "price": "free"}, {"name": "Box office rental", "price": "EUR 100 per day"}, {"name": "Access control mobile app", "price": "free"}, {"name": "Access control terminal rental", "price": "EUR 70 per day"}, {"name": "CRM up to 100,000 contacts", "price": "free"}, {"name": "Partner area up to 10,000 invitations", "price": "free"}],
+        "enterprise": "large-account offer (white label, field teams) via contact",
+        "sources": [{"url": "https://www.billetweb.fr/fr-fr/tarifs", "read": "2026-10-09", "what": "pricing page"}, {"url": "https://www.billetweb.fr/fr-fr/questions-frequentes", "read": "2026-10-09", "what": "FAQ"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "One of the cheapest published rates in Europe (EUR 0.29 + 1%, EUR 0.49 on a 20 EUR ticket)."
+  },
+  {
+    "platform": "Yurplan",
+    "website": "https://yurplan.com",
+    "hq_country": "FR",
+    "segment": "French events: clubs, festivals, trade shows, student events; 46,000 organizers; licence tiers for CRM/partners",
+    "markets": [
+      {
+        "market": "France",
+        "currency": "EUR",
+        "vat_note": "commissions quoted excl. VAT (HT); ticket price calculator uses TTC",
+        "model": "mixed",
+        "money_flow": "collecting",
+        "money_flow_note": "treasury managed by Yurplan ('vos fonds geres sereinement'); cash-advance feature exists; third-party source (Clubic) says funds paid within 2 working days - not confirmed on official page",
+        "plans": [
+          {"name": "Standard", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 1, "per_ticket_fixed": 0.39, "min_per_ticket": null, "cap_per_ticket": null, "includes": "online ticketing, tickets visual, dedicated site, tracking links, scan app, box office software, dashboards, email support", "notes": "EUR 0.39 + 1% excl. VAT per paid ticket, bank fees included, no extra buyer fee; free tickets free of commission; every ticket generated (free or paid, even cancelled) counts against annual ticket quota; the Standard column shows unlimited tickets"},
+          {"name": "Boost", "monthly_fee": 10, "annual_fee": null, "per_ticket_percent": 1, "per_ticket_fixed": 0.39, "min_per_ticket": null, "cap_per_ticket": null, "includes": "CRM, mail campaigns (500 mails/month), full ticket customisation, ticket import, statistics comparison", "notes": "from EUR 10 excl. VAT per month billed annually at the smallest tier (100 tickets/yr); price scales with tickets/year (steps up to 50,000+, custom beyond); additional tickets EUR 0.20 excl. VAT each billed monthly; extra 1000 mails EUR 1"},
+          {"name": "Advanced", "monthly_fee": 72, "annual_fee": null, "per_ticket_percent": 1, "per_ticket_fixed": 0.39, "min_per_ticket": null, "cap_per_ticket": null, "includes": "Boost + partner/exhibitor management, invitations and badges, event programme, registration codes, Yurplan logo removed, priority contact", "notes": "from EUR 72 excl. VAT per month; custom price"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["Visa", "Mastercard", "CB", "Apple Pay"], "own_processor_allowed": false, "rate_note": "bank fees included in commission", "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer (no supplementary buyer fee)",
+        "free_tickets": "no commission, but count toward licence quota",
+        "seating": "numbered placement +EUR 0.40 excl. VAT per ticket",
+        "payouts": "see money_flow_note",
+        "refunds_chargebacks": "EUR 1 excl. VAT per refunded order",
+        "fine_print": ["annual 12-month commitment option: pay annually saves 2 months; upgrades pro-rata immediately, downgrades at anniversary", "ticket quota alert at 80%; overage billed monthly per licence grid", "exhibitor scan app +EUR 50 excl. VAT per exhibitor (Advanced)", "hardware rental, project manager and on-site technicians quoted on request", "third-party sources show older rates 0.49 EUR + 2% above EUR 30 (Clubic) - superseded"],
+        "add_ons": [{"name": "Numbered seating", "price": "+EUR 0.40 excl. VAT per ticket"}, {"name": "Exhibitor scan app", "price": "+EUR 50 excl. VAT per exhibitor"}, {"name": "Equipment rental, on-site staff", "price": "on request"}],
+        "enterprise": "high volumes: contact sales",
+        "sources": [{"url": "https://yurplan.com/tarifs", "read": "2026-10-09", "what": "official pricing page"}, {"url": "https://www.capterra.fr/software/184391/yurplan", "read": "2026-10-09", "what": "Capterra listing (search snippet) showing 0.39 EUR + 1%"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Free licence plus tiered subscriptions for CRM/partner modules."
+  },
+  {
+    "platform": "Fienta",
+    "website": "https://fienta.com",
+    "hq_country": "EE",
+    "segment": "events/conferences/theatres/sports in Estonia, Baltics, Europe; built-in payments; 'no buyer fees'",
+    "markets": [
+      {
+        "market": "Global (page served in USD in this session; EUR for PayPal add-on)",
+        "currency": "USD / EUR",
+        "vat_note": "24% VAT added to the fee for private individuals in the EU, EU companies without VAT number, and customers in Estonia; no VAT for non-EU or EU companies (outside Estonia) with valid VAT ID",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "Fienta has built-in card/bank-link/invoice payments (no separate provider registration); standard payout monthly, extra payouts on request; no payout fees",
+        "plans": [
+          {"name": "Free events", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "registration, confirmations, ticket scanning, attendee list management/export", "notes": "free for free events"},
+          {"name": "Paid tickets", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 3.5, "per_ticket_fixed": null, "min_per_ticket": 0.40, "cap_per_ticket": null, "includes": "payment methods usually charged separately elsewhere, all core features except seating charts, live chat support", "notes": "3.5% fee on ticket sales with a minimum of USD 0.40 PER ORDER (not per ticket); VAT on fee where applicable"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["cards", "bank links", "invoice payment", "PayPal (EUR events only)"], "own_processor_allowed": false, "rate_note": "most bank/card fees included; PayPal is an add-on", "platform_extra_processing_fee": "PayPal add-on 1% + EUR 0.35 per transaction"},
+        "who_pays_default": "organizer (no buyer fees; buyers pay only the price you set)",
+        "free_tickets": "free",
+        "seating": "reserved seating +USD 0.20 per sold ticket",
+        "payouts": "monthly standard, extra payouts on request, no payout fee",
+        "refunds_chargebacks": null,
+        "fine_print": ["no sign-up, monthly or payout fees", "example on page: EUR 20 ticket -> EUR 0.70 fee, EUR 0.87 with 24% VAT", "page currency appears geo-dependent; EUR/other variants not captured"],
+        "add_ons": [{"name": "Reserved seating", "price": "+0.20 USD per sold ticket"}, {"name": "PayPal payments", "price": "1% + EUR 0.35 per transaction"}],
+        "enterprise": null,
+        "sources": [{"url": "https://fienta.com/pricing", "read": "2026-10-09", "what": "pricing page (also /p/pricing)"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Third-party comparison (eventshift snippet): EUR 2.80 on an EUR 80 ticket."
+  },
+  {
+    "platform": "Paylogic (EVENTIM Benelux)",
+    "website": "https://www.paylogic.com",
+    "hq_country": "NL",
+    "segment": "enterprise ticketing for large festivals and events (Dour, Awakenings, ADE) in NL/BE/DE",
+    "markets": [
+      {
+        "market": "Benelux / DE",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": null,
+        "money_flow_note": "no public terms; enterprise platform",
+        "plans": [],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["site shows only features and case studies; 'work together' lead form; no pricing"],
+        "add_ons": [],
+        "enterprise": "contact sales only",
+        "sources": [{"url": "https://www.paylogic.com/", "read": "2026-10-09", "what": "home page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Part of EVENTIM Benelux (careers site eventim.nl). Not relevant for small organizers."
+  },
+  {
+    "platform": "Ticketkantoor",
+    "website": "https://www.ticketkantoor.nl",
+    "hq_country": "NL",
+    "segment": "Dutch/Belgian self-service for clubs, associations, theatres, small events (6,900 organizers, 5.2M tickets)",
+    "markets": [
+      {
+        "market": "Netherlands / Belgium",
+        "currency": "EUR",
+        "vat_note": "EUR 0.80 includes 21% VAT (about EUR 0.66 excl. VAT if VAT reclaimable)",
+        "model": "flat_per_ticket",
+        "money_flow": "collecting",
+        "money_flow_note": "Ticketkantoor handles payment; pays out within 3 working days after the organizer closes the event in the system; fee withheld from collected amount, no separate invoice, payout is free",
+        "plans": [
+          {"name": "All-in flat tariff", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": null, "per_ticket_fixed": 0.80, "min_per_ticket": null, "cap_per_ticket": null, "includes": "iDEAL/Wero, Bancontact, Pay by Bank (to EUR 20 tickets), seated placement, time slots, discount codes, group discounts, vouchers, free scan app, own styling", "notes": "EUR 0.80 per ISSUED ticket incl. VAT and transaction costs, charged on all tickets also those without electronic payment and also on cancelled events; no setup, subscription, per-event or payout fees"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["iDEAL", "Wero", "Bancontact", "Pay by Bank (DE, SE, UK, NO, FI, EE, LV, LT, CZ)"], "own_processor_allowed": false, "rate_note": "included in EUR 0.80", "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer (buyer pays nothing extra; fee must be built into ticket price - platform says ACM all-in price rules make this mandatory)",
+        "free_tickets": "fee also charged where no electronic payment is involved (every issued ticket)",
+        "seating": "seated placement included at no extra cost",
+        "payouts": "within 3 working days after event closed",
+        "refunds_chargebacks": "cancelled event: still pay service fee for issued tickets; no extra cancellation fee",
+        "fine_print": ["Pay by Bank inside standard tariff only up to ticket price EUR 20; contact for higher", "no credit card payments listed"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://www.ticketkantoor.nl/tarieven", "read": "2026-10-09", "what": "tariffs page"}, {"url": "https://www.ticketkantoor.nl/faq", "read": "2026-10-09", "what": "FAQ costs and payout"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Pure flat per-ticket price; positions itself against 'free for organizer but buyer pays EUR 4' models."
+  },
+  {
+    "platform": "GUTS Tickets (now CM.com Ticketing)",
+    "website": "https://www.cm.com/ticketing/",
+    "hq_country": "NL",
+    "segment": "fraud-proof/blockchain ticketing with resale cap; acquired by CM.com and merged into CM.com Ticketing (guts.tickets redirects)",
+    "markets": [
+      {
+        "market": "Netherlands / Benelux",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "flat_per_ticket",
+        "money_flow": null,
+        "money_flow_note": "not verified",
+        "plans": [
+          {"name": "CM.com Ticketing (ex-GUTS)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": 0.79, "min_per_ticket": null, "cap_per_ticket": null, "includes": null, "notes": "'from EUR 0.79 per ticket' per a competitor comparison (mijnevent.nl); CM.com's own ticketing page showed no price"}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": "provider transaction costs on top (per comparison source)", "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["competitor-sourced number (mijnevent.nl, which sells at EUR 0.25/ticket) - treat as third_party"],
+        "add_ons": [],
+        "enterprise": "contact CM.com sales",
+        "sources": [{"url": "https://mijnevent.nl/en/vs/guts-tickets", "read": "2026-10-09", "what": "competitor comparison"}, {"url": "https://www.cm.com/ticketing/", "read": "2026-10-09", "what": "CM.com ticketing page (no price)"}],
+        "confidence": "third_party"
+      }
+    ],
+    "notes": "GUTS no longer a separate product."
+  },
+  {
+    "platform": "Tixly (the 'Tix' ticketing software, Nordics/Benelux venues)",
+    "website": "https://www.tixly.com",
+    "hq_country": "DK",
+    "segment": "performing-arts venues and culture houses (Odense Teater, Musikhuset Aarhus, Kalmarsalen, De Singel); venue software not a marketplace",
+    "markets": [
+      {
+        "market": "Nordics / Belgium",
+        "currency": "EUR (not stated)",
+        "vat_note": null,
+        "model": "flat_per_ticket",
+        "money_flow": null,
+        "money_flow_note": "venue connects payment providers 'already supported'; likely direct to venue but not stated explicitly",
+        "plans": [
+          {"name": "Per-ticket volume pricing", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "setup, data migration, hosting, support, training, unlimited users, standard integrations at no fee", "notes": "a transparent fixed per-ticket rate set from annual volume, number of venues and region; no upfront licence; competitors quoted as EUR 10k-100k+ upfront; no number published"}
+        ],
+        "prepaid": [],
+        "processing": {"included": false, "processors": [], "own_processor_allowed": true, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": "FAQ 'Do complimentary tickets incur a fee?' present but answer not captured",
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["implementation 4-12 weeks", "no public prices"],
+        "add_ons": [],
+        "enterprise": "book a demo / quote",
+        "sources": [{"url": "https://www.tixly.com/pricing", "read": "2026-10-09", "what": "pricing page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "tix.dk and tix.no redirect to tixly.com. No numbers."
+  },
+  {
+    "platform": "Tikkio",
+    "website": "https://tikkio.com",
+    "hq_country": "NO",
+    "segment": "Nordic (Norway, Denmark, Sweden, Germany) self-serve ticketing; Klarna payments",
+    "markets": [
+      {
+        "market": "Norway / Nordics",
+        "currency": "NOK",
+        "vat_note": null,
+        "model": null,
+        "money_flow": null,
+        "money_flow_note": null,
+        "plans": [],
+        "prepaid": [],
+        "processing": {"included": null, "processors": ["Klarna"], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["pricing and organizer terms pages returned 404 / not found; public fee table not located"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://www.tikkio.com/en", "read": "2026-10-09", "what": "home page (regions NO/DK/SE/DE/global, languages incl. FR)"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "No fee data found."
+  },
+  {
+    "platform": "Eventfrog",
+    "website": "https://eventfrog.ch",
+    "hq_country": "CH",
+    "segment": "Swiss/Austrian/German event agenda with ticketing; freemium for clubs, small events; free listing + optional Plus/Pro models",
+    "markets": [
+      {
+        "market": "Switzerland",
+        "currency": "CHF",
+        "vat_note": "prices excl. VAT (MwSt)",
+        "model": "mixed",
+        "money_flow": "collecting",
+        "money_flow_note": "online payments via Eventfrog; Free and Plus: payout after event end; Pro: payouts any time; transaction cost for online payments in Free model is charged separately (see notes)",
+        "plans": [
+          {"name": "Free", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "all key functions: listing, online ticket sales, seat plan creation, free Entry app, ads-free tickets, online payments via Eventfrog, payout after event", "notes": "CHF 0.00 model fee; the page also states 'Zahlungen ueber Eventfrog Cashless CHF 0.09 + 1.5% pro Transaktion zzgl. MwSt' - AT sister page states Free model online payments cost EUR 0.19 + 1.9%, so CH Free very likely pays CHF 0.09 + 1.5% per transaction"},
+          {"name": "Plus", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 2.4, "per_ticket_fixed": 0.49, "min_per_ticket": null, "cap_per_ticket": null, "includes": "extended features, online payments included, payout after event", "notes": "CHF 0.49 + 2.4% per sold ticket; applied automatically when ticket price above CHF 50"},
+          {"name": "Pro", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 3.6, "per_ticket_fixed": 0.49, "min_per_ticket": null, "cap_per_ticket": null, "includes": "all features, online payments included, fees pass-through to buyer, freely designed tickets, payouts at any time, premium visibility", "notes": "CHF 0.49 + 3.6% per sold ticket"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["Eventfrog payments"], "own_processor_allowed": null, "rate_note": "Plus/Pro include online payments; Free model: transaction fee as above", "platform_extra_processing_fee": "Free model: CHF 0.09 + 1.5% per transaction (as stated, excl VAT)"},
+        "who_pays_default": "organizer; Pro lets fees be passed on to buyers (calculator toggle 'Servicekosten an Ticketkaeufer uebertragen')",
+        "free_tickets": "free events and free tickets: no cost in Free model",
+        "seating": "seat plan creation free",
+        "payouts": "after event end (Free/Plus); any time (Pro)",
+        "refunds_chargebacks": "single-ticket cancellation CHF 0.99 + 3.9% per ticket excl VAT; full event refund CHF 50 + CHF 0.99 + 3.9% per ticket excl VAT; only incurred when an online transaction took place; previously accrued model fees are dropped",
+        "fine_print": ["all prices per sold ticket in CHF excl. VAT", "'Eventfrog Marktplatz' promotions CHF 24.90 per event for extra reach", "events always created in Free model; change to Plus/Pro only with consent"],
+        "add_ons": [{"name": "Marketplace promotion", "price": "CHF 24.90 per event"}],
+        "enterprise": "on request",
+        "sources": [{"url": "https://eventfrog.ch/de/veranstalten/preise-funktionen.html", "read": "2026-10-09", "what": "Swiss pricing page"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Austria",
+        "currency": "EUR",
+        "vat_note": "excl. VAT",
+        "model": "mixed",
+        "money_flow": "collecting",
+        "money_flow_note": "as in CH",
+        "plans": [
+          {"name": "Free", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 1.9, "per_ticket_fixed": 0.19, "min_per_ticket": null, "cap_per_ticket": null, "includes": "same as CH Free", "notes": "model fee EUR 0 but online payments via Eventfrog cost EUR 0.19 + 1.9%"},
+          {"name": "Plus", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 2.4, "per_ticket_fixed": 0.49, "min_per_ticket": null, "cap_per_ticket": null, "includes": "as CH Plus", "notes": "applied automatically above EUR 50"},
+          {"name": "Pro", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 2.9, "per_ticket_fixed": 0.69, "min_per_ticket": null, "cap_per_ticket": null, "includes": "as CH Pro", "notes": "EUR 0.69 + 2.9%"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": null, "rate_note": "see plans", "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer; Pro can pass to buyer",
+        "free_tickets": "free",
+        "seating": "free",
+        "payouts": "see CH",
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://eventfrog.at/de/veranstalten/preise-funktionen.html", "read": "2026-10-09", "what": "Austrian pricing page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Interesting: Pro is MORE expensive in CH (3.6%) than AT (2.9%). Swiss benchmark for a CHF-priced freemium model."
+  },
+  {
+    "platform": "Petzi (PETZI Tickets)",
+    "website": "https://www.petzi.ch",
+    "hq_country": "CH",
+    "segment": "non-profit ticketing for member clubs and festivals of the Swiss live-music federation PETZI; members only",
+    "markets": [
+      {
+        "market": "Switzerland",
+        "currency": "CHF",
+        "vat_note": "VAT included directly in ticket prices",
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "PETZI runs ticket shop and agenda for members; revenue reinvested in the federation; settlement terms not published",
+        "plans": [
+          {"name": "Member ticketing", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "ticketing + event agenda for members (clubs, festivals)", "notes": "fees 'kept as low as possible', transparent, no handling fee, no home-print fee, no insurance upsell; members do not pay for event cancellations or scanners; amounts not published"}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer (ticket fees in price)",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": "members pay nothing for cancelled events",
+        "fine_print": ["only PETZI members (club/festival federation); not open to general organizers", "no public fee figures"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://www.petzi.ch/fr/a-propos-de-la-billetterie/", "read": "2026-10-09", "what": "about the ticketing service"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Closed membership service; no numbers."
+  },
+  {
+    "platform": "Ticketino",
+    "website": "https://organizer.ticketino.com",
+    "hq_country": "CH",
+    "segment": "self-service ticketing for Swiss/DE/AT organizers of all sizes, White Label and own outlets; 'zero cost to organizer via surcharge model'",
+    "markets": [
+      {
+        "market": "Switzerland / EUR countries",
+        "currency": "CHF / EUR (same numbers)",
+        "vat_note": "prices excl. VAT (MWST) - the calculator shows VAT separately",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Ticketino collects (buyer pays by card, Twint, SOFORT, Postfinance, PayPal, invoice) and settles to organizer; payout timing not captured here",
+        "plans": [
+          {"name": "All-inclusive advance-sale fee (tiered by ticket price)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": "7.9% for CHF/EUR 10.76-40.00; 6.9% for 40.01-80.00; 5.9% for 80.01-160.00; 4.9% for 160.01-500.00; 3.9% above 500.01", "per_ticket_fixed": 0.85, "min_per_ticket": null, "cap_per_ticket": null, "includes": "no setup fee, no minimum revenue, no transaction costs on most payment methods, free seat plan and free access control incl. hard/software", "notes": "ticket price band CHF/EUR 0.00-10.75 -> flat CHF/EUR 0.85 per ticket; fee excl. VAT; surcharge calculation ('Zuschlagskalkulation') lets the buyer carry the fee so organizer pays nothing"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["credit card", "Twint", "SOFORT", "Postfinance", "PayPal"], "own_processor_allowed": false, "rate_note": "Postfinance/PayPal add 2-4.9% for the buyer; card, Twint and SOFORT free for buyer on Print@Home", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable (calculator: organizer or buyer)",
+        "free_tickets": "free events: no fees; free tickets generated by organizer inside a paid event or tickets collected directly: CHF 0.85 / EUR 0.85 / USD 0.90 / GBP 0.75 per ticket",
+        "seating": "seat plan creation free",
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["buyer-side: invoice/postal delivery about EUR 4.80 / CHF 5.80 per order; physical presale outlets charge ~5-10% handling", "larger volumes: individual offer", "free seat plan and free scanning hardware/software"],
+        "add_ons": [{"name": "White label", "price": "on request"}],
+        "enterprise": "individual offers for larger volumes",
+        "sources": [{"url": "http://organizer.ticketino.com/de/preise", "read": "2026-10-09", "what": "organizer pricing page (price bands, free tickets, buyer options)"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Fee falls as ticket price rises (7.9% -> 3.9%); the only Swiss platform with banded percentages found."
+  },
+  {
+    "platform": "Starticket (CH) / Ticketcorner self-service",
+    "website": "https://www.starticket.ch",
+    "hq_country": "CH",
+    "segment": "Starticket.ch is now operated under Ticketcorner AG (CTS Eventim); self-service for small organizers = Ticketcorner.Light",
+    "markets": [
+      {
+        "market": "Switzerland",
+        "currency": "CHF",
+        "vat_note": "see Ticketcorner.Light",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "see Ticketcorner.Light entry under Eventim.Light",
+        "plans": [
+          {"name": "Ticketcorner.Light", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 4, "per_ticket_fixed": 0.50, "min_per_ticket": null, "cap_per_ticket": null, "includes": "see Eventim.Light entry", "notes": "own shop CHF 0.50 + 4%; box office CHF 0.50; network CHF 0.50 + 12%"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "see Eventim.Light CH",
+        "refunds_chargebacks": null,
+        "fine_print": ["starticket.ch/de/veranstalter returned 404 and the site header is Ticketcorner-branded: separate Starticket organizer price list not found"],
+        "add_ons": [],
+        "enterprise": "B2B link on Ticketcorner site",
+        "sources": [{"url": "https://www.starticket.ch/de/veranstalter", "read": "2026-10-09", "what": "404 page with Ticketcorner branding"}, {"url": "https://www.ticketcorner-light.ch/preise/", "read": "2026-10-09", "what": "Ticketcorner.Light pricing"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Duplicate of Ticketcorner.Light CH rate card."
+  }
+]

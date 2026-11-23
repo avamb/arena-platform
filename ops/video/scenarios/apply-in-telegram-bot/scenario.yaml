@@ -1,0 +1,161 @@
+id: apply-in-telegram-bot
+fps: 30
+# To add a language: add it here, add its text to every narration, title and heading,
+# and put its pictures in captures/<language>/. Nothing else changes.
+languages: [ru, en, es]
+title:
+  ru: "Заявка организатора в Telegram"
+  en: "Organizer application in Telegram"
+  es: "Solicitud de organizador en Telegram"
+
+# A new organizer applies in the event-center bot and gets an organization.
+# Pictures are made on the staging stand with a test Telegram account (see README, "Film apply-in-telegram-bot")
+# and are not committed. Every picture lies in captures/<language>/ and is 840 x 2660:
+# the chat screen plus empty chat background under it, so that `scroll` can lift the
+# lower part of the chat above the subtitles. zoom x,y is the point the close-up looks at.
+# In the pictures the bot name, the applicant's contact, e-mail and Telegram name are replaced
+# with the invented example of the film (Carmen Ortega, Luna Events, Berlin).
+# The bot asks for the phone and the e-mail BEFORE the questions about the organization,
+# thus the scenes follow that order.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [16x9, 9x16, 4x5]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-entry
+    narration:
+      ru: "Хотите продавать билеты на свои мероприятия? Откройте бота Arena Sold Out в Telegram и нажмите «Подать заявку организатора». Это займёт несколько минут."
+      en: "Do you want to sell tickets for your events? Open the Arena Sold Out bot in Telegram and press «Apply to become an organizer». It takes a few minutes."
+      es: "¿Quieres vender entradas para tus eventos? Abre el bot de Arena Sold Out en Telegram y pulsa «Solicitar ser organizador». Son unos minutos."
+    pause_after: 0.4
+    shots:
+      - image: captures/a_00_welcome.png
+        frame: phone
+        title: { ru: "Заявка организатора — прямо в Telegram", en: "Organizer application — right in Telegram", es: "Solicitud de organizador, en Telegram" }
+        weight: 3
+        scroll: { from: 0.7, to: 0.85 }
+        highlight: { x: 0.02, y: 0.487, w: 0.75, h: 0.031 }
+        cursor:
+          - { at: 0.35, x: 0.8, y: 0.56 }
+          - { at: 0.8, x: 0.4, y: 0.503, click: true }
+      - image: captures/a_01_start.png
+        frame: phone
+        title: { ru: "Бот задаёт первый вопрос", en: "The bot asks the first question", es: "El bot hace la primera pregunta" }
+        weight: 2
+        scroll: { from: 0.6, to: 0.75 }
+
+  - id: s2-contact
+    narration:
+      ru: "Бот спросит имя и фамилию. Телефон вы отправляете одной кнопкой. Потом вводите e-mail и получаете на него код из шести цифр. Отправьте код в чат."
+      en: "The bot asks for your first and last name. You share your phone number with one button. Then you send your e-mail and get a six-digit code. Type the code in the chat."
+      es: "El bot te pide el nombre y los apellidos. Compartes tu teléfono con un botón. Después escribes tu e-mail y recibes un código de seis dígitos. Escríbelo en el chat."
+    pause_after: 0.6
+    shots:
+      - image: captures/a_02_phone.png
+        frame: phone
+        title: { ru: "Телефон — одной кнопкой", en: "Phone number — with one button", es: "El teléfono, con un botón" }
+        weight: 3
+        scroll: { from: 0.8, to: 1.0 }
+        highlight: { x: 0.02, y: 0.625, w: 0.96, h: 0.031 }
+        cursor:
+          - { at: 0.3, x: 0.75, y: 0.57 }
+          - { at: 0.75, x: 0.5, y: 0.641, click: true }
+      - image: captures/a_04_code_sent.png
+        frame: phone
+        title: { ru: "Код приходит на e-mail", en: "The code comes by e-mail", es: "El código llega por e-mail" }
+        weight: 3
+        scroll: { from: 0.55, to: 0.9 }
+      - image: captures/a_05_verified.png
+        frame: phone
+        title: { ru: "E-mail подтверждён", en: "The e-mail is verified", es: "E-mail verificado" }
+        weight: 2
+        scroll: { from: 0.6, to: 0.9 }
+
+  - id: s3-questions
+    narration:
+      ru: "Дальше — короткие вопросы об организации и о ваших мероприятиях. Одни ответы вы пишете текстом, другие выбираете кнопками. Бот показывает, какая часть заявки готова."
+      en: "Next come short questions about your organization and your events. You type some answers and select others with buttons. The bot shows how much of the application is complete."
+      es: "Luego llegan preguntas breves sobre tu organización y tus eventos. Unas respuestas las escribes y otras las eliges con botones. El bot muestra qué parte de la solicitud está completa."
+    pause_after: 0.6
+    shots:
+      - image: captures/a_05b_legal.png
+        frame: phone
+        title: { ru: "Ответы текстом", en: "Answers as text", es: "Respuestas escritas" }
+        weight: 2
+        scroll: { from: 0.6, to: 0.9 }
+      - image: captures/a_09b_epy.png
+        frame: phone
+        title: { ru: "Ответы кнопками", en: "Answers with buttons", es: "Respuestas con botones" }
+        weight: 2
+        scroll: { from: 0.7, to: 1.0 }
+      - image: captures/a_08b_events_ticked.png
+        frame: phone
+        title: { ru: "Какие мероприятия вы проводите", en: "What kind of events you make", es: "Qué tipo de eventos haces" }
+        weight: 2
+        scroll: { from: 0.7, to: 1.0 }
+      - image: captures/a_10_provider.png
+        frame: phone
+        title: { ru: "Платёжный провайдер", en: "Payment provider", es: "Proveedor de pagos" }
+        weight: 2
+        scroll: { from: 0.7, to: 1.0 }
+
+  - id: s4-consents
+    narration:
+      ru: "В конце отметьте три согласия, проверьте ответы и отправьте заявку."
+      en: "At the end, mark the three agreements, check your answers and send the application."
+      es: "Al final, marca las tres casillas, revisa tus respuestas y envía la solicitud."
+    pause_after: 1.6
+    shots:
+      - image: captures/a_12_consents_ticked.png
+        frame: phone
+        title: { ru: "Три согласия — три отметки", en: "Three agreements — three marks", es: "Tres casillas, tres marcas" }
+        weight: 3
+        scroll: { from: 0.75, to: 0.95 }
+        highlight: { x: 0.02, y: 0.49, w: 0.75, h: 0.093 }
+        per_language:
+          es: { highlight: { x: 0.02, y: 0.48, w: 0.75, h: 0.103 } }
+      - image: captures/a_14_sent.png
+        frame: phone
+        title: { ru: "Заявка отправлена", en: "The application is sent", es: "Solicitud enviada" }
+        weight: 3
+        scroll: { from: 0.5, to: 1.0 }
+
+  - id: s5-approved
+    narration:
+      ru: "Мы рассмотрим заявку и ответим в этом же чате. После одобрения ваша организация готова. Откройте меню: бот подскажет первые шаги — подключить приём платежей и создать первое мероприятие."
+      en: "We examine the application and answer in the same chat. After approval, your organization is ready. Open the menu: the bot shows the first steps, such as connecting payments and adding your first event."
+      es: "Revisamos la solicitud y te respondemos en el mismo chat. Tras la aprobación, tu organización está lista. Abre el menú: el bot te muestra los primeros pasos, como conectar los pagos y crear tu primer evento."
+    pause_after: 1.0
+    shots:
+      - image: captures/a_15_approved.png
+        frame: phone
+        title: { ru: "Заявка одобрена", en: "The application is approved", es: "Solicitud aprobada" }
+        weight: 3
+        scroll: { from: 0.55, to: 0.85 }
+      - image: captures/a_16_menu.png
+        frame: phone
+        title: { ru: "Меню организатора и первые шаги", en: "Organizer menu and first steps", es: "Menú del organizador y primeros pasos" }
+        weight: 4
+        scroll: { from: 0, to: 0.12 }
+        highlight: { x: 0.02, y: 0.233, w: 0.47, h: 0.031 }
+        per_language:
+          ru: { highlight: { x: 0.02, y: 0.233, w: 0.6, h: 0.031 } }
+          es: { highlight: { x: 0.02, y: 0.233, w: 0.57, h: 0.031 } }
+
+  - id: s6-cta
+    narration:
+      ru: "Оставьте заявку на arenasoldout.com или в нашем Telegram-боте. Мы ждём вас."
+      en: "Apply at arenasoldout.com or in our Telegram bot. We look forward to working with you."
+      es: "Deja tu solicitud en arenasoldout.com o en nuestro bot de Telegram. Te esperamos."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Оставьте заявку", en: "Apply now", es: "Deja tu solicitud" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"

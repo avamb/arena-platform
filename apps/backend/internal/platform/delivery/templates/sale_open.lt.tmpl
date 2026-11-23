@@ -1,0 +1,36 @@
+{{define "subject"}}Prasidėjo pardavimas: {{.EventName}} — {{.SaleNotice.When}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="lt" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Prasidėjo pardavimas</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  <tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">Prasidėjo pardavimas</h1>
+  <p style="margin:0 0 12px 0;">Paprašėte pranešti, kai prasidės pardavimas. Bilietai į {{.EventName}} ({{.SaleNotice.When}}) jau parduodami.</p>
+  {{with .SaleNotice.Venue}}<p style="margin:0 0 12px 0;">Vieta: {{.}}</p>{{end}}
+  <p style="margin:16px 0 16px 0;"><a href="{{.SaleNotice.URL}}" style="display:inline-block;background:{{.Accent}};color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:6px;">Pirkti bilietus</a></p>
+  <p style="margin:0 0 12px 0;"><span style="color:#93a0a8;font-size:12px;word-break:break-all;">Nuoroda: {{.SaleNotice.URL}}</span></p>
+  </td></tr>
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Bilietus apdoroja arenasoldout.com</a><br>{{end}}Jei paspausite „Atsisakyti prenumeratos“, mūsų laiškai šiuo adresu Jūsų nebepasieks niekada, įskaitant bilietus.</td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}
+
+Prasidėjo pardavimas
+
+Paprašėte pranešti, kai prasidės pardavimas. Bilietai į {{.EventName}} ({{.SaleNotice.When}}) jau parduodami.
+{{with .SaleNotice.Venue}}Vieta: {{.}}
+{{end}}
+Pirkti bilietus: {{.SaleNotice.URL}}
+
+{{template "contact_text" .}}{{if not .WhiteLabel}}Bilietus apdoroja arenasoldout.com — https://arenasoldout.com{{end}}
+
+Jei paspausite „Atsisakyti prenumeratos“, mūsų laiškai šiuo adresu Jūsų nebepasieks niekada, įskaitant bilietus.
+{{end}}

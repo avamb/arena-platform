@@ -90,7 +90,7 @@ func TestHandleScannerScanEvents_TicketStatusGate(t *testing.T) {
 				ticketStatus: status,
 			}
 			q := gen.New(db)
-			h := New(nil, q, nil, nil, fakeRateLimiter{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+			h := New(nil, q, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 			// Build a valid scan-events batch with a single scan.
 			scannedAt := time.Now().UTC().Format(time.RFC3339)

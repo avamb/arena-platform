@@ -1,0 +1,90 @@
+{{define "subject"}}{{if .Change.Invitation}}Ielūgums atcelts{{else}}Pasākums atcelts{{end}} — {{.EventName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="lv" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{if .Change.Invitation}}Ielūgums atcelts{{else}}Pasākums atcelts{{end}}</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">{{if .Change.Invitation}}Jūsu ielūgums ir atcelts{{else}}Jūsu pasākums ir atcelts{{end}}</h1>
+  <p style="margin:0 0 12px 0;">Labdien{{with .HolderName}} {{.}}{{end}},</p>
+  <p style="margin:0 0 12px 0;">{{if .Change.Invitation}}Organizators ir atcēlis jūsu ielūgumu uz pasākumu <strong>{{.EventName}}</strong>{{with .SessionStart}} ({{.}}){{end}}. Jūsu biļete ieejai vairs nav derīga.{{else}}Organizators ir atcēlis pasākuma <strong>{{.EventName}}</strong> norisi{{with .SessionStart}}, kas bija paredzēta {{.}}{{end}}. Jūsu biļete šim pasākumam ieejai vairs nav derīga.{{end}}</p>
+  <table cellpadding="4" style="border-collapse:collapse;font-size:14px">
+    <tr><td><strong>Pasākums</strong></td><td>{{.EventName}}</td></tr>
+    {{with .SessionStart}}<tr><td><strong>Norises laiks</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .VenueName}}<tr><td><strong>Norises vieta</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .TierName}}<tr><td><strong>Kategorija</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatSector}}<tr><td><strong>Sektors</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatRow}}<tr><td><strong>Rinda</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatNumber}}<tr><td><strong>Vieta</strong></td><td>{{.}}</td></tr>{{end}}
+  </table>
+  {{with .Change.MessageHTML}}<div style="margin:16px 0;padding:12px 16px;border-left:3px solid {{$.Accent}};background:#f8f9fa">
+    <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>Organizatora ziņojums:</strong></p>
+    <div style="margin:0;font-size:14px;line-height:1.6;">{{.}}</div>
+  </div>{{end}}
+  {{if or .Change.ContactEmail .Change.ContactFormURL}}<p style="margin:0 0 12px 0;">Lūdzu, rakstiet organizatoram{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}uz <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{else if .Change.ContactFormURL}}izmantojot <a href="{{.Change.ContactFormURL}}" style="color:#1a73e8">veidlapu pārdošanas lapā</a>{{end}}{{with .Change.ContactPhone}}, tālrunis {{.}}{{end}}, lai uzzinātu par tālākajām darbībām.</p>{{end}}
+  <p style="font-size:12px;color:#666">Biļetes ID: {{.TicketID}}</p>
+  <p style="font-size:12px;color:#666">Nosūtīts uz: {{.RecipientEmail}}</p>
+  </td></tr>
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Kontakti: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Kontakti: <a href="{{.}}" style="color:#666">Rakstīt organizatoram</a>{{end}}{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Biļešu apstrādi nodrošina arenasoldout.com</a>{{end}}</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Ja noklikšķināsiet uz “Atteikties no abonēšanas”, jūs vairs nesaņemsiet e-pastus ar biļetēm un svarīgus e-pastus par pasūtījumu. Mēs nesūtām mārketinga ziņojumus bez jūsu piekrišanas.</p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+{{if .Change.Invitation}}Jūsu ielūgums ir atcelts{{else}}Jūsu pasākums ir atcelts{{end}}
+
+Labdien{{with .HolderName}} {{.}}{{end}},
+
+{{if .Change.Invitation}}Organizators ir atcēlis jūsu ielūgumu uz pasākumu {{.EventName}}{{with .SessionStart}} ({{.}}){{end}}. Jūsu biļete ieejai vairs nav derīga.{{else}}Organizators ir atcēlis pasākuma {{.EventName}} norisi{{with .SessionStart}}, kas bija paredzēta {{.}}{{end}}. Jūsu biļete šim pasākumam ieejai vairs nav derīga.{{end}}
+
+Pasākums: {{.EventName}}
+{{with .SessionStart}}Norises laiks: {{.}}
+{{end}}{{with .VenueName}}Norises vieta: {{.}}
+{{end}}{{with .TierName}}Kategorija: {{.}}
+{{end}}{{with .SeatSector}}Sektors: {{.}}
+{{end}}{{with .SeatRow}}Rinda: {{.}}
+{{end}}{{with .SeatNumber}}Vieta: {{.}}
+{{end}}{{with .Change.Message}}
+Organizatora ziņojums:
+{{.}}
+{{end}}
+{{if or .Change.ContactEmail .Change.ContactFormURL}}Lūdzu, rakstiet organizatoram{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}uz {{.Change.ContactEmail}}{{else if .Change.ContactFormURL}}izmantojot veidlapu pārdošanas lapā: {{.Change.ContactFormURL}}{{end}}{{with .Change.ContactPhone}}, tālrunis {{.}}{{end}}, lai uzzinātu par tālākajām darbībām.
+
+{{end}}Biļetes ID: {{.TicketID}}
+{{template "contact_text" .}}Nosūtīts uz: {{.RecipientEmail}}
+
+--
+{{.Branding.SellerLabel}} {{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
+{{end}}{{with .Branding.PaymentLine}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}Kontakti: {{.}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Kontakti: {{.}}
+{{end}}{{end}}
+{{if not .WhiteLabel}}Biļešu apstrādi nodrošina arenasoldout.com — https://arenasoldout.com{{end}}
+
+Ja noklikšķināsiet uz “Atteikties no abonēšanas”, jūs vairs nesaņemsiet e-pastus ar biļetēm un svarīgus e-pastus par pasūtījumu. Mēs nesūtām mārketinga ziņojumus bez jūsu piekrišanas.
+{{end}}

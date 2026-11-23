@@ -1,0 +1,118 @@
+id: bot-change-price
+fps: 30
+# To add a language: add it here, add its text to every narration, title and heading,
+# and put its pictures in captures/<language>/. Nothing else changes.
+languages: [ru, en, es]
+title:
+  ru: "Изменить цену билета"
+  en: "Change the ticket price"
+  es: "Cambiar el precio de la entrada"
+
+# Instruction film about the event-center bot: how to change the price of a ticket category of an event that is on sale.
+# Pictures are made on the staging stand with the test Telegram account in the organization
+# "Luna Events" (see README, "Bot instruction films") and are not committed.
+# Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in apply-in-telegram-bot.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [9x16, 4x5]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-result
+    narration:
+      ru: "Нужно изменить цену билета, когда продажа уже идёт? В боте Arena Sold Out это несколько нажатий."
+      en: "Do you need to change the ticket price while tickets are on sale? In the Arena Sold Out bot it takes some taps."
+      es: "¿Necesitas cambiar el precio de la entrada con la venta ya abierta? En el bot de Arena Sold Out son unos pocos toques."
+    pause_after: 0.4
+    shots:
+      - image: captures/pr_06_confirm.png
+        frame: phone
+        title: { ru: "Новая цена — за минуту", en: "A new price in a minute", es: "Un precio nuevo en un minuto" }
+        scroll: { from: 0.5, to: 0.8 }
+
+  - id: s2-open
+    narration:
+      ru: "Откройте «Мои мероприятия» и выберите мероприятие. Нажмите «Изменить», потом «Категории и цены»."
+      en: "Open «My events» and select the event. Press «Edit», then «Categories and prices»."
+      es: "Abre «Mis eventos» y elige el evento. Pulsa «Editar» y luego «Categorías y precios»."
+    pause_after: 0.6
+    shots:
+      - image: captures/pr_01_card.png
+        frame: phone
+        title: { ru: "Карточка мероприятия → «Изменить»", en: "Event card → «Edit»", es: "Ficha del evento → «Editar»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/pr_02_edit.png
+        frame: phone
+        title: { ru: "«Категории и цены»", en: "«Categories and prices»", es: "«Categorías y precios»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/pr_03_cats.png
+        frame: phone
+        title: { ru: "Категории сеанса", en: "Categories of the session", es: "Categorías de la sesión" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+
+  - id: s3-price
+    narration:
+      ru: "Выберите категорию и нажмите «Цена». Напишите новую сумму и сохраните."
+      en: "Select the category and press «Price». Type the new amount and save it."
+      es: "Elige la categoría y pulsa «Precio». Escribe el nuevo importe y guárdalo."
+    pause_after: 0.6
+    shots:
+      - image: captures/pr_04_cat.png
+        frame: phone
+        title: { ru: "Категория → «Цена»", en: "Category → «Price»", es: "Categoría → «Precio»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/pr_05_ask.png
+        frame: phone
+        title: { ru: "Новая сумма", en: "The new amount", es: "El nuevo importe" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/pr_06_confirm.png
+        frame: phone
+        title: { ru: "«Сохранить цену»", en: "«Save the price»", es: "«Guardar el precio»" }
+        weight: 2
+        scroll: { from: 0.6, to: 1.0 }
+
+  - id: s4-rule
+    narration:
+      ru: "Новая цена действует только для новых покупок. Оплаченные заказы и уже начатые корзины сохраняют свою цену."
+      en: "The new price applies only to new purchases. Paid orders and carts that buyers already started keep their price."
+      es: "El nuevo precio vale solo para las compras nuevas. Los pedidos pagados y los carritos ya iniciados conservan su precio."
+    pause_after: 0.8
+    shots:
+      - image: captures/pr_07_saved.png
+        frame: phone
+        title: { ru: "Цена сохранена", en: "The price is saved", es: "Precio guardado" }
+        scroll: { from: 0.4, to: 0.8 }
+
+  - id: s5-buyer
+    narration:
+      ru: "Покупатель сразу видит новую цену на странице мероприятия."
+      en: "The buyer sees the new price on the event page at once."
+      es: "El comprador ve el nuevo precio en la página del evento al momento."
+    pause_after: 1.2
+    shots:
+      - image: captures/pb_01_full.png
+        frame: phone
+        title: { ru: "Что видит покупатель", en: "What the buyer sees", es: "Lo que ve el comprador" }
+        scroll: { from: 0.0, to: 0.3 }
+
+  - id: cta
+    narration:
+      ru: "Оставьте заявку на arenasoldout.com или в нашем Telegram-боте. Мы ждём вас."
+      en: "Apply at arenasoldout.com or in our Telegram bot. We look forward to working with you."
+      es: "Deja tu solicitud en arenasoldout.com o en nuestro bot de Telegram. Te esperamos."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Оставьте заявку", en: "Apply now", es: "Deja tu solicitud" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"

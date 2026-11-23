@@ -14,8 +14,12 @@ func TestRender_ShopDelivered_EveryLocale(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, loc := range SupportedLocales {
-		if got := r.ResolveLocale(TemplateKindShopOrderDelivered, loc); got != loc {
-			t.Fatalf("%s: resolved to %s", loc, got)
+		if !translated(r, TemplateKindShopOrderDelivered, loc) {
+			// Shop letters are not translated into the L-4 locales: English fallback.
+			if got := r.ResolveLocale(TemplateKindShopOrderDelivered, loc); got != "en" {
+				t.Fatalf("%s: resolved to %s, want the en fallback", loc, got)
+			}
+			continue
 		}
 		out, err := r.Render(TemplateKindShopOrderDelivered, loc, shopTestData())
 		if err != nil {

@@ -16,6 +16,8 @@
 package bil24compat
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -64,6 +66,41 @@ func KnownImportSource(s string) bool {
 	return s == SourceBil24 || s == SourceArena
 }
 
+// NullableString is a JSON string that tells an ABSENT key from an explicit
+// null and from a value: Present is false when the key was not sent, Value is
+// nil for null. Marshalling writes null or the string; with `omitzero` an
+// absent value leaves the key out.
+type NullableString struct {
+	Present bool
+	Value   *string
+}
+
+// UnmarshalJSON records that the key was sent.
+func (n *NullableString) UnmarshalJSON(data []byte) error {
+	n.Present = true
+	if string(data) == "null" {
+		n.Value = nil
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	n.Value = &s
+	return nil
+}
+
+// MarshalJSON writes null or the string.
+func (n NullableString) MarshalJSON() ([]byte, error) {
+	if n.Value == nil {
+		return []byte("null"), nil
+	}
+	return json.Marshal(*n.Value)
+}
+
+// IsZero reports an absent key, for the `omitzero` tag.
+func (n NullableString) IsZero() bool { return !n.Present }
+
 // ImportSessionAction is the Bil24 "action" (arena: event) block.
 type ImportSessionAction struct {
 	ActionID       int64  `json:"actionId"`
@@ -83,6 +120,11 @@ type ImportSessionAction struct {
 	// (the organization itself is the promoter), a UUID names one of the
 	// organization's active promoters. The Bil24-format importer ignores it.
 	PromoterID *string `json:"promoterId"`
+	// ArenaSeriesID is an arena-native event-bundle extension (migration 0222,
+	// source=arena only): absent keeps the event's tour as it is, null or ""
+	// removes the link, a UUID links one of the organization's active tours
+	// (422 import.invalid_series at /action/arenaSeriesId otherwise).
+	ArenaSeriesID NullableString `json:"arenaSeriesId,omitzero"`
 	// EmailNote is an arena-native event-bundle extension (EC-31, migration
 	// 0161, source=arena only): the organizer's own text that the ticket and
 	// session-change letters print under "About the event". Absent or null
@@ -152,6 +194,54 @@ type ImportSessionActionEvent struct {
 	// bundle never re-binds a plan or touches places. Omitted from JSON when
 	// empty, so a general-admission bundle reads exactly as before.
 	ArenaSeatingPlanVersionID string `json:"arenaSeatingPlanVersionId,omitempty"`
+	// ExternalSale (arena extension, source=arena only, migration 0221, spec
+	// 63 §14.4) says a partner box office sells this session's tickets, as
+	// ImportExternalSale. Absent keeps the session's sales mode, null puts it
+	// back on sale on the platform, an object hands it to the partner (the
+	// session then owns no categories). Kept raw so the three cases stay
+	// apart; read it through ParseExternalSale. Omitted from JSON when absent.
+	ExternalSale json.RawMessage `json:"externalSale,omitempty"`
+}
+
+// ImportExternalSale is the object form of actionEvent.externalSale. PriceFrom
+// is in MAJOR currency units, like a category price; price and currency go
+// together or not at all.
+type ImportExternalSale struct {
+	URL        string   `json:"url"`
+	SellerName string   `json:"sellerName"`
+	PriceFrom  *float64 `json:"priceFrom"`
+	Currency   string   `json:"currency"`
+}
+
+// ExternalSaleKind tells the three states of actionEvent.externalSale apart.
+type ExternalSaleKind int
+
+// The states of actionEvent.externalSale.
+const (
+	// ExternalSaleAbsent: the key is missing, the session's mode is kept.
+	ExternalSaleAbsent ExternalSaleKind = iota
+	// ExternalSaleNull: null, the session goes back to sales on the platform.
+	ExternalSaleNull
+	// ExternalSaleObject: an object, the session is sold by a partner.
+	ExternalSaleObject
+)
+
+// ParseExternalSale reads actionEvent.externalSale. A value that is neither
+// null nor an object is an error. The fields are returned as sent; the rules
+// (https, no IP, name length, price/currency pair) are extsale's.
+func (e ImportSessionActionEvent) ParseExternalSale() (ExternalSaleKind, ImportExternalSale, error) {
+	raw := bytes.TrimSpace(e.ExternalSale)
+	if len(raw) == 0 {
+		return ExternalSaleAbsent, ImportExternalSale{}, nil
+	}
+	if bytes.Equal(raw, []byte("null")) {
+		return ExternalSaleNull, ImportExternalSale{}, nil
+	}
+	var s ImportExternalSale
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return ExternalSaleAbsent, ImportExternalSale{}, fmt.Errorf("actionEvent.externalSale must be null or an object with url, sellerName, priceFrom and currency: %w", err)
+	}
+	return ExternalSaleObject, s, nil
 }
 
 // ImportSessionVenue is the Bil24 "venue" block. Timezone is an IANA zone

@@ -1,0 +1,1089 @@
+[
+  {
+    "platform": "TryBooking",
+    "website": "https://www.trybooking.com",
+    "hq_country": "AU",
+    "segment": "community / charity / schools / theatre / council organisers in AU, NZ, UK; all features for every organiser, no tiers",
+    "markets": [
+      {
+        "market": "Australia",
+        "currency": "AUD",
+        "vat_note": "all fees include GST (10%); GST-registered organisers can claim it back",
+        "model": "percent_plus_fixed",
+        "money_flow": "both",
+        "money_flow_notes": "Default: TryBooking collects the card payment and pays the organiser after the event (processing 2.5% included in its fee). Alternative: organiser connects own Stripe account, money settles straight into it; TryBooking then charges 1% processing + A$0.50 per ticket and Stripe bills its own fee (quoted 1.7% + A$0.30) on top.",
+        "plans": [
+          {"name": "Paid tickets (standard)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 2.5, "per_ticket_fixed": 0.50, "min_per_ticket": null, "cap_per_ticket": null, "includes": "All features: unlimited ticket types, custom seating plans, box office app, scanning, white-label, unlimited team members, API, Xero/Stripe/Salesforce integrations", "notes": "A$0.50 per ticket + 2.5% processing"},
+          {"name": "Low-cost tickets (under A$5)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 2.5, "per_ticket_fixed": 0.15, "min_per_ticket": null, "cap_per_ticket": null, "includes": "same", "notes": "A$0.15 + 2.5% for tickets priced under A$5"},
+          {"name": "Free tickets", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "same", "notes": "no platform fee"},
+          {"name": "Own Stripe account", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 1.0, "per_ticket_fixed": 0.50, "min_per_ticket": null, "cap_per_ticket": null, "includes": "same", "notes": "1% processing + A$0.50/ticket, plus Stripe's own fees paid direct to Stripe"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["cards (Visa, Mastercard, Amex)", "Stripe (optional)"], "own_processor_allowed": true, "rate_note": "2.5% processing in standard fee; with own Stripe 1% + Stripe's 1.7% + A$0.30", "platform_extra_processing_fee": "1% when organiser uses own Stripe"},
+        "who_pays_default": "configurable",
+        "free_tickets": "free events and free tickets: A$0 platform fee",
+        "seating": "custom seating plans included at no surcharge",
+        "payouts": "after the event to nominated bank account, schedulable, no transfer fee",
+        "refunds_chargebacks": "not stated on pricing page",
+        "fine_print": ["no setup, monthly or lock-in; fees can be passed to buyers with one toggle (ticket fee and processing fee separately)", "page claims 100 x A$30 tickets: total fees A$125 vs Eventbrite A$307.45 and Humanitix A$240.90 (TryBooking's own comparison, ex-GST caveats)"],
+        "add_ons": [],
+        "enterprise": "sales enquiry form for large events",
+        "sources": [{"url": "https://www.trybooking.com/pricing", "read": "2026-10-09", "what": "AU pricing page and FAQ"}],
+        "confidence": "page"
+      },
+      {
+        "market": "New Zealand",
+        "currency": "NZD",
+        "vat_note": "fees include GST (15%)",
+        "model": "percent_plus_fixed",
+        "money_flow": "both",
+        "money_flow_notes": "Same structure as AU: platform collects and pays out after event by default; own Stripe account possible (1% + NZ$0.50 per ticket + Stripe fees).",
+        "plans": [
+          {"name": "Paid tickets", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 2.5, "per_ticket_fixed": 0.50, "min_per_ticket": null, "cap_per_ticket": null, "includes": "full platform, no tiers", "notes": "no separate low-price band shown on NZ page"},
+          {"name": "Free tickets", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "same", "notes": ""}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["cards", "Stripe (optional)"], "own_processor_allowed": true, "rate_note": "2.5% included; own Stripe 1% + NZ$0.50/ticket + Stripe's 1.7% + $0.30", "platform_extra_processing_fee": "1% with own Stripe"},
+        "who_pays_default": "configurable",
+        "free_tickets": "free",
+        "seating": "custom seating plans included",
+        "payouts": "after the event, no transfer fee",
+        "refunds_chargebacks": "not stated",
+        "fine_print": ["page shows Eventbrite NZ as 4.2% + NZ$0.55 + 2.4% processing and Humanitix 5% + NZ$0.49 (competitor figures as quoted by TryBooking)"],
+        "add_ons": [],
+        "enterprise": "sales enquiry",
+        "sources": [{"url": "https://www.trybooking.com/nz/pricing", "read": "2026-10-09", "what": "NZ pricing page"}],
+        "confidence": "page"
+      },
+      {
+        "market": "United Kingdom",
+        "currency": "GBP",
+        "vat_note": "VAT included in all fees",
+        "model": "percent_plus_fixed",
+        "money_flow": "both",
+        "money_flow_notes": "Two explicit options. 'We handle payments': TryBooking collects, pays out after event. 'You handle payments': connect own Stripe, money lands in organiser's Stripe from first sale, 'we never hold it'; TryBooking charges flat 75p per ticket.",
+        "plans": [
+          {"name": "We handle payments", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 5.0, "per_ticket_fixed": 0.20, "min_per_ticket": null, "cap_per_ticket": null, "includes": "full platform; VAT and card processing included", "notes": "5% processing + 20p per ticket"},
+          {"name": "You handle payments (own Stripe)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 0, "per_ticket_fixed": 0.75, "min_per_ticket": null, "cap_per_ticket": null, "includes": "full platform", "notes": "plus Stripe's own fees (quoted 1.5% + 20p) paid direct"},
+          {"name": "Free tickets", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "full platform", "notes": ""}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["Stripe"], "own_processor_allowed": true, "rate_note": "Stripe UK 1.5% + 20p quoted", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable",
+        "free_tickets": "free",
+        "seating": "custom seating plans included",
+        "payouts": "after the event (platform-handled option); instant into own Stripe (own option)",
+        "refunds_chargebacks": "not stated",
+        "fine_print": ["fees can be passed to buyers only on the 'we handle payments' option", "no subscriptions, no lock-in"],
+        "add_ons": [],
+        "enterprise": "sales enquiry",
+        "sources": [{"url": "https://www.trybooking.com/uk/pricing", "read": "2026-10-09", "what": "UK pricing page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Most relevant AU/NZ/UK benchmark for Arena's direct-merchant model: own-Stripe option costs 75p (UK) / A$0.50 + 1% (AU) per ticket."
+  },
+  {
+    "platform": "Eventfinda Ticketing",
+    "website": "https://www.eventfinda.co.nz/ticketing/",
+    "hq_country": "NZ",
+    "segment": "NZ venues, promoters, festivals; marketing platform + ticketing; sister sites in AU and SG",
+    "markets": [
+      {
+        "market": "New Zealand",
+        "currency": "NZD",
+        "vat_note": "fees include GST (calculator says 'Includes GST')",
+        "model": "mixed",
+        "money_flow": "collecting",
+        "money_flow_notes": "Platform sells and settles to the promoter ('Estimated Settlement' in calculator); payout timing not stated on pages read.",
+        "plans": [
+          {"name": "Promoter service fee by price band", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": 1.00, "cap_per_ticket": 20.00, "includes": "set-up, maintenance, promo codes, marketing tools free", "notes": "NZ$0.01-14.00 -> $1.00; 14.01-19.00 -> $1.25; 19.01-24.00 -> $1.50; 24.01-99.00 -> $1.75; 99.01+ -> 3% capped at $20 per ticket"},
+          {"name": "Customer booking fee by price band (charged to buyer)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": 0, "cap_per_ticket": null, "includes": "", "notes": "0.01-14.00 -> $0; 14.01-19.00 -> $1.20; 19.01-24.00 -> $2.75; 24.01-99.00 -> $3.30; 99.01+ -> $3.85"}
+        ],
+        "prepaid": [],
+        "processing": {"included": false, "processors": ["not named"], "own_processor_allowed": null, "rate_note": "card processing fee 2.5%, promoter may absorb or pass on to buyer", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable",
+        "free_tickets": "free to use for free events, no sign-up fees; complimentary tickets no extra cost up to 30% of sold ticket volume",
+        "seating": "seating maps listed as a feature; surcharge not stated",
+        "payouts": "not stated on pages read",
+        "refunds_chargebacks": "not stated",
+        "fine_print": ["standard arrangement: buyer pays booking fee, promoter pays service fee + typically passes on 2.5% card fee", "customer can be made to pay promoter service fee too via email request", "charity discount/donation options mentioned but not detailed", "large events: custom quote"],
+        "add_ons": [{"name": "Eventfinda Connect listing/marketing plans", "price": "plans exist, not read"}, {"name": "White label ticketing", "price": "not published"}],
+        "enterprise": "custom quote for large events",
+        "sources": [{"url": "https://www.eventfinda.co.nz/ticketing/pricing/", "read": "2026-10-09", "what": "pricing page"}, {"url": "https://support.eventfinda.co.nz/hc/en-gb/articles/360002169456-Ticketing-Fees", "read": "2026-10-09", "what": "fees help article with both tables"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Australia (eventfinda.com.au) and Singapore (eventfinda.sg) variants exist; not read."
+  },
+  {
+    "platform": "Ticketebo",
+    "website": "https://www.ticketebo.com.au",
+    "hq_country": "AU",
+    "segment": "managed (not DIY) ticketing for AU/UK organisers incl. charities, expos; booking fee charged per ORDER not per ticket",
+    "markets": [
+      {
+        "market": "Australia",
+        "currency": "AUD",
+        "vat_note": "4% is GST-inclusive",
+        "model": "percent",
+        "money_flow": "both",
+        "money_flow_notes": "Default: Ticketebo collects (eWAY gateway) and pays net funds the business day after organiser approves final sales report (Monday after event). Optional Stripe Payments integration lets organiser access funds during the campaign (own Stripe account, extra Stripe fees; Ticketebo gives a 'Stripe credit' of 20% of its booking fee).",
+        "plans": [{"name": "Booking fee", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 4.0, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "online + gate ticketing, scanning app, expert support, card fees covered", "notes": "4% of ORDER value, minimum A$1.20 per order (not per ticket); typically paid by patron; organiser can absorb"}],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["eWAY", "Stripe (optional)"], "own_processor_allowed": true, "rate_note": "no extra card surcharge; Stripe fees extra if Stripe route", "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer",
+        "free_tickets": "not stated on AU page (UK page: free events free)",
+        "seating": "not stated",
+        "payouts": "end of event, next business day after approval; earlier via Stripe",
+        "refunds_chargebacks": "Oztix-style booking fee non-refund is not stated here",
+        "fine_print": ["registered charities: Ticketebo donates 10% of its booking fee back", "premium services (box office staff, device hire, contact centre, printed tickets, festival layer) are extra and priced on request"],
+        "add_ons": [{"name": "entry staff, device hire, printed tickets, contact centre", "price": "contact sales"}],
+        "enterprise": "premium services by quote",
+        "sources": [{"url": "https://www.ticketebo.com.au/pricing", "read": "2026-10-09", "what": "AU pricing page"}],
+        "confidence": "page"
+      },
+      {
+        "market": "United Kingdom",
+        "currency": "GBP",
+        "vat_note": "4.95% and 75p are VAT-inclusive",
+        "model": "percent",
+        "money_flow": "both",
+        "money_flow_notes": "Same as AU: collects and pays after event; Stripe route possible.",
+        "plans": [{"name": "Booking fee", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 4.95, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "card fees covered", "notes": "4.95% of total transaction value, minimum 75p per transaction; no per-ticket fee"}],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["not named", "Stripe (optional)"], "own_processor_allowed": true, "rate_note": "none extra", "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer",
+        "free_tickets": "free events free for organiser and consumer",
+        "seating": "not stated",
+        "payouts": "after event; Monday sales report, paid next business day after approval",
+        "refunds_chargebacks": "not stated",
+        "fine_print": ["no registration, set-up or monthly fees", "premium services extra"],
+        "add_ons": [],
+        "enterprise": "contact for premium services",
+        "sources": [{"url": "https://www.ticketebo.co.uk/pricing", "read": "2026-10-09", "what": "UK pricing page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Order-based (not ticket-based) fee: favours multi-ticket orders."
+  },
+  {
+    "platform": "Oztix",
+    "website": "https://www.oztix.com.au",
+    "hq_country": "AU",
+    "segment": "Australia's largest independent ticketer, live music / festivals; venue and promoter partnerships",
+    "markets": [
+      {
+        "market": "Australia",
+        "currency": "AUD",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_notes": "Acts as agent for the Presenter and settles to them (terms not read in full).",
+        "plans": [],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": "buyer terms (snippet): on an authorised refund Oztix returns ticket price and refunds the booking fee / handling fee only if the Presenter instructs it to",
+        "fine_print": ["/pricing page returned only a title; no public organiser fee schedule found", "buyer-side booking fee example in a consumer complaint: A$18.10 (reddit, not authoritative)"],
+        "add_ons": [],
+        "enterprise": "contact sales / partnership model; price not public",
+        "sources": [{"url": "https://www.oztix.com.au/pricing", "read": "2026-10-09", "what": "page with no content"}, {"url": "https://tickets.oztix.com.au/outlet/terms/8b8e9c26-e4ae-4f87-9482-922c5bab7398", "read": "2026-10-09", "what": "customer terms snippet from search"}],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "No public organiser pricing."
+  },
+  {
+    "platform": "Moshtix (Ticketmaster/Live Nation company)",
+    "website": "https://business.moshtix.com",
+    "hq_country": "AU",
+    "segment": "live music venues, independent promoters, festivals in AU/NZ/SG; self-service Control Room or managed",
+    "markets": [
+      {
+        "market": "Australia / New Zealand",
+        "currency": "AUD",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_notes": "Sells tickets on behalf of organisers; settlement terms not published.",
+        "plans": [],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["organiser site says 'start selling in 5 minutes using the DIY Control Room' or contact the team; no fee figures published", "buyer pages say booking/service fees vary by event and ticket price"],
+        "add_ons": [],
+        "enterprise": "contact sales; price not public",
+        "sources": [{"url": "https://selltix.moshtix.com/sell-tickets", "read": "2026-10-09", "what": "organiser landing page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "No public organiser fee schedule."
+  },
+  {
+    "platform": "EventBookings (Hong Kong variant)",
+    "website": "https://www.eventbookings.com",
+    "hq_country": "AU",
+    "segment": "self-serve ticketing/registration, global country sites; HK page read",
+    "markets": [
+      {
+        "market": "Hong Kong",
+        "currency": "HKD",
+        "vat_note": null,
+        "model": "percent_plus_fixed",
+        "money_flow": "both",
+        "money_flow_notes": "Organiser connects Stripe, PayPal or PayFast (help articles listed) so money goes to organiser's own account; fee mechanics (invoice vs split) not read.",
+        "plans": [
+          {"name": "Service charge per ticket (HK)", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 1.0, "per_ticket_fixed": 1.0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "Basic subscription: first 300 tickets free, then flat HK$1.00 per ticket with no percentage", "notes": "HK$1.0 + 1.0% per ticket sold; the default (non-HK) page shows 30 cents + 2.5%"},
+          {"name": "Lite Org", "monthly_fee": 190, "annual_fee": 1814, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "700 free tickets/event allocation; higher limits", "notes": "currency shown as '$' on the HK page, unclear whether HKD"},
+          {"name": "Standard Org", "monthly_fee": 379, "annual_fee": 3663, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "1,000 free tickets/event", "notes": ""},
+          {"name": "Flexible Org", "monthly_fee": 768, "annual_fee": 7351, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "1,500 free tickets/event", "notes": ""}
+        ],
+        "prepaid": [],
+        "processing": {"included": false, "processors": ["Stripe", "PayPal", "PayFast"], "own_processor_allowed": true, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable",
+        "free_tickets": "free allocation by plan: Basic 300, Lite 700, Standard 1000, Flexible 1500 tickets; after that HK$1 flat per ticket; free/100%-discount tickets cost HK$1.00",
+        "seating": "not stated",
+        "payouts": "not read",
+        "refunds_chargebacks": "not read",
+        "fine_print": ["full fee also applies to complimentary and at-venue tickets", "Premium event one-off upgrades: Lite $62, Standard $128, Flexible $251", "add-ons: My Team/Survey/API $263/mo each, Event Website Professional $151/mo, Premium $1,756/mo, email pack 50k $526"],
+        "add_ons": [{"name": "API add-on", "price": "263 per month / 2,527 per year"}],
+        "enterprise": "Enterprise: contact for price",
+        "sources": [{"url": "https://support.eventbookings.com/en-hk/service-fees/", "read": "2026-10-09", "what": "HK service fee page"}, {"url": "https://support.eventbookings.com/en-hk/premium-features/", "read": "2026-10-09", "what": "HK premium plans"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Likely also covered by another collector (AU-based, many country sites; selector lists ~60 countries incl. KR, TW, TH, PH, MY, ID, IN, JP, SG, AE, QA, SA)."
+  },
+  {
+    "platform": "Peatix",
+    "website": "https://peatix.com",
+    "hq_country": "US",
+    "segment": "community / workshop / small-event organisers worldwide, strong in Japan and Southeast Asia; buyer pays no booking fee",
+    "markets": [
+      {
+        "market": "Japan",
+        "currency": "JPY",
+        "vat_note": "processing and transfer fees not subject to Japanese consumption tax (provided by US entity)",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_notes": "Peatix collects (all payment processing included) and pays out within 5 business days after the event ends, never before the end date; wire to a Japanese bank account. Transfer fee 210 JPY per payout. Cancelling an event can incur a cancellation fee.",
+        "plans": [{"name": "Ticketing fee", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 4.9, "per_ticket_fixed": 99, "min_per_ticket": null, "cap_per_ticket": null, "includes": "all card processing; buyer pays only ticket price", "notes": "4.9% + 99 JPY per paid ticket"}],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["not named"], "own_processor_allowed": false, "rate_note": "included", "platform_extra_processing_fee": null},
+        "who_pays_default": "organiser",
+        "free_tickets": "no fee for events with only free tickets; free tickets in mixed events not charged; paid ticket made free by discount code not charged",
+        "seating": "not stated",
+        "payouts": "within 5 business days after event end; JPY 210 transfer fee per payout",
+        "refunds_chargebacks": "not stated",
+        "fine_print": ["Peatix Live (streaming) adds a per-ticket live fee in JP/SG/MY; a search snippet shows an SG example of 5% ticketing fee + SGD 2 per ticket live fee (snippet only)", "China: free tickets only"],
+        "add_ons": [{"name": "Peatix Live streaming", "price": "extra fee on top of ticketing fee; see help-organizer article"}],
+        "enterprise": null,
+        "sources": [{"url": "https://help-organizer.peatix.com/en/support/solutions/articles/44001821779-peatix-pricing", "read": "2026-10-09", "what": "global fee table"}, {"url": "https://help-organizer.peatix.com/en/support/solutions/articles/44001821780-how-to-receive-the-ticket-sales-for-your-event", "read": "2026-10-09", "what": "payout rules"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Singapore",
+        "currency": "SGD",
+        "vat_note": null,
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_notes": "Wire transfer to Singapore bank account within 5 business days after event.",
+        "plans": [{"name": "Ticketing fee", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 4.9, "per_ticket_fixed": 0.99, "min_per_ticket": null, "cap_per_ticket": null, "includes": "processing included", "notes": ""}],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "included", "platform_extra_processing_fee": null},
+        "who_pays_default": "organiser",
+        "free_tickets": "free",
+        "seating": null,
+        "payouts": "5 business days after event end",
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://help-organizer.peatix.com/en/support/solutions/articles/44001821779-peatix-pricing", "read": "2026-10-09", "what": "fee table"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Other APAC (MY, ID, IN, KR, TW, TH, PH, VN, NZ)",
+        "currency": "MYR / USD / TWD / THB / PHP / NZD (per country)",
+        "vat_note": null,
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_notes": "Payout to organiser's PayPal for all these countries (bank wire only JP and SG); no international transfer service.",
+        "plans": [
+          {"name": "Malaysia", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 4.9, "per_ticket_fixed": 1.99, "min_per_ticket": null, "cap_per_ticket": null, "includes": "", "notes": "MYR 1.99; from 1 June 2026 new MY events switch to USD with 4.9% + USD 0.50"},
+          {"name": "India, Indonesia, South Korea, Vietnam", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 4.9, "per_ticket_fixed": 1.50, "min_per_ticket": null, "cap_per_ticket": null, "includes": "", "notes": "tickets and payout in USD"},
+          {"name": "Taiwan", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 4.9, "per_ticket_fixed": 35, "min_per_ticket": null, "cap_per_ticket": null, "includes": "", "notes": "TWD 35"},
+          {"name": "Thailand", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 4.9, "per_ticket_fixed": 35, "min_per_ticket": null, "cap_per_ticket": null, "includes": "", "notes": "THB 35"},
+          {"name": "Philippines", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 4.9, "per_ticket_fixed": 50, "min_per_ticket": null, "cap_per_ticket": null, "includes": "", "notes": "PHP 50"},
+          {"name": "New Zealand", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 4.9, "per_ticket_fixed": 1.50, "min_per_ticket": null, "cap_per_ticket": null, "includes": "", "notes": "NZD 1.50"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "included in 4.9% + fixed", "platform_extra_processing_fee": null},
+        "who_pays_default": "organiser",
+        "free_tickets": "free",
+        "seating": null,
+        "payouts": "within 5 business days after event end, via PayPal",
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://help-organizer.peatix.com/en/support/solutions/articles/44001821779-peatix-pricing", "read": "2026-10-09", "what": "fee table"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Europe / UK (AT, BE, FR, DE, IE, IT, LU, NL, ES, UK)",
+        "currency": "EUR / GBP",
+        "vat_note": null,
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_notes": "Payout via PayPal after the event.",
+        "plans": [{"name": "Ticketing fee", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 4.9, "per_ticket_fixed": 0.99, "min_per_ticket": null, "cap_per_ticket": null, "includes": "processing included", "notes": "EUR 0.99 or GBP 0.99"}],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "included", "platform_extra_processing_fee": null},
+        "who_pays_default": "organiser",
+        "free_tickets": "free",
+        "seating": null,
+        "payouts": "within 5 business days after event, PayPal",
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://help-organizer.peatix.com/en/support/solutions/articles/44001821779-peatix-pricing", "read": "2026-10-09", "what": "fee table"}],
+        "confidence": "page"
+      },
+      {
+        "market": "United States",
+        "currency": "USD",
+        "vat_note": null,
+        "model": "percent",
+        "money_flow": "direct_merchant",
+        "money_flow_notes": "Per third-party summary: 5% platform fee plus Stripe card fee (about 2.9% + 30c). Peatix's own US pricing page could not be read; not confirmed whether money settles in the organiser's own Stripe account.",
+        "plans": [{"name": "US", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 5.0, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "", "notes": "plus Stripe fee"}],
+        "prepaid": [],
+        "processing": {"included": false, "processors": ["Stripe"], "own_processor_allowed": null, "rate_note": "about 2.9% + 30c", "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": "no fee",
+        "seating": null,
+        "payouts": "not stated",
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://tixfox.co/blog/peatix-fees", "read": "2026-10-09", "what": "competitor (TixFox) summary of Peatix fees"}],
+        "confidence": "third_party"
+      }
+    ],
+    "notes": "Flat global schedule 4.9% + local fixed amount, processing included, no subscription."
+  },
+  {
+    "platform": "teket",
+    "website": "https://teket.jp",
+    "hq_country": "JP",
+    "segment": "Japanese halls, theatres, orchestras, culture events; strong on reserved seats",
+    "markets": [
+      {
+        "market": "Japan",
+        "currency": "JPY",
+        "vat_note": "not stated whether consumption tax is included",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_notes": "Pays ticket proceeds to registered bank account (sales proceeds transfer section in help centre); timing not read.",
+        "plans": [
+          {"name": "Paid, free-seating or live-stream", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 8.0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "issuing fee 0 JPY", "notes": "8% of sales"},
+          {"name": "Paid, reserved seats", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 10.0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "issuing fee 0 JPY", "notes": "10% of sales"},
+          {"name": "Free events", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "", "notes": "completely free, unlimited events"}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": ["credit card", "convenience store"], "own_processor_allowed": false, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "organiser",
+        "free_tickets": "free events cost nothing; coupon-zeroed tickets are not charged",
+        "seating": "reserved seat events 10% instead of 8% (+2 points)",
+        "payouts": "bank transfer; one comparison site lists a 220 JPY transfer fee (third party)",
+        "refunds_chargebacks": null,
+        "fine_print": ["buyer pays 0 JPY extra per ticket according to third-party comparison"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://help.teket.jp/hc/ja/articles/360031108231", "read": "2026-10-09", "what": "help article on fees (Japanese)"}, {"url": "https://ticket-mikata.com/passmarket-ikou/", "read": "2026-10-09", "what": "third-party comparison with transfer fee"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "platform": "LivePocket",
+    "website": "https://livepocket.jp",
+    "hq_country": "JP",
+    "segment": "Japanese self-serve e-ticketing for live houses, idols, events; no screening",
+    "markets": [
+      {
+        "market": "Japan",
+        "currency": "JPY",
+        "vat_note": "transfer fee quoted excl. tax (500 JPY) on the official page; system fee 165 JPY incl. tax",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_notes": "LivePocket collects and pays twice a month: sales settled from event end date; events ending on the 1st-15th settle on the 16th and pay at month end, 16th-end settle next 1st and pay on the 15th. Transfer fee 500 JPY (excl. tax) per payout, deducted.",
+        "plans": [{"name": "Sales fee", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 5.0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "no setup, no monthly, no event registration fee", "notes": "can be set to buyer-borne, making organiser's fee 0"}],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["credit card", "convenience store", "atone deferred payment"], "own_processor_allowed": false, "rate_note": "buyer-paid extras: convenience store 200 JPY (<50,000) or 400 JPY (>=50,000) excl. tax; atone deferred 200 JPY", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable",
+        "free_tickets": "free ticket 0%",
+        "seating": "reserved seats and paper tickets are available (third-party note), no separate surcharge shown",
+        "payouts": "twice monthly, 3 business days after settlement date statement; refunds deducted",
+        "refunds_chargebacks": "refunded amounts deducted from payout",
+        "fine_print": ["paid tickets carry a buyer system fee of 165 JPY incl. tax on top (per ticket count)", "buyer-borne mode adds 5% purchase fee for buyer"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://livepocket.jp/owner/sell_commission/", "read": "2026-10-09", "what": "official fee page (Japanese)"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Official page compares itself with consignment play-guides (10% sales fee + 10,000 JPY registration)."
+  },
+  {
+    "platform": "TIGET",
+    "website": "https://tiget.net",
+    "hq_country": "JP",
+    "segment": "live houses, idols, small venues; strong SNS integration; also consignment (box-office back office) service",
+    "markets": [
+      {
+        "market": "Japan",
+        "currency": "JPY",
+        "vat_note": "5.5% quoted excl. tax in one source",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_notes": "Payout after the event by bank transfer (monthly cycle per a third-party review); transfer fee 550 JPY per third-party comparison.",
+        "plans": [
+          {"name": "Self-serve, organiser pays", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 5.5, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "free for free tickets/reservations", "notes": "5.5% selectable organiser- or buyer-borne; buyer-borne makes organiser fee 0"},
+          {"name": "Self-serve with live streaming", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 11.0, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "streaming fee applies", "notes": "snippet: 'live streaming fee arises, sales fee becomes 11%'"},
+          {"name": "Consignment sales (back-office service)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 8.0, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "minimum guarantee applies", "notes": "snippet only"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["credit card", "convenience store"], "own_processor_allowed": false, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable",
+        "free_tickets": "free for free tickets and reservations",
+        "seating": "reserved seat function exists; surcharge not confirmed",
+        "payouts": "after event; 550 JPY transfer fee (third party)",
+        "refunds_chargebacks": null,
+        "fine_print": ["if buyer pays, third party shows about 319 JPY per ticket for a 3,000 JPY ticket (5.5% plus system fee)", "'artist support plan' with 0% organiser sales fee was announced on X in 2021 (snippet)"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://ticket-mikata.com/passmarket-ikou/", "read": "2026-10-09", "what": "third-party fee comparison dated 2026-09"}, {"url": "https://ticketing-lab.jp/services/tiget/", "read": "2026-10-09", "what": "third-party review"}, {"url": "https://help.tiget.net/organizer/post/start-sales-fees", "read": "2026-10-09", "what": "official help page, content not extractable (search snippet only)"}],
+        "confidence": "third_party"
+      }
+    ],
+    "notes": "Official pages (help.tiget.net, biz.tiget.net/tiget_price) returned truncated content through the scraper."
+  },
+  {
+    "platform": "PassMarket (Yahoo! JAPAN)",
+    "website": "https://passmarket.yahoo.co.jp",
+    "hq_country": "JP",
+    "segment": "was the cheapest Japanese e-ticket service; CLOSED",
+    "markets": [
+      {
+        "market": "Japan",
+        "currency": "JPY",
+        "vat_note": "3.564% was tax-inclusive",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_notes": "Service shut down 2026-06-30, organiser tools 2026-08-31; page now shows termination notice.",
+        "plans": [{"name": "Basic plan (former)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 3.564, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "transfer fee 0, buyer fee 0 (card/PayPay)", "notes": "no longer offered"}],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "organiser",
+        "free_tickets": "free",
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["benchmark: former 3.564% sets Japanese expectations; migrating organisers pay more elsewhere"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://passmarket.yahoo.co.jp/", "read": "2026-10-09", "what": "termination notice"}, {"url": "https://ticket-mikata.com/passmarket-ikou/", "read": "2026-10-09", "what": "former fee and closing dates"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Closed; useful only as price anchor."
+  },
+  {
+    "platform": "Ticket2U",
+    "website": "https://www.ticket2u.com.my",
+    "hq_country": "MY",
+    "segment": "Malaysian concerts, seminars, sports; also SG, ID, TH sites; verified organisers only",
+    "markets": [
+      {
+        "market": "Malaysia",
+        "currency": "MYR",
+        "vat_note": "buyer-side tax line shown in calculator (SST), amount not stated",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_notes": "Collects, then default payout within 14 working days after event; bi-weekly (14th/28th) or monthly (28th) with a signed payout agreement; exclusive 2-year sub-account merchants get direct payout (direct_merchant) - certain event types only.",
+        "plans": [
+          {"name": "Standard fee (per event)", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 5.0, "per_ticket_fixed": null, "min_per_ticket": 2.0, "cap_per_ticket": null, "includes": "zero setup, e-ticket + QR, advanced settings, organiser app, check-in manager", "notes": "page shows '6% 5%' (6% apparently struck through after a rate cut); 'or min RM2/ticket whichever higher'; 2020 LinkedIn post said 6% or RM2"},
+          {"name": "Terms fee (exclusive 1 year, volume over 1 million)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 4.0, "per_ticket_fixed": null, "min_per_ticket": 2.0, "cap_per_ticket": null, "includes": "", "notes": "shown as '5% 4%'"},
+          {"name": "High volume fee (exclusive 2 years, volume over 5 million)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 3.0, "per_ticket_fixed": null, "min_per_ticket": 2.0, "cap_per_ticket": null, "includes": "", "notes": "shown as '4% 3%'"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["FPX", "Visa/Mastercard", "debit", "e-wallets", "7-Eleven counter", "BNPL"], "own_processor_allowed": false, "rate_note": "no processing fee imposed on any party", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable",
+        "free_tickets": "free events free; advanced settings, apps only for paid events; extra SMS/WhatsApp/email notifications charged",
+        "seating": "seating chart, seat holding, table management listed as included advanced settings (paid events); custom seating chart setup 'contact us'",
+        "payouts": "see money_flow_notes; ad-hoc payout needs RM500,000 sales",
+        "refunds_chargebacks": "not stated",
+        "fine_print": ["fee-pass modes: pass on to buyer, absorb, or split (e.g. 2%:3%)", "NGO / charity event -1% (needs certificate, exclusive event with Ticket2U logo on all marketing)", "scanner and kiosk rental, facial recognition, lucky draw etc. on request", "page is a 'beta' with verified organisers only"],
+        "add_ons": [{"name": "handheld scanner rental, kiosk, crew", "price": "contact"}],
+        "enterprise": "contract fee tiers above; sub-account direct payout by agreement",
+        "sources": [{"url": "https://www.ticket2u.com.my/fee", "read": "2026-10-09", "what": "official fee page"}, {"url": "https://www.linkedin.com/pulse/flexible-rates-ticket2u-event-organiser-yc-chia", "read": "2026-10-09", "what": "snippet of 2020 post (6% or RM2)"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Strike-through not visible in scraped text, so the 5% vs 6% reading is an inference; verify before quoting."
+  },
+  {
+    "platform": "Goers (GOERS YES)",
+    "website": "https://www.goersapp.com",
+    "hq_country": "ID",
+    "segment": "Indonesian events, attractions, festivals; offers ticketing, POS, cashless",
+    "markets": [
+      {
+        "market": "Indonesia",
+        "currency": "IDR",
+        "vat_note": "taxes extra: buyer prices 'exclude tax and admin fee' per event listings",
+        "model": "mixed",
+        "money_flow": "collecting",
+        "money_flow_notes": "Platform collects; organiser may withdraw up to 70% of ticket sales before the event ends.",
+        "plans": [
+          {"name": "Lite", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "max 3,000 tickets (paid + free) per event; basic features", "notes": "IDR 1,999,999 per EVENT, paid upfront, no commission"},
+          {"name": "Pro", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 5.0, "per_ticket_fixed": null, "min_per_ticket": 3000, "cap_per_ticket": null, "includes": "unlimited paid and free tickets; virtual/hybrid events", "notes": "5% commission, minimum IDR 3,000 per ticket"},
+          {"name": "Ultimate", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "flexible who-bears-fee, large events", "notes": "contact for quote"}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": false, "rate_note": "buyer sees 'GOERS handling fee and bank fee' on top", "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer",
+        "free_tickets": "counted inside Lite's 3,000-ticket cap",
+        "seating": "not stated",
+        "payouts": "up to 70% advance before event end",
+        "refunds_chargebacks": "not stated",
+        "fine_print": ["'* = extra charges' footnotes on both plans without detail", "POS, manpower, ID badge etc. priced separately (ID badge from IDR 5,000; manpower from IDR 500,000 per person)"],
+        "add_ons": [{"name": "ID badge", "price": "from IDR 5,000"}, {"name": "manpower", "price": "from IDR 500,000 per person"}],
+        "enterprise": "Ultimate by quote",
+        "sources": [{"url": "https://www.goersapp.com/yes/", "read": "2026-10-09", "what": "GOERS YES plans"}, {"url": "https://www.goersapp.com/blog/layanan-goers/", "read": "2026-10-09", "what": "plan explainer, March 2025"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Rare per-event flat fee (Lite) rather than per-ticket."
+  },
+  {
+    "platform": "Megatix",
+    "website": "https://megatix.asia",
+    "hq_country": "SG",
+    "segment": "APAC events, venues, attractions; sites for AU, HK, ID, JP, MY, NZ, SG, TW, TH, UK, VN, EU",
+    "markets": [
+      {
+        "market": "Asia-Pacific (all country sites)",
+        "currency": null,
+        "vat_note": null,
+        "model": "free_buyer_pays",
+        "money_flow": "collecting",
+        "money_flow_notes": "Platform settles to organiser; 'settlement arrangements clearly set out from the start', tailored arrangements for large/recurring events; terms not published.",
+        "plans": [{"name": "Standard", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "full feature set, reserved seating, own-site embedding, buyer data ownership", "notes": "free for organisers, ticket buyers pay the fees; no numbers published"}],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer",
+        "free_tickets": "free events always free for organisers and attendees",
+        "seating": "reserved seating supported; surcharge not stated",
+        "payouts": "not published",
+        "refunds_chargebacks": null,
+        "fine_print": ["fees can be passed to buyers, included in price, or absorbed", "tailored pricing for high-volume venues/attractions", "a third-party snippet (Seeka) mentions '$29 per month plus $0.006 per session' for an unclear product - not verified"],
+        "add_ons": [],
+        "enterprise": "tailored pricing, contact team",
+        "sources": [{"url": "https://megatix.com.au/sell-tickets", "read": "2026-10-09", "what": "organiser page (AU)"}, {"url": "https://megatix.asia/sell-tickets", "read": "2026-10-09", "what": "organiser page (Asia)"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "No fee percentages published on the organiser pages."
+  },
+  {
+    "platform": "EventNook",
+    "website": "https://www.eventnook.com",
+    "hq_country": "SG",
+    "segment": "corporate / association events, conferences; registration, check-in and badge printing; not a consumer marketplace",
+    "markets": [
+      {
+        "market": "Global (SG-based)",
+        "currency": "USD",
+        "vat_note": null,
+        "model": "subscription",
+        "money_flow": "direct_merchant",
+        "money_flow_notes": "Payments run through Stripe, PayPal, Omise or offline; EventNook takes 0% commission on ticket sales and earns from annual/event plans.",
+        "plans": [
+          {"name": "Registration (annual)", "monthly_fee": null, "annual_fee": 2400, "per_ticket_percent": 0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "branded event site, registration, ticketing, payment, emails", "notes": "'From USD 2,400 per year'"},
+          {"name": "Onsite registration (per event)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "check-in, badge printing, onsite team", "notes": "'From USD 1,200 per event'"}
+        ],
+        "prepaid": [],
+        "processing": {"included": false, "processors": ["Stripe", "PayPal", "Omise", "offline"], "own_processor_allowed": true, "rate_note": "processor fees paid by organiser", "platform_extra_processing_fee": null},
+        "who_pays_default": "organiser",
+        "free_tickets": "not stated",
+        "seating": "not stated",
+        "payouts": "direct to organiser's processor",
+        "refunds_chargebacks": null,
+        "fine_print": ["single-event plan quoted on expected registrations", "modules (WhatsApp/SMS notices, app, AI site builder FlowAI) priced separately"],
+        "add_ons": [{"name": "NookPass app, FlowAI site builder", "price": "quoted"}],
+        "enterprise": "Enterprise and support plans by quote",
+        "sources": [{"url": "https://www.eventnook.com/p/pricing", "read": "2026-10-09", "what": "pricing page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Subscription, zero-commission model; corporate segment, not a direct competitor for public ticket sales."
+  },
+  {
+    "platform": "Ticketmelon",
+    "website": "https://organizer.ticketmelon.com",
+    "hq_country": "TH",
+    "segment": "Thai (and SEA) concerts, festivals, fanmeets; payment gateway + service fee model",
+    "markets": [
+      {
+        "market": "Thailand / SEA",
+        "currency": "THB",
+        "vat_note": null,
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_notes": "Payout by request through the organiser dashboard; timing not published.",
+        "plans": [],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": "organiser can absorb all fees, pass all to buyers, or split in 0.5% steps (fee = payment gateway + Ticketmelon service fee)", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "payout request flow exists; schedule not published",
+        "refunds_chargebacks": null,
+        "fine_print": ["no public fee percentage found; site described as 'dynamic pricing system' and contact-based; the /others/pricing page returned 404"],
+        "add_ons": [],
+        "enterprise": "contact sales",
+        "sources": [{"url": "https://organizer.ticketmelon.com/help-center/who-pays-the-fees-of-your-event", "read": "2026-10-09", "what": "who-pays help page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Fee numbers not public."
+  },
+  {
+    "platform": "Townscript",
+    "website": "https://www.townscript.com",
+    "hq_country": "IN",
+    "segment": "Indian workshops, meetups, treks, conferences; pay-per-ticket",
+    "markets": [
+      {
+        "market": "India",
+        "currency": "INR",
+        "vat_note": "18% GST on Townscript fee and gateway fee; GST-registered organisers see 1% of ticket price withheld and filed on GSTIN (TCS)",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_notes": "Townscript collects through its gateway and pays the organiser net; 1% TCS withheld for GST-registered organisers.",
+        "plans": [{"name": "Pay per ticket (support article, 2023)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 1.99, "per_ticket_fixed": 10, "min_per_ticket": null, "cap_per_ticket": null, "includes": "no setup", "notes": "1.99% + Rs.10 Townscript fee, plus 1.99% payment gateway fee, plus 2% buyer platform fee; all + 18% GST"}],
+        "prepaid": [],
+        "processing": {"included": false, "processors": ["own gateway"], "own_processor_allowed": null, "rate_note": "gateway 1.99% (domestic)", "platform_extra_processing_fee": "2% platform fee charged to attendee"},
+        "who_pays_default": "configurable",
+        "free_tickets": "free events no charge (snippet)",
+        "seating": null,
+        "payouts": "not read",
+        "refunds_chargebacks": null,
+        "fine_print": ["current pricing page text could not be scraped; its search snippet reads 'Townscript fee 3% / 2% + 0 per ticket, payment gateway fee 2%' - ambiguous", "a competitor (KonfHub) claims Townscript is 6% + INR 10 per paid ticket - unverified", "international: third-party sources say 1.99% + USD 2 per ticket"],
+        "add_ons": [],
+        "enterprise": "contact (phone listed)",
+        "sources": [{"url": "https://support.townscript.com/support/solutions/articles/1000098920-how-much-are-townscript-charges-", "read": "2026-10-09", "what": "support article dated 2023-09"}, {"url": "https://www.townscript.com/pricing", "read": "2026-10-09", "what": "pricing page (JS, snippet only)"}],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "Numbers conflict across dates; treat as roughly 3-6% all-in."
+  },
+  {
+    "platform": "KonfHub",
+    "website": "https://konfhub.com",
+    "hq_country": "IN",
+    "segment": "tech conferences, meetups, workshops in India with international currencies via Razorpay; per-event plans",
+    "markets": [
+      {
+        "market": "India",
+        "currency": "INR",
+        "vat_note": "18% GST on KonfHub fee and gateway fee",
+        "model": "mixed",
+        "money_flow": "collecting",
+        "money_flow_notes": "Automated weekly settlements every Thursday to the organiser's bank account via Razorpay; the site also has Stripe and Tap Payments pages (not read), so a direct option may exist.",
+        "plans": [
+          {"name": "Freemium", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "free tickets only, up to 100 registrations per event", "notes": ""},
+          {"name": "Lite", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 2.0, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "up to 300 registrations, UPI only", "notes": "2% + 18% GST"},
+          {"name": "Silver (default)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 3.75, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "up to 2,500 registrations, all payment methods, ticket categories, webhooks, API", "notes": "3.75% + 18% GST inclusive of payment gateway; non-INR tickets 5% + GST"},
+          {"name": "Gold", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "unlimited, white-label, custom sender, event app", "notes": "custom"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["Razorpay"], "own_processor_allowed": null, "rate_note": "gateway typically 2-3% included in Silver", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable",
+        "free_tickets": "free allowed on all plans within registration caps",
+        "seating": "not priced",
+        "payouts": "weekly on Thursdays",
+        "refunds_chargebacks": null,
+        "fine_print": ["plans are per event; INR 10 per additional attendee beyond plan limit", "WhatsApp/SMS INR 1 per message"],
+        "add_ons": [{"name": "WhatsApp / SMS default templates", "price": "INR 1 per message"}],
+        "enterprise": "Gold custom",
+        "sources": [{"url": "https://konfhub.com/pricing", "read": "2026-10-09", "what": "pricing page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Pricing page also has a Rest of World toggle that was not captured."
+  },
+  {
+    "platform": "Explara",
+    "website": "https://www.explara.com",
+    "hq_country": "IN",
+    "segment": "Indian and international small event organisers and membership groups; credit-card billed",
+    "markets": [
+      {
+        "market": "India / global",
+        "currency": "USD",
+        "vat_note": "taxes extra presumably",
+        "model": "mixed",
+        "money_flow": "both",
+        "money_flow_notes": "With the organiser's own Stripe/PayPal, Explara bills its fee separately to a card on file after 5 free trial transactions; with Explara's integrated gateway it takes its percentage from sales.",
+        "plans": [
+          {"name": "Starter", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 4.0, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "1 membership group, 1 event per month", "notes": "4% of ticket value (domestic only) + 1% Stripe gateway fee per transaction"},
+          {"name": "Mid plan (name not captured)", "monthly_fee": 9, "annual_fee": null, "per_ticket_percent": 4.0, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "2 chat groups, 5 events per month", "notes": "same 4% + 1%"},
+          {"name": "Higher plan (name not captured)", "monthly_fee": 25, "annual_fee": null, "per_ticket_percent": 4.0, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "5 groups, 10 events per month", "notes": "same 4% + 1%"}
+        ],
+        "prepaid": [{"bundle": "credits for extra usage (sizes not captured)", "unit_price": null, "expiry": null, "refundable": null}],
+        "processing": {"included": false, "processors": ["Stripe", "PayPal", "Explara gateway"], "own_processor_allowed": true, "rate_note": "no extra fee as payment processing beyond the stated percentage", "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": "not captured",
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["enterprise products carry set-up fees by customisation", "membership software free for 1 group and 50 members"],
+        "add_ons": [],
+        "enterprise": "enterprise customisation with setup fees",
+        "sources": [{"url": "https://www.explara.com/pricing", "read": "2026-10-09", "what": "pricing page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Plan names lost in scrape; the $ amounts and percentages are as shown."
+  },
+  {
+    "platform": "District by Zomato (ex-Insider / Paytm Insider)",
+    "website": "https://www.district.in",
+    "hq_country": "IN",
+    "segment": "Indian marketplace for gigs, comedy, food events; marketplace commission instead of platform fee",
+    "markets": [
+      {
+        "market": "India",
+        "currency": "INR",
+        "vat_note": "commission carries GST; TDS and TCS also deducted",
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_notes": "Zomato deducts commission, GST on commission, TDS and TCS from the gross ticket value and transfers the rest under a settlement process in the merchant agreement.",
+        "plans": [],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": false, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "per merchant agreement; not published",
+        "refunds_chargebacks": "merchant is liable for refunds when a 'zero cancellation fee' ticket is cancelled",
+        "fine_print": ["commission percentage is set per agreement ('as set out in this Agreement') - not public", "merchant issues its own GST invoices to buyers"],
+        "add_ons": [],
+        "enterprise": "contact; list-your-event page has no prices",
+        "sources": [{"url": "https://www.zomato.com/policies/events/", "read": "2026-10-09", "what": "events T&Cs (commission definition)"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "A third-party comparator (MintLink) did not quote a District commission number either."
+  },
+  {
+    "platform": "BookMyShow",
+    "website": "https://in.bookmyshow.com/list-your-show",
+    "hq_country": "IN",
+    "segment": "India's largest entertainment ticketing; contact-based listing for organisers",
+    "markets": [
+      {
+        "market": "India",
+        "currency": "INR",
+        "vat_note": "convenience fee carries 18% GST (third party)",
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_notes": "Not verified from an official page.",
+        "plans": [],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": "convenience fee non-refundable even on cancelled events (third-party site)",
+        "fine_print": ["organiser terms not published; consumer-side anecdotes: about 10% of ticket price + 18% GST (Reddit comment) or Rs.25 per ticket (CCI complaint summary) - not official"],
+        "add_ons": [],
+        "enterprise": "contact sales",
+        "sources": [{"url": "https://www.reddit.com/r/MalayalamMovies/comments/td24qq/ranjith_sankar_on_bookmyshow_charging_a_sizeable/", "read": "2026-10-09", "what": "search snippet only"}, {"url": "https://www.lexology.com/library/detail.aspx?g=fee53942-1607-4a31-bceb-ae17203e3ceb", "read": "2026-10-09", "what": "search snippet on CCI complaint"}],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "No organiser fee data."
+  },
+  {
+    "platform": "Allevents",
+    "website": "https://allevents.in",
+    "hq_country": "IN",
+    "segment": "global event discovery site with ticketing add-on",
+    "markets": [
+      {
+        "market": "global",
+        "currency": null,
+        "vat_note": null,
+        "model": null,
+        "money_flow": "collecting",
+        "money_flow_notes": "Not verified.",
+        "plans": [],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["pricing page scrapes returned event listings only, no fee table"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://allevents.in/pricing", "read": "2026-10-09", "what": "page without extractable pricing"}],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "Could not obtain pricing."
+  },
+  {
+    "platform": "Biletino",
+    "website": "https://biletino.com",
+    "hq_country": "TR",
+    "segment": "Turkish self-serve ticketing for small and mid events",
+    "markets": [
+      {
+        "market": "Turkey",
+        "currency": "TRY",
+        "vat_note": "13.6% includes bank commission and VAT",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_notes": "Pays organiser after event; early/interim payout possible (help article exists, not read).",
+        "plans": [{"name": "Paid events commission", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 13.6, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "bank commission and VAT included, taken from the category price", "notes": "buyer additionally pays min 7.5 TRY incl. VAT transaction fee on top of the price"}],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "included", "platform_extra_processing_fee": null},
+        "who_pays_default": "organiser",
+        "free_tickets": "no fee for free events",
+        "seating": "seat plan can be added at event creation (help article listed)",
+        "payouts": "not read",
+        "refunds_chargebacks": null,
+        "fine_print": ["article dated 2023-12; figures may be out of date"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://helpcenter.biletino.com/support/solutions/articles/1070000032095-komisyon-oranlar-hakk-nda-bilgi-alabilir-miyim-", "read": "2026-10-09", "what": "commission help article (Turkish)"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "platform": "BiletiniYap",
+    "website": "https://biletiniyap.com",
+    "hq_country": "TR",
+    "segment": "white-label ticket pages with organiser's own brand/domain; clubs, workshops, festivals in Turkey",
+    "markets": [
+      {
+        "market": "Turkey",
+        "currency": "TRY",
+        "vat_note": "8% includes VAT; statutory 1% withholding (stopaj) deducted separately",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_notes": "Pays organiser the next business day; 3D Secure payments.",
+        "plans": [{"name": "Flat commission", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 8.0, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "own branded page, custom domain, QR offline scan, promo codes, affiliates, Meta ads tooling", "notes": "no setup, no monthly, no commitment; launch-period commission advantage mentioned"}],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "included in 8%", "platform_extra_processing_fee": null},
+        "who_pays_default": "organiser",
+        "free_tickets": "free events supported (362-ticket free launch example); fee on free not stated",
+        "seating": "not stated",
+        "payouts": "next business day",
+        "refunds_chargebacks": "cancellations and refunds FAQ exists, not read",
+        "fine_print": ["flat 8% described as 'no hidden fees' except 1% withholding", "comparison table claims other Turkish sites vary by contract"],
+        "add_ons": [],
+        "enterprise": "contact form",
+        "sources": [{"url": "https://biletiniyap.com", "read": "2026-10-09", "what": "landing page (Turkish)"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Published fixed price is rare among Turkish platforms."
+  },
+  {
+    "platform": "Biletix / Passo / Biletinial / Bubilet / Mobilet / biletimGO (Turkey, grouped)",
+    "website": "https://www.biletix.com",
+    "hq_country": "TR",
+    "segment": "large Turkish ticketing marketplaces; organiser terms by contract",
+    "markets": [
+      {
+        "market": "Turkey",
+        "currency": "TRY",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_notes": "All sell on behalf of the organiser and settle later; none publishes a fee schedule.",
+        "plans": [],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["biletimGO terms: sells in the organiser's name and charges a service fee per ticket, amount not published", "Bubilet terms: prices set by the organiser, no commission figure", "Mobilet promoter page: signup form and phone only; a forum comment says it takes 6% (anecdote)", "Biletix (Ticketmaster Business TR) and Passo: contact only; consumer forums mention buyer service fees around 10% plus a 4 TRY transaction fee (anecdote)", "Biletinial: nothing found"],
+        "add_ons": [],
+        "enterprise": "contact sales",
+        "sources": [{"url": "https://promoter.mobilet.com/", "read": "2026-10-09", "what": "Mobilet promoter page"}, {"url": "https://www.biletimgo.com/satis-politikasi-ve-sozlesmesi", "read": "2026-10-09", "what": "biletimGO sales policy"}, {"url": "https://eksisozluk.com/mobilet--143464?p=13", "read": "2026-10-09", "what": "forum snippet (6% claim)"}],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "Grouped because none gives public organiser fees."
+  },
+  {
+    "platform": "Platinumlist",
+    "website": "https://platinumlist.net/for-organisers/",
+    "hq_country": "AE",
+    "segment": "GCC-leading ticketing (UAE, KSA, Bahrain, Qatar, Oman, Egypt etc.); managed, with permits, staffing, marketing services",
+    "markets": [
+      {
+        "market": "GCC / MENA",
+        "currency": null,
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_notes": "Not published.",
+        "plans": [],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": "seat plan product exists; price not published",
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["only 'Book a call' / contact; no commission or fee published"],
+        "add_ons": [{"name": "DET permit application, staffing, ticket printing, scanners, digital marketing agency", "price": "not published"}],
+        "enterprise": "contact sales",
+        "sources": [{"url": "https://platinumlist.net/for-organisers/", "read": "2026-10-09", "what": "organiser landing page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "platform": "Q-Tickets",
+    "website": "https://events.q-tickets.com",
+    "hq_country": "QA",
+    "segment": "Qatar, UAE, Bahrain, Oman, India, KSA ticketing plus event organising and permits",
+    "markets": [
+      {
+        "market": "Qatar / GCC",
+        "currency": null,
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_notes": "Not published.",
+        "plans": [],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["organiser pages describe services only; no fee data"],
+        "add_ons": [],
+        "enterprise": "contact sales",
+        "sources": [{"url": "https://events.q-tickets.com/qatar/services/eventorganizingmanaging", "read": "2026-10-09", "what": "services page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Virgin Megastore Tickets and Ticketmaster Middle East self-service were not found/checked; no data."
+  },
+  {
+    "platform": "Accupass",
+    "website": "https://www.accupass.com",
+    "hq_country": "TW",
+    "segment": "Taiwanese events, classes, seminars; free self-serve listing, paid events need review",
+    "markets": [
+      {
+        "market": "Taiwan",
+        "currency": "TWD",
+        "vat_note": "Accupass issues an invoice for the payment-flow fee on payout day",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_notes": "Pays organiser after the event ends (settlement application process); paying banks charge about NT$15 for cross-bank transfers.",
+        "plans": [
+          {"name": "Paid tickets", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 5.0, "per_ticket_fixed": 10, "min_per_ticket": null, "cap_per_ticket": null, "includes": "unlimited listings; fee only when tickets sell", "notes": "5% + NT$10 per ticket; e.g. NT$100 ticket costs NT$15"},
+          {"name": "Ticket-count upgrade", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "applies per event above 400 tickets, free or paid", "notes": "NT$799 for 401-3,000 tickets; NT$1,000 for 3,001-10,000"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "payment-flow fee is the 5% + NT$10", "platform_extra_processing_fee": null},
+        "who_pays_default": "organiser",
+        "free_tickets": "free events up to 400 tickets completely free; above 400 an upgrade fee",
+        "seating": "not stated",
+        "payouts": "after event, settlement application",
+        "refunds_chargebacks": null,
+        "fine_print": ["all paid events go through a review/approval before listing", "an older campaign page showed 0% + NT$10 per ticket for events up to 400 tickets (promo snippet) - not current"],
+        "add_ons": [{"name": "invoice issuing service, ads, self check-in kiosks", "price": "see separate pages"}],
+        "enterprise": "advanced services page",
+        "sources": [{"url": "https://accupass.uservoice.com/knowledgebase/articles/1120435-%E4%B8%BB%E8%BE%A6%E6%B4%BB%E5%8B%95%E8%B2%BB%E7%94%A8%E7%82%BA%E4%BD%95", "read": "2026-10-09", "what": "help article on organiser fees (Chinese)"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "platform": "Onoffmix",
+    "website": "https://onoffmix.com",
+    "hq_country": "KR",
+    "segment": "Korean meetups, seminars, classes; fee depends on payment method",
+    "markets": [
+      {
+        "market": "South Korea",
+        "currency": "KRW",
+        "vat_note": null,
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_notes": "Organiser bears the fee of the payment method buyers chose; deducted at settlement.",
+        "plans": [
+          {"name": "Credit card (domestic)", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 5.5, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "", "notes": "from payment/settlement rules effective 2019-01-01"},
+          {"name": "Real-time bank transfer", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 3.5, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "", "notes": ""},
+          {"name": "Virtual account (bank deposit)", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 2.5, "per_ticket_fixed": 300, "min_per_ticket": null, "cap_per_ticket": null, "includes": "", "notes": "2.5% + KRW 300 per payment"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "fee covers processing", "platform_extra_processing_fee": null},
+        "who_pays_default": "organiser",
+        "free_tickets": "free events not charged (not explicitly confirmed)",
+        "seating": null,
+        "payouts": "settlement process in FAQ, not read",
+        "refunds_chargebacks": "cancellation fee plus refund-handling fee charged to the applicant",
+        "fine_print": ["three more rates in the rules table (9%, 3.5%, 6.5%) whose payment-method labels were lost in the scrape; likely mobile-phone and overseas-card methods"],
+        "add_ons": [],
+        "enterprise": "Onoffmix Connect for vendors; ads sold separately",
+        "sources": [{"url": "https://corp.onoffmix.com/d0ed122e-a277-4e4e-bffb-cb6d4e4fbeda", "read": "2026-10-09", "what": "payment/settlement rules (Korean); only first 3 rows labelled via search snippet"}],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "Rules dated 2019; may be stale."
+  },
+  {
+    "platform": "Ticketflap (Hong Kong)",
+    "website": "https://www.ticketflap.com",
+    "hq_country": "HK",
+    "segment": "Hong Kong self-serve ticketing",
+    "markets": [],
+    "notes": "Search failed and no pricing page read; no data collected. Peatix, EventBookings (HK) and Megatix (HK/TW) cover the region instead."
+  }
+]

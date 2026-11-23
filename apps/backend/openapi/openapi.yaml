@@ -807,7 +807,7 @@ components:
             assets (default branding, system icons).
         owner_type:
           type: string
-          enum: [org_logo, event_poster, artist_photo, seating_plan_svg, session_poster, event_gallery, event_report, shop_product, shop_digital]
+          enum: [org_logo, event_poster, artist_photo, seating_plan_svg, session_poster, event_gallery, event_report, shop_product, shop_digital, event_series]
           description: |
             Polymorphic owner kind. Future migrations widen the
             enumeration as new media-bearing surfaces appear.
@@ -818,6 +818,8 @@ components:
             photo report. `shop_product` (migration 0172) is a picture of a
             merchandise shop product; `shop_digital` is the file a digital
             shop product sells (offered to the buyer only after payment).
+            `event_series` (migration 0222) is the poster or the wide photo
+            of a tour.
         owner_id:
           type: string
           format: uuid
@@ -10792,6 +10794,19 @@ components:
             Name of the event's promoter, which the ticket PDF prints as
             "Organizer". Null when the organization itself is the promoter.
           example: "Partner Agency s.r.o."
+        series_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            The tour (event series, migration 0222) the event belongs to.
+            Null when the event stands alone (the public feed leaves the
+            field out then). Set by PATCH
+            .../events/{id} `series_id`.
+        series_name:
+          type: [string, "null"]
+          description: |
+            Name of the event's tour. Filled by the organizer API only; null
+            in the public feed (read the tour by `series_id` there).
         public_url:
           type: string
           description: |
@@ -10817,10 +10832,13 @@ components:
             (future sessions exist but none is selling: the sale has not
             opened yet, only a closed category has places, or sales ended
             before the start), `draft` (future sessions exist but the event
-            is not published, so nobody can buy, whatever its sessions say)
-            and `archived` (every session has ended, the event has no
-            session, or the event is cancelled/archived). Empty only when
-            the lookup failed.
+            is not published, so nobody can buy, whatever its sessions
+            say), `external` (every future session is sold by a partner box
+            office, `sales_mode` `external`, migration 0221; such sessions
+            own no places here, so an event with platform sessions as well
+            follows the rules above over those) and `archived` (every
+            session has ended, the event has no session, or the event is
+            cancelled/archived). Empty only when the lookup failed.
           example: "on_sale"
         next_session_at:
           type: [string, "null"]
@@ -10891,6 +10909,18 @@ components:
             Short marketing description shown in cards and previews (AB-45c).
             Tri-state PATCH: absent=keep, null=clear, value=set.
           example: "Open-air festival on the Tel Aviv beachfront."
+        content_locale:
+          type: string
+          description: Public feed only. The language of the texts served (`short_description`, `description_html` and `description_text` are translated when a translation was asked for with `?locale=` and exists). Two lowercase letters.
+          example: "en"
+        available_locales:
+          type: array
+          description: Public feed only. The original language first, then every language that has a translation of the event.
+          items:
+            type: string
+        translation_stale:
+          type: boolean
+          description: Public feed only. True when the translation served was made from an older original than the current one; it is still served.
         genre:
           type: [string, "null"]
           description: |
@@ -11147,6 +11177,377 @@ components:
           description: |
             An active promoter of the organization, or null (or absent) to
             make the organization itself the promoter again.
+
+    Series:
+      type: object
+      required: [id, org_id, slug, name, description_html, poster_media_id, poster_url, hero_media_id, hero_url, hero_video_url, partners_text_html, hide_children_in_lists, position, event_count, archived_at, created_at, updated_at, translations]
+      description: |
+        A tour (event series, migration 0222, spec 63): several events under
+        one name, public address and set of page materials. The slug shares
+        one address space with the organization's active event slugs.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID of the tour.
+        org_id:
+          type: string
+          format: uuid
+          description: UUID of the owning organization.
+        slug:
+          type: string
+          description: |
+            Public address of the tour (`<page>/<slug>`): 1-120 characters of
+            Latin letters, digits and single hyphens.
+          example: "summer-tour"
+        name:
+          type: string
+          description: Name of the tour, 1-200 characters.
+          example: "Summer tour 2027"
+        description_html:
+          type: [string, "null"]
+          description: Description of the tour as filtered HTML (the event description filter). Null when none.
+        poster_media_id:
+          type: [string, "null"]
+          format: uuid
+          description: Portrait poster 4:5 (a media object of owner type `event_series`). Null when none.
+        poster_url:
+          type: [string, "null"]
+          description: URL of the poster, null when there is none.
+        hero_media_id:
+          type: [string, "null"]
+          format: uuid
+          description: Wide photo 16:9 (a media object of owner type `event_series`). Null when none.
+        hero_url:
+          type: [string, "null"]
+          description: URL of the wide photo, null when there is none.
+        hero_video_url:
+          type: [string, "null"]
+          description: An https YouTube or Vimeo link shown at the top of the tour page. Null when none.
+        partners_text_html:
+          type: [string, "null"]
+          description: Text about the partners of the tour as filtered HTML. Null when none.
+        hide_children_in_lists:
+          type: boolean
+          description: When true the events of the tour are left out of the page lists, the tour card stands for them.
+        position:
+          type: integer
+          format: int32
+          description: Sort position of the tour among the organization's tours (ascending).
+        event_count:
+          type: integer
+          description: Number of active events of the tour.
+        archived_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the tour was archived. Null for an active tour.
+        created_at:
+          type: string
+          format: date-time
+          description: When the tour was created.
+        updated_at:
+          type: string
+          format: date-time
+          description: When the tour was last changed.
+        translations:
+          type: object
+          description: |
+            Reserved for the translated texts of a tour: locale to
+            `{description_html, partners_text_html}`. Always an empty object
+            for now; ignored on write.
+          additionalProperties: true
+
+    SeriesEventCard:
+      type: object
+      required: [id, name, slug, status, first_session_at]
+      description: Short card of an event inside a tour.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID of the event.
+        name:
+          type: string
+          description: Name of the event.
+        slug:
+          type: [string, "null"]
+          description: Public address of the event. Null while it has none.
+        status:
+          type: string
+          description: Status of the event (draft, published, archived, ...).
+        first_session_at:
+          type: [string, "null"]
+          format: date-time
+          description: Start of the first session of the event. Null while it has no sessions.
+
+    SeriesDetail:
+      description: A tour with its events.
+      allOf:
+        - $ref: "#/components/schemas/Series"
+        - type: object
+          required: [events]
+          properties:
+            events:
+              type: array
+              description: Active events of the tour by first session (events without sessions last).
+              items:
+                $ref: "#/components/schemas/SeriesEventCard"
+
+    SeriesListEnvelope:
+      type: object
+      required: [items]
+      description: List-tours response.
+      properties:
+        items:
+          type: array
+          description: The organization's tours ordered by position, then name.
+          items:
+            $ref: "#/components/schemas/Series"
+
+    CreateSeriesRequest:
+      type: object
+      required: [name]
+      description: Body of POST /v1/organizations/{org_id}/series.
+      properties:
+        name:
+          type: string
+          description: Name of the tour, 1-200 characters.
+        slug:
+          type: [string, "null"]
+          description: |
+            Public address. Absent, null or empty: derived from the name
+            (with a numeric suffix while taken). A typed one that an event or
+            another tour of the organization uses answers 409
+            `series.slug_taken`.
+        description_html:
+          type: [string, "null"]
+          description: Description as HTML, passed through the event description filter.
+        poster_media_id:
+          type: [string, "null"]
+          format: uuid
+          description: A media object of the organization (owner type `event_series`).
+        hero_media_id:
+          type: [string, "null"]
+          format: uuid
+          description: A media object of the organization (owner type `event_series`).
+        hero_video_url:
+          type: [string, "null"]
+          description: An https YouTube or Vimeo link.
+        partners_text_html:
+          type: [string, "null"]
+          description: Text about the partners as HTML, passed through the event description filter.
+        hide_children_in_lists:
+          type: boolean
+          description: Leave the events of the tour out of the page lists. Default true.
+        position:
+          type: integer
+          format: int32
+          description: Sort position, ascending. Default 0.
+        translations:
+          type: object
+          description: Reserved for translated texts; ignored.
+          additionalProperties: true
+
+    UpdateSeriesRequest:
+      type: object
+      description: |
+        Body of PATCH /v1/organizations/{org_id}/series/{series_id}. Absent
+        keeps a field, null clears a nullable one.
+      properties:
+        name:
+          type: string
+          description: Name of the tour, 1-200 characters. Cannot be null.
+        slug:
+          type: string
+          description: New public address. Cannot be null. A taken one answers 409 `series.slug_taken`.
+        description_html:
+          type: [string, "null"]
+          description: Description as HTML, passed through the event description filter. Null clears.
+        poster_media_id:
+          type: [string, "null"]
+          format: uuid
+          description: A media object of the organization. Null clears.
+        hero_media_id:
+          type: [string, "null"]
+          format: uuid
+          description: A media object of the organization. Null clears.
+        hero_video_url:
+          type: [string, "null"]
+          description: An https YouTube or Vimeo link. Null clears.
+        partners_text_html:
+          type: [string, "null"]
+          description: Text about the partners as HTML. Null clears.
+        hide_children_in_lists:
+          type: boolean
+          description: Leave the events of the tour out of the page lists.
+        position:
+          type: integer
+          format: int32
+          description: Sort position, ascending.
+        translations:
+          type: object
+          description: Reserved for translated texts; ignored.
+          additionalProperties: true
+
+    FeedSeriesNextSession:
+      type: object
+      required: [event_id, session_id, starts_at, city]
+      description: The nearest upcoming session of a tour.
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: UUID of the event of the session.
+        session_id:
+          type: string
+          format: uuid
+          description: UUID of the session.
+        starts_at:
+          type: string
+          format: date-time
+          description: Start of the session.
+        city:
+          type: [string, "null"]
+          description: City of the session's venue. Null when unknown.
+
+    FeedSeriesPrice:
+      type: object
+      required: [currency, amount]
+      description: The lowest open price of a tour in one currency.
+      properties:
+        currency:
+          type: string
+          description: ISO 4217 currency code.
+        amount:
+          type: number
+          description: The price in MAJOR units (19.5 for 1950 minor units of EUR).
+
+    FeedSeriesSummary:
+      type: object
+      required: [date_from, date_to, cities_count, cities_on_sale_count, next_session, price_from]
+      description: The "at a glance" block of a tour, over the events visible in the feed.
+      properties:
+        date_from:
+          type: [string, "null"]
+          format: date-time
+          description: Start of the first session of the visible events. Null when there is none.
+        date_to:
+          type: [string, "null"]
+          format: date-time
+          description: Start of the last session of the visible events. Null when there is none.
+        cities_count:
+          type: integer
+          description: Number of distinct cities of the sessions.
+        cities_on_sale_count:
+          type: integer
+          description: Number of cities with a session whose sales state is open.
+        next_session:
+          description: The nearest upcoming session. Null when there is none.
+          oneOf:
+            - $ref: "#/components/schemas/FeedSeriesNextSession"
+            - type: "null"
+        price_from:
+          type: array
+          description: The minimum open category price per currency, sorted by currency.
+          items:
+            $ref: "#/components/schemas/FeedSeriesPrice"
+
+    FeedSeries:
+      type: object
+      required: [id, slug, name, description_html, partners_text_html, poster_url, hero_url, hero_video_url, hide_children_in_lists, position, event_ids, summary, translations]
+      description: A tour as the public feed and the hosted page show it.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID of the tour.
+        slug:
+          type: string
+          description: Public address of the tour.
+        name:
+          type: string
+          description: Name of the tour.
+        description_html:
+          type: [string, "null"]
+          description: Description as safe HTML. Null when none.
+        partners_text_html:
+          type: [string, "null"]
+          description: Text about the partners as safe HTML. Null when none.
+        poster_url:
+          type: [string, "null"]
+          description: URL of the poster. Null when none.
+        hero_url:
+          type: [string, "null"]
+          description: URL of the wide photo. Null when none.
+        hero_video_url:
+          type: [string, "null"]
+          description: An https YouTube or Vimeo link. Null when none.
+        hide_children_in_lists:
+          type: boolean
+          description: When true the events of the tour are left out of the page lists, the tour card stands for them.
+        position:
+          type: integer
+          format: int32
+          description: Sort position among the tours (ascending).
+        event_ids:
+          type: array
+          description: UUIDs of the events of the tour visible in this feed, by first session.
+          items:
+            type: string
+            format: uuid
+        summary:
+          description: The "at a glance" block of the tour.
+          allOf:
+            - $ref: "#/components/schemas/FeedSeriesSummary"
+        translations:
+          type: object
+          description: Reserved for translated texts. Always an empty object for now.
+          additionalProperties: true
+
+    FeedSeriesListEnvelope:
+      type: object
+      required: [items]
+      description: List-tours response of a feed.
+      properties:
+        items:
+          type: array
+          description: Tours with at least one event visible in this feed.
+          items:
+            $ref: "#/components/schemas/FeedSeries"
+
+    HostedSeriesPageResponse:
+      type: object
+      required: [org, default_locale, series, events]
+      description: |
+        Response of GET /v1/public/pages/{org_slug}/series/{series_slug}: the
+        tour page. `org`, `events`, `seller` and `contact_form` are the same
+        as on the organization page (`HostedPromoterPageResponse`); `events`
+        are the tour's events visible on the hosted page.
+      properties:
+        org:
+          description: Public-safe organization branding.
+          allOf:
+            - $ref: "#/components/schemas/HostedPageOrg"
+        default_locale:
+          type: string
+          description: Organization default locale, used when no `?lang=` is present.
+        series:
+          description: The tour.
+          allOf:
+            - $ref: "#/components/schemas/FeedSeries"
+        events:
+          type: array
+          description: The tour's events visible on the hosted page, upcoming first.
+          items:
+            $ref: "#/components/schemas/HostedPageEvent"
+        seller:
+          description: Legal identity of the seller, omitted as on the organization page.
+          allOf:
+            - $ref: "#/components/schemas/HostedPageSeller"
+        contact_form:
+          description: Present when the page offers the "Write to the organizer" form.
+          allOf:
+            - $ref: "#/components/schemas/HostedPageContactForm"
 
     EventPromoterResponse:
       type: object
@@ -11473,9 +11874,21 @@ components:
         topic:
           type: string
           description: |
-            `contact` (default) or `private_event`. It is also the Turnstile
-            widget action of the form and picks the recipients.
+            `contact` (default), `private_event` or `partnership`. It is also
+            the Turnstile widget action of the form and picks the recipients.
           example: "private_event"
+        company:
+          type: string
+          description: Company name, 1-100 characters. Required for the `partnership` topic, ignored for other topics.
+          example: "Hall Productions"
+        city:
+          type: string
+          description: City, up to 100 characters. Used by the `partnership` topic only.
+          example: "Tel Aviv"
+        website:
+          type: string
+          description: Website address, up to 200 characters, an http/https URL or a bare host such as example.com. Used by the `partnership` topic only.
+          example: "https://example.com"
         name:
           type: string
           description: Sender's first name, 1-100 characters.
@@ -11494,7 +11907,7 @@ components:
           example: "+972 50 123 4567"
         message:
           type: string
-          description: The message, 10-2000 characters. Optional for the `contact` topic, required for `private_event`.
+          description: The message, 10-2000 characters. Optional for the `contact` topic, required for `private_event` and `partnership`.
           example: "We would like to book the hall for 30 guests."
         consent:
           type: boolean
@@ -11506,6 +11919,198 @@ components:
           type: string
           description: Page language of the sender.
           example: "he"
+
+    SiteTrackData:
+      type: object
+      description: What the site knows about the event it reports; every field is optional and bounded.
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: The platform event the visitor looked at or went from.
+        session_id:
+          type: string
+          format: uuid
+          description: The platform session, when the click is about one date. A wrong value is ignored.
+        seller:
+          type: string
+          description: The box office a click leads to, up to 64 characters. Becomes `affiliation` in GA4 and `seller` in Meta.
+          example: "Eventim"
+        city:
+          type: string
+          description: City of the event, up to 100 characters.
+        value:
+          type: number
+          description: The "from" price in major units of `currency`.
+        currency:
+          type: string
+          description: ISO 4217 code, three letters.
+          example: "EUR"
+        checkout_type:
+          type: string
+          description: Accepted and ignored; the event name decides between an external and an own checkout.
+        email:
+          type: string
+          description: The visitor's e-mail, `lead` only, only when they typed it. Sent to Meta as a SHA-256 hash.
+        phone:
+          type: string
+          description: The visitor's phone, `lead` only, only when they typed it. Sent to Meta as a SHA-256 hash.
+
+    SiteTrackRequest:
+      type: object
+      additionalProperties: false
+      required: [event, event_id]
+      description: One event of a static site's visitor (spec 63 section 19).
+      properties:
+        event:
+          type: string
+          enum: [page_view, view_event, outbound_ticket_click, checkout_open, lead]
+          description: |
+            What happened. `outbound_ticket_click` (a click to a partner's box
+            office) is the main one: Meta `InitiateCheckout`, GA4
+            `begin_checkout`, the `outbound_click` funnel step and the box
+            office counter.
+        event_id:
+          type: string
+          description: The browser's id of this event, up to 64 characters of letters, digits, `_` and `-`. The browser pixel sends the same id, so Meta and GA4 merge the two.
+        page_url:
+          type: string
+          description: The page the visitor was on. An address outside the channel's site origins is not counted.
+        referrer:
+          type: string
+          description: Accepted and ignored.
+        utm_source:
+          type: string
+          description: Traffic source, as in the funnel beacon.
+        utm_campaign:
+          type: string
+          description: Campaign, as in the funnel beacon.
+        fbclid:
+          type: string
+          description: Meta click id.
+        gclid:
+          type: string
+          description: Google click id.
+        fbp:
+          type: string
+          description: Value of the `_fbp` cookie.
+        fbc:
+          type: string
+          description: Value of the `_fbc` cookie.
+        ga_client_id:
+          type: string
+          description: GA4 client id from the `_ga` cookie. Without it nothing goes to GA4.
+        ga_session_id:
+          type: string
+          description: GA4 session number from the `_ga_<id>` cookie.
+        vid:
+          type: string
+          description: The site's first-party visitor id, up to 64 characters. Meta gets its SHA-256 as `external_id`.
+        tracking_declined:
+          type: boolean
+          description: |
+            True when the visitor refused tracking. Tracking is on until the
+            visitor refuses (owner decision 2026-11-22, as on vinoandco.events).
+            A refusal sends nothing to Meta or GA4; the anonymous funnel counts
+            the step all the same.
+        data:
+          description: Extra fields of the event, for example the contact of a `lead`.
+          allOf:
+            - $ref: "#/components/schemas/SiteTrackData"
+
+    SiteTrackAccepted:
+      type: object
+      required: [status]
+      description: The event was taken. The answer never says what was done with it.
+      properties:
+        status:
+          type: string
+          description: Always "accepted".
+          example: "accepted"
+
+    OutboundClicksDay:
+      type: object
+      required: [day, clicks]
+      description: Clicks to partner box offices on one day.
+      properties:
+        day:
+          type: string
+          description: "`YYYY-MM-DD` in the venue's zone."
+        clicks:
+          type: integer
+          format: int64
+          description: Number of clicks.
+
+    OutboundClicksSeller:
+      type: object
+      required: [seller, clicks]
+      description: Clicks to one partner box office.
+      properties:
+        seller:
+          type: string
+          description: Name of the box office; empty when the site sent none.
+        clicks:
+          type: integer
+          format: int64
+          description: Number of clicks.
+
+    OutboundClicksSource:
+      type: object
+      required: [utm_source, clicks]
+      description: Clicks that came from one traffic source.
+      properties:
+        utm_source:
+          type: string
+          description: The source; empty for direct visits.
+        clicks:
+          type: integer
+          format: int64
+          description: Number of clicks.
+
+    OutboundClicksResponse:
+      type: object
+      required: [event_id, from, to, total, visits, by_day, by_seller, by_source]
+      description: Clicks from the event's page on a static site to partner box offices.
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: The event.
+        from:
+          type: string
+          description: First day of the window.
+        to:
+          type: string
+          description: Last day of the window.
+        timezone:
+          type: [string, "null"]
+          description: IANA zone of the venue the days are read in.
+        total:
+          type: integer
+          format: int64
+          description: All clicks of the window.
+        visits:
+          type: integer
+          format: int64
+          description: Visits of the event page on the site in the same window.
+        share_of_visitors:
+          type: [number, "null"]
+          description: "`total` divided by `visits`; null when there were no visits."
+        by_day:
+          type: array
+          description: Clicks per day, oldest first.
+          items:
+            $ref: "#/components/schemas/OutboundClicksDay"
+        by_seller:
+          type: array
+          description: Clicks per box office, the biggest first, at most 50.
+          items:
+            $ref: "#/components/schemas/OutboundClicksSeller"
+        by_source:
+          type: array
+          description: Clicks per traffic source, the biggest first, at most 50.
+          items:
+            $ref: "#/components/schemas/OutboundClicksSource"
 
     SiteMarketingSubscriptionRequest:
       type: object
@@ -12043,6 +12648,9 @@ components:
             that moves, and stays empty for an event without a live session.
           items:
             $ref: "#/components/schemas/PublicMaterialPhoto"
+        report_text_html:
+          type: [string, "null"]
+          description: The photo-report text as sanitized HTML (translated when `?locale=` names a language that has it), shown after the event ended. Null when there is none or the event is not over yet.
 
     AnalyticsBatchRequest:
       type: object
@@ -13314,6 +13922,14 @@ components:
             Values: `text`, `art`. Anything else answers 400
             `event.invalid_email_note_format`.
           example: "text"
+        series_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            The event's tour (migration 0222). Absent keeps the link, null
+            (or an empty string) removes it, a UUID links an ACTIVE tour of
+            the organization. An unknown, foreign or archived tour answers
+            422 `event.invalid_series`.
 
     UpdateEventStatusRequest:
       type: object
@@ -13699,6 +14315,8 @@ components:
         - sales_end_at
         - doors_open_at
         - has_overlapping_sessions
+        - sales_mode
+        - external
       description: |
         A single dated session (time slot) of an event at a venue. Since
         Wave 4 (AB-36/AB-38) the session — not the event — owns the venue,
@@ -13762,8 +14380,9 @@ components:
           description: |
             The session's sales state, the one every sales channel follows
             (migration 0183): `open`, `soon`, `sold_out`, `ended` or
-            `cancelled`. Present on the session list and the single read;
-            absent on the create and update answers.
+            `cancelled`, or `external` when a partner box office sells the
+            session (migration 0221). Present on the session list and the
+            single read; absent on the create and update answers.
           example: open
         manual_sales_state:
           type: string
@@ -13857,6 +14476,77 @@ components:
             from CountOverlappingSessions for single-session responses, or
             from a pairwise scan for list responses.
           example: false
+        sales_mode:
+          type: string
+          description: |
+            Who sells the tickets of this session (migration 0221): `platform`
+            (default) or `external`. An external session is sold by a partner
+            box office at `external.url`; the platform holds and sells nothing
+            for it (409 `session.sold_externally`) and the session owns no
+            tiers, seats or inventory.
+          example: platform
+        external:
+          description: |
+            The partner box office of an external session, null for a
+            session the platform sells.
+          oneOf:
+            - $ref: "#/components/schemas/SessionExternalSale"
+            - type: "null"
+
+    SessionExternalSale:
+      type: object
+      required: [url, seller_name, price_from, currency]
+      description: |
+        The partner box office that sells the tickets of an external session
+        (migration 0221, spec 63 section 14). The platform shows a button to
+        `url` instead of its own ticket picker.
+      properties:
+        url:
+          type: string
+          description: The box office address, https only, at most 2048 characters.
+          example: "https://www.eventim.de/event/12345"
+        seller_name:
+          type: string
+          description: The box office name shown to buyers, 1 to 80 characters.
+          example: Eventim
+        price_from:
+          type: [number, "null"]
+          description: |
+            The lowest price for the storefront in MAJOR units of `currency`
+            (39.5 means 39.50), or null when the organizer gave none.
+          example: 39
+        currency:
+          type: [string, "null"]
+          pattern: "^[A-Z]{3}$"
+          description: ISO 4217 code of `price_from`, null together with it.
+          example: EUR
+
+    SessionExternalSaleInput:
+      type: object
+      required: [url, seller_name]
+      description: |
+        The partner box office of an external session, as an organizer writes
+        it. The address must be https, a host name (no IP address) and not a
+        platform host; the name 1 to 80 characters. `price_from` and
+        `currency` go together or not at all.
+      properties:
+        url:
+          type: string
+          description: The box office address, https only, at most 2048 characters.
+          example: "https://www.eventim.de/event/12345"
+        seller_name:
+          type: string
+          description: The box office name shown to buyers, 1 to 80 characters.
+          example: Eventim
+        price_from:
+          type: [number, "null"]
+          description: The lowest price in MAJOR units of `currency` (39.5 means 39.50). Optional.
+          example: 39
+        currency:
+          type: [string, "null"]
+          pattern: "^[A-Z]{3}$"
+          description: ISO 4217 code of `price_from`. Optional, only together with it.
+          example: EUR
 
     CreateSessionRequest:
       type: object
@@ -13973,6 +14663,24 @@ components:
             are rejected with 422 `session.invalid_currency`, never
             persisted.
           example: "EUR"
+        sales_mode:
+          type: string
+          description: |
+            Who sells the tickets: `platform` or `external` (migration 0221).
+            Any other value is 400 `session.invalid_sales_mode`. `external`
+            needs the `external` object (422 `session.external_required`).
+            A session with a seating plan cannot be external
+            (409 `session.sales_mode_locked`).
+          example: external
+        external:
+          description: |
+            The partner box office, only with `sales_mode` `external` (422
+            `session.external_not_applicable` otherwise). Refused with 422
+            `session.invalid_external_url`, `session.invalid_external_seller_name`,
+            `session.invalid_external_price` or `session.invalid_external_currency`.
+          oneOf:
+            - $ref: "#/components/schemas/SessionExternalSaleInput"
+            - type: "null"
 
     UpdateSessionRequest:
       type: object
@@ -14075,6 +14783,27 @@ components:
             moves or cancels a session they hold tickets for. Ignored when
             nothing a buyer can see changes.
           $ref: "#/components/schemas/SessionChangeNotice"
+        sales_mode:
+          type: string
+          description: |
+            Change who sells the tickets: `platform` or `external` (migration
+            0221). Absent keeps it. `platform` to `external` is allowed only
+            while the session has no orders, tickets, holds, seats or tiers;
+            `external` back to `platform` only while it has no seats or tiers;
+            otherwise 409 `session.sales_mode_locked`. Any other value is 400
+            `session.invalid_sales_mode`.
+          example: external
+        external:
+          description: |
+            The partner box office. With `sales_mode` `external` (or on a
+            session that is already external) it sets or replaces the block;
+            null without `sales_mode` puts the session back on `platform`.
+            Sending it for a session that stays on the platform is 422
+            `session.external_not_applicable`; a missing block for a switch to
+            external is 422 `session.external_required`.
+          oneOf:
+            - $ref: "#/components/schemas/SessionExternalSaleInput"
+            - type: "null"
 
     SessionChangeNotice:
       type: object
@@ -14722,6 +15451,154 @@ components:
         seller_name:
           type: string
           description: A new seller name, 1 to 120 characters. Blank keeps the current name (or, when the address changed and the name was derived from the old one, derives it again).
+
+    ContentTranslationOriginal:
+      type: object
+      required: [name, short_description, description_html, report_text_html]
+      description: The original texts of an event, the source of its translations.
+      properties:
+        name:
+          type: string
+          description: The event name in the content locale.
+        short_description:
+          type: [string, "null"]
+          description: The short description, null when empty.
+        description_html:
+          type: [string, "null"]
+          description: The description rendered to sanitized HTML whatever its stored format, null when empty.
+        report_text_html:
+          type: [string, "null"]
+          description: The photo-report text as sanitized HTML, null when empty.
+
+    ContentTranslationItem:
+      type: object
+      required: [locale, name, short_description, description_html, report_text_html, source, translation_stale, updated_at, updated_by]
+      description: One translation of an event's texts into one locale.
+      properties:
+        locale:
+          type: string
+          description: The locale of the translation, one of `supported_locales`.
+          example: "cs"
+        name:
+          type: [string, "null"]
+          description: The translated name, null when the translation keeps the original name. The machine never fills it.
+        short_description:
+          type: [string, "null"]
+          description: The translated short description, null when not set.
+        description_html:
+          type: [string, "null"]
+          description: The translated description as sanitized HTML, null when not set.
+        report_text_html:
+          type: [string, "null"]
+          description: The translated photo-report text as sanitized HTML, null when not set.
+        source:
+          type: string
+          description: Who wrote it, `manual` or `machine`. A `manual` translation is never replaced by the machine.
+        translation_stale:
+          type: boolean
+          description: True when the original texts changed after this translation was made; it is still served to buyers.
+        updated_at:
+          type: string
+          format: date-time
+          description: When the translation was last written.
+        updated_by:
+          type: [string, "null"]
+          format: uuid
+          description: The person who wrote it, null for an API key or when the person is gone.
+
+    ContentTranslationList:
+      type: object
+      required: [content_locale, original, source_hash, machine_available, supported_locales, site_locales, translations]
+      description: The original texts of an event and its translations.
+      properties:
+        content_locale:
+          type: string
+          description: The language of the original texts, two lowercase letters.
+          example: "en"
+        original:
+          allOf:
+            - $ref: "#/components/schemas/ContentTranslationOriginal"
+          description: The original texts.
+        source_hash:
+          type: string
+          description: Hash of the original texts now; a translation whose hash differs is stale.
+        machine_available:
+          type: boolean
+          description: True when machine translation is switched on (the model key is set), false hides the button.
+        supported_locales:
+          type: array
+          description: Every locale a translation may be made for.
+          items:
+            type: string
+        site_locales:
+          type: array
+          description: The distinct union of the languages of the organization's sites (`settings.site.locales` of its sales channels), restricted to the supported locales.
+          items:
+            type: string
+        translations:
+          type: array
+          description: The stored translations, ordered by locale.
+          items:
+            $ref: "#/components/schemas/ContentTranslationItem"
+
+    PutContentTranslationRequest:
+      type: object
+      description: Body of PUT .../translations/{locale}. The row of the locale is replaced as a whole, an absent or blank member clears that text.
+      properties:
+        name:
+          type: [string, "null"]
+          description: The translated name, up to 200 characters. Leave empty to keep the original name.
+        short_description:
+          type: [string, "null"]
+          description: The translated short description, up to 500 characters.
+        description_html:
+          type: [string, "null"]
+          description: The translated description as HTML, sanitized by the rich-text description profile.
+        report_text_html:
+          type: [string, "null"]
+          description: The translated photo-report text as HTML, sanitized the same way.
+
+    MachineTranslateRequest:
+      type: object
+      required: [locales]
+      description: Body of POST .../translations/machine.
+      properties:
+        locales:
+          type: array
+          description: The locales to translate into. Each must be supported and differ from the content locale (422 `translation.invalid_locale`).
+          items:
+            type: string
+
+    MachineTranslateAccepted:
+      type: object
+      required: [job_id, locales]
+      description: The queued machine translation.
+      properties:
+        job_id:
+          type: string
+          description: Id of the worker job `content.translate`.
+        locales:
+          type: array
+          description: The normalized, distinct locales that were queued. Locales with a manual translation are skipped by the job, not refused here.
+          items:
+            type: string
+
+    SetEventReportTextRequest:
+      type: object
+      description: Body of PUT .../events/{event_id}/report-text.
+      properties:
+        report_text_html:
+          type: [string, "null"]
+          description: The photo-report text of the original as HTML, sanitized by the rich-text description profile. Null or blank clears it.
+
+    EventReportText:
+      type: object
+      required: [report_text_html]
+      description: The stored photo-report text of the original.
+      properties:
+        report_text_html:
+          type: [string, "null"]
+          description: The sanitized text as stored, null when cleared.
 
     EventPartnerLinkOrderRequest:
       type: object
@@ -16333,306 +17210,6 @@ components:
           minLength: 1
           description: Human-readable display name for operator UIs.
           example: "Legacy Bil24"
-
-    BarcodeItem:
-      type: object
-      required:
-        - id
-        - authority_id
-        - external_ref
-        - ticket_id
-        - status
-        - scanned_at
-        - created_at
-        - updated_at
-      description: |
-        A single barcodes row in the barcode authority federation
-        (feature #142, migration 0030_barcodes.sql). Each barcode is
-        scoped to exactly one authority; `(authority_id, external_ref)`
-        is UNIQUE among rows. Lifecycle: `active` → `scanned` (via
-        POST /v1/scan) or `active`|`scanned` → `revoked` (terminal, via
-        DELETE /v1/barcodes/{id}).
-      properties:
-        id:
-          type: string
-          format: uuid
-          description: UUIDv7 primary key of the barcodes row.
-          example: "01929d0e-0e47-7000-8000-000000000b01"
-        authority_id:
-          type: string
-          format: uuid
-          description: UUIDv7 of the barcode authority the barcode belongs to.
-          example: "01929d0e-0e47-7000-8000-000000000a01"
-        external_ref:
-          type: string
-          description: |
-            The barcode string as printed / encoded on the ticket.
-            Unique within the owning authority.
-          example: "ARN-2026-000123"
-        ticket_id:
-          type: [string, "null"]
-          format: uuid
-          description: |
-            Optional link to a platform tickets row. `null` for barcodes
-            originating from external platforms or guest lists.
-          example: "01929d0e-0e47-7000-8000-000000000c01"
-        status:
-          type: string
-          enum: [active, scanned, revoked]
-          description: |
-            Lifecycle status. `active` barcodes admit entry; `scanned`
-            marks a consumed barcode (double-scan protected); `revoked`
-            is terminal.
-          example: "active"
-        scanned_at:
-          type: [string, "null"]
-          format: date-time
-          description: |
-            UTC timestamp of the successful scan. `null` until the
-            barcode has been scanned.
-          example: "2026-06-30T19:05:00Z"
-        created_at:
-          type: string
-          format: date-time
-          description: ISO 8601 / RFC 3339 timestamp of row creation.
-          example: "2026-06-30T12:00:00Z"
-        updated_at:
-          type: string
-          format: date-time
-          description: ISO 8601 / RFC 3339 timestamp of last update.
-          example: "2026-06-30T12:00:00Z"
-
-    RegisterBarcodeRequest:
-      type: object
-      required: [authority_id, external_ref]
-      description: |
-        Request body for `POST /v1/barcodes`. Registers a barcode under
-        an existing authority. Duplicate `external_ref` values within
-        the same authority are rejected with 409 `barcode.duplicate`.
-      properties:
-        authority_id:
-          type: string
-          format: uuid
-          description: UUID of the barcode authority the barcode belongs to.
-          example: "01929d0e-0e47-7000-8000-000000000a01"
-        external_ref:
-          type: string
-          minLength: 1
-          description: |
-            The barcode string. Required; must be unique within the
-            authority.
-          example: "ARN-2026-000123"
-        ticket_id:
-          type: [string, "null"]
-          format: uuid
-          description: |
-            Optional platform ticket UUID to link. Omit or send `null`
-            for external / guest-list barcodes.
-
-    ScanRequest:
-      type: object
-      required: [external_ref, authority_type]
-      description: |
-        Request body for `POST /v1/scan`. The scan flow resolves the
-        authority by `authority_type`, looks up the barcode by
-        `(authority_id, external_ref)`, and atomically transitions
-        `active` → `scanned`.
-      properties:
-        external_ref:
-          type: string
-          minLength: 1
-          description: The scanned barcode string.
-          example: "ARN-2026-000123"
-        authority_type:
-          type: string
-          enum:
-            - platform
-            - legacy_bil24
-            - external_platform
-            - guest_list
-          description: |
-            Authority type the barcode is expected to belong to. Unknown
-            types are rejected with 404 `barcode.unknown_authority`.
-          example: "platform"
-
-    ScanResultResponse:
-      type: object
-      required: [barcode_id, authority_type, external_ref, ticket_id, status, scanned_at]
-      description: |
-        Successful scan result returned by `POST /v1/scan` after the
-        barcode has been atomically marked `scanned`.
-      properties:
-        barcode_id:
-          type: string
-          format: uuid
-          description: UUID of the scanned barcodes row.
-          example: "01929d0e-0e47-7000-8000-000000000b01"
-        authority_type:
-          type: string
-          description: Authority type the barcode was resolved against.
-          example: "platform"
-        external_ref:
-          type: string
-          description: Echo of the scanned barcode string.
-          example: "ARN-2026-000123"
-        ticket_id:
-          type: [string, "null"]
-          format: uuid
-          description: |
-            Linked platform ticket UUID; `null` for external /
-            guest-list barcodes.
-        status:
-          type: string
-          description: Post-scan barcode status (always `scanned` on success).
-          example: "scanned"
-        scanned_at:
-          type: string
-          format: date-time
-          description: UTC timestamp at which the scan was recorded.
-          example: "2026-06-30T19:05:00Z"
-
-    ScannerSnapshotBarcode:
-      type: object
-      required: [id, external_ref, status, updated_at]
-      description: |
-        Minimal barcode projection returned inside the offline scanner
-        snapshot (feature #144). Offline scanners only need
-        `external_ref` and `status` to decide whether to admit a ticket.
-      properties:
-        id:
-          type: string
-          format: uuid
-          description: UUID of the barcodes row.
-          example: "01929d0e-0e47-7000-8000-000000000b01"
-        external_ref:
-          type: string
-          description: The barcode string encoded on the ticket.
-          example: "ARN-2026-000123"
-        ticket_id:
-          type: string
-          format: uuid
-          description: |
-            Linked platform ticket UUID. Omitted for barcodes without a
-            ticket link.
-        status:
-          type: string
-          enum: [active, scanned]
-          description: |
-            Barcode status at snapshot time. Revoked barcodes are
-            excluded from the snapshot entirely.
-          example: "active"
-        updated_at:
-          type: string
-          format: date-time
-          description: Last-update timestamp used by the `since` delta cursor.
-          example: "2026-06-24T10:00:00Z"
-
-    ScannerSnapshotResponse:
-      type: object
-      required: [barcodes, total, page, per_page, total_pages]
-      description: |
-        Paginated offline-validation snapshot returned by
-        `GET /v1/scanner/snapshot` (feature #144). Clients store
-        `last_updated_at` and pass it as the `since` query parameter on
-        the next poll to receive only changed / newly issued barcodes.
-      properties:
-        barcodes:
-          type: array
-          description: Non-revoked barcodes for the requested session (current page).
-          items:
-            $ref: "#/components/schemas/ScannerSnapshotBarcode"
-        total:
-          type: integer
-          format: int64
-          description: Total matching barcodes across all pages.
-          example: 1234
-        page:
-          type: integer
-          description: 1-based page number echoed from the request.
-          example: 1
-        per_page:
-          type: integer
-          description: Page size echoed from the request (default 200, max 500).
-          example: 200
-        total_pages:
-          type: integer
-          description: Total number of pages (minimum 1).
-          example: 7
-        last_updated_at:
-          type: string
-          format: date-time
-          description: |
-            Maximum `updated_at` among returned barcodes; pass as
-            `since` on the next poll. Omitted when the page is empty.
-          example: "2026-06-24T10:00:00Z"
-
-    ScannerValidateRequest:
-      type: object
-      required: [external_ref, authority_type]
-      description: |
-        Request body for `POST /v1/scanner/validate`. Identical shape to
-        `ScanRequest`, but the validate endpoint performs a pure read —
-        the barcode status is NOT changed.
-      properties:
-        external_ref:
-          type: string
-          minLength: 1
-          description: The barcode string to validate.
-          example: "ARN-2026-000123"
-        authority_type:
-          type: string
-          enum:
-            - platform
-            - legacy_bil24
-            - external_platform
-            - guest_list
-          description: |
-            Authority type the barcode is expected to belong to. Unknown
-            types are rejected with 404 `scanner.unknown_authority`.
-          example: "platform"
-
-    ScannerValidateResponse:
-      type: object
-      required: [barcode_id, external_ref, authority_type, status, valid]
-      description: |
-        Read-only validation verdict returned by
-        `POST /v1/scanner/validate`. Unlike `POST /v1/scan` the barcode
-        status is left untouched.
-      properties:
-        barcode_id:
-          type: string
-          format: uuid
-          description: UUID of the barcodes row.
-          example: "01929d0e-0e47-7000-8000-000000000b01"
-        external_ref:
-          type: string
-          description: Echo of the validated barcode string.
-          example: "ARN-2026-000123"
-        authority_type:
-          type: string
-          description: Authority type the barcode was resolved against.
-          example: "platform"
-        ticket_id:
-          type: string
-          format: uuid
-          description: |
-            Linked platform ticket UUID. Omitted for barcodes without a
-            ticket link.
-        status:
-          type: string
-          enum: [active, scanned, revoked]
-          description: Current barcode status (unchanged by this call).
-          example: "active"
-        valid:
-          type: boolean
-          description: True only when the barcode status is `active`.
-          example: true
-        invalid_reason:
-          type: string
-          enum: [barcode_revoked, already_scanned]
-          description: |
-            Machine-readable reason when `valid` is false. Omitted for
-            valid barcodes.
 
     GrantMembershipRequest:
       type: object
@@ -23592,6 +24169,16 @@ components:
             (the organization itself is the promoter), a UUID links one of
             the organization's active promoters. Anything else answers 422
             `import.invalid_promoter`.
+        arenaSeriesId:
+          type: [string, "null"]
+          description: |
+            Arena event-bundle extension (source=arena only; migration 0222):
+            absent keeps the event's tour, null or "" removes the link, a
+            UUID links one of the organization's active tours. Anything else
+            answers 422 `import.invalid_series` at `/action/arenaSeriesId`.
+            The dry run reports the same refusal. Reading an event back
+            (GET .../event-bundle) writes "" for an event without a tour and
+            leaves the key out for an archived tour.
         emailNote:
           type: [string, "null"]
           description: |
@@ -23616,6 +24203,31 @@ components:
             Values: `text`, `art`. Anything else answers 422
             `import.invalid_email_note`.
           example: "text"
+    ImportBil24ExternalSale:
+      type: object
+      required: [url, sellerName]
+      description: |
+        The partner box office of actionEvent.externalSale (arena extension,
+        source=arena only).
+      properties:
+        url:
+          type: string
+          description: The box office address, https only, at most 2048 characters.
+          example: "https://www.eventim.de/event/12345"
+        sellerName:
+          type: string
+          description: The box office name shown to buyers, 1 to 80 characters.
+          example: Eventim
+        priceFrom:
+          type: [number, "null"]
+          description: The lowest price in MAJOR units of `currency` (39.5 means 39.50). Optional.
+          example: 39
+        currency:
+          type: [string, "null"]
+          pattern: "^[A-Z]{3}$"
+          description: ISO 4217 code of `priceFrom`. Optional, only together with it.
+          example: EUR
+
     ImportBil24SessionActionEvent:
       type: object
       description: |
@@ -23653,6 +24265,25 @@ components:
             be absent or the version the session is bound to (409
             import.seating_plan_version_conflict): a bundle never re-binds a
             plan or touches places. Omitted when empty.
+        externalSale:
+          description: |
+            Arena extension, source=arena only (migration 0221): who sells
+            this session's tickets. Absent keeps the session's sales mode;
+            null puts it back on sale on the platform; an object hands it to
+            a partner box office (`url` https only, a host name, not a
+            platform host, at most 2048 characters; `sellerName` 1 to 80
+            characters; `priceFrom` in MAJOR units with `currency`, both or
+            neither; else 422 import.invalid_external_sale). A partner-sold
+            session owns no categories: the bundle then needs no
+            `categoryList`, and one that carries it is refused with 409
+            session.sold_externally. A session that already has orders,
+            holds, seats or categories cannot be handed over, and an
+            external one with seats or categories cannot come back (409
+            session.sales_mode_locked). The event-bundle read returns the
+            object for an external session and leaves the key out otherwise.
+          oneOf:
+            - $ref: "#/components/schemas/ImportBil24ExternalSale"
+            - type: "null"
         actionEventId:
           type: integer
           format: int64
@@ -34724,8 +35355,12 @@ paths:
         scoped to the org in the path. The full secret is returned only
         in this response (`api_key` field) and cannot be retrieved again.
         Scopes are validated against the service-actor allowlist: empty
-        scopes, `platform.`/`admin.`-prefixed scopes, and the exact
-        scope `api_key.manage` are all rejected. Requires `api_key.manage`
+        scopes, `platform.`/`admin.`/`network.`/`superadmin.`/`scaffold.`/
+        `onboarding.`-prefixed scopes, and the platform-level exact
+        scopes such as `api_key.manage` are all rejected. A caller who is
+        not a platform superadmin may only grant scopes they hold in this
+        organization; an unknown permission code is refused the same way.
+        Keys issued earlier keep their scopes. Requires `api_key.manage`
         and an `X-Admin-Reason` header.
       tags: [v1]
       security:
@@ -34788,10 +35423,15 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "422":
           description: |
-            Empty scopes list, a scope is forbidden (`platform.`/
-            `admin.` prefix, or the exact scope `api_key.manage`), or
-            `channel_id` is not a sales channel of this organization
-            (`api_key.invalid_channel`).
+            Empty scopes list, a scope is forbidden
+            (`api_key.forbidden_scope`: a `platform.`, `admin.`,
+            `network.`, `superadmin.`, `scaffold.` or `onboarding.`
+            prefix, or an exact platform-level scope such as
+            `api_key.manage`), a scope the caller does not hold in this
+            organization or an unknown permission code
+            (`api_key.scope_not_held`; a platform superadmin is not
+            limited), or `channel_id` is not a sales channel of this
+            organization (`api_key.invalid_channel`).
           content:
             application/json:
               schema:
@@ -43931,8 +44571,9 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
           description: |
-            `event.duplicate_slug`: another active event of the organization
-            already uses the typed `slug` (compared case-insensitively).
+            `event.duplicate_slug`: another active event or a tour of the
+            organization already uses the typed `slug` (compared
+            case-insensitively; events and tours share one address space).
           content:
             application/json:
               schema:
@@ -43944,7 +44585,9 @@ paths:
             description or a description stored earlier that must be converted
             with it is refused (`event.invalid_description`,
             `error.details.reason` names why), or the letter text `email_note`
-            is refused (`event.invalid_email_note`, same details).
+            is refused (`event.invalid_email_note`, same details), or
+            `series_id` is not an active tour of the organization
+            (`event.invalid_series`).
           content:
             application/json:
               schema:
@@ -44786,6 +45429,371 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+
+  /v1/organizations/{org_id}/events/{event_id}/translations:
+    get:
+      operationId: listEventContentTranslations
+      summary: Read the original texts and the translations of an event
+      description: |
+        Returns the original texts of the event in its content language, the hash of
+        that original, the stored translations (each with `translation_stale`), the
+        platform's supported locales and the languages of the organization's sites.
+        `machine_available` is false when machine translation is switched off.
+        Requires `event.read` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The original and its translations.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentTranslationList"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.read` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`translation.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/translations/machine:
+    post:
+      operationId: requestEventMachineTranslation
+      summary: Queue a machine translation of an event
+      description: |
+        Queues the worker job `content.translate` and answers 202. The job translates
+        only what is missing or out of date, and never replaces a manual translation
+        (there is no way to ask for that: delete the manual translation first).
+        Answers 503 `translation.not_configured` when machine translation is switched off.
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MachineTranslateRequest"
+      responses:
+        "202":
+          description: The job is queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MachineTranslateAccepted"
+        "400":
+          description: Invalid body (`translation.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: An empty list, an unsupported locale or the content locale (`translation.invalid_locale`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`translation.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Machine translation is switched off (`translation.not_configured`) or the database is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/translations/{locale}:
+    put:
+      operationId: putEventContentTranslation
+      summary: Write a manual translation of an event
+      description: |
+        Replaces the translation of one locale as a whole and marks it `manual`. The
+        texts are sanitized; the translation is stamped with the hash of the current
+        original, so it is fresh until the original changes.
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+        - name: locale
+          in: path
+          required: true
+          description: A supported locale other than the content locale, for example `cs`.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutContentTranslationRequest"
+      responses:
+        "200":
+          description: The translation as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentTranslationItem"
+        "400":
+          description: Invalid body (`translation.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: An unsupported locale or the content locale (`translation.invalid_locale`), or a refused text (`translation.invalid_field`, with `details.field` and `details.reason`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`translation.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    delete:
+      operationId: deleteEventContentTranslation
+      summary: Remove a translation of an event
+      description: |
+        Removes the translation of one locale, manual or machine. This is also how a
+        manual text is made replaceable by the machine.
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+        - name: locale
+          in: path
+          required: true
+          description: The locale of the translation to remove, for example `cs`.
+          schema: { type: string }
+      responses:
+        "204":
+          description: Removed.
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`) or no translation for the locale (`translation.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`translation.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/report-text:
+    put:
+      operationId: setEventReportText
+      summary: Set the photo-report text of an event
+      description: |
+        Writes the photo-report text of the original event, sanitized by the rich-text
+        description profile. A null or blank text clears it. A translation of it is
+        written with `PUT .../translations/{locale}`.
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetEventReportTextRequest"
+      responses:
+        "200":
+          description: The text as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventReportText"
+        "400":
+          description: Invalid body (`translation.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: A refused text (`translation.invalid_field`, with `details.field` and `details.reason`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`translation.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/organizations/{org_id}/events/{event_id}/photo-report:
     get:
@@ -46545,6 +47553,322 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/series:
+    get:
+      operationId: listSeries
+      summary: List the organization's tours
+      description: |
+        Returns the organization's active tours ordered by position, then name
+        (migration 0222). `?include_archived=true` adds archived ones. Requires
+        `event.read` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: include_archived
+          in: query
+          required: false
+          description: Include archived tours (true/false, default false).
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: The organization's tours.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeriesListEnvelope"
+        "400":
+          description: Invalid include_archived value (`series.invalid_query`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.read` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: createSeries
+      summary: Create a tour
+      description: |
+        Adds a tour to the organization. Requires `event.update` and
+        membership of the organization. Without `slug` the address is derived
+        from the name. Answers 409 `series.slug_taken` when the typed slug is
+        used by another tour or an active event of the organization, 422
+        `series.invalid` for a bad name, slug, video link, text or a media
+        object of another organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSeriesRequest"
+      responses:
+        "201":
+          description: Tour created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Series"
+        "400":
+          description: Empty or malformed body (`series.empty_body`, `series.invalid_json`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The slug is used by another tour or an event of the organization (`series.slug_taken`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Invalid field (`series.invalid`, `error.details.field` names it).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/series/{series_id}:
+    get:
+      operationId: getSeries
+      summary: Get a tour with its events
+      description: |
+        Returns the tour with the short cards of its active events. Requires
+        `event.read` and membership of the organization. Another
+        organization's tour answers 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: series_id
+          in: path
+          required: true
+          description: UUID of the tour.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The tour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeriesDetail"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.read` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such tour in this organization (`series.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      operationId: updateSeries
+      summary: Update a tour
+      description: |
+        Partial update (absent = keep, null = clear a nullable field).
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: series_id
+          in: path
+          required: true
+          description: UUID of the tour.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSeriesRequest"
+      responses:
+        "200":
+          description: The tour after the update.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Series"
+        "400":
+          description: Empty or malformed body (`series.empty_body`, `series.invalid_json`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such tour in this organization (`series.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The new slug is used by another tour or an event of the organization (`series.slug_taken`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Invalid field (`series.invalid`, `error.details.field` names it).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: archiveSeries
+      summary: Archive a tour
+      description: |
+        Sets `archived_at`. The events keep their `series_id`; an archived
+        tour can no longer be linked to an event and its page answers 404.
+        Requires `event.update` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: series_id
+          in: path
+          required: true
+          description: UUID of the tour.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Tour archived (also when it already was).
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such tour in this organization (`series.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{org_id}/conversion-settings:
     get:
       operationId: getConversionSettings
@@ -47125,9 +48449,10 @@ paths:
             `session.venue_not_found`, `session.invalid_admission_mode`,
             `session.missing_seating_plan_version`,
             `session.invalid_seating_plan_version`,
-            `session.seating_plan_not_applicable`, plus the seating bind
-            errors (`seating.version_not_found`, ...) when a seated
-            create fails its inline bind.
+            `session.seating_plan_not_applicable`, `session.invalid_sales_mode`
+            (`sales_mode` is neither `platform` nor `external`), plus the
+            seating bind errors (`seating.version_not_found`, ...) when a
+            seated create fails its inline bind.
             A `poster_media_id` that is not a UUID is `session.invalid_poster_media_id`.
           content:
             application/json:
@@ -47149,8 +48474,19 @@ paths:
           description: |
             Semantically invalid. Possible error codes:
             `session.venue_org_mismatch`, `session.invalid_currency`,
-            `session.currency_unresolvable`.
+            `session.currency_unresolvable`, and for a partner-sold session
+            (`sales_mode` `external`) `session.external_required`,
+            `session.external_not_applicable`, `session.invalid_external_url`,
+            `session.invalid_external_seller_name`,
+            `session.invalid_external_price`, `session.invalid_external_currency`.
             A `poster_media_id` that is not a media object of this organization is `session.invalid_poster_media_id`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            `session.sales_mode_locked`: a session with a seating plan cannot be sold by a partner box office.
           content:
             application/json:
               schema:
@@ -47388,7 +48724,8 @@ paths:
             `error.details.reason = "category_sum"`),
             `session.invalid_venue_id`, `session.venue_not_found`,
             `session.invalid_message_format` (`notice.message_format` is neither
-            `text` nor `art`).
+            `text` nor `art`), `session.invalid_sales_mode` (`sales_mode` is
+            neither `platform` nor `external`).
             A `poster_media_id` that is not a UUID is `session.invalid_poster_media_id`.
           content:
             application/json:
@@ -47428,8 +48765,22 @@ paths:
             through a website), `session.change_message_too_long`
             (`notice.message` over 1000 visible characters),
             `session.change_message_invalid` (`notice.message` has forbidden
-            characters or too many links; `error.details.reason`).
+            characters or too many links; `error.details.reason`), and for
+            the sales mode (migration 0221) `session.external_required`,
+            `session.external_not_applicable`, `session.invalid_external_url`,
+            `session.invalid_external_seller_name`,
+            `session.invalid_external_price`, `session.invalid_external_currency`.
             A `poster_media_id` that is not a media object of this organization is `session.invalid_poster_media_id`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            `session.sales_mode_locked`: the session cannot change who sells
+            its tickets. `platform` to `external` needs a session with no
+            orders, tickets, holds, seats or tiers; `external` back to
+            `platform` one with no seats or tiers.
           content:
             application/json:
               schema:
@@ -48449,6 +49800,12 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Parent session not found (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: A partner box office sells the session (`session.sold_externally`); it owns no tiers.
           content:
             application/json:
               schema:
@@ -53739,8 +55096,14 @@ paths:
         `barcode_authorities_type_check` constraint
         (`platform`, `legacy_bil24`, `external_platform`, `guest_list`).
         `label` is a human-readable display name for operator UIs.
+        There is at most one authority per `type` (unique index of
+        migration 0219): a type that already has an authority answers
+        409 `barcode_authority.type_exists`.
 
-        Requires JWT + the `barcode.create` permission.
+        Requires JWT + the `barcode.create` permission, and the caller
+        must be a platform superadmin: any other caller, including an
+        organization owner or an organization API key, gets 403
+        `barcode.superadmin_only`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -53798,7 +55161,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Caller lacks the `barcode.create` permission.
+          description: |
+            Caller lacks the `barcode.create` permission, or is not a
+            platform superadmin (`barcode.superadmin_only`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            An authority of this `type` already exists
+            (`barcode_authority.type_exists`).
           content:
             application/json:
               schema:
@@ -53807,516 +55180,6 @@ paths:
           description: |
             Internal server error while creating the authority
             (`barcode.create_authority_failed`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "503":
-          description: |
-            Barcode queries unavailable
-            (`dependency.database_unavailable`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-
-  /v1/barcodes:
-    post:
-      operationId: registerBarcode
-      summary: Register a barcode in the federation
-      description: |
-        Registers a new barcode under an existing barcode authority
-        (feature #142, `apps/backend/internal/platform/httpserver/
-        hbarcode/barcodes.go` HandleRegisterBarcode). The
-        `(authority_id, external_ref)` pair is UNIQUE — re-registering
-        the same reference under the same authority returns 409
-        `barcode.duplicate`. `ticket_id` is optional and links the
-        barcode to a platform ticket; external-platform and guest-list
-        barcodes typically omit it.
-
-        Requires JWT + the `barcode.create` permission.
-      tags: [v1]
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RegisterBarcodeRequest"
-      responses:
-        "201":
-          description: Barcode registered; echoes the created row.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BarcodeItem"
-        "400":
-          description: |
-            Invalid body or field. Possible error codes:
-            `barcode.invalid_body`, `barcode.invalid_authority_id`,
-            `barcode.missing_external_ref`, `barcode.invalid_ticket_id`.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "401":
-          description: Missing or invalid JWT.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "403":
-          description: Caller lacks the `barcode.create` permission.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "409":
-          description: |
-            A barcode with this `external_ref` already exists for the
-            given authority (`barcode.duplicate`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "500":
-          description: |
-            Internal server error while registering the barcode
-            (`barcode.register_failed`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "503":
-          description: |
-            Barcode queries unavailable
-            (`dependency.database_unavailable`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-
-  /v1/barcodes/{id}:
-    get:
-      operationId: getBarcode
-      summary: Get a barcode by id
-      description: |
-        Returns a single barcodes row by its UUID (feature #142,
-        HandleGetBarcode). 404 when no barcode with the given id exists.
-
-        Requires JWT + the `barcode.read` permission.
-      tags: [v1]
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: UUID primary key of the barcodes row.
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: The barcode row.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BarcodeItem"
-        "400":
-          description: id path parameter is not a valid UUID (`barcode.invalid_id`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "401":
-          description: Missing or invalid JWT.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "403":
-          description: Caller lacks the `barcode.read` permission.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "404":
-          description: Barcode not found (`barcode.not_found`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "500":
-          description: |
-            Internal server error while fetching the barcode
-            (`barcode.fetch_failed`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "503":
-          description: |
-            Barcode queries unavailable
-            (`dependency.database_unavailable`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-    delete:
-      operationId: revokeBarcode
-      summary: Revoke a barcode
-      description: |
-        Marks the barcode as `revoked` (feature #142,
-        HandleRevokeBarcode). Revocation is terminal — a revoked barcode
-        can never be scanned; subsequent scan attempts return 409
-        `barcode.revoked`. Returns the updated row rather than 204 so
-        operator UIs can render the final state.
-
-        Requires JWT + the `barcode.revoke` permission.
-      tags: [v1]
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: UUID primary key of the barcodes row to revoke.
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: Barcode revoked; echoes the updated row (`status = revoked`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BarcodeItem"
-        "400":
-          description: id path parameter is not a valid UUID (`barcode.invalid_id`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "401":
-          description: Missing or invalid JWT.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "403":
-          description: Caller lacks the `barcode.revoke` permission.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "404":
-          description: Barcode not found (`barcode.not_found`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "500":
-          description: |
-            Internal server error while revoking the barcode
-            (`barcode.revoke_failed`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "503":
-          description: |
-            Barcode queries unavailable
-            (`dependency.database_unavailable`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-
-  /v1/scan:
-    post:
-      operationId: scanBarcode
-      summary: Validate and consume a barcode scan
-      description: |
-        **INTERNAL / TESTING-ONLY** — The production door-admission gate
-        is MACS (see AB-50). This endpoint exists for development and
-        integration testing only; do not build scanner hardware against it.
-
-        Authority-aware scan validation (feature #142, HandleScan).
-        Flow: resolve the authority by `authority_type` (404 when
-        unknown), look up the barcode by `(authority_id, external_ref)`
-        (404 when absent), reject revoked barcodes (409
-        `barcode.revoked`), then atomically transition
-        `active` → `scanned`. A barcode that was already scanned —
-        including one scanned concurrently between lookup and update —
-        returns 409 `barcode.already_scanned` (double-scan protection).
-
-        Requires JWT + the `barcode.scan` permission.
-      tags: [v1]
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ScanRequest"
-      responses:
-        "200":
-          description: Scan recorded; the barcode is now `scanned`.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ScanResultResponse"
-        "400":
-          description: |
-            Invalid body or field. Possible error codes:
-            `barcode.invalid_body`, `barcode.missing_external_ref`,
-            `barcode.missing_authority_type`.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "401":
-          description: Missing or invalid JWT.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "403":
-          description: Caller lacks the `barcode.scan` permission.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "404":
-          description: |
-            Authority type not found in the federation
-            (`barcode.unknown_authority`) or no barcode with this
-            `external_ref` under the authority (`barcode.not_found`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "409":
-          description: |
-            Barcode cannot be consumed: revoked (`barcode.revoked`) or
-            already scanned (`barcode.already_scanned`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "500":
-          description: |
-            Internal server error during the scan flow
-            (`barcode.authority_lookup_failed`, `barcode.fetch_failed`,
-            `barcode.scan_failed`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "503":
-          description: |
-            Barcode queries unavailable
-            (`dependency.database_unavailable`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-
-  /v1/scanner/snapshot:
-    get:
-      operationId: getScannerSnapshot
-      summary: Download an offline-validation barcode snapshot
-      description: |
-        Returns a paginated snapshot of the barcodes of the
-        tickets in a session (feature #144,
-        `apps/backend/internal/platform/httpserver/hscanner/
-        scanner_snapshot.go` HandleScannerSnapshot). Offline scanners
-        download the snapshot so they can validate tickets without
-        network connectivity, then poll with the `since` cursor for
-        delta updates (store `last_updated_at` from each response and
-        pass it as `since` on the next request).
-
-        The full snapshot (no `since`) leaves revoked codes out. A delta
-        lists a code revoked since the cursor with `status: revoked`, so
-        the device drops it from its cache (a cancelled, refunded or
-        replaced ticket).
-
-        Rate limited per client IP (600 req/min) and per session
-        (300 req/min); excess requests return 429 `scanner.rate_limited`.
-
-        Requires JWT + the `barcode.scan` permission (scanner devices
-        use a service-account JWT).
-      tags: [v1]
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: session_id
-          in: query
-          required: true
-          description: UUID of the event session whose barcodes to retrieve.
-          schema:
-            type: string
-            format: uuid
-        - name: since
-          in: query
-          required: false
-          description: |
-            RFC 3339 delta cursor — only barcodes updated strictly after
-            this instant are returned. Omit for a full snapshot.
-          schema:
-            type: string
-            format: date-time
-        - name: page
-          in: query
-          required: false
-          description: 1-based page number (default 1).
-          schema:
-            type: integer
-            minimum: 1
-            default: 1
-        - name: per_page
-          in: query
-          required: false
-          description: Page size (default 200, capped at 500).
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 500
-            default: 200
-      responses:
-        "200":
-          description: One page of the barcode snapshot.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ScannerSnapshotResponse"
-        "400":
-          description: |
-            Invalid query parameter. Possible error codes:
-            `scanner.missing_session_id`, `scanner.invalid_session_id`,
-            `scanner.invalid_since`.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "401":
-          description: Missing or invalid JWT.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "403":
-          description: Caller lacks the `barcode.scan` permission.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "429":
-          description: |
-            Per-IP or per-session rate limit exceeded
-            (`scanner.rate_limited`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "500":
-          description: |
-            Internal server error while building the snapshot
-            (`scanner.snapshot_failed`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "503":
-          description: |
-            Barcode queries unavailable
-            (`dependency.database_unavailable`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-
-  /v1/scanner/validate:
-    post:
-      operationId: validateScannerBarcode
-      summary: Read-only online barcode validation
-      description: |
-        **INTERNAL / TESTING-ONLY** — The production door-admission gate
-        is MACS (see AB-50). This endpoint exists for development and
-        integration testing only; do not build scanner hardware against it.
-
-        Performs a read-only barcode validity check (feature #144,
-        HandleScannerValidate). Unlike `POST /v1/scan` this endpoint
-        does NOT mark the barcode as scanned — it reports whether the
-        barcode is valid (`active`), already scanned, or revoked.
-        Online scanners call this for a definitive server-side check
-        before admitting a ticket.
-
-        Rate limited per client IP (600 req/min); excess requests
-        return 429 `scanner.rate_limited`.
-
-        Requires JWT + the `barcode.scan` permission.
-      tags: [v1]
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ScannerValidateRequest"
-      responses:
-        "200":
-          description: |
-            Validation verdict (returned for valid AND invalid barcodes
-            — inspect the `valid` flag and `invalid_reason`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ScannerValidateResponse"
-        "400":
-          description: |
-            Invalid body or field. Possible error codes:
-            `scanner.invalid_body`, `scanner.missing_external_ref`,
-            `scanner.missing_authority_type`.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "401":
-          description: Missing or invalid JWT.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "403":
-          description: Caller lacks the `barcode.scan` permission.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "404":
-          description: |
-            Authority type not found (`scanner.unknown_authority`) or no
-            barcode with this `external_ref` under the authority
-            (`scanner.barcode_not_found`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "429":
-          description: Per-IP rate limit exceeded (`scanner.rate_limited`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "500":
-          description: |
-            Internal server error during validation
-            (`scanner.authority_lookup_failed`, `scanner.validate_failed`).
           content:
             application/json:
               schema:
@@ -56782,7 +57645,7 @@ paths:
                   format: binary
                 owner_type:
                   type: string
-                  enum: [org_logo, event_poster, artist_photo, seating_plan_svg, session_poster, event_gallery, event_report, shop_product, shop_digital]
+                  enum: [org_logo, event_poster, artist_photo, seating_plan_svg, session_poster, event_gallery, event_report, shop_product, shop_digital, event_series]
                 owner_id:
                   type: string
                   format: uuid
@@ -57623,10 +58486,12 @@ paths:
              credential against `agent_feed_tokens` and resolves
              the scanner scope (organization + sales channel).
           2. For each entry:
-             - resolves `credential_code` to a `tickets` row when
-               possible (unresolved credentials still produce an
-               audit-only `scan_events` row);
-             - inserts a `scan_events` row scoped to the resolved
+             - resolves `credential_code` to a `tickets` row of the
+               token's organization when possible (unresolved
+               credentials, and credentials of a ticket of another
+               organization, still produce an audit-only `scan_events`
+               row with no event, session or ticket);
+             - inserts a `scan_events` row scoped to the token's
                organization, idempotent on
                `(credential_code, scanned_at)`;
              - on a fresh `admitted` insert, flips
@@ -57966,6 +58831,12 @@ paths:
             type: integer
             default: 0
           description: Pagination offset.
+        - name: locale
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Content language of the texts, for example `cs` or `de`. Events that have a translation into it are served translated; an unsupported locale or an event without a translation falls back to the original.
         - name: include_removed
           in: query
           required: false
@@ -58068,6 +58939,110 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/public/feeds/{feed_token}/series:
+    get:
+      operationId: listPublicFeedSeries
+      summary: List the tours visible in a feed
+      description: |
+        Returns the non-archived tours that have at least one event visible in
+        THIS feed (the same visibility as `/events`). No JWT required: the
+        feed token in the path is the credential. Rate-limited per token and
+        per IP.
+      tags: [PublicFeed]
+      parameters:
+        - name: feed_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Opaque feed token (from `agent_feed_tokens.token`).
+        - name: locale
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Reserved for translated texts; accepted and ignored for now.
+      responses:
+        "200":
+          description: The tours.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedSeriesListEnvelope"
+        "404":
+          description: Unknown feed token (`feed.token_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/feeds/{feed_token}/series/{series_id}:
+    get:
+      operationId: getPublicFeedSeries
+      summary: Get one tour visible in a feed
+      description: |
+        Returns the tour. Answers 404 when it is archived, belongs to another
+        organization or has no event visible in this feed. No JWT required.
+        Rate-limited per token and per IP.
+      tags: [PublicFeed]
+      parameters:
+        - name: feed_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Opaque feed token (from `agent_feed_tokens.token`).
+        - name: series_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the tour.
+        - name: locale
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Reserved for translated texts; accepted and ignored for now.
+      responses:
+        "200":
+          description: The tour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedSeries"
+        "404":
+          description: No such tour in this feed, or it is archived or has no visible event (`series.not_found`; `feed.token_not_found` for an unknown token).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/public/feeds/{feed_token}/events/{event_id}:
     get:
       operationId: getPublicFeedEvent
@@ -58102,7 +59077,18 @@ paths:
             `sold_out`, every tier reports `available: 0`, the session has
             no seat map links and every hold is refused; the widget shows
             the state instead of the picker. `""` only when it could not be
-            loaded.
+            loaded. A session a partner box office sells (see `sales_mode`)
+            reports the sixth state `external`.
+          * `sales_mode` — who sells the tickets of the session (migration
+            0221): `platform` or `external`.
+          * `external` — null for a platform session. For an external one the
+            partner's box office: `{ url, seller_name, price_from, currency }`
+            with `price_from` in MAJOR units of `currency` (both null when the
+            organizer gave no price). The session's `tiers` is `[]`, it has no
+            seat map links and every hold is refused (409
+            `session.sold_externally`); the widget and the hosted page show a
+            button to `url` instead of the picker. An event whose sessions are
+            all external stays in the feed list.
           * `service_fee_percent` — the channel's service charge as a
             decimal string (`"5.00"` = 5 %, `"0.00"` = none), applied on
             top of the ticket prices at checkout; the widget shows it as
@@ -58170,6 +59156,12 @@ paths:
             type: string
             format: uuid
           description: The UUID of the event.
+        - name: locale
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Content language of the texts, for example `cs` or `de`. A translation into it is served when it exists (also `materials.report_text_html`); an unsupported locale or a missing translation falls back to the original.
       responses:
         "200":
           description: The requested event.
@@ -58491,6 +59483,58 @@ paths:
                 $ref: "#/components/schemas/HostedPromoterPageResponse"
         "404":
           description: Page not found (see resolution rule above — one indistinguishable outcome for every miss).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/pages/{org_slug}/series/{series_slug}:
+    get:
+      operationId: getPublicSeriesPage
+      summary: Resolve the page of a tour
+      description: |
+        Backs the page `https://tickets.arenasoldout.com/{org_slug}/{series_slug}`
+        of a tour. Answers the tour, its events visible on the hosted page and
+        the same organization, seller and contact-form blocks as the
+        organization page. 404 `page.not_found` when the organization or the
+        tour is unknown, the tour is archived or none of its events is
+        published on the hosted-page channel. No JWT required. Rate-limited
+        per client IP.
+      tags: [PublicFeed]
+      parameters:
+        - name: org_slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Organization slug, matched case-insensitively.
+        - name: series_slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Slug of the tour, matched case-insensitively.
+      responses:
+        "200":
+          description: The tour page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HostedSeriesPageResponse"
+        "404":
+          description: Page not found (one indistinguishable outcome for every miss).
           content:
             application/json:
               schema:
@@ -60106,7 +61150,8 @@ paths:
         The contact form of a static site that sells through a feed token
         (spec 62 section 10.2). It extends the hosted page's form: the site is
         addressed by its feed token, the message carries a `topic`
-        (`contact` or `private_event`), a `last_name` and a `phone`, and the
+        (`contact`, `private_event` or `partnership`; the last one adds
+        `company`, `city` and `website`), a `last_name` and a `phone`, and the
         letter goes to the addresses configured for the topic in the channel's
         settings (`settings.contact_form.recipients.<topic>`, a list of
         addresses; a topic without addresses falls back to the channel's
@@ -60158,7 +61203,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/OrganizerContactAccepted"
         "400":
-          description: Invalid topic, name, last name, e-mail, phone, message, missing consent or a malformed body (`contact.invalid_*`, `contact.consent_required`).
+          description: Invalid topic, name, last name, company, city, website, e-mail, phone, message, missing consent or a malformed body (`contact.invalid_*`, `contact.consent_required`).
           content:
             application/json:
               schema:
@@ -60195,6 +61240,100 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable, the message could not be stored (`contact.send_failed`, retry), or the captcha is not configured or cannot be checked (`contact.captcha_not_configured`, `contact.captcha_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/feeds/{feed_token}/track:
+    post:
+      operationId: trackSiteEvent
+      summary: Report a visitor's event of a static site
+      description: |
+        Server-side tracking of a static site that sells through a feed token
+        (spec 63 section 19). The site's nginx forwards the beacon from
+        `/_site/e`. The main event is `outbound_ticket_click`, a click to a
+        partner's box office: the platform counts it in the anonymous funnel
+        (step `outbound_click`, surface `external_site`) and in the per-box-office
+        counter, and queues `InitiateCheckout` for Meta Conversions API and
+        `begin_checkout` (with `affiliation`) for GA4 Measurement Protocol, using
+        the organization's conversion settings.
+
+        Tracking is on until the visitor refuses: `tracking_declined=true`
+        sends nothing to Meta or GA4. Events reach the ad platforms only when
+        the request carries `X-Site-Key`, the channel's secret
+        (`settings.site.track_key_hash` holds its SHA-256); then the visitor's
+        address comes from `X-Site-Client-IP` and the browser from
+        `X-Site-User-Agent`. Without the key only the anonymous funnel counts,
+        the address is the connection's. Robots are not counted. Limits: an 8 KiB
+        body, a rate per feed token and per address. No JWT. The answer is 202
+        and never says what was done with the event.
+      tags: [v1]
+      security: []
+      parameters:
+        - name: feed_token
+          in: path
+          required: true
+          description: The site channel's feed token.
+          schema:
+            type: string
+        - name: X-Site-Key
+          in: header
+          required: false
+          description: The channel's tracking secret, added by the site's nginx.
+          schema:
+            type: string
+        - name: X-Site-Client-IP
+          in: header
+          required: false
+          description: The visitor's address, trusted only together with a valid `X-Site-Key`.
+          schema:
+            type: string
+        - name: X-Site-User-Agent
+          in: header
+          required: false
+          description: The visitor's browser, trusted only together with a valid `X-Site-Key`.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SiteTrackRequest"
+      responses:
+        "202":
+          description: Taken.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteTrackAccepted"
+        "400":
+          description: The body is not a JSON object of this shape (`track.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The token is unknown or the channel has no site origin (`track.not_available`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: The body is larger than 8 KiB (`track.too_large`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many events (`track.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The service is unavailable (`track.unavailable`, `dependency.database_unavailable`).
           content:
             application/json:
               schema:
@@ -61879,7 +63018,10 @@ paths:
     get:
       operationId: listBarcodeBatches
       summary: List external barcode batches
-      description: List external barcode batches. Requires the `barcode_batch.read` permission.
+      description: |
+        List external barcode batches. Requires the `barcode_batch.read`
+        permission, and the caller must be a platform superadmin: any other
+        caller gets 403 `barcode.superadmin_only`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -61902,7 +63044,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Insufficient permission (`barcode_batch.read`).
+          description: |
+            Insufficient permission (`barcode_batch.read`), or the caller
+            is not a platform superadmin (`barcode.superadmin_only`).
           content:
             application/json:
               schema:
@@ -61916,7 +63060,10 @@ paths:
     post:
       operationId: uploadBarcodeBatch
       summary: Upload an external barcode batch
-      description: Upload an external barcode batch. Requires the `barcode_batch.upload` permission.
+      description: |
+        Upload an external barcode batch. Requires the `barcode_batch.upload`
+        permission, and the caller must be a platform superadmin: any other
+        caller gets 403 `barcode.superadmin_only`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -61952,7 +63099,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Insufficient permission (`barcode_batch.upload`).
+          description: |
+            Insufficient permission (`barcode_batch.upload`), or the caller
+            is not a platform superadmin (`barcode.superadmin_only`).
           content:
             application/json:
               schema:
@@ -61968,7 +63117,10 @@ paths:
     get:
       operationId: getBarcodeBatch
       summary: Get a barcode batch by ID
-      description: Get a barcode batch by ID.
+      description: |
+        Get a barcode batch by ID. Requires the `barcode_batch.read`
+        permission, and the caller must be a platform superadmin: any other
+        caller gets 403 `barcode.superadmin_only`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -61985,6 +63137,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BarcodeBatch"
+        "403":
+          description: |
+            Insufficient permission (`barcode_batch.read`), or the caller
+            is not a platform superadmin (`barcode.superadmin_only`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Batch not found.
           content:
@@ -62002,7 +63162,10 @@ paths:
     post:
       operationId: approveBarcodeBatch
       summary: Approve a barcode batch for registration
-      description: Approve a barcode batch for registration.
+      description: |
+        Approve a barcode batch for registration. Requires the
+        `barcode_batch.approve` permission, and the caller must be a platform
+        superadmin: any other caller gets 403 `barcode.superadmin_only`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -62019,6 +63182,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BarcodeBatch"
+        "403":
+          description: |
+            Insufficient permission (`barcode_batch.approve`), or the caller
+            is not a platform superadmin (`barcode.superadmin_only`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Batch not found.
           content:
@@ -62036,7 +63207,10 @@ paths:
     post:
       operationId: rejectBarcodeBatch
       summary: Reject a barcode batch
-      description: Reject a barcode batch.
+      description: |
+        Reject a barcode batch. Requires the `barcode_batch.approve`
+        permission, and the caller must be a platform superadmin: any other
+        caller gets 403 `barcode.superadmin_only`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -62053,6 +63227,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BarcodeBatch"
+        "403":
+          description: |
+            Insufficient permission (`barcode_batch.approve`), or the caller
+            is not a platform superadmin (`barcode.superadmin_only`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Batch not found.
           content:
@@ -68356,6 +69538,80 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/events/{event_id}/outbound-clicks:
+    get:
+      operationId: getV1OrganizationsOrgIdEventsEventIdOutboundClicks
+      summary: Clicks from the event's site page to partner box offices
+      description: |
+        The block "Clicks to box offices" of the event: all clicks of the
+        window, the share of the site's visitors who clicked, and the clicks per
+        day, per box office and per traffic source. The numbers are anonymous
+        and count every visitor, whatever they chose about tracking. By default
+        the window is the last 30 days ending today in the venue's zone; `from`
+        and `to` (`YYYY-MM-DD`, inclusive) set it, at most 366 days. Requires
+        `report.read`. An event of another organization is a 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: false
+          description: First day, `YYYY-MM-DD`. Default 29 days before `to`.
+          schema: { type: string }
+        - name: to
+          in: query
+          required: false
+          description: Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone.
+          schema: { type: string }
+      responses:
+        "200":
+          description: The clicks of the window.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutboundClicksResponse"
+        "400":
+          description: A path parameter is not a UUID or the window is wrong (`outbound_clicks.invalid_date`, `outbound_clicks.invalid_range`, `outbound_clicks.range_too_long`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `report.read` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event not found, or not part of this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{org_id}/events/{event_id}/funnel:
     get:
       operationId: getV1OrganizationsOrgIdEventsEventIdFunnel
@@ -70322,7 +71578,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
-          description: A new tier has the name of a live category of the session (`seat_batch.tier_name_taken`). Nothing was written.
+          description: A new tier has the name of a live category of the session (`seat_batch.tier_name_taken`), or a partner box office sells the session and it owns no seats (`session.sold_externally`). Nothing was written.
           content:
             application/json:
               schema:
@@ -73999,7 +75255,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Missing permission
+          description: Missing permission, or `superadmin.required` for a caller who is not a platform superadmin
           content:
             application/json:
               schema:
@@ -74028,7 +75284,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/OnboardingAdminDetail"
         "403":
-          description: Missing permission
+          description: Missing permission, or `superadmin.required` for a caller who is not a platform superadmin
           content:
             application/json:
               schema:
@@ -74063,7 +75319,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/OnboardingAdminDetail"
         "403":
-          description: Missing permission
+          description: Missing permission, or `superadmin.required` for a caller who is not a platform superadmin
           content:
             application/json:
               schema:
@@ -74111,7 +75367,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Missing permission
+          description: Missing permission, or `superadmin.required` for a caller who is not a platform superadmin
           content:
             application/json:
               schema:
@@ -74171,7 +75427,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Missing permission
+          description: Missing permission, or `superadmin.required` for a caller who is not a platform superadmin
           content:
             application/json:
               schema:
@@ -74237,7 +75493,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Missing permission
+          description: Missing permission, or `superadmin.required` for a caller who is not a platform superadmin
           content:
             application/json:
               schema:
@@ -74303,7 +75559,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Missing permission
+          description: Missing permission, or `superadmin.required` for a caller who is not a platform superadmin
           content:
             application/json:
               schema:
@@ -74357,7 +75613,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Missing permission
+          description: Missing permission, or `superadmin.required` for a caller who is not a platform superadmin
           content:
             application/json:
               schema:
@@ -74417,7 +75673,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Missing permission
+          description: Missing permission, or `superadmin.required` for a caller who is not a platform superadmin
           content:
             application/json:
               schema:
@@ -74464,7 +75720,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/OnboardingNote"
         "403":
-          description: Missing permission
+          description: Missing permission, or `superadmin.required` for a caller who is not a platform superadmin
           content:
             application/json:
               schema:
@@ -74497,7 +75753,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/OnboardingSettings"
         "403":
-          description: Missing permission
+          description: Missing permission, or `superadmin.required` for a caller who is not a platform superadmin
           content:
             application/json:
               schema:
@@ -74537,7 +75793,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Missing permission
+          description: Missing permission, or `superadmin.required` for a caller who is not a platform superadmin
           content:
             application/json:
               schema:

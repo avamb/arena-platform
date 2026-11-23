@@ -57,7 +57,9 @@ func (s *Server) onb(fn func(*honboarding.Handler, http.ResponseWriter, *http.Re
 // exist only while ONBOARDING_ENABLED is on; they carry no login — an
 // application is reached through its access token. The operator routes need
 // onboarding.review (settings: onboarding.settings), which only
-// platform_superadmin holds, and every state change needs X-Admin-Reason.
+// platform_superadmin holds, AND a platform superadmin
+// (honboarding.RequireSuperadmin, reads included); every state change needs
+// X-Admin-Reason.
 func (s *Server) mountOnboardingRoutes(r chi.Router) {
 	if s.cfg != nil && s.cfg.OnboardingEnabled {
 		r.Get("/onboarding/form-schema", s.onb((*honboarding.Handler).HandleFormSchema))
@@ -92,6 +94,7 @@ func (s *Server) mountOnboardingRoutes(r chi.Router) {
 	}
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "onboarding.review", "onboarding")
+		pr.Use(honboarding.RequireSuperadmin)
 		pr.Get("/admin/onboarding/applications", s.onb((*honboarding.Handler).HandleAdminList))
 		pr.Get("/admin/onboarding/applications/{id}", s.onb((*honboarding.Handler).HandleAdminGet))
 		pr.Post("/admin/onboarding/applications/{id}/recheck", s.onb((*honboarding.Handler).HandleAdminRecheck))
@@ -106,6 +109,7 @@ func (s *Server) mountOnboardingRoutes(r chi.Router) {
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "onboarding.settings", "onboarding")
+		pr.Use(honboarding.RequireSuperadmin)
 		pr.Put("/admin/onboarding/settings", s.onb((*honboarding.Handler).HandleAdminPutSettings))
 	})
 }

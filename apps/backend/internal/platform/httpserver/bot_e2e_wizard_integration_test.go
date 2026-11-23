@@ -213,7 +213,8 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	eventName := "Бот-концерт " + uuid.NewString()[:6]
 
 	// Step 1 — the event.
-	press("wz:new", "Как называется")
+	press("wz:new", "Кто продаёт билеты?")
+	press("wz:seller:platform", "Как называется")
 	say(strings.Repeat("Ы", 201), "до 200 знаков") // an over-long name is refused, with a plain hint
 	say(eventName, "Возраст")
 	// "Cancel" asks first: one tap must not wipe the draft.
@@ -518,7 +519,8 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 
 	// ── Leaving keeps the draft by default: it is offered again, and only
 	// "delete" removes it.
-	press("wz:new", "Как называется")
+	press("wz:new", "Кто продаёт билеты?")
+	press("wz:seller:platform", "Как называется")
 	say("Черновик "+eventName, "Возраст")
 	press("wz:cancel", "Выйти из создания мероприятия")
 	press("wz:cancel:keep", "Черновик сохранён")

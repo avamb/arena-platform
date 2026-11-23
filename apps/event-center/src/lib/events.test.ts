@@ -72,4 +72,8 @@ describe("visibleSalesState", () => {
     expect(visibleSalesState({ status: "published", sales_state: "on_sale" })).toBe("on_sale");
     expect(visibleSalesState({ status: "published", sales_state: "mystery" })).toBeNull();
   });
+  it("shows an event sold only by a partner box office as external, not sold out", () => {
+    expect(visibleSalesState({ status: "published", sales_state: "external" })).toBe("external");
+    expect(visibleSalesState({ status: "draft", sales_state: "external" })).toBeNull();
+  });
 });

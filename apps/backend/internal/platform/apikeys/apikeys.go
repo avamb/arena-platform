@@ -61,7 +61,10 @@ const randomAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123
 // the spec named: until 2026-09-27 an org admin could mint a key carrying
 // geo.admin (edit every country and city), billing.admin or network.* and
 // the service actor would honour it.
-var ForbiddenScopePrefixes = []string{"platform.", "admin.", "network.", "superadmin.", "scaffold."}
+//
+// onboarding.* works the organizer applications of the whole platform
+// (approve, reject, purge, settings): a person's decision, never a key's.
+var ForbiddenScopePrefixes = []string{"platform.", "admin.", "network.", "superadmin.", "scaffold.", "onboarding."}
 
 // ForbiddenScopeExact are exact permission codes that no API key may carry:
 // the key-management permission itself and the platform-level permissions

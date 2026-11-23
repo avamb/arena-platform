@@ -80,6 +80,22 @@ var gateWithheldCases = []struct {
 		},
 		wantErr: hcheckout.ErrSessionCancelled,
 	},
+	{
+		// Spec 63 §14.2 (migration 0221): a session a partner box office
+		// sells never takes a hold, whatever its categories say.
+		name: "session sold by a partner",
+		withdraw: func(t *testing.T, ctx context.Context, pool *pgxpool.Pool, tierID uuid.UUID) {
+			t.Helper()
+			if _, err := pool.Exec(ctx,
+				`UPDATE sessions SET sales_mode = 'external',
+				        external_ticket_url = 'https://www.eventim.de/x',
+				        external_seller_name = 'Eventim'
+				  WHERE id = (SELECT session_id FROM ticket_tiers WHERE id = $1)`, tierID); err != nil {
+				t.Fatalf("set session external: %v", err)
+			}
+		},
+		wantErr: hcheckout.ErrSessionSoldExternally,
+	},
 }
 
 func gateSetSessionStatus(t *testing.T, ctx context.Context, pool *pgxpool.Pool, tierID uuid.UUID, status string) {

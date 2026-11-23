@@ -42,6 +42,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventtext"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/extsale"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
@@ -74,20 +75,30 @@ type publicFeedEventResponse struct {
 	// DescriptionHTML and DescriptionText are the safe HTML and the plain text of
 	// Description, read with the event's format flag (spec 44, RT-03a). nil when
 	// there is no description. Description itself stays the raw stored value.
-	DescriptionHTML *string  `json:"description_html"`
-	DescriptionText *string  `json:"description_text"`
-	Status          string   `json:"status"`
-	FirstSessionAt  *string  `json:"first_session_at"`
-	LastSessionAt   *string  `json:"last_session_at"`
-	VenueNames      []string `json:"venue_names"`
-	Visibility      string   `json:"visibility"`
-	ImageURL        *string  `json:"image_url"`
+	DescriptionHTML *string `json:"description_html"`
+	DescriptionText *string `json:"description_text"`
+	// ContentLocale is the language of the text served; AvailableLocales is the
+	// original language plus the languages with a translation; TranslationStale
+	// is true when a served translation was made from another original (spec 63 §16.3).
+	ContentLocale    string   `json:"content_locale"`
+	AvailableLocales []string `json:"available_locales"`
+	TranslationStale bool     `json:"translation_stale"`
+	Status           string   `json:"status"`
+	FirstSessionAt   *string  `json:"first_session_at"`
+	LastSessionAt    *string  `json:"last_session_at"`
+	VenueNames       []string `json:"venue_names"`
+	Visibility       string   `json:"visibility"`
+	ImageURL         *string  `json:"image_url"`
 	// PosterMediaID is the event-level default poster (AB-47/AB-47c). Sessions
 	// fall back to this cover when they don't set their own poster_media_id.
 	PosterMediaID *string `json:"poster_media_id"`
 	// PosterURL is the public URL for the event-level poster cover (nil when
 	// no cover is set). Sessions can override this per-session (AB-47c).
 	PosterURL *string `json:"poster_url"`
+	// SeriesID is the tour (event_series) the event belongs to, absent when it
+	// has none, so the feed of an event without a tour keeps its old fields.
+	// Read in one batch by hydrateFeedSeriesIDs, never via EventRow.
+	SeriesID  *string `json:"series_id,omitempty"`
 	CreatedAt string  `json:"created_at"`
 	UpdatedAt string  `json:"updated_at"`
 }
@@ -363,6 +374,12 @@ type publicFeedSessionResponse struct {
 	// the picker. "" only when the state could not be loaded.
 	SalesState string                   `json:"sales_state"`
 	Tiers      []publicFeedTierResponse `json:"tiers"`
+	// SalesMode is who sells the tickets: "platform" or "external" (migration
+	// 0221). For "external" the sales_state is "external", tiers is empty and
+	// External carries the partner's box office; buyers go there instead of
+	// buying here. External is null for a platform session.
+	SalesMode string        `json:"sales_mode"`
+	External  *extsale.View `json:"external"`
 	// PosterMediaID / PosterURL are the resolved cover (AB-47c): the session
 	// value when set, otherwise the event fallback. Same on both fields.
 	// The widget uses PosterURL directly; media_id is exposed for callers
@@ -417,6 +434,11 @@ func (h *Handler) publicFeedSessionFromRow(ctx context.Context, s gen.SessionRow
 		BuyerFields:   buyerFields,
 		Tiers:         []publicFeedTierResponse{},
 		MediaGallery:  []publicFeedMediaItem{},
+		SalesMode:     s.SalesMode,
+		External:      extsale.ViewFromRow(s),
+	}
+	if resp.SalesMode == "" {
+		resp.SalesMode = gen.SessionSalesModePlatform
 	}
 	if s.DoorsOpenAt != nil {
 		d := s.DoorsOpenAt.UTC().Format(time.RFC3339)
@@ -697,6 +719,8 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 	}
 	h.hydrateFeedVenueNames(ctx, events)
 	h.hydrateFeedDescriptions(ctx, events)
+	h.hydrateFeedTranslations(ctx, events, requestedLocale(r))
+	h.hydrateFeedSeriesIDs(ctx, events)
 
 	totalPages := int(total) / perPage
 	if int(total)%perPage != 0 {
@@ -794,11 +818,14 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	var reportHTML *string
 	eventResp := h.publicFeedEventFromRow(ctx, event)
 	{
 		hydrated := []publicFeedEventResponse{eventResp}
 		h.hydrateFeedVenueNames(ctx, hydrated)
 		h.hydrateFeedDescriptions(ctx, hydrated)
+		reportHTML = h.hydrateFeedTranslations(ctx, hydrated, requestedLocale(r))[eventID]
+		h.hydrateFeedSeriesIDs(ctx, hydrated)
 		eventResp = hydrated[0]
 	}
 
@@ -819,6 +846,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 		Materials:               h.loadPublicMaterials(ctx, eventID, time.Now().UTC()),
 		Venues:                  []publicVenue{},
 	}
+	detail.Materials.ReportTextHTML = reportHTML
 	if vs := h.loadPublicVenues(ctx, []uuid.UUID{eventID})[eventID]; len(vs) > 0 {
 		detail.Venues = vs
 	}
@@ -933,6 +961,11 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 						sessionWithdrawn = true
 					}
 				}
+				sellable := hcheckout.SessionSellable(sess.SalesMode)
+				if !sellable && sessResp.SalesState != salesstate.Cancelled {
+					// Also when the facts could not be loaded.
+					sessResp.SalesState = salesstate.External
+				}
 				sessResp.ServiceFeePercent = serviceFeePercent
 				sessResp.PaymentWindowSeconds = windowSeconds(paymentWindow)
 				sessResp.PromoCodesAvailable = promoCodesAvailable
@@ -945,7 +978,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 				// A cancelled session stays in the payload with
 				// its status, so a buyer who holds tickets still sees the date
 				// as cancelled — but it offers no seat map.
-				if !sessionWithdrawn {
+				if !sessionWithdrawn && sellable {
 					sessResp.applySeatingLinks(admissionByID[sess.ID.String()])
 				}
 				sessResp.applyPosterFallback(eventResp.PosterMediaID, eventResp.PosterURL)
@@ -966,8 +999,8 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 					}
 				}
 
-				// Fetch tiers for each session.
-				if h.tierQueries != nil {
+				// Fetch tiers for each session. A partner-sold session has none.
+				if h.tierQueries != nil && sellable {
 					tiers, err := h.tierQueries.ListTicketTiersBySession(ctx, sess.ID)
 					if err != nil {
 						h.logger.Error("public_feed: list tiers failed",

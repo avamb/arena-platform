@@ -227,3 +227,124 @@ func TestConversions_PaidOrderToStubs_LiveDB(t *testing.T) {
 		}
 	}
 }
+
+// TestConversions_SiteEvents_LiveDB drives the order-less path: EnqueueEvent
+// queues one row per ready provider (GA4 only with a client id), a repeated
+// event id queues nothing, the sweep sends, a final row forgets its payload and
+// PurgeEvents deletes old final rows.
+func TestConversions_SiteEvents_LiveDB(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	orgID := uuid.New()
+	nonce := orgID.String()[:8]
+	defer func() {
+		for _, sql := range []string{
+			`DELETE FROM conversion_deliveries WHERE org_id = $1`,
+			`DELETE FROM org_conversion_settings WHERE org_id = $1`,
+			`DELETE FROM organizations WHERE id = $1`,
+		} {
+			if _, err := pool.Exec(context.Background(), sql, orgID); err != nil {
+				t.Logf("cleanup %q: %v", sql, err)
+			}
+		}
+	}()
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, sql, args...); err != nil {
+			t.Fatalf("fixture %q: %v", sql, err)
+		}
+	}
+	count := func(where string, args ...any) int {
+		t.Helper()
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM conversion_deliveries WHERE org_id = $1 AND `+where, append([]any{orgID}, args...)...).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	exec(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`, orgID, "Site Org "+nonce, "site-"+nonce)
+	store := NewPGStore(pool)
+
+	ev := SiteEvent{Kind: KindViewContent, EventID: "ev-" + nonce, ContentID: "E-1",
+		Context: BuyerContext{GAClientID: "1.2", ClientIP: "203.0.113.7"}}
+	// No settings: nothing queued.
+	if err := store.EnqueueEvent(ctx, orgID, ev); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(`true`); n != 0 {
+		t.Fatalf("queued without settings: %d", n)
+	}
+	exec(`INSERT INTO org_conversion_settings (org_id, meta_pixel_id, meta_capi_token, ga4_measurement_id, ga4_api_secret)
+	      VALUES ($1, '1352226752766944', 'meta-token-123', 'G-ABCD1234', 'ga-secret-123')`, orgID)
+	for i := 0; i < 2; i++ { // the repeat is a no-op
+		if err := store.EnqueueEvent(ctx, orgID, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := count(`order_id IS NULL AND kind = 'view_content'`); n != 2 {
+		t.Fatalf("rows = %d, want 2 (meta + ga4)", n)
+	}
+	// Without a GA client id only Meta is queued.
+	noGA := SiteEvent{Kind: KindPageView, EventID: "ev2-" + nonce}
+	if err := store.EnqueueEvent(ctx, orgID, noGA); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(`event_id = $2 AND provider = 'meta'`, noGA.EventID); n != 1 {
+		t.Fatalf("meta rows = %d", n)
+	}
+	if n := count(`event_id = $2 AND provider = 'ga4'`, noGA.EventID); n != 0 {
+		t.Fatalf("ga4 rows without client id = %d", n)
+	}
+
+	var metaHits, gaHits int32
+	meta := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&metaHits, 1)
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(200)
+	}))
+	defer meta.Close()
+	ga := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&gaHits, 1)
+		w.WriteHeader(204)
+	}))
+	defer ga.Close()
+	senders := Senders{Meta: MetaSender{BaseURL: meta.URL}, GA4: GA4Sender{BaseURL: ga.URL}}
+
+	exec(`UPDATE conversion_deliveries SET next_attempt_at = now() - interval '1 minute' WHERE org_id = $1`, orgID)
+	for i := 0; i < 5; i++ {
+		if _, err := RunOnce(ctx, store, senders, slog.Default(), time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if metaHits < 2 || gaHits < 1 {
+		t.Fatalf("hits meta=%d ga=%d", metaHits, gaHits)
+	}
+	if n := count(`order_id IS NULL AND status = 'sent'`); n != 3 {
+		t.Fatalf("sent rows = %d, want 3", n)
+	}
+	if n := count(`order_id IS NULL AND payload <> '{}'::jsonb`); n != 0 {
+		t.Fatalf("%d final rows still keep a payload", n)
+	}
+
+	// PurgeEvents: an old final row goes, a fresh one stays.
+	exec(`UPDATE conversion_deliveries SET updated_at = now() - interval '31 days'
+	       WHERE org_id = $1 AND event_id = $2`, orgID, noGA.EventID)
+	if _, err := store.PurgeEvents(ctx, time.Now().Add(-EventRetention)); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(`event_id = $2`, noGA.EventID); n != 0 {
+		t.Fatalf("old final row survived: %d", n)
+	}
+	if n := count(`event_id = $2`, ev.EventID); n != 2 {
+		t.Fatalf("fresh rows = %d, want 2", n)
+	}
+}

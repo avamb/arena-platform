@@ -204,7 +204,8 @@ func newVCRig(t *testing.T, user int64, label string, countries ...string) *vcRi
 // day, start time, sales end and doors: the next question is the country.
 func (r *vcRig) head(eventName string) {
 	r.t.Helper()
-	r.press("wz:new", "Как называется")
+	r.press("wz:new", "Кто продаёт билеты?")
+	r.press("wz:seller:platform", "Как называется")
 	r.say(eventName, "Возраст")
 	r.press("wz:age:16+", "Под каким брендом")
 	r.press("wz:prom:org", "афишу")

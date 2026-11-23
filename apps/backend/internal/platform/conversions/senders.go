@@ -188,6 +188,174 @@ func (g GA4Sender) Send(ctx context.Context, measurementID, apiSecret string, p 
 	return do(ctx, c, strings.TrimRight(base, "/")+path+"?"+q.Encode(), body)
 }
 
+var metaEventNames = map[string]string{
+	KindPageView:         "PageView",
+	KindViewContent:      "ViewContent",
+	KindInitiateCheckout: "InitiateCheckout",
+	KindLead:             "Lead",
+	KindSubscribe:        "CompleteRegistration",
+}
+
+var ga4EventNames = map[string]string{
+	KindPageView:         "page_view",
+	KindViewContent:      "view_item",
+	KindInitiateCheckout: "begin_checkout",
+	KindLead:             "generate_lead",
+	KindSubscribe:        "sign_up",
+}
+
+func eventTime(ev SiteEvent) time.Time {
+	if ev.Time.IsZero() {
+		return time.Now().UTC()
+	}
+	return ev.Time
+}
+
+// SendEvent posts one site event to the Conversions API. A non-empty
+// testEventCode makes it a test event.
+func (m MetaSender) SendEvent(ctx context.Context, pixelID, token, testEventCode string, ev SiteEvent) error {
+	name, ok := metaEventNames[ev.Kind]
+	if !ok {
+		return &SendError{Msg: "unknown_kind", Permanent: true}
+	}
+	base := m.BaseURL
+	if base == "" {
+		base = MetaBaseURL
+	}
+	c := m.Client
+	if c == nil {
+		c = httpClient()
+	}
+	t := eventTime(ev)
+	user := map[string]any{}
+	if ev.Email != "" {
+		user["em"] = []string{sha256Hex(strings.ToLower(strings.TrimSpace(ev.Email)))}
+	}
+	if d := digits(ev.Phone); d != "" {
+		user["ph"] = []string{sha256Hex(d)}
+	}
+	if ev.Context.ClientIP != "" {
+		user["client_ip_address"] = ev.Context.ClientIP
+	}
+	if ev.Context.UserAgent != "" {
+		user["client_user_agent"] = ev.Context.UserAgent
+	}
+	if ev.Context.FBP != "" {
+		user["fbp"] = ev.Context.FBP
+	}
+	fbc := ev.Context.FBC
+	if fbc == "" && ev.Context.FBCLID != "" {
+		fbc = "fb.1." + strconv.FormatInt(t.UnixMilli(), 10) + "." + ev.Context.FBCLID
+	}
+	if fbc != "" {
+		user["fbc"] = fbc
+	}
+	if ev.VisitorID != "" {
+		user["external_id"] = []string{sha256Hex(ev.VisitorID)}
+	}
+	custom := map[string]any{}
+	switch ev.Kind {
+	case KindViewContent:
+		if ev.ContentID != "" {
+			custom["content_ids"] = []string{ev.ContentID}
+		}
+		custom["content_type"] = "product"
+	case KindInitiateCheckout:
+		if ev.Seller != "" {
+			custom["seller"] = ev.Seller
+		}
+		if ev.City != "" {
+			custom["city"] = ev.City
+		}
+		if ev.CheckoutType != "" {
+			custom["checkout_type"] = ev.CheckoutType
+		}
+		if ev.ContentID != "" {
+			custom["content_ids"] = []string{ev.ContentID}
+		}
+	}
+	if ev.Value != 0 && ev.Currency != "" {
+		custom["value"] = ev.Value
+		custom["currency"] = strings.ToUpper(ev.Currency)
+	}
+	e := map[string]any{
+		"event_name":    name,
+		"event_time":    t.Unix(),
+		"event_id":      ev.EventID,
+		"action_source": "website",
+		"user_data":     user,
+	}
+	if len(custom) > 0 {
+		e["custom_data"] = custom
+	}
+	if ev.Context.PageURL != "" {
+		e["event_source_url"] = ev.Context.PageURL
+	}
+	payload := map[string]any{"data": []any{e}, "access_token": token}
+	if testEventCode != "" {
+		payload["test_event_code"] = testEventCode
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return &SendError{Msg: "encode", Permanent: true}
+	}
+	return do(ctx, c, strings.TrimRight(base, "/")+"/"+url.PathEscape(pixelID)+"/events", body)
+}
+
+// SendEvent posts one site event to the Measurement Protocol. The GA client id
+// is required: without it the event is a permanent failure ("no_client_id").
+func (g GA4Sender) SendEvent(ctx context.Context, measurementID, apiSecret string, ev SiteEvent) error {
+	name, ok := ga4EventNames[ev.Kind]
+	if !ok {
+		return &SendError{Msg: "unknown_kind", Permanent: true}
+	}
+	if ev.Context.GAClientID == "" {
+		return &SendError{Msg: "no_client_id", Permanent: true}
+	}
+	base := g.BaseURL
+	if base == "" {
+		base = GA4BaseURL
+	}
+	c := g.Client
+	if c == nil {
+		c = httpClient()
+	}
+	params := map[string]any{"engagement_time_msec": 1}
+	if n, err := strconv.ParseInt(ev.GASessionID, 10, 64); err == nil {
+		params["session_id"] = n
+	}
+	if ev.Context.PageURL != "" && ev.Kind == KindPageView {
+		params["page_location"] = ev.Context.PageURL
+	}
+	switch ev.Kind {
+	case KindViewContent, KindInitiateCheckout:
+		if ev.ContentID != "" || ev.ContentName != "" {
+			params["items"] = []any{map[string]any{"item_id": ev.ContentID, "item_name": ev.ContentName}}
+		}
+	}
+	if ev.Kind == KindInitiateCheckout {
+		if ev.Seller != "" {
+			params["affiliation"] = ev.Seller
+		}
+		if ev.CheckoutType != "" {
+			params["checkout_type"] = ev.CheckoutType
+		}
+	}
+	if ev.Value != 0 && ev.Currency != "" {
+		params["value"] = ev.Value
+		params["currency"] = strings.ToUpper(ev.Currency)
+	}
+	body, err := json.Marshal(map[string]any{
+		"client_id": ev.Context.GAClientID,
+		"events":    []any{map[string]any{"name": name, "params": params}},
+	})
+	if err != nil {
+		return &SendError{Msg: "encode", Permanent: true}
+	}
+	q := url.Values{"measurement_id": {measurementID}, "api_secret": {apiSecret}}
+	return do(ctx, c, strings.TrimRight(base, "/")+"/mp/collect?"+q.Encode(), body)
+}
+
 // FallbackClientID is the GA client id of a purchase whose browser sent none:
 // stable per order, shaped like GA's own (<random>.<timestamp>).
 func FallbackClientID(orderNumber string, t time.Time) string {

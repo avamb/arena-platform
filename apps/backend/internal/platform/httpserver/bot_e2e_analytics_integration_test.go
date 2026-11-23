@@ -102,7 +102,9 @@ func assertNoneContain(t *testing.T, rows []botAnalyticsRow, secrets ...string) 
 	t.Helper()
 	for _, r := range rows {
 		for _, s := range secrets {
-			if s != "" && (strings.Contains(r.Raw, s) || strings.Contains(r.IDValue, s)) {
+			// The id is a UUID or a hash, compared whole: a random UUID may hold
+			// the digits of a Telegram id ("…-a777-…") without leaking it.
+			if s != "" && (strings.Contains(r.Raw, s) || r.IDValue == s) {
 				t.Errorf("%s event carries %q: %s / %s", r.Name, s, r.IDValue, r.Raw)
 			}
 		}

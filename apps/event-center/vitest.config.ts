@@ -12,6 +12,7 @@ export default defineConfig({
       "@arena-track": path.resolve(__dirname, "../../packages/arena-track/src"),
     },
   },
+  server: { fs: { allow: [path.resolve(__dirname, "../..")] } },
   test: {
     environment: "node",
     globals: false,

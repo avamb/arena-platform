@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/google/uuid"
+
 	paymodules "github.com/abhteam/arena_new/apps/backend/internal/app/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 )
@@ -70,17 +72,41 @@ func legacyWebhookProviders() []string {
 	return out
 }
 
+// legacyWebhookSigner says whose secret verified a delivery on the legacy
+// un-suffixed webhook route. The zero value means no secret was configured
+// at all (dev/mock mode).
+type legacyWebhookSigner struct {
+	// OrgID is set when an ORGANIZATION's own configured secret verified the
+	// body. The delivery then speaks for that organization only: the caller
+	// binds the processed row to it, as the per-config route does.
+	OrgID *uuid.UUID
+	// Provider is the module whose secret verified the body (organization or
+	// platform). Empty in dev/mock mode.
+	Provider string
+	// Platform is true when the process-env (platform) secret verified it.
+	Platform bool
+}
+
+// legacyOrgSecrets is the organization the legacy route resolved from the
+// body, with its webhook secret per provider. A nil OrgID means none.
+type legacyOrgSecrets struct {
+	OrgID   *uuid.UUID
+	Secrets map[string]string
+}
+
 // verifyLegacyWebhook is the legacy route's signature check, provider by
 // provider in registry order: the first provider that holds a secret (the
 // organization's own config first, else the platform's process-env secret)
 // AND recognizes the request (its signature header) decides. With no secret
 // at all the request passes (dev/mock mode; production config validation
-// forbids it). With secrets but no recognized header it is refused.
-func verifyLegacyWebhook(ctx context.Context, r *http.Request, body []byte, orgSecrets, envSecrets map[string]string) error {
+// forbids it). With secrets but no recognized header it is refused. The
+// result names who verified the body.
+func verifyLegacyWebhook(ctx context.Context, r *http.Request, body []byte, org legacyOrgSecrets, envSecrets map[string]string) (legacyWebhookSigner, error) {
 	in := payments.WebhookInput{Body: body, Header: r.Header}
 	anySecret := false
 	for _, name := range legacyWebhookProviders() {
-		secret := orgSecrets[name]
+		secret := org.Secrets[name]
+		fromOrg := secret != "" && org.OrgID != nil
 		if secret == "" {
 			secret = envSecrets[name]
 		}
@@ -93,13 +119,19 @@ func verifyLegacyWebhook(ctx context.Context, r *http.Request, body []byte, orgS
 		if !ok || !parser.RecognizesWebhook(in) {
 			continue
 		}
-		_, err := parser.VerifyAndParse(ctx, in)
-		return err
+		if _, err := parser.VerifyAndParse(ctx, in); err != nil {
+			return legacyWebhookSigner{}, err
+		}
+		if fromOrg {
+			id := *org.OrgID
+			return legacyWebhookSigner{OrgID: &id, Provider: name}, nil
+		}
+		return legacyWebhookSigner{Provider: name, Platform: true}, nil
 	}
 	if !anySecret {
-		return nil
+		return legacyWebhookSigner{}, nil
 	}
-	return fmt.Errorf(
+	return legacyWebhookSigner{}, fmt.Errorf(
 		"%w: no provider signature header present (expected Stripe-Signature)",
 		payments.ErrInvalidWebhookSignature,
 	)

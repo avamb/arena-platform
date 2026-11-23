@@ -1,0 +1,60 @@
+{
+  "generated": "2026-10-22",
+  "source": "docs/competitive/pricing_2026-10/ticketing_pricing_2026-10-09.xlsx, sheet Direct merchant",
+  "groups": {
+    "A": {
+      "title": "Global self-serve",
+      "platforms": [
+        {"name": "Ticket Tailor", "website": "https://www.tickettailor.com", "market": "UK/global"},
+        {"name": "Tito", "website": "https://ti.to", "market": "global"},
+        {"name": "Humanitix", "website": "https://humanitix.com", "market": "Australia/global"},
+        {"name": "Luma", "website": "https://luma.com", "market": "global"},
+        {"name": "TicketSpice", "website": "https://www.ticketspice.com", "market": "US"},
+        {"name": "Universe", "website": "https://www.universe.com", "market": "US"},
+        {"name": "TicketSource", "website": "https://www.ticketsource.co.uk", "market": "UK"},
+        {"name": "Ticketbud", "website": "https://www.ticketbud.com", "market": "US"}
+      ]
+    },
+    "B": {
+      "title": "Theatres, seating, Asia-Pacific",
+      "platforms": [
+        {"name": "ThunderTix", "website": "https://www.thundertix.com", "market": "US"},
+        {"name": "Brushfire", "website": "https://www.brushfire.com", "market": "US"},
+        {"name": "Yapsody", "website": "https://www.yapsody.com", "market": "global"},
+        {"name": "SimpleTix", "website": "https://www.simpletix.com", "market": "global"},
+        {"name": "pretix", "website": "https://pretix.eu", "market": "EU"},
+        {"name": "TryBooking", "website": "https://www.trybooking.com", "market": "Australia"},
+        {"name": "Ticketebo", "website": "https://www.ticketebo.com.au", "market": "Australia"},
+        {"name": "Peatix", "website": "https://peatix.com", "market": "Japan/Asia"},
+        {"name": "Explara", "website": "https://www.explara.com", "market": "India"},
+        {"name": "EventNook", "website": "https://www.eventnook.com", "market": "Singapore"}
+      ]
+    },
+    "C": {
+      "title": "Europe: Spain, Czechia, Poland, Hungary",
+      "platforms": [
+        {"name": "Tuk Tuk", "website": "https://tuktuk.cat", "market": "Spain"},
+        {"name": "Soundtix", "website": "https://soundtix.com", "market": "Spain"},
+        {"name": "Colosseum", "website": "https://colosseum.eu", "market": "Czechia"},
+        {"name": "BZUCO", "website": "https://bezticketingovky.cz", "market": "Czechia"},
+        {"name": "Evenea", "website": "https://evenea.pl", "market": "Poland"},
+        {"name": "Tixx.pl", "website": "https://tixx.pl", "market": "Poland"},
+        {"name": "Cooltix", "website": "https://organizers.cooltix.com", "market": "Hungary"},
+        {"name": "Funcode", "website": "https://funcode.hu", "market": "Hungary"}
+      ]
+    },
+    "D": {
+      "title": "Israel and Latin America",
+      "platforms": [
+        {"name": "Tickchak", "website": "https://tickchak.co.il", "market": "Israel"},
+        {"name": "Ticks", "website": "https://ticks.co.il", "market": "Israel"},
+        {"name": "Eventbuzz", "website": "https://www.eventbuzz.co.il", "market": "Israel"},
+        {"name": "Tikzet", "website": "https://www.tikzet.com", "market": "Argentina"},
+        {"name": "Tickean", "website": "https://www.tickean.com", "market": "Argentina/Chile/Mexico"},
+        {"name": "Enter.ar", "website": "https://enter.ar", "market": "Argentina"},
+        {"name": "MaunaOne", "website": "https://maunaone.com", "market": "Mexico"},
+        {"name": "BoletaDirecta", "website": "https://www.boletadirecta.com", "market": "Colombia"}
+      ]
+    }
+  }
+}

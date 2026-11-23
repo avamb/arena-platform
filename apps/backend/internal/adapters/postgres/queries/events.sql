@@ -280,12 +280,17 @@ RETURNING id, event_id, name, role, bio, photo_media_id, sort_order, created_at,
 
 -- name: EventSlugTaken :one
 -- True when an active event of the organization already uses the slug
--- (case-insensitive, the same rule as the events_org_slug_unique index).
+-- (case-insensitive, the same rule as the events_org_slug_unique index), or a
+-- tour of the organization does (one slug namespace, migration 0222).
 SELECT EXISTS (
     SELECT 1 FROM events
     WHERE  org_id = $1
       AND  lower(slug) = lower($2)
       AND  deleted_at IS NULL
+) OR EXISTS (
+    SELECT 1 FROM event_series
+    WHERE  org_id = $1
+      AND  lower(slug) = lower($2)
 );
 
 -- name: SetEventSlugIfEmpty :execrows

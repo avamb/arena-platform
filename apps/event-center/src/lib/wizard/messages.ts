@@ -26,6 +26,10 @@ const ERROR_KEYS: Record<string, MessageKey> = {
   "import.category_chain_cycle": "wizard.err.category_chain_cycle",
   "import.invalid_price_schedule": "wizard.err.invalid_price_schedule",
   "import.capacity_required": "wizard.err.capacity_required",
+  // A date sold by a partner box office (spec 63, L-3).
+  "import.invalid_external_sale": "wizard.err.invalid_external_sale",
+  "session.sold_externally": "wizard.err.sold_externally",
+  "session.sales_mode_locked": "wizard.err.sales_mode_locked",
 };
 
 const WARNING_KEYS: Record<string, MessageKey> = {

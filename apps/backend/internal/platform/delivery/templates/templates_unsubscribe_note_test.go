@@ -1,6 +1,8 @@
 package templates
 
 import (
+	"errors"
+	"io/fs"
 	"strings"
 	"testing"
 )
@@ -20,6 +22,13 @@ var unsubscribeNotes = map[string]string{
 	"de": "Wenn Sie auf „Abbestellen“ klicken, erhalten Sie keine E-Mails mit Ihren Tickets und keine wichtigen E-Mails zu Ihrer Bestellung mehr. Werbe-Mailings senden wir nicht ohne Ihre Einwilligung.",
 	"fr": "Si vous cliquez sur « Se désabonner », vous ne recevrez plus les e-mails contenant vos billets ni les e-mails importants concernant votre commande. Nous n’envoyons pas de communications commerciales sans votre consentement.",
 	"he": "אם תלחצו על ״ביטול הרשמה״, לא תקבלו יותר את המיילים עם הכרטיסים שלכם ואת המיילים החשובים על ההזמנה שלכם. אנחנו לא שולחים דיוורים שיווקיים ללא הסכמתכם.",
+	"et": "Kui vajutate „Tellimus lõpetada“, ei jõua teieni enam piletitega kirjad ega olulised kirjad teie tellimuse kohta. Turundusuudiskirju me ilma teie nõusolekuta ei saada.",
+	"fi": "Jos napsautatte ”Peruuta tilaus”, lippunne sisältävät viestit ja tilaustanne koskevat tärkeät viestit eivät enää saavu teille. Emme lähetä markkinointiviestejä ilman suostumustanne.",
+	"hu": "Ha a „Leiratkozás” gombra kattint, a jegyeit tartalmazó levelek és a rendeléséről szóló fontos levelek többé nem érkeznek meg Önhöz. Az Ön hozzájárulása nélkül nem küldünk marketinglevelet.",
+	"lt": "Jei paspausite „Atsisakyti prenumeratos“, laiškai su Jūsų bilietais ir svarbūs laiškai apie Jūsų užsakymą Jūsų nebepasieks. Rinkodaros laiškų be Jūsų sutikimo nesiunčiame.",
+	"lv": "Ja noklikšķināsiet uz “Atteikties no abonēšanas”, jūs vairs nesaņemsiet e-pastus ar biļetēm un svarīgus e-pastus par pasūtījumu. Mēs nesūtām mārketinga ziņojumus bez jūsu piekrišanas.",
+	"pl": "Jeśli klikną Państwo „Wypisz się”, wiadomości z biletami oraz ważne wiadomości o zamówieniu przestaną do Państwa docierać. Nie wysyłamy wiadomości marketingowych bez Państwa zgody.",
+	"uk": "Якщо Ви натиснете «Відписатися», листи з Вашими квитками й важливі листи про Ваше замовлення більше не надходитимуть. Маркетингових розсилок без Вашої згоди ми не надсилаємо.",
 }
 
 // shopUnsubscribeNotes is the same note for the merchandise shop's letters
@@ -47,6 +56,13 @@ var saleUnsubscribeNotes = map[string]string{
 	"de": "Wenn Sie auf „Abbestellen“ klicken, erreichen Sie unsere E-Mails an diese Adresse nie wieder, auch keine Tickets.",
 	"fr": "Si vous cliquez sur « Se désabonner », nos e-mails n’arriveront plus jamais à cette adresse, billets compris.",
 	"he": "אם תלחצו על ״ביטול הרשמה״, המיילים שלנו לא יגיעו יותר לעולם לכתובת הזאת, גם לא כרטיסים.",
+	"et": "Kui vajutate «Tellimus lõpetada», ei jõua meie kirjad sellele aadressile enam kunagi, ka piletid mitte.",
+	"fi": "Jos napsautatte ”Peruuta tilaus”, viestimme eivät enää koskaan saavu tähän osoitteeseen, eivät myöskään liput.",
+	"hu": "Ha a „Leiratkozás” gombra kattint, tőlünk többé nem érkezik levél erre a címre, a jegyeket is beleértve.",
+	"lt": "Jei paspausite „Atsisakyti prenumeratos“, mūsų laiškai šiuo adresu Jūsų nebepasieks niekada, įskaitant bilietus.",
+	"lv": "Ja noklikšķināsiet uz «Atteikties no abonēšanas», e-pasti no mums uz šo adresi vairs nekad nenāks, arī biļetes.",
+	"pl": "Jeśli klikną Państwo „Wypisz się”, nasze wiadomości nigdy więcej nie dotrą na ten adres, w tym bilety.",
+	"uk": "Якщо Ви натиснете «Відписатися», наші листи більше ніколи не надходитимуть на цю адресу, зокрема й квитки.",
 }
 
 // noteFor is the note the letters of a kind end with.
@@ -91,17 +107,27 @@ func TestBuyerLetters_EndWithTheUnsubscribeNote(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(unsubscribeNotes) != len(SupportedLocales) || len(shopUnsubscribeNotes) != len(SupportedLocales) {
-		t.Fatalf("the tables have %d and %d locales, the renderer %d", len(unsubscribeNotes), len(shopUnsubscribeNotes), len(SupportedLocales))
+	// The shop letters are not translated into the seven locales added in
+	// L-4 (they fall back to English), so the shop table has no row for them.
+	if len(unsubscribeNotes) != len(SupportedLocales) || len(saleUnsubscribeNotes) != len(SupportedLocales) {
+		t.Fatalf("the tables have %d and %d locales, the renderer %d", len(unsubscribeNotes), len(saleUnsubscribeNotes), len(SupportedLocales))
 	}
 	for _, loc := range SupportedLocales {
-		if unsubscribeNotes[loc] == "" || shopUnsubscribeNotes[loc] == "" {
+		if unsubscribeNotes[loc] == "" || saleUnsubscribeNotes[loc] == "" {
 			t.Fatalf("no note in the tables for locale %s", loc)
+		}
+		if translated(r, TemplateKindShopOrderReceived, loc) && shopUnsubscribeNotes[loc] == "" {
+			t.Fatalf("no shop note in the table for locale %s", loc)
 		}
 	}
 	for kind, d := range buyerLetterKinds() {
 		for _, loc := range SupportedLocales {
-			note := noteFor(kind, loc)
+			// An untranslated kind is rendered in English and ends with the English note.
+			noteLoc := loc
+			if !translated(r, kind, loc) {
+				noteLoc = "en"
+			}
+			note := noteFor(kind, noteLoc)
 			out, err := r.Render(kind, loc, d)
 			if err != nil {
 				t.Fatalf("%s/%s: %v", kind, loc, err)
@@ -118,7 +144,7 @@ func TestBuyerLetters_EndWithTheUnsubscribeNote(t *testing.T) {
 			// The last footer line: after the platform line, and no link
 			// follows it (the note explains the relay's link, it is not one).
 			at := strings.Index(out.HTMLBody, note)
-			if i := strings.Index(out.HTMLBody, platformLineFor(kind)); i < 0 || i > at {
+			if i := strings.Index(out.HTMLBody, platformLineIn(kind, loc)); i < 0 || i > at {
 				t.Errorf("%s/%s: the note does not come after the platform line", kind, loc)
 			}
 			if strings.Contains(out.HTMLBody[at:], "<a ") || strings.Contains(out.HTMLBody[at:], "href") {
@@ -136,6 +162,9 @@ func TestOrganizerLetters_HaveNoUnsubscribeNote(t *testing.T) {
 	for _, kind := range []string{TemplateKindRefundBlocked, TemplateKindScanException, TemplateKindSalesAlert} {
 		for _, loc := range SupportedLocales {
 			raw, err := templateFS.ReadFile(kind + "." + loc + ".tmpl")
+			if errors.Is(err, fs.ErrNotExist) && isSiteLocale(loc) {
+				continue // organizer kinds have no file for the L-4 locales: English fallback
+			}
 			if err != nil {
 				t.Fatal(err)
 			}

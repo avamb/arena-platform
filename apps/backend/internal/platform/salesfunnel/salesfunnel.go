@@ -31,6 +31,12 @@ const (
 	StepSeatsChosen = "seats_chosen"
 )
 
+// StepOutboundClick is a click on a partner box office (migration 0219). Only
+// POST /v1/public/feeds/{token}/track writes it: it is not one of ClientSteps
+// (the public beacon refuses it) and not one of Steps (the organizer funnel
+// does not read it).
+const StepOutboundClick = "outbound_click"
+
 // The server-side steps the read adds. They are never written by the beacon.
 const (
 	StepCheckoutStart = "checkout_start"

@@ -1,0 +1,88 @@
+{{define "subject"}}{{with .Reissue}}Uusi kutsunne — {{$.EventName}}{{else}}Teidät on kutsuttu — {{.EventName}}{{end}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="fi" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Teidät on kutsuttu</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">Teidät on kutsuttu</h1>
+  <p style="margin:0 0 12px 0;">Hei{{with .HolderName}} {{.}}{{end}},</p>
+{{with .Reissue}}<p style="margin:0 0 12px 0;">{{if .Typo}}Sähköpostiosoitteessanne oli kirjoitusvirhe, joten ensimmäinen kutsunne sisältänyt viesti meni toiseen osoitteeseen. Otitte yhteyttä järjestäjään ja vahvistitte tietonne. Olemme myöntäneet teille uuden kutsun.<br><br>Ensimmäisen viestin kutsu ei ole enää voimassa. Sisään pääsee vain uudella kutsulla.{{else}}Pyynnöstänne olemme myöntäneet uuden kutsun aiemman tilalle.<br><br>Aiempi kutsu ei ole enää voimassa. Sisään pääsee vain uudella kutsulla.{{end}}</p>
+{{end}}  <p style="margin:0 0 12px 0;">Teille on myönnetty maksuton kutsulippu tapahtumaan
+     <strong>{{.EventName}}</strong>. PDF-tiedosto on liitteenä.</p>
+  <p style="margin:0 0 12px 0;">Tämä lippu on maksuton kutsu — maksua ei tarvita.</p>
+  {{with .Directions.GoogleURL}}<p style="margin:0 0 12px 0;">{{with $.VenueName}}{{.}}<br>{{end}}Reittiohjeet: <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a></p>{{end}}
+  {{if gt (len .Tickets) 1}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">{{range .Tickets}}<tr><td>Nro {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}</td></tr>{{end}}</table>{{else if or .SeatSector .SeatRow .SeatNumber}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">
+    {{with .SeatSector}}<tr><td><strong>Sektori</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatRow}}<tr><td><strong>Rivi</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatNumber}}<tr><td><strong>Paikka</strong></td><td>{{.}}</td></tr>{{end}}
+  </table>{{end}}
+  {{if le (len .Tickets) 1}}<p style="font-size:12px;color:#666">Lipun tunnus: {{.TicketID}}</p>{{end}}
+  <p style="font-size:12px;color:#666">Vastaanottaja: {{.RecipientEmail}}</p>
+  </td></tr>
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Yhteystiedot: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Yhteystiedot: <a href="{{.}}" style="color:#666">Kirjoita järjestäjälle</a>{{end}}{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Lippujen käsittely: arenasoldout.com</a>{{end}}</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Jos napsautatte ”Peruuta tilaus”, lippunne sisältävät viestit ja tilaustanne koskevat tärkeät viestit eivät enää saavu teille. Emme lähetä markkinointiviestejä ilman suostumustanne.</p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+Teidät on kutsuttu
+
+Hei{{with .HolderName}} {{.}}{{end}},
+
+{{with .Reissue}}{{if .Typo}}Sähköpostiosoitteessanne oli kirjoitusvirhe, joten ensimmäinen kutsunne sisältänyt viesti meni toiseen osoitteeseen. Otitte yhteyttä järjestäjään ja vahvistitte tietonne. Olemme myöntäneet teille uuden kutsun.
+
+Ensimmäisen viestin kutsu ei ole enää voimassa. Sisään pääsee vain uudella kutsulla.{{else}}Pyynnöstänne olemme myöntäneet uuden kutsun aiemman tilalle.
+
+Aiempi kutsu ei ole enää voimassa. Sisään pääsee vain uudella kutsulla.{{end}}
+
+{{end}}Teille on myönnetty maksuton kutsulippu tapahtumaan {{.EventName}}.
+PDF-tiedosto on liitteenä.
+
+Tämä lippu on maksuton kutsu — maksua ei tarvita.
+
+{{with .Directions.GoogleURL}}{{with $.VenueName}}{{.}}
+{{end}}Reittiohjeet: Google Maps {{.}} · Waze {{$.Directions.WazeURL}}
+
+{{end}}{{if gt (len .Tickets) 1}}{{range .Tickets}}- Nro {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}
+{{end}}{{else}}{{with .SeatSector}}Sektori: {{.}}
+{{end}}{{with .SeatRow}}Rivi: {{.}}
+{{end}}{{with .SeatNumber}}Paikka: {{.}}
+{{end}}Lipun tunnus: {{.TicketID}}{{end}}
+{{template "contact_text" .}}Vastaanottaja: {{.RecipientEmail}}
+
+--
+{{.Branding.SellerLabel}} {{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
+{{end}}{{with .Branding.PaymentLine}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}Yhteystiedot: {{.}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Yhteystiedot: {{.}}
+{{end}}{{end}}
+{{if not .WhiteLabel}}Lippujen käsittely: arenasoldout.com — https://arenasoldout.com{{end}}
+
+Jos napsautatte ”Peruuta tilaus”, lippunne sisältävät viestit ja tilaustanne koskevat tärkeät viestit eivät enää saavu teille. Emme lähetä markkinointiviestejä ilman suostumustanne.
+{{end}}

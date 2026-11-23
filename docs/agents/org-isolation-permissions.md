@@ -55,6 +55,20 @@ Org-scoped access, roles and scopes, API keys, memberships, owners, archived org
   `platform.`/`admin.` prefixes were checked and an org admin could mint a key
   with `geo.admin`. A NEW platform-wide permission must be added to that list
   — its name alone does not protect it.
+- **No API key carries an onboarding.* scope, and the onboarding operator
+  routes are for a platform superadmin only (2026-11-21).** `onboarding.` is
+  in `apikeys.ForbiddenScopePrefixes`: issuing a key with it answers 422
+  `api_key.forbidden_scope`, and `EffectiveScopes` drops it from a key stored
+  earlier. Every route under `/v1/admin/onboarding` (reads included) also
+  passes `honboarding.RequireSuperadmin` after the permission gate: without
+  `auth.HasSuperadminOrgAccess` it answers 403 `superadmin.required`. The
+  X-Admin-Reason rule of the state-changing routes stays in the handlers.
+  When a key is issued, every scope must also be held by the creator inside
+  the organization (`permissions.ActionAllowedInOrg`; `hapikeys`
+  `requireScopesHeld`), so an unknown code or a permission the creator lacks
+  answers 422 `api_key.scope_not_held`. A platform superadmin is not limited,
+  and keys issued earlier keep their scopes. Tests:
+  `apikey_scope_onboarding_integration_test.go`.
 - **A route without `{org_id}` in its path must still check the organization
   of the row it loads — through `httpserver/orgread`.** `GET /v1/events/{id}`,
   the cross-org `GET /v1/events`, `/v1/events/{event_id}/publications` and

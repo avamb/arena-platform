@@ -7,6 +7,27 @@ import (
 	"testing"
 )
 
+// hasSiteLocaleTemplate reports whether a template file kind.loc is expected:
+// the seven languages added in L-4 (parityLocales) are translated only for the
+// buyer kinds in buyerKindsForSiteLocales; every older language has every kind.
+func hasSiteLocaleTemplate(kind, loc string) bool {
+	isNew := false
+	for _, l := range parityLocales {
+		if l == loc {
+			isNew = true
+		}
+	}
+	if !isNew {
+		return true
+	}
+	for _, k := range buyerKindsForSiteLocales {
+		if k == kind {
+			return true
+		}
+	}
+	return false
+}
+
 func TestNew_ParsesAllEmbeddedFiles(t *testing.T) {
 	r, err := New()
 	if err != nil {
@@ -24,6 +45,9 @@ func TestNew_ParsesAllEmbeddedFiles(t *testing.T) {
 		TemplateKindCheckoutReminder, TemplateKindMarketingConfirm, TemplateKindMyTicketsLink, TemplateKindLatePayment,
 	} {
 		for _, loc := range SupportedLocales {
+			if !hasSiteLocaleTemplate(kind, loc) {
+				continue // organizer and shop kinds stay English for the L-4 locales
+			}
 			want = append(want, kind+"."+loc)
 		}
 	}
@@ -48,9 +72,12 @@ func TestSupportedLocalesMatchEmbeddedFiles(t *testing.T) {
 			TemplateKindReferralPayoutOrganizer,
 			TemplateKindCheckoutReminder, TemplateKindMarketingConfirm, TemplateKindMyTicketsLink, TemplateKindLatePayment,
 		} {
-			if r.ResolveLocale(kind, loc) != loc {
-				t.Errorf("ResolveLocale(%q,%q): expected %q to be present",
-					kind, loc, loc)
+			want := loc
+			if !hasSiteLocaleTemplate(kind, loc) {
+				want = DefaultLocale // not translated on purpose: English fallback
+			}
+			if got := r.ResolveLocale(kind, loc); got != want {
+				t.Errorf("ResolveLocale(%q,%q)=%q, want %q", kind, loc, got, want)
 			}
 		}
 	}
@@ -479,8 +506,8 @@ func TestResolveLocale_LocaleTagVariantsNormalizeToCsRu(t *testing.T) {
 		{"CS", "cs"},
 		{"fr-FR", "fr"},
 		{"FR", "fr"},
-		{"uk", DefaultLocale},    // Ukrainian must not map to Russian
-		{"uk-UA", DefaultLocale}, // Ukrainian must not map to Russian
+		{"uk", "uk"},             // Ukrainian has its own templates since L-4, never Russian
+		{"uk-UA", "uk"},          // Ukrainian has its own templates since L-4, never Russian
 		{"be", DefaultLocale},    // Belarusian must not map to Russian
 		{"be-BY", DefaultLocale}, // Belarusian must not map to Russian
 	}

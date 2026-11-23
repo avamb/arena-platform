@@ -1,0 +1,1417 @@
+[
+ {
+  "platform": "ThunderTix",
+  "website": "https://www.thundertix.com",
+  "hq_country": "US",
+  "segment": "performing arts venues, theatres, music venues, schools; subscription + flat per-ticket fee, no % of sales",
+  "markets": [
+   {
+    "market": "US (page also offers USD/CAD/GBP/AUD/NZD display toggle; non-USD amounts not captured)",
+    "currency": "USD",
+    "vat_note": "not stated; US sales-tax context",
+    "model": "mixed",
+    "money_flow": "direct_merchant",
+    "money_flow_note": "Organizer connects own gateway (Stripe, Square, Authorize.net, Beanstream, Moneris, Elavon, Braintree); revenue goes to organizer's bank, typically nightly. ThunderTix bills its monthly plan + per-ticket overage on an invoice; billing cycle starts the day the gateway is connected and card payments go live.",
+    "plans": [
+     {
+      "name": "General Admission",
+      "monthly_fee": 20,
+      "annual_fee": null,
+      "per_ticket_percent": 0,
+      "per_ticket_fixed": 1.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "includes first 20 tickets per month",
+      "notes": "$1 per ticket beyond the 20; no % of sales"
+     },
+     {
+      "name": "Reserved Seating (Most Popular)",
+      "monthly_fee": 25,
+      "annual_fee": null,
+      "per_ticket_percent": 0,
+      "per_ticket_fixed": 1.25,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "includes first 20 tickets/month; custom interactive seating charts, tables/boxes/balconies, ADA linking",
+      "notes": "seating chart built by ThunderTix for a one-time fee, see seating"
+     },
+     {
+      "name": "White Glove",
+      "monthly_fee": 195,
+      "annual_fee": null,
+      "per_ticket_percent": 0,
+      "per_ticket_fixed": 1.95,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "first 100 tickets/month; free seating chart + account setup, ticket templates and event pages built for you, branded subdomain, Meta CAPI, thermal ticket printing",
+      "notes": null
+     },
+     {
+      "name": "K12 Schools (new for 2026)",
+      "monthly_fee": 0,
+      "annual_fee": null,
+      "per_ticket_percent": 3.5,
+      "per_ticket_fixed": 0.65,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "reserved + GA seating, district season passes",
+      "notes": "3.5% is all-in and includes Stripe card fees; requires the school's own Stripe account; verified K-12 schools/districts/edu nonprofits only"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": false,
+     "processors": [
+      "Stripe",
+      "Square",
+      "Authorize.net",
+      "Beanstream",
+      "Moneris",
+      "Elavon",
+      "Braintree"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "Organizer pays its gateway directly (FAQ cites Stripe ~2.9%+30c, Square in-person from ~2.6%+15c); no extra ThunderTix fee for using own gateway; K12 plan is the exception (3.5% all-in)",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": null,
+    "free_tickets": "Only manually comped $0 tickets on single events and fully-free events are excluded from billing; tickets discounted to $0 by coupon/flex pass or comped inside a package DO count toward monthly ticket totals",
+    "seating": "Custom chart built by ThunderTix: one-time $0.55 per seat (minimum $250); nonprofit rate $0.40 per seat (minimum $175); free with White Glove plan. Reserved plan costs $0.25/ticket and $5/mo more than GA",
+    "payouts": "Nightly deposits directly into the organizer's own gateway/bank account; no holding until after the event",
+    "refunds_chargebacks": "Not stated on pricing/FAQ; refund-to-gift-card feature; unlimited exchanges",
+    "fine_print": [
+     "No contract or minimum term; cancel anytime, no fee; 14-day free trial, can be extended",
+     "Billing begins when payment gateway goes live",
+     "Donations 2% credit-card fee, free by check; gift cards, merchandise sales and memberships 2%",
+     "Flexible Ticket Upgrade (CFAR): patron pays 10% to cancel for any reason, organizer keeps 65% of each upgrade",
+     "Nonprofit discounts 'available - just ask' (only the seating-chart discount is quantified)",
+     "Hardware (Zebra TC21/Chainway C90 scanners, card readers) sold separately, prices not published"
+    ],
+    "add_ons": [
+     {
+      "name": "Email branding / mass email",
+      "price": "$10/mo incl. 4,000 emails; $0.002 each beyond"
+     },
+     {
+      "name": "Thermal ticket printing setup",
+      "price": "$199 one-time (included in White Glove)"
+     },
+     {
+      "name": "Meta Conversions API",
+      "price": "$20/mo, needs branded subdomain (included in White Glove)"
+     },
+     {
+      "name": "Branded subdomain",
+      "price": "included only in White Glove (price otherwise not shown)"
+     }
+    ],
+    "enterprise": "No public enterprise tier; White Glove is the top tier",
+    "sources": [
+     {
+      "url": "https://www.thundertix.com/online-ticketing-software-pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     },
+     {
+      "url": "https://www.thundertix.com/frequently-asked-questions/",
+      "read": "2026-10-09",
+      "what": "FAQ: setup fee, gateway, billing, comps"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "Positions against %-of-sales platforms: cost per ticket fixed regardless of ticket price. Bundles unlimited users, CRM, box office/POS, season/flex passes, volunteer mgmt, memberships in every plan. Buyer-fee handling (who pays the per-ticket fee) not stated on the pages read."
+ },
+ {
+  "platform": "Ludus",
+  "website": "https://www.ludus.com",
+  "hq_country": "US",
+  "segment": "schools, community/regional theatres, dance studios, music ensembles; free to organizer when fees passed to buyer",
+  "markets": [
+   {
+    "market": "US",
+    "currency": "USD",
+    "vat_note": "not stated",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_note": "Ludus processes cards and pays the organizer: direct deposit daily/weekly/monthly or one lump sum at event end, or a mailed check after the event. Ludus handles chargebacks itself. Card processing is bundled into the 5% + $0.75.",
+    "plans": [
+     {
+      "name": "Standard (tickets, collections, add-ons, passes, gift cards)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 5.0,
+      "per_ticket_fixed": 0.75,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "unlimited events, seating charts, users, ticket types; CRM, concessions, fundraising, volunteer mgmt, 7-day support",
+      "notes": "processing already included; +$0.05 per item if Marketing/Classes/Embed Widget/Ask My Data premium features used"
+     },
+     {
+      "name": "Micro fee (items $3 or less)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.5,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "overrides the 5%+$0.75 for tickets, collections, add-ons, passes and donations"
+     },
+     {
+      "name": "Macro fee (collection/class items $200+)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 3.5,
+      "per_ticket_fixed": 0.5,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "example in docs: $250 class = $9.25 fee"
+     },
+     {
+      "name": "Donations",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 3.5,
+      "per_ticket_fixed": 0.5,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "absorbed by org; 0% when Donor Tips feature used"
+     },
+     {
+      "name": "Retail / concessions",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 2.9,
+      "per_ticket_fixed": 0.3,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "per transaction"
+     },
+     {
+      "name": "Invoicing feature",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 5.0,
+      "per_ticket_fixed": 1.25,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "per transaction"
+     },
+     {
+      "name": "Payment plans",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 5.0,
+      "per_ticket_fixed": 1.25,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "per payment"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Ludus (own card processing and terminals)"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "No separate processing fee; 5% + $0.75 covers it",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "configurable",
+    "free_tickets": "$0 fees for comp/$0 tickets, cash sales and free events; fundraisers with Donor Tips $0",
+    "seating": "Unlimited seating charts included; no chart creation or change fees",
+    "payouts": "Direct deposit daily, weekly, monthly or lump sum after event; mailed check after event; no payout fee, no minimums",
+    "refunds_chargebacks": "Chargebacks $0 - Ludus handles and fights them; lost-check reissue free. Whether the platform fee is refunded with a ticket is not stated",
+    "fine_print": [
+     "Marketing: 'free for orgs that pass on fees'",
+     "On a $10 ticket patron pays $11.25 (fee passes to patron) org gets $10.00",
+     "No contracts unless requested, no setup/onboarding/annual fees",
+     "Premium features add $0.05 per item only to the standard 5%+$0.75 category"
+    ],
+    "add_ons": [
+     {
+      "name": "BBPOS WisePOS terminal",
+      "price": "$299"
+     },
+     {
+      "name": "Ethernet dock",
+      "price": "$59"
+     },
+     {
+      "name": "Mobile card reader",
+      "price": "$79"
+     },
+     {
+      "name": "Boca thermal ticket stock",
+      "price": "$25 per 1,000"
+     },
+     {
+      "name": "DYMO thermal ticket stock",
+      "price": "$25 per 500"
+     }
+    ],
+    "enterprise": "none; no volume tiers published",
+    "sources": [
+     {
+      "url": "https://hello.ludus.com/pricing",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     },
+     {
+      "url": "https://support.ludus.com/ludus-pricing-table",
+      "read": "2026-10-09",
+      "what": "full fee table (updated 15 Sep 2026)"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "Cash and comp tickets free is a distinctive hook against per-ticket competitors; scanners not sold (free apps)."
+ },
+ {
+  "platform": "AudienceView Professional (incl. OvationTix)",
+  "website": "https://www.audienceview.com",
+  "hq_country": "CA",
+  "segment": "mid/large performing arts, live music, museums, higher ed; quote-based subscription or per-ticket",
+  "markets": [
+   {
+    "market": "Global (NA focus)",
+    "currency": null,
+    "vat_note": null,
+    "model": "negotiated",
+    "money_flow": "both",
+    "money_flow_note": "Pricing page lists 'Merchant account and payment gateway connection' as included (organizer's own merchant account). A separate AV Payments product exists (page not read). Third party (TicketPeak, a competitor) says AudienceView pays after the event and only on manual request.",
+    "plans": [
+     {
+      "name": "Subscription pricing",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "unlimited users, support 24/7/365, CRM, shopping-cart branding, seating charts, comps 1:1 with paid, donations/memberships/merch/gift cards, implementation and data migration",
+      "notes": "no price published"
+     },
+     {
+      "name": "Per-ticket pricing",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "no price published; same feature set"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": null,
+     "processors": [],
+     "own_processor_allowed": true,
+     "rate_note": null,
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": null,
+    "free_tickets": "Complimentary tickets included at a 1:1 ratio with paid tickets",
+    "seating": "Reserved seating charts 'tailored to venue'; footnote says additional seating charts may incur a fee (amount not given)",
+    "payouts": "third_party (ticketpeak.com): paid after the show closes, must be requested",
+    "refunds_chargebacks": null,
+    "fine_print": [
+     "Claims 'transparent pricing with no hidden fees' but gives no numbers",
+     "Quote form asks annual ticket bands: 0-2,999 / 3,000-4,999 / 5,000-14,999 / 15,000-49,999 / 50,000-199,999 / 200,000+ and annual ticket revenue",
+     "Other products: AudienceView Unlimited (enterprise), Campus (higher ed)"
+    ],
+    "add_ons": [],
+    "enterprise": "Contact sales only; no third-party number found",
+    "sources": [
+     {
+      "url": "https://www.audienceview.com/professional/pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page (request form)"
+     },
+     {
+      "url": "https://ticketpeak.com/when-do-ticketing-platforms-pay/",
+      "read": "2026-10-09",
+      "what": "third-party payout claim"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "OvationTix is the AudienceView Professional client login (admin.ovationtix.com). Third-party price figures not found."
+ },
+ {
+  "platform": "Brushfire",
+  "website": "https://www.brushfire.com",
+  "hq_country": "US",
+  "segment": "attractions, farms, haunts, festivals, schools, churches; pay-as-you-go per ticket, vertical-specific rates",
+  "markets": [
+   {
+    "market": "US",
+    "currency": "USD",
+    "vat_note": "not stated",
+    "model": "mixed",
+    "money_flow": "direct_merchant",
+    "money_flow_note": "Payments run on the organizer's own Square or Stripe account at those processors' standard rates, no Brushfire markup; funds deposited quickly ('instantly' per FAQ). How Brushfire's own fee is collected (application fee vs invoice) is not stated.",
+    "plans": [
+     {
+      "name": "Attractions",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.75,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "season pass, group ticketing, mobile box office app, hardware credit when switching",
+      "notes": "no charge for free tickets"
+     },
+     {
+      "name": "Education",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.75,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "dedicated Customer Success Manager, season pass, group, box office app",
+      "notes": "no charge for free tickets"
+     },
+     {
+      "name": "Churches & ministries under 1,500 weekly attendance",
+      "monthly_fee": 299,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "ticketing, registration, ChMS integrations",
+      "notes": "plus card processing"
+     },
+     {
+      "name": "Churches & ministries over 1,500 weekly attendance",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 1.0,
+      "per_ticket_fixed": 1.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "calculator example: $275 ticket x1,000 -> Brushfire fee $3.75/ticket"
+     },
+     {
+      "name": "Other events",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 1.0,
+      "per_ticket_fixed": 1.5,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "dedicated CSM, season pass, group, box office app, hardware credit",
+      "notes": "free-ticket treatment not stated for this tier"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": false,
+     "processors": [
+      "Square",
+      "Stripe"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "Square 2.6%+$0.15 in person, 2.9%+$0.30 online, 3.5%+$0.15 keyed; Stripe 2.7%+$0.05 in person, 2.9%+$0.30 online, 3.4%+$0.30 keyed; 'Stripe partnership rates' 2.9%+$0.30 online, 2.6%+$0.10 chip/PIN, 3.5%+$0.15 keyed",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "configurable",
+    "free_tickets": "No charge for free tickets on Attractions/Education tiers",
+    "seating": "No seating surcharge stated on pricing page",
+    "payouts": "Deposited quickly after transactions (FAQ says 'instantly'); direct to organizer's processor account",
+    "refunds_chargebacks": null,
+    "fine_print": [
+     "No setup fees, no monthly costs (except church plan), no contracts",
+     "Pass fees to attendees / absorb / custom fee structure",
+     "Display prices include required fees where applicable",
+     "Hardware credit when switching from another provider"
+    ],
+    "add_ons": [],
+    "enterprise": "Demo-driven; no enterprise price shown",
+    "sources": [
+     {
+      "url": "https://www.brushfire.com/pricing",
+      "read": "2026-10-09",
+      "what": "pricing page + FAQ"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "Performing Arts industry page exists (/industries/performing-arts) but no separate arts pricing was found on the pricing page; Other Events tier presumably applies."
+ },
+ {
+  "platform": "Showpass",
+  "website": "https://www.showpass.com",
+  "hq_country": "CA",
+  "segment": "Canadian-origin all-in-one ticketing for venues, festivals, promoters; tiered % + fixed per redeemable item",
+  "markets": [
+   {
+    "market": "Canada / global (prices shown in CAD)",
+    "currency": "CAD",
+    "vat_note": "payment processing fees and applicable taxes apply on top",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_note": "Showpass processes payments and pays out the Monday after the event ends, deposited the next business day; advance payouts available on request (terms apply).",
+    "plans": [
+     {
+      "name": "Essential",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 1.0,
+      "per_ticket_fixed": 0.59,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "unlimited events, branded pages/embed, real-time data",
+      "notes": "asterisk on price is not explained on the page; per redeemable item"
+     },
+     {
+      "name": "Professional",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 2.5,
+      "per_ticket_fixed": 1.69,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Essential + ticket packages, ASSIGNED SEATING MAPS, tracking links, add-ons (food tokens, merch), waitlist",
+      "notes": "seating maps only from this tier"
+     },
+     {
+      "name": "Premium",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Professional + group sales, memberships, buy-now-pay-later, on-site hardware, dedicated support",
+      "notes": "custom pricing, contact sales"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": false,
+     "processors": [
+      "Showpass (card)",
+      "Square at the door"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "2.9% + CA$0.30 per paid item card processing on top of the service fee",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "configurable",
+    "free_tickets": "Free to use for free events",
+    "seating": "Assigned seating maps unlocked only on Professional (2.5% + $1.69) and above; no separate setup fee stated",
+    "payouts": "Processed the Monday after the event ends, deposited next business day; advance payouts (terms apply)",
+    "refunds_chargebacks": "Not stated on the pricing page",
+    "fine_print": [
+     "No monthly or hidden fees, only service fee + processing fee per paid item",
+     "Tickets can be sold in CAD, USD or EUR; prices shown in CAD; USD/EUR price points not published",
+     "Fee can be passed on fully, partially or absorbed (hidden from checkout)",
+     "Tier can be changed anytime via support; no free trial",
+     "'Showpass Discovery' placement free"
+    ],
+    "add_ons": [],
+    "enterprise": "Premium: custom pricing",
+    "sources": [
+     {
+      "url": "https://www.showpass.com/pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page + FAQ"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "Fee rate is 'per redeemable item', so add-ons and packages are charged the same way."
+ },
+ {
+  "platform": "Yapsody",
+  "website": "https://www.yapsody.com",
+  "hq_country": "US",
+  "segment": "events, casinos/hospitality, theatres; lowest-headline-fee positioning; monthly invoiced, organizer keeps cash",
+  "markets": [
+   {
+    "market": "Global (currency selector USD/GBP/CAD/AUD and ~160 more)",
+    "currency": "USD",
+    "vat_note": "not stated",
+    "model": "percent_plus_fixed",
+    "money_flow": "direct_merchant",
+    "money_flow_note": "Organizer links own gateway (Stripe, PayPal, 14+ gateways); 'payout directly to your account', 'zero holding of funds'. Yapsody bills its fee afterwards (monthly invoices/autopay, 'pay us later'); the 50% non-profit rebate is applied on monthly invoices.",
+    "plans": [
+     {
+      "name": "General seating",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 1.75,
+      "per_ticket_fixed": 0.59,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "all features, unlimited events, onboarding support",
+      "notes": "per ticket sold"
+     },
+     {
+      "name": "Reserved seating",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 2.49,
+      "per_ticket_fixed": 0.98,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "interactive seat-map tool, VIP sections",
+      "notes": "per ticket sold"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": false,
+     "processors": [
+      "Stripe",
+      "PayPal",
+      "14+ other gateways"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "Organizer pays gateway; Yapsody calculator example: $100 ticket general seating -> $2.34 Yapsody fee",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "configurable",
+    "free_tickets": "Free events: all features free",
+    "seating": "Reserved seating costs +$0.39 and +0.74 pts over general seating; no chart setup fee stated",
+    "payouts": "Paid directly by organizer's own processor; no funds held by Yapsody",
+    "refunds_chargebacks": null,
+    "fine_print": [
+     "50% rebate on fees for non-profit/NGO events (applied on monthly invoices)",
+     "Zero setup cost, no hidden charges",
+     "Ability to pass on fees or use fee-inclusive pricing",
+     "Site shows $ for calculator even with other currencies; per-currency fee amounts not published"
+    ],
+    "add_ons": [],
+    "enterprise": "Custom feature development and managed services for strategic clients; no prices",
+    "sources": [
+     {
+      "url": "https://www.yapsody.com/ticketing/pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "Operates a 30-year casino entertainment business; homepage claims 'you keep 100% of your revenue'."
+ },
+ {
+  "platform": "SimpleTix",
+  "website": "https://www.simpletix.com",
+  "hq_country": "US",
+  "segment": "small/mid organizers incl. theatres and comedy clubs worldwide; per-ticket fee with cap, no tiers",
+  "markets": [
+   {
+    "market": "Global (account country list incl. Czech Republic, Spain, Portugal, Poland, UK, EU states; calculator offers USD/GBP/CAD/AUD/EUR)",
+    "currency": "USD",
+    "vat_note": "not stated; 'All prices shown in USD'",
+    "model": "percent_plus_fixed",
+    "money_flow": "direct_merchant",
+    "money_flow_note": "Organizer connects own Square, Stripe, PayPal or Authorize.net; 'immediate payouts to your merchant account'. With Stripe, PayPal and Square US the SimpleTix fee is deducted inside the transaction (application-fee style); for other processors and offline sales SimpleTix charges the organizer's card on the 1st of the following month.",
+    "plans": [
+     {
+      "name": "Online sales",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 2.0,
+      "per_ticket_fixed": 0.79,
+      "min_per_ticket": null,
+      "cap_per_ticket": 9.99,
+      "includes": "all features, no tiers",
+      "notes": "cap $9.99 per ticket"
+     },
+     {
+      "name": "In-person / box office",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.25,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "Square/Stripe readers, tap to pay, cash/comp support"
+     },
+     {
+      "name": "Season tickets",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 2.0,
+      "per_ticket_fixed": 0.79,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "charged on total pass value; GA or reserved"
+     },
+     {
+      "name": "Tickets $5 or less",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.25,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": null
+     },
+     {
+      "name": "Non-profit (501c3)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 2.0,
+      "per_ticket_fixed": 0.71,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "FAQ describes 10% off the platform fee, not the card fee"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": false,
+     "processors": [
+      "Square",
+      "Stripe",
+      "PayPal",
+      "Authorize.net"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "Calculator assumes 2.9% + 30c; actual per processor/country",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "configurable",
+    "free_tickets": "GA and Flex Pass free tickets $0; reserved-seat free tickets 25c each",
+    "seating": "Reserved seating supported; seating charts built free; reserved free tickets 25c",
+    "payouts": "Immediate to organizer's merchant account",
+    "refunds_chargebacks": null,
+    "fine_print": [
+     "No setup, monthly or contract fees",
+     "Three fee options: pass all, custom service fee added on top (100% to organizer), absorb all",
+     "Square Canada/UK/Australia and non-Stripe processors: fee billed to card on file monthly"
+    ],
+    "add_ons": [],
+    "enterprise": "none published",
+    "sources": [
+     {
+      "url": "https://www.simpletix.com/pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page + FAQ"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "Very close in model to what Arena does (organizer's own processor + platform fee). Country list suggests EU availability."
+ },
+ {
+  "platform": "Purplepass",
+  "website": "https://www.purplepass.com",
+  "hq_country": "US",
+  "segment": "events, performing arts, festivals, wristbands/printed tickets; % + $0.99 service fee",
+  "markets": [
+   {
+    "market": "US (UI languages: English, Spanish, Russian)",
+    "currency": "USD",
+    "vat_note": "not stated",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_note": "Inferred: pricing page lists Purplepass 'credit card processing' (3.0% online) so Purplepass processes the money. Payout timing/reserve not read (help article 'Payout Options' exists but was not opened).",
+    "plans": [
+     {
+      "name": "Online service fee - non-profit",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 2.0,
+      "per_ticket_fixed": 0.99,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": null
+     },
+     {
+      "name": "Online service fee - for-profit",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 2.5,
+      "per_ticket_fixed": 0.99,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": null
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": false,
+     "processors": [
+      "Purplepass"
+     ],
+     "own_processor_allowed": null,
+     "rate_note": "Online 3.0%; box office 2.5% + $0.25 per transaction",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": null,
+    "free_tickets": "No fees for free events or comp tickets",
+    "seating": "Map building fees: none",
+    "payouts": null,
+    "refunds_chargebacks": null,
+    "fine_print": [
+     "Box office service fees: none",
+     "Sign-up fees none, 24/7 support included, unlimited events and ticket types",
+     "Pre-printed stock: thermal $0.10, full-colour custom $0.12; custom wristbands Tyvek $0.06, vinyl $0.12"
+    ],
+    "add_ons": [],
+    "enterprise": "demo request only",
+    "sources": [
+     {
+      "url": "https://www.purplepass.com/learn/pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     },
+     {
+      "url": "https://help.purplepass.com/hc/en-us/sections/21571175806103-Payment-and-Fees",
+      "read": "2026-10-09",
+      "what": "help centre index (fee/payout articles not opened)"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "Total online cost for a $25 ticket = 2.5% + $0.99 + 3.0% -> about $2.36 (computed from page numbers). Help pages for payout and fee-refund rules not read."
+ },
+ {
+  "platform": "TicketPeak",
+  "website": "https://ticketpeak.com",
+  "hq_country": "US",
+  "segment": "community theatres, non-profit arts, schools, venues; % + fixed with volume bands and early payouts",
+  "markets": [
+   {
+    "market": "US",
+    "currency": "USD",
+    "vat_note": "not stated",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_note": "Own claim: pays out every 2 weeks, BEFORE the event, as sales occur (the platform holds funds in between). No reserve described.",
+    "plans": [
+     {
+      "name": "Not-for-profit (2,000-50,000 tickets/yr)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 1.5,
+      "per_ticket_fixed": 0.5,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": null
+     },
+     {
+      "name": "Commercial venues (2,000-50,000 tickets/yr)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 1.5,
+      "per_ticket_fixed": 0.75,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": null
+     },
+     {
+      "name": "Large venues (over 50,000 tickets/yr)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "tailored pricing, contact sales"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": null,
+     "processors": [],
+     "own_processor_allowed": null,
+     "rate_note": "Not stated on pricing page; its own comparison tool says processing typically about 2.9% + $0.30",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": null,
+    "free_tickets": null,
+    "seating": "Seating plan creation up to 700 seats is part of the $250 White Glove package",
+    "payouts": "Every 2 weeks, before the event (company's own statement)",
+    "refunds_chargebacks": null,
+    "fine_print": [
+     "No contracts, cancel any time",
+     "Pricing page shows only the 2,000-50,000 band; fee for under 2,000 tickets/yr not shown",
+     "One hour of training free"
+    ],
+    "add_ons": [
+     {
+      "name": "White Glove setup",
+      "price": "$250: seating plan (up to 700 seats), up to 3 training sessions, revenue coaching"
+     }
+    ],
+    "enterprise": "over 50,000 tickets/yr: tailored",
+    "sources": [
+     {
+      "url": "https://ticketpeak.com/pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     },
+     {
+      "url": "https://ticketpeak.com/when-do-ticketing-platforms-pay/",
+      "read": "2026-10-09",
+      "what": "payout article"
+     },
+     {
+      "url": "https://ticketpeak.com/pricing-comparison/",
+      "read": "2026-10-09",
+      "what": "comparison tool description"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "TicketPeak runs a comparison calculator of 16 small-venue platforms (data from public pages, updated quarterly) - a useful cross-check. Mentions Brown Paper Tickets as a cautionary tale of holding funds."
+ },
+ {
+  "platform": "Arts People (Neon One)",
+  "website": "https://neonone.com/products/arts-people/",
+  "hq_country": "US",
+  "segment": "performing arts organisations (seasons, subscriptions, series); simple per-ticket price",
+  "markets": [
+   {
+    "market": "US/Canada/Australia (not verified)",
+    "currency": "USD",
+    "vat_note": null,
+    "model": "flat_per_ticket",
+    "money_flow": null,
+    "money_flow_note": "Built-in payment processing via Neon Pay is advertised; payout timing and whether organizers can bring their own processor are not published.",
+    "plans": [
+     {
+      "name": "Per-ticket",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.99,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "online ticketing, box office, fundraising, communications tools; native Neon CRM integration",
+      "notes": "plus 'transaction fees' (rate not published)"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": null,
+     "processors": [
+      "Neon Pay"
+     ],
+     "own_processor_allowed": null,
+     "rate_note": "transaction fee rate not published",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": null,
+    "free_tickets": null,
+    "seating": null,
+    "payouts": null,
+    "refunds_chargebacks": null,
+    "fine_print": [
+     "No monthly subscription dues, per vendor",
+     "Native integration with Neon CRM for more"
+    ],
+    "add_ons": [],
+    "enterprise": "Not stated",
+    "sources": [
+     {
+      "url": "https://neonone.com/products/arts-people/",
+      "read": "2026-10-09",
+      "what": "vendor product page"
+     },
+     {
+      "url": "https://us.fitgap.com/products/027535/arts-people",
+      "read": "2026-10-09",
+      "what": "third-party listing repeats $0.99 per ticket (search snippet)"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "artspeople.com pricing blocked for scraping. A TechImply listing shows a different, unreliable 'Basic' plan; ignored."
+ },
+ {
+  "platform": "vivenu",
+  "website": "https://vivenu.com",
+  "hq_country": "DE",
+  "segment": "enterprise white-label API-first ticketing for venues, sports, festivals, clubs; custom quotes",
+  "markets": [
+   {
+    "market": "Global (EU base)",
+    "currency": null,
+    "vat_note": null,
+    "model": "negotiated",
+    "money_flow": null,
+    "money_flow_note": "G2 listing says quote covers choice of payment gateway and settlement/refund/chargeback options; no public statement of who collects. Not determined.",
+    "plans": [
+     {
+      "name": "Custom quote",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "platform + usage + services itemised separately; volume and term options",
+      "notes": "no public price"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": null,
+     "processors": [],
+     "own_processor_allowed": null,
+     "rate_note": null,
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": null,
+    "free_tickets": null,
+    "seating": null,
+    "payouts": null,
+    "refunds_chargebacks": null,
+    "fine_print": [
+     "vivenu.com/pricing returns 404; no public pricing page found",
+     "third_party (competitor Zeffy): page title says '$1 + 5.5% per ticket', body says '$1 per ticket + 2.5% payment processing' - the two numbers disagree",
+     "Reddit snippet: users complain about cross-border fees"
+    ],
+    "add_ons": [],
+    "enterprise": "Contact sales; G2: no free trial, single edition",
+    "sources": [
+     {
+      "url": "https://www.g2.com/products/vivenu-ticketing-platform/pricing",
+      "read": "2026-10-09",
+      "what": "G2 pricing overview"
+     },
+     {
+      "url": "https://www.zeffy.com/compare/zeffy-vs-vivenu",
+      "read": "2026-10-09",
+      "what": "competitor comparison with quoted numbers"
+     }
+    ],
+    "confidence": "third_party"
+   }
+  ],
+  "notes": "Treat the $1 + 2.5-5.5% figure as unverified competitor marketing."
+ },
+ {
+  "platform": "Tixr",
+  "website": "https://www.tixr.com",
+  "hq_country": "US",
+  "segment": "nightlife, festivals, sports, culture, 700+ partners; demo-led enterprise",
+  "markets": [
+   {
+    "market": "Global",
+    "currency": null,
+    "vat_note": null,
+    "model": "negotiated",
+    "money_flow": null,
+    "money_flow_note": "Not published.",
+    "plans": [],
+    "prepaid": [],
+    "processing": {
+     "included": null,
+     "processors": [],
+     "own_processor_allowed": null,
+     "rate_note": null,
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": null,
+    "free_tickets": null,
+    "seating": null,
+    "payouts": null,
+    "refunds_chargebacks": null,
+    "fine_print": [
+     "No pricing page (tixr.com/pricing and creators.tixr.com/pricing both 404); only 'Get a demo'",
+     "Product line: Tixr (fan experience), Studio (back office), Door (scanning/box office), Reserved Seating, Integrations"
+    ],
+    "add_ons": [],
+    "enterprise": "Contact sales; no third-party number found",
+    "sources": [
+     {
+      "url": "https://creators.tixr.com/",
+      "read": "2026-10-09",
+      "what": "vendor site, no prices"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "Not a fit for the small organizer segment; no data."
+ },
+ {
+  "platform": "Seat Engine",
+  "website": "https://www.seatengine.com",
+  "hq_country": "US",
+  "segment": "comedy clubs, music venues, theatres; partnership/marketing-heavy, quote-based",
+  "markets": [
+   {
+    "market": "US",
+    "currency": "USD",
+    "vat_note": null,
+    "model": "negotiated",
+    "money_flow": null,
+    "money_flow_note": "Not published; 'free startup' and free website hosting advertised.",
+    "plans": [],
+    "prepaid": [],
+    "processing": {
+     "included": null,
+     "processors": [],
+     "own_processor_allowed": null,
+     "rate_note": null,
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": null,
+    "free_tickets": null,
+    "seating": null,
+    "payouts": null,
+    "refunds_chargebacks": null,
+    "fine_print": [
+     "/pricing returns 404; homepage shows no prices, 'Free Startup', 'Quick Setup'",
+     "LinkedIn snippet: marketing dashboard 'built into your ticketing fee' (a fee exists, amount not shown)",
+     "Capterra snippet: 'starting price $0.28 per user, per month' - looks unreliable/placeholder"
+    ],
+    "add_ons": [],
+    "enterprise": "Contact sales",
+    "sources": [
+     {
+      "url": "https://www.seatengine.com/",
+      "read": "2026-10-09",
+      "what": "vendor homepage"
+     },
+     {
+      "url": "https://www.capterra.com/p/136995/Seat-Engine-Ticketing/",
+      "read": "2026-10-09",
+      "what": "Capterra search snippet only"
+     }
+    ],
+    "confidence": "snippet"
+   }
+  ],
+  "notes": "Could not obtain a real fee."
+ },
+ {
+  "platform": "Ticketsolve",
+  "website": "https://www.ticketsolve.com",
+  "hq_country": "IE",
+  "segment": "UK/IE theatres, arts centres, museums, festivals, visitor attractions; all-inclusive licence",
+  "markets": [
+   {
+    "market": "UK/Ireland",
+    "currency": null,
+    "vat_note": null,
+    "model": "negotiated",
+    "money_flow": null,
+    "money_flow_note": "Ticketsolve Pay (TS Pay) exists; help-centre snippet says the Ticketsolve Pay processing rate for online/phone payments is billed separately. Payout model not confirmed.",
+    "plans": [
+     {
+      "name": "All-inclusive licence",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "unlimited users, events, customers; full system; onboarding, data migration, training, 24/7 support, dedicated CSM included",
+      "notes": "estimate by quote form (tickets sold per year, box-office revenue)"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": false,
+     "processors": [
+      "Ticketsolve Pay"
+     ],
+     "own_processor_allowed": null,
+     "rate_note": "billed separately, rate not public",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": null,
+    "free_tickets": null,
+    "seating": null,
+    "payouts": null,
+    "refunds_chargebacks": null,
+    "fine_print": [
+     "Optional extras: Event Hub, Postcode Lookup",
+     "No upfront onboarding/migration fees",
+     "third_party: SoftwareWorld lists 'starting price EUR 5,000 per user' - unverified, inconsistent with 'unlimited users'"
+    ],
+    "add_ons": [],
+    "enterprise": "Contact for estimate",
+    "sources": [
+     {
+      "url": "https://www.ticketsolve.com/pricing",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     },
+     {
+      "url": "https://www.softwareworld.co/software/ticketsolve-reviews/",
+      "read": "2026-10-09",
+      "what": "third-party listing"
+     },
+     {
+      "url": "https://ticketsolve.zendesk.com/hc/en-us/articles/39801966189076-Introduction-to-Ticketsolve-Pay",
+      "read": "2026-10-09",
+      "what": "search snippet only (page returned 500)"
+     }
+    ],
+    "confidence": "third_party"
+   }
+  ],
+  "notes": "No public number from the vendor."
+ },
+ {
+  "platform": "Spektrix",
+  "website": "https://www.spektrix.com",
+  "hq_country": "GB",
+  "segment": "arts and cultural organisations UK/IE, US, Canada, ANZ; single scaling service charge, premium CRM+ticketing",
+  "markets": [
+   {
+    "market": "UK & Ireland / US / Canada / Australia & NZ (region selector)",
+    "currency": null,
+    "vat_note": null,
+    "model": "negotiated",
+    "money_flow": "collecting",
+    "money_flow_note": "Payments run through Spektrix Payments (Adyen): daily payouts, unlimited refund window, fraud tools; card processing fees and chargebacks charged as a % per transaction on top of the service charge. Organizer is effectively a sub-merchant of the platform's Adyen setup.",
+    "plans": [
+     {
+      "name": "Single service charge ('shared success pricing')",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "all tools, hosting, upgrades, Dotdigital licence, white-label purchase pathway, unlimited users, implementation PM, data migration, seating-plan building, support 24/7",
+      "notes": "scales with activity; nothing payable until go-live; falls if revenue dips"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": false,
+     "processors": [
+      "Spektrix Payments (Adyen)"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "'Request pricing' for regional card rates",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": null,
+    "free_tickets": null,
+    "seating": "Custom seating-plan building is included in the service charge",
+    "payouts": "Daily payouts",
+    "refunds_chargebacks": "Unlimited refund window; chargebacks charged at affordable rates (not quantified)",
+    "fine_print": [
+     "Excluded: card processing %, web integrations (custom sites), extra hardware, partner solutions (no commission)",
+     "third_party snippet: charge is usage-based on revenue excluding donations, billed monthly (not confirmed on vendor page)"
+    ],
+    "add_ons": [],
+    "enterprise": "Quote only; no vendor or third-party GBP figure found",
+    "sources": [
+     {
+      "url": "https://www.spektrix.com/pricing",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     },
+     {
+      "url": "https://www.softwareadvice.com/ticketing/spektrix-profile",
+      "read": "2026-10-09",
+      "what": "third-party description (search snippet)"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "No numbers anywhere; ThunderTix has a comparison article (spektrix-versus-thundertix) not read."
+ },
+ {
+  "platform": "TicketLeap (Leap Event Technology self-serve)",
+  "website": "https://www.ticketleap.com",
+  "hq_country": "US",
+  "segment": "small/mid events under 10,000 tickets/year; free for organizers when fees passed to buyers",
+  "markets": [
+   {
+    "market": "US / Canada / Australia",
+    "currency": "USD (CAD, AUD also)",
+    "vat_note": "sales tax can be added as a line item, organizer manages it",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_note": "TicketLeap processes cards through its own Stripe integration (no PayPal/Auth.net) and pays the organizer 4-7 business days AFTER the event ends; no reserve beyond that stated.",
+    "plans": [
+     {
+      "name": "Online sales",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 2.0,
+      "per_ticket_fixed": 1.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": 20.0,
+      "includes": "entire platform, unlimited tickets",
+      "notes": "plus 3% online transaction fee per order (uncapped)"
+     },
+     {
+      "name": "Tickets $5 or less",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.49,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "plus 3% online transaction fee"
+     },
+     {
+      "name": "Box office / at-door",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 1.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "$0.49 for tickets of $5 or less; 3% only if paid by card, none for cash/check"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Stripe (TicketLeap-managed)"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "3% online transaction fee per order, no fixed part",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "configurable",
+    "free_tickets": "Free events always free",
+    "seating": "Reserved seating solution exists; no surcharge stated on pricing page",
+    "payouts": "4-7 business days after event ends, to bank account (US, CA, AU)",
+    "refunds_chargebacks": "Dedicated risk manager fights chargebacks; refund fee treatment not stated",
+    "fine_print": [
+     "No contracts, subscriptions or prepaid credits",
+     "Cap of $20 applies to the fee, not the 3% transaction fee",
+     "Currencies: USD, CAD, AUD only"
+    ],
+    "add_ons": [],
+    "enterprise": "Over 10,000 tickets/yr is steered to Leap professional ticketing (former ShowClix)",
+    "sources": [
+     {
+      "url": "https://www.ticketleap.com/info/pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page + FAQ"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": null
+ },
+ {
+  "platform": "ShowClix (now Leap professional ticketing)",
+  "website": "https://leapevent.tech/solutions/event-ticketing/",
+  "hq_country": "US",
+  "segment": "mid/large events, attractions, festivals, conventions; exclusive contracts with negotiated per-ticket fee",
+  "markets": [
+   {
+    "market": "US + multi-currency",
+    "currency": null,
+    "vat_note": null,
+    "model": "negotiated",
+    "money_flow": "collecting",
+    "money_flow_note": "Default settlement is the week after the event, deposited to the organizer's bank; advance weekly payments on application. Third-party gateways are possible with narrower functionality; clients on Leap merchant services get Apple/Google Pay, BNPL, EMV terminals.",
+    "plans": [
+     {
+      "name": "Professional ticketing",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "exclusive ticketing contract, implementation resources, white-label options",
+      "notes": "'small negotiable fee per ticket', normally passed to buyers, plus card processing; annual licence option on request"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": null,
+     "processors": [
+      "Leap merchant services",
+      "third-party gateways"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": null,
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": null,
+    "free_tickets": null,
+    "seating": null,
+    "payouts": "Week after the event; advance weekly payouts possible",
+    "refunds_chargebacks": null,
+    "fine_print": [
+     "showclix.com/pricing is a 404 and the brand now points to Leap",
+     "Entry-level fee quoted on FAQ ($1 + 2% up to $20 per ticket) is TicketLeap self-serve, not this product",
+     "third_party snippet (ticketscandy blog, 2022): organizers reported paying around 15% per transaction on ShowClix - unverified, old"
+    ],
+    "add_ons": [],
+    "enterprise": "Contact sales",
+    "sources": [
+     {
+      "url": "https://leapevent.tech/solutions/event-ticketing/",
+      "read": "2026-10-09",
+      "what": "Leap page"
+     },
+     {
+      "url": "https://www.ticketleap.com/professional-event-ticketing/",
+      "read": "2026-10-09",
+      "what": "FAQ on settlement, fees"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": null
+ },
+ {
+  "platform": "Savoy Systems",
+  "website": "https://www.savoysystems.com",
+  "hq_country": null,
+  "segment": null,
+  "markets": [],
+  "notes": "savoysystems.com is a parked GoDaddy domain (read 2026-10-09); no product or pricing page reachable - likely defunct. No data."
+ },
+ {
+  "platform": "Vendini",
+  "website": null,
+  "hq_country": "US",
+  "segment": null,
+  "markets": [],
+  "notes": "Not researched in this session. From general knowledge (not verified here) Vendini was absorbed into Eventbrite in 2017 and no longer sells separately. No data."
+ }
+]

@@ -46,7 +46,8 @@ const (
 	salesStateUpcoming = "upcoming"
 	salesStateSoldOut  = "sold_out"
 	salesStateArchived = "archived"
-	salesStateDraft    = "draft" // not published: nobody can buy, whatever the sessions say
+	salesStateDraft    = "draft"    // not published: nobody can buy, whatever the sessions say
+	salesStateExternal = "external" // every future date is sold by a partner box office (migration 0221)
 )
 
 // eventsDialog is the list's state, stored as the bot_dialogs row's JSON.
@@ -66,7 +67,7 @@ func newEventsDialog(orgID uuid.UUID) eventsDialog {
 // ─── pure parts ───────────────────────────────────────────────────────────────
 
 // EventChip is the one-glyph state of a row: ● running, ○ soon, ✕ sold out,
-// ✓ archive. An empty or unknown state (the server could not work it out)
+// ✓ archive, ↗ sold by a partner box office. An empty or unknown state (the server could not work it out)
 // shows a neutral dot rather than a wrong answer.
 func EventChip(salesState string) string {
 	switch salesState {
@@ -80,6 +81,8 @@ func EventChip(salesState string) string {
 		return "✓"
 	case salesStateDraft:
 		return "📝"
+	case salesStateExternal:
+		return "↗"
 	default:
 		return "·"
 	}

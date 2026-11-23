@@ -17,6 +17,7 @@ WHERE  id = $1;
 SELECT id, type, label, created_at
 FROM   barcode_authorities
 WHERE  type = $1
+ORDER  BY created_at, id
 LIMIT  1;
 
 -- name: ListBarcodeAuthorities :many
@@ -113,7 +114,7 @@ ORDER BY created_at ASC;
 -- Pass the zero timestamp (1970-01-01) to receive the full snapshot.
 -- Results are ordered by (updated_at ASC, id ASC) so the client can use the last
 -- returned updated_at as the next since cursor for incremental delta fetches.
--- Used by GET /v1/scanner/snapshot for offline scanner cache hydration.
+-- Written for the offline scanner snapshot route (retired 2026-11-21).
 SELECT b.id, b.authority_id, b.external_ref, b.ticket_id, b.status, b.scanned_at, b.created_at, b.updated_at
 FROM   barcodes b
 JOIN   tickets  t ON t.id = b.ticket_id
@@ -126,7 +127,7 @@ OFFSET $4;
 
 -- name: CountSnapshotBarcodesBySession :one
 -- Returns the total count of non-revoked barcodes for the given session and since cursor.
--- Used by GET /v1/scanner/snapshot to populate pagination metadata.
+-- Written for the pagination of the offline scanner snapshot route (retired 2026-11-21).
 SELECT COUNT(*)
 FROM   barcodes b
 JOIN   tickets  t ON t.id = b.ticket_id

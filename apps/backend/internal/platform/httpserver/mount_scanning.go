@@ -1,49 +1,55 @@
 package httpserver
 
-import "github.com/go-chi/chi/v5"
+import (
+	"net/http"
 
-// mountBarcodeRoutes mounts barcode authority federation (feature #142).
+	"github.com/go-chi/chi/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+)
+
+// requireBarcodeSuperadmin refuses every caller that the server did not mark
+// as a platform superadmin. Barcode authorities and external barcode batches
+// are platform records shared by every organization, so organization owners
+// and API keys never reach them. Refused callers get 403
+// barcode.superadmin_only.
+func (s *Server) requireBarcodeSuperadmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !auth.HasSuperadminOrgAccess(r.Context()) {
+			httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
+				"barcode.superadmin_only", "platform superadmin access is required", r,
+			))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// mountBarcodeRoutes mounts the barcode authority list and create routes
+// (feature #142). The flat single-barcode, scan and scanner routes were
+// retired on 2026-11-21: the gate is MACS, the Bil24 SCAN_TICKET and the
+// scan-events callbacks below. Creating an authority is for a platform
+// superadmin only.
 func (s *Server) mountBarcodeRoutes(r chi.Router) {
 	if s.authEnabled() && s.barcodeQueries != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "barcode.read", "barcodes")
 			pr.Get("/barcodes/authorities", s.handleListBarcodeAuthorities)
-			pr.Get("/barcodes/{id}", s.handleGetBarcode)
-		})
-		r.Group(func(pr chi.Router) {
-			s.applyAuth(pr, "barcode.scan", "barcodes")
-			pr.Post("/scan", s.handleScan)
 		})
 	}
 	if s.authEnabled() && s.barcodeQueries != nil && s.pool != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "barcode.create", "barcodes")
+			pr.Use(s.requireBarcodeSuperadmin)
 			pr.Post("/barcodes/authorities", s.handleCreateBarcodeAuthority)
-			pr.Post("/barcodes", s.handleRegisterBarcode)
-		})
-		r.Group(func(pr chi.Router) {
-			s.applyAuth(pr, "barcode.revoke", "barcodes")
-			pr.Delete("/barcodes/{id}", s.handleRevokeBarcode)
 		})
 	}
-}
-
-// mountScannerRoutes mounts offline scanner snapshot + online validate
-// (feature #144).
-func (s *Server) mountScannerRoutes(r chi.Router) {
-	if !s.authEnabled() || s.barcodeQueries == nil {
-		return
-	}
-	r.Group(func(pr chi.Router) {
-		s.applyAuth(pr, "barcode.scan", "barcodes")
-		pr.Get("/scanner/snapshot", s.handleScannerSnapshot)
-		pr.Post("/scanner/validate", s.handleScannerValidate)
-	})
 }
 
 // mountScannerCallbackRoutes mounts the external-scanner ingest endpoint
 // (feature #293 / S-2).  The route is intentionally OUTSIDE the JWT-gated
-// applyAuth group above because it is authenticated via an agent_feed_tokens
+// applyAuth groups because it is authenticated via an agent_feed_tokens
 // bearer presented in the Authorization header rather than a session JWT.
 //
 // Always mounted (handler self-gates on s.feedTokenQueries == nil with a
@@ -62,22 +68,25 @@ func (s *Server) mountScannerCallbackRoutes(r chi.Router) {
 }
 
 // mountBarcodeBatchRoutes mounts external barcode batch import endpoints
-// (feature #146).
+// (feature #146). Every batch route is for a platform superadmin only.
 func (s *Server) mountBarcodeBatchRoutes(r chi.Router) {
 	if !s.authEnabled() || s.barcodeBatchQueries == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "barcode_batch.read", "barcode_batches")
+		pr.Use(s.requireBarcodeSuperadmin)
 		pr.Get("/barcode-batches", s.handleListBarcodeBatches)
 		pr.Get("/barcode-batches/{id}", s.handleGetBarcodeBatch)
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "barcode_batch.upload", "barcode_batches")
+		pr.Use(s.requireBarcodeSuperadmin)
 		pr.Post("/barcode-batches", s.handleUploadBarcodeBatch)
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "barcode_batch.approve", "barcode_batches")
+		pr.Use(s.requireBarcodeSuperadmin)
 		pr.Post("/barcode-batches/{id}/approve", s.handleApproveBarcodeBatch)
 		pr.Post("/barcode-batches/{id}/reject", s.handleRejectBarcodeBatch)
 	})

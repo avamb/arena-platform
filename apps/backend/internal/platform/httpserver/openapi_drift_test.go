@@ -419,12 +419,10 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// (feature #520, W1-C7b) under /v1/admin/customer-imports[/{id}[/dry-run|/apply|/rows]]
 		// are mounted for the drift check.
 		CustomerImportQueries: gen.New(nil),
-		// Wire BarcodeQueries so the barcode federation + scanner routes
-		// (features #142/#144, documented under #275 and the follow-up
-		// full-surface documentation pass) are mounted: GET/POST
-		// /v1/barcodes/authorities, POST /v1/barcodes, GET/DELETE
-		// /v1/barcodes/{id}, POST /v1/scan, GET /v1/scanner/snapshot,
-		// POST /v1/scanner/validate.
+		// Wire BarcodeQueries so the barcode authority routes (feature
+		// #142, documented under #275) are mounted: GET/POST
+		// /v1/barcodes/authorities. The flat single-barcode, scan and
+		// scanner routes were retired on 2026-11-21.
 		BarcodeQueries: gen.New(nil),
 		// Wire ChannelQueries so the sales-channel CRUD routes (features
 		// #121/#236) under /v1/organizations/{org_id}/channels[/{id}] are
