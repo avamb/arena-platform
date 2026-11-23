@@ -23,6 +23,7 @@
   } from '../lib/paymentController.js';
   import { declineText, fill, formatHoldTime, getPaymentStrings } from '../lib/paymentI18n.js';
   import type { PaymentSteps } from '../lib/paymentSteps.js';
+  import { mountInLightDom, type LightDomMounts } from '../lib/lightDomMount.js';
   import { getCheckoutStatus, postCheckoutHosted } from '../api.js';
 
   interface Props {
@@ -79,6 +80,10 @@
   // page; once the form takes over (or the buyer pays here) it is false.
   let returning = $state(awaitReturn);
   let secondsLeft = $state(Number.POSITIVE_INFINITY);
+  const uid = Math.random().toString(36).slice(2, 10);
+  const expressSlot = `arena-pay-express-${uid}`;
+  const paymentSlot = `arena-pay-element-${uid}`;
+  let light: LightDomMounts | null = null;
   let controller: PaymentController | null = null;
   let clock: ReturnType<typeof setInterval> | null = null;
 
@@ -144,7 +149,9 @@
       // few minutes more (the webhook can be late), never less than a minute.
       lateSettleMaxMs: lateSettleMs(),
     });
-    const mounts = { express: expressNode, payment: paymentNode };
+    // Stripe's form must live in the light DOM (never ready inside a ShadowRoot).
+    light = mountInLightDom(expressNode, paymentNode, expressSlot, paymentSlot);
+    const mounts = { express: light.express, payment: light.payment };
     if (awaitReturn) {
       // Back from the bank's own page: the webhook may already have paid it.
       void controller.awaitSettlement(20_000).then(() => {
@@ -162,6 +169,8 @@
     if (clock) clearInterval(clock);
     controller?.destroy();
     controller = null;
+    light?.cleanup();
+    light = null;
   });
 
   function pay(): void {
@@ -215,11 +224,15 @@
     {/if}
     <!-- Stays in the layout even with no wallet: the element draws nothing then, and a
          display:none mount point would keep Stripe from measuring it. -->
-    <div class="pay-express" bind:this={expressNode}></div>
+    <div class="pay-express" bind:this={expressNode}>
+      <svelte:element this={'slot'} name={expressSlot}></svelte:element>
+    </div>
     {#if ui.walletsAvailable}
       <p class="pay-sep"><span>{s.or_pay_by_card}</span></p>
     {/if}
-    <div class="pay-element" bind:this={paymentNode}></div>
+    <div class="pay-element" bind:this={paymentNode}>
+      <svelte:element this={'slot'} name={paymentSlot}></svelte:element>
+    </div>
 
     {#if ui.group}
       <div class="pay-decline" role="alert" data-testid="payment-decline" data-group={ui.group}>
