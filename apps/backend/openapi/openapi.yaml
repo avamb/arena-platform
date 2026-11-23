@@ -18931,10 +18931,58 @@ components:
             HMAC-SHA256 of the payload with the app secret. The payload names
             the app-scoped user id.
 
+    MetaWebhookPayload:
+      type: object
+      description: |
+        The body Meta posts to the app webhook. Only changes with the field
+        `business_integration_uninstall` are acted on; every other field is
+        ignored.
+      properties:
+        object:
+          type: string
+          description: The webhook object, `application` for the app webhook.
+        entry:
+          type: array
+          description: One entry per object that changed.
+          items:
+            $ref: "#/components/schemas/MetaWebhookEntry"
+
+    MetaWebhookEntry:
+      type: object
+      description: One entry of a Meta webhook body.
+      properties:
+        id:
+          type: string
+          description: The id of the object (the app id for the app webhook).
+        time:
+          type: integer
+          format: int64
+          description: When Meta sent the entry, Unix seconds.
+        changes:
+          type: array
+          description: The changed fields.
+          items:
+            $ref: "#/components/schemas/MetaWebhookChange"
+
+    MetaWebhookChange:
+      type: object
+      description: One changed field of a Meta webhook entry.
+      properties:
+        field:
+          type: string
+          description: The webhook field, such as `business_integration_uninstall`.
+        value:
+          type: object
+          additionalProperties: true
+          description: |
+            The field's data. For `business_integration_uninstall` the
+            business id is read from `business_manager_id`, or from
+            `business_id` when the first is absent (a string or a number).
+
     MetaCallbackReceived:
       type: object
       required: [received]
-      description: Answer of the deauthorize callback.
+      description: Answer of the deauthorize callback and of the app webhook.
       properties:
         received:
           type: boolean
@@ -46987,6 +47035,122 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: The Meta connection is switched off (`meta.disabled`) or the database is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/integrations/meta/webhook:
+    get:
+      operationId: metaWebhookVerify
+      summary: Meta checks the app webhook subscription
+      description: |
+        Public: the subscription check Meta makes when the webhook is set up
+        in the Meta app (Webhooks, object Application). With `hub.mode`
+        `subscribe` and `hub.verify_token` equal to
+        `META_WEBHOOK_VERIFY_TOKEN` (constant-time compare) the answer is
+        `hub.challenge` as plain text. Reads and changes nothing.
+      tags: [v1]
+      parameters:
+        - name: hub.mode
+          in: query
+          required: false
+          description: Must be `subscribe`.
+          schema:
+            type: string
+        - name: hub.verify_token
+          in: query
+          required: false
+          description: The verify token entered in the Meta app.
+          schema:
+            type: string
+        - name: hub.challenge
+          in: query
+          required: false
+          description: The text Meta expects back (1 to 256 letters, digits, `-` or `_`).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The verify token matches; the body is `hub.challenge`.
+          content:
+            text/plain:
+              schema:
+                type: string
+        "403":
+          description: |
+            The mode is not `subscribe`, the verify token does not match,
+            `META_WEBHOOK_VERIFY_TOKEN` is not set, or `hub.challenge` is not
+            1 to 256 letters, digits, `-` or `_` (`meta.webhook_verify_refused`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The Meta connection is switched off (`meta.disabled`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: metaWebhook
+      summary: Meta tells the platform a business removed the app
+      description: |
+        Public: Meta's app webhook. `X-Hub-Signature-256` must be
+        `sha256=<hex>` of the HMAC-SHA256 of the raw body with the app
+        secret (constant-time compare); the body is at most 64 KB. A change
+        with the field `business_integration_uninstall` sets every
+        connection to that business to revoked, wipes its token and removes
+        its shared objects; audited as `v1.org.meta.uninstall` (system
+        actor). Other fields are ignored. After a valid signature the answer
+        is 200, so Meta does not send the change again.
+      tags: [v1]
+      parameters:
+        - name: X-Hub-Signature-256
+          in: header
+          required: true
+          description: "`sha256=` and the hex HMAC-SHA256 of the raw body with the app secret."
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetaWebhookPayload"
+      responses:
+        "200":
+          description: Received (also when nothing matched or the field is ignored).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaCallbackReceived"
+        "400":
+          description: The body could not be read (`meta.webhook_unreadable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: X-Hub-Signature-256 is missing or wrong (`meta.invalid_signature`); nothing changes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The Meta connection is switched off (`meta.disabled`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: The body is larger than 64 KB (`meta.webhook_too_large`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable; Meta sends the change again.
           content:
             application/json:
               schema:

@@ -156,6 +156,8 @@ var roleSecrets = []roleSecret{
 	// (spec 66 section 4.5).
 	{"META_APP_SECRET", []Role{RoleAPI, RoleWorker}, func(c *Config) string { return c.MetaAppSecret }},
 	{"META_TOKEN_ENC_KEY", []Role{RoleAPI, RoleWorker}, func(c *Config) string { return c.MetaTokenEncKey }},
+	// Only arena-api answers Meta's webhook verification.
+	{"META_WEBHOOK_VERIFY_TOKEN", []Role{RoleAPI}, func(c *Config) string { return c.MetaWebhookVerifyToken }},
 }
 
 // unusedSecretWarnings names every secret that is set although the role

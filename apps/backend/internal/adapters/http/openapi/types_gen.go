@@ -11955,7 +11955,7 @@ type MetaAsset struct {
 // MetaAssetKind The kind of the Meta object.
 type MetaAssetKind string
 
-// MetaCallbackReceived Answer of the deauthorize callback.
+// MetaCallbackReceived Answer of the deauthorize callback and of the app webhook.
 type MetaCallbackReceived struct {
 	// Received Always true.
 	Received bool `json:"received"`
@@ -12061,6 +12061,40 @@ type MetaSignedRequestForm struct {
 	// HMAC-SHA256 of the payload with the app secret. The payload names
 	// the app-scoped user id.
 	SignedRequest string `json:"signed_request"`
+}
+
+// MetaWebhookChange One changed field of a Meta webhook entry.
+type MetaWebhookChange struct {
+	// Field The webhook field, such as `business_integration_uninstall`.
+	Field *string `json:"field,omitempty"`
+
+	// Value The field's data. For `business_integration_uninstall` the
+	// business id is read from `business_manager_id`, or from
+	// `business_id` when the first is absent (a string or a number).
+	Value *map[string]interface{} `json:"value,omitempty"`
+}
+
+// MetaWebhookEntry One entry of a Meta webhook body.
+type MetaWebhookEntry struct {
+	// Changes The changed fields.
+	Changes *[]MetaWebhookChange `json:"changes,omitempty"`
+
+	// Id The id of the object (the app id for the app webhook).
+	Id *string `json:"id,omitempty"`
+
+	// Time When Meta sent the entry, Unix seconds.
+	Time *int64 `json:"time,omitempty"`
+}
+
+// MetaWebhookPayload The body Meta posts to the app webhook. Only changes with the field
+// `business_integration_uninstall` are acted on; every other field is
+// ignored.
+type MetaWebhookPayload struct {
+	// Entry One entry per object that changed.
+	Entry *[]MetaWebhookEntry `json:"entry,omitempty"`
+
+	// Object The webhook object, `application` for the app webhook.
+	Object *string `json:"object,omitempty"`
 }
 
 // MyTicketsExchangeRequest Body of `POST /v1/public/my-tickets/session`.
@@ -25386,6 +25420,24 @@ type MetaLoginCallbackParams struct {
 	Error *string `form:"error,omitempty" json:"error,omitempty"`
 }
 
+// MetaWebhookVerifyParams defines parameters for MetaWebhookVerify.
+type MetaWebhookVerifyParams struct {
+	// HubMode Must be `subscribe`.
+	HubMode *string `form:"hub.mode,omitempty" json:"hub.mode,omitempty"`
+
+	// HubVerifyToken The verify token entered in the Meta app.
+	HubVerifyToken *string `form:"hub.verify_token,omitempty" json:"hub.verify_token,omitempty"`
+
+	// HubChallenge The text Meta expects back (1 to 256 letters, digits, `-` or `_`).
+	HubChallenge *string `form:"hub.challenge,omitempty" json:"hub.challenge,omitempty"`
+}
+
+// MetaWebhookParams defines parameters for MetaWebhook.
+type MetaWebhookParams struct {
+	// XHubSignature256 `sha256=` and the hex HMAC-SHA256 of the raw body with the app secret.
+	XHubSignature256 string `json:"X-Hub-Signature-256"`
+}
+
 // PostMACSScanEventsParams defines parameters for PostMACSScanEvents.
 type PostMACSScanEventsParams struct {
 	// XMACSSubscriberId Id of the MACS subscriber (GET /v1/organizations/{org_id}/macs-webhook answers it).
@@ -27024,6 +27076,9 @@ type MetaDataDeletionCallbackFormdataRequestBody = MetaSignedRequestForm
 
 // MetaDeauthorizeCallbackFormdataRequestBody defines body for MetaDeauthorizeCallback for application/x-www-form-urlencoded ContentType.
 type MetaDeauthorizeCallbackFormdataRequestBody = MetaSignedRequestForm
+
+// MetaWebhookJSONRequestBody defines body for MetaWebhook for application/json ContentType.
+type MetaWebhookJSONRequestBody = MetaWebhookPayload
 
 // PostMACSScanEventsJSONRequestBody defines body for PostMACSScanEvents for application/json ContentType.
 type PostMACSScanEventsJSONRequestBody = MACSScanBatchRequest

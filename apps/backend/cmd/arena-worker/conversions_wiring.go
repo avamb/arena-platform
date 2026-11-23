@@ -29,9 +29,12 @@ func buildMetaTokenBox(cfg *config.Config, logger *slog.Logger) *secretbox.Box {
 
 // buildConversionsStore is the ONE conversions store of the worker: the
 // outbox leg (legConversions) and the conversions.sweep handler both use it,
-// so a connection-only organization is queued AND sent.
+// so a connection-only organization is queued AND sent. A Meta connection
+// that breaks (code 190) tells its owners by e-mail and, with
+// EVENTS_TELEGRAM_BOT_TOKEN, through the event-center bot.
 func buildConversionsStore(pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger) *conversions.PGStore {
-	return conversions.NewPGStore(pool).WithMetaBox(buildMetaTokenBox(cfg, logger))
+	return conversions.NewPGStore(pool).WithMetaBox(buildMetaTokenBox(cfg, logger)).
+		WithOwnerNotice(cfg.EventCenterPublicURL, cfg.EventsTelegramBotToken != "", logger)
 }
 
 // conversionsSenders aims the Meta sender at META_GRAPH_BASE_URL (Graph when

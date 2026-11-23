@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/adminnotify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/metaconnect"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/secretbox"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/trackingconsent"
@@ -93,6 +95,11 @@ type PGStore struct {
 	// disabled Box) means the connection is ignored and only
 	// org_conversion_settings is read.
 	box *secretbox.Box
+	// eventCenterURL, ownerTelegram and logger tune the owners' notice of a
+	// broken Meta connection (WithOwnerNotice).
+	eventCenterURL string
+	ownerTelegram  bool
+	logger         *slog.Logger
 }
 
 // NewPGStore wraps a pool.
@@ -216,10 +223,39 @@ func chooseMeta(manual Settings, manualOK bool, connPixel, connToken string, con
 	return st, manualOK
 }
 
+// WithOwnerNotice sets what the owners' notice of a broken Meta connection
+// needs: the event center origin of its link (EVENT_CENTER_PUBLIC_URL) and
+// whether the worker can send Telegram messages (EVENTS_TELEGRAM_BOT_TOKEN).
+// Without it the notice still goes, by e-mail only and without a link.
+func (s *PGStore) WithOwnerNotice(eventCenterURL string, telegram bool, logger *slog.Logger) *PGStore {
+	s.eventCenterURL, s.ownerTelegram, s.logger = eventCenterURL, telegram, logger
+	return s
+}
+
 // MarkMetaTokenInvalid moves the organization's active Meta connection to
-// error (metaconnect.MarkTokenInvalid); changed is true only once.
+// error (metaconnect.MarkTokenInvalid); changed is true only once. In the
+// SAME transaction the change queues one e-mail per owner and one Telegram
+// message per live bot link (adminnotify.NotifyMetaConnectionBroken), so
+// the owners are told once per break and a failed queue leaves the
+// connection active for the next 190 to try again.
 func (s *PGStore) MarkMetaTokenInvalid(ctx context.Context, orgID uuid.UUID, reason string) (bool, error) {
-	return metaconnect.MarkTokenInvalid(ctx, s.pool, orgID, reason)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	changed, err := metaconnect.MarkTokenInvalid(ctx, tx, orgID, reason)
+	if err != nil || !changed {
+		return false, err
+	}
+	if _, err := adminnotify.NotifyMetaConnectionBroken(ctx, tx, orgID, s.eventCenterURL,
+		adminnotify.Options{Telegram: s.ownerTelegram, Logger: s.logger}); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // RecordMetaError stores reason as the last_error of the organization's

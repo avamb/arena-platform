@@ -1,4 +1,4 @@
--- 0218_org_meta_connections.sql — an organization connects its Meta business
+-- 0219_org_meta_connections.sql — an organization connects its Meta business
 -- through "Facebook Login for Business" (spec 08_architecture/66, stage M1).
 --
 -- org_meta_connections  one connection per organization. access_token_enc is

@@ -36,6 +36,7 @@ func (s *Server) metaConnectHandler() *hmetaconnect.Handler {
 			RedirectURL:           c.MetaOAuthRedirectURL,
 			EventCenterURL:        c.EventCenterPublicURL,
 			DataDeletionStatusURL: c.MetaDataDeletionStatusURL,
+			WebhookVerifyToken:    c.MetaWebhookVerifyToken,
 		}
 		if settings.Enabled {
 			if edges, err := metaconnect.ParseEdges(c.MetaAssetEdges); err == nil {
@@ -58,6 +59,10 @@ func (s *Server) mountMetaConnectRoutes(r chi.Router) {
 	r.Get("/integrations/meta/callback", s.handleMetaCallback)
 	r.Post("/integrations/meta/deauthorize", s.handleMetaDeauthorize)
 	r.Post("/integrations/meta/data-deletion", s.handleMetaDataDeletion)
+	// Meta's app webhook (business_integration_uninstall): GET is the
+	// subscription check (verify token), POST carries X-Hub-Signature-256.
+	r.Get("/integrations/meta/webhook", s.handleMetaWebhookVerify)
+	r.Post("/integrations/meta/webhook", s.handleMetaWebhook)
 	if !s.authEnabled() {
 		return
 	}
@@ -81,6 +86,14 @@ func (s *Server) handleMetaDeauthorize(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleMetaDataDeletion(w http.ResponseWriter, r *http.Request) {
 	s.metaConnectHandler().HandleDataDeletion(w, r)
+}
+
+func (s *Server) handleMetaWebhookVerify(w http.ResponseWriter, r *http.Request) {
+	s.metaConnectHandler().HandleWebhookVerify(w, r)
+}
+
+func (s *Server) handleMetaWebhook(w http.ResponseWriter, r *http.Request) {
+	s.metaConnectHandler().HandleWebhook(w, r)
 }
 
 func (s *Server) handleMetaConnect(w http.ResponseWriter, r *http.Request) {

@@ -118,6 +118,29 @@ func TestMeta_BotIgnoresMetaButWarnsAboutSecrets(t *testing.T) {
 	}
 }
 
+// META_WEBHOOK_VERIFY_TOKEN is read by the api only: the worker is warned
+// about it without its value.
+func TestMeta_WebhookVerifyTokenIsAPIOnly(t *testing.T) {
+	clearConfigEnv(t)
+	setEnv(t, productionCommon)
+	setEnv(t, roleMinimum[RoleWorker])
+	t.Setenv("META_WEBHOOK_VERIFY_TOKEN", "verify-token-should-not-be-printed")
+	cfg, err := LoadFor(RoleWorker)
+	if err != nil {
+		t.Fatalf("the worker never reads the verify token: %v", err)
+	}
+	if cfg.MetaWebhookVerifyToken != "verify-token-should-not-be-printed" {
+		t.Fatalf("MetaWebhookVerifyToken = %q", cfg.MetaWebhookVerifyToken)
+	}
+	joined := strings.Join(cfg.Warnings(), "\n")
+	if !strings.Contains(joined, "META_WEBHOOK_VERIFY_TOKEN") {
+		t.Errorf("the worker must be warned about META_WEBHOOK_VERIFY_TOKEN, got: %s", joined)
+	}
+	if strings.Contains(joined, "verify-token-should-not-be-printed") {
+		t.Errorf("warnings print a secret: %s", joined)
+	}
+}
+
 func TestMetaEnabled_NeedsEveryValueAndAParsableKey(t *testing.T) {
 	full := Config{MetaAppID: "1", MetaAppSecret: "s", MetaLoginConfigID: "c", MetaTokenEncKey: testMetaKey}
 	if !full.MetaEnabled() {

@@ -727,6 +727,11 @@ type Config struct {
 	// MetaDataDeletionStatusURL is the page the Meta data-deletion callback
 	// names in its answer; the confirmation code is added as ?code=.
 	MetaDataDeletionStatusURL string `env:"META_DATA_DELETION_STATUS_URL" required:"false" default:"https://arenasoldout.com/legal/data-deletion"`
+	// MetaWebhookVerifyToken is the verify token entered in the Meta app's
+	// Webhooks panel (secret, api only). Empty: GET verification of
+	// /v1/integrations/meta/webhook is refused; POST is still checked by the
+	// X-Hub-Signature-256 of META_APP_SECRET.
+	MetaWebhookVerifyToken string `env:"META_WEBHOOK_VERIFY_TOKEN" required:"false" default:""`
 
 	// -------------------------------------------------------------------------
 	// Metrics endpoint authentication
@@ -986,6 +991,7 @@ func LoadFor(role Role) (*Config, error) {
 		MetaTokenEncKey:             strings.TrimSpace(getenv("META_TOKEN_ENC_KEY", "")),
 		MetaAssetEdges:              strings.TrimSpace(getenv("META_ASSET_EDGES", "")),
 		MetaDataDeletionStatusURL:   strings.TrimSpace(getenv("META_DATA_DELETION_STATUS_URL", DefaultMetaDataDeletionStatusURL)),
+		MetaWebhookVerifyToken:      strings.TrimSpace(getenv("META_WEBHOOK_VERIFY_TOKEN", "")),
 
 		MetricsBearerToken: getenv("METRICS_BEARER_TOKEN", ""),
 	}

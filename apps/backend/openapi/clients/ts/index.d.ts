@@ -5204,6 +5204,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/integrations/meta/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Meta checks the app webhook subscription
+         * @description Public: the subscription check Meta makes when the webhook is set up
+         *     in the Meta app (Webhooks, object Application). With `hub.mode`
+         *     `subscribe` and `hub.verify_token` equal to
+         *     `META_WEBHOOK_VERIFY_TOKEN` (constant-time compare) the answer is
+         *     `hub.challenge` as plain text. Reads and changes nothing.
+         */
+        get: operations["metaWebhookVerify"];
+        put?: never;
+        /**
+         * Meta tells the platform a business removed the app
+         * @description Public: Meta's app webhook. `X-Hub-Signature-256` must be
+         *     `sha256=<hex>` of the HMAC-SHA256 of the raw body with the app
+         *     secret (constant-time compare); the body is at most 64 KB. A change
+         *     with the field `business_integration_uninstall` sets every
+         *     connection to that business to revoked, wipes its token and removes
+         *     its shared objects; audited as `v1.org.meta.uninstall` (system
+         *     actor). Other fields are ignored. After a valid signature the answer
+         *     is 200, so Meta does not send the change again.
+         */
+        post: operations["metaWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/seller-profile": {
         parameters: {
             query?: never;
@@ -30695,7 +30730,43 @@ export interface components {
              */
             signed_request: string;
         };
-        /** @description Answer of the deauthorize callback. */
+        /**
+         * @description The body Meta posts to the app webhook. Only changes with the field
+         *     `business_integration_uninstall` are acted on; every other field is
+         *     ignored.
+         */
+        MetaWebhookPayload: {
+            /** @description The webhook object, `application` for the app webhook. */
+            object?: string;
+            /** @description One entry per object that changed. */
+            entry?: components["schemas"]["MetaWebhookEntry"][];
+        };
+        /** @description One entry of a Meta webhook body. */
+        MetaWebhookEntry: {
+            /** @description The id of the object (the app id for the app webhook). */
+            id?: string;
+            /**
+             * Format: int64
+             * @description When Meta sent the entry, Unix seconds.
+             */
+            time?: number;
+            /** @description The changed fields. */
+            changes?: components["schemas"]["MetaWebhookChange"][];
+        };
+        /** @description One changed field of a Meta webhook entry. */
+        MetaWebhookChange: {
+            /** @description The webhook field, such as `business_integration_uninstall`. */
+            field?: string;
+            /**
+             * @description The field's data. For `business_integration_uninstall` the
+             *     business id is read from `business_manager_id`, or from
+             *     `business_id` when the first is absent (a string or a number).
+             */
+            value?: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description Answer of the deauthorize callback and of the app webhook. */
         MetaCallbackReceived: {
             /** @description Always true. */
             received: boolean;
@@ -58018,6 +58089,127 @@ export interface operations {
                 };
             };
             /** @description The Meta connection is switched off (`meta.disabled`) or the database is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    metaWebhookVerify: {
+        parameters: {
+            query?: {
+                /** @description Must be `subscribe`. */
+                "hub.mode"?: string;
+                /** @description The verify token entered in the Meta app. */
+                "hub.verify_token"?: string;
+                /** @description The text Meta expects back (1 to 256 letters, digits, `-` or `_`). */
+                "hub.challenge"?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The verify token matches; the body is `hub.challenge`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /**
+             * @description The mode is not `subscribe`, the verify token does not match,
+             *     `META_WEBHOOK_VERIFY_TOKEN` is not set, or `hub.challenge` is not
+             *     1 to 256 letters, digits, `-` or `_` (`meta.webhook_verify_refused`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Meta connection is switched off (`meta.disabled`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    metaWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description `sha256=` and the hex HMAC-SHA256 of the raw body with the app secret. */
+                "X-Hub-Signature-256": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaWebhookPayload"];
+            };
+        };
+        responses: {
+            /** @description Received (also when nothing matched or the field is ignored). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaCallbackReceived"];
+                };
+            };
+            /** @description The body could not be read (`meta.webhook_unreadable`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description X-Hub-Signature-256 is missing or wrong (`meta.invalid_signature`); nothing changes. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Meta connection is switched off (`meta.disabled`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is larger than 64 KB (`meta.webhook_too_large`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable; Meta sends the change again. */
             503: {
                 headers: {
                     [name: string]: unknown;

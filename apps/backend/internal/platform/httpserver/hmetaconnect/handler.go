@@ -9,6 +9,8 @@
 //	GET    /v1/integrations/meta/callback          (public, signed state, no exchange)
 //	POST   /v1/integrations/meta/deauthorize       (public, Meta signed_request)
 //	POST   /v1/integrations/meta/data-deletion     (public, Meta signed_request)
+//	GET    /v1/integrations/meta/webhook           (public, verify token)
+//	POST   /v1/integrations/meta/webhook           (public, X-Hub-Signature-256)
 //
 // The organization routes need org.update in the path organization (the
 // owner) and refuse an organization API key. No answer, log line or audit
@@ -22,6 +24,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"html"
 	"io"
 	"log/slog"
 	"net/http"
@@ -61,7 +64,10 @@ type Settings struct {
 	EventCenterURL string
 	// DataDeletionStatusURL is META_DATA_DELETION_STATUS_URL.
 	DataDeletionStatusURL string
-	Edges                 []metaconnect.Edge
+	// WebhookVerifyToken is META_WEBHOOK_VERIFY_TOKEN, the verify token of
+	// the GET subscription check of the app webhook. Empty refuses it.
+	WebhookVerifyToken string
+	Edges              []metaconnect.Edge
 }
 
 // Handler serves the routes. The organization routes run after the
@@ -731,4 +737,125 @@ func (h *Handler) HandleDataDeletion(w http.ResponseWriter, r *http.Request) {
 		"url":               statusURL + sep + "code=" + url.QueryEscape(code),
 		"confirmation_code": code,
 	})
+}
+
+// ---------------------------------------------------------------------------
+// GET and POST /v1/integrations/meta/webhook
+// ---------------------------------------------------------------------------
+
+// HandleWebhookVerify answers Meta's subscription check of the app webhook:
+// hub.mode=subscribe and hub.verify_token equal to META_WEBHOOK_VERIFY_TOKEN
+// get hub.challenge back as text; anything else gets 403. An empty verify
+// token refuses every check.
+func (h *Handler) HandleWebhookVerify(w http.ResponseWriter, r *http.Request) {
+	if !h.cfg.Enabled {
+		writeErr(w, r, http.StatusNotFound, "meta.disabled", "the Meta connection is not switched on for this platform")
+		return
+	}
+	q := r.URL.Query()
+	challenge := q.Get("hub.challenge")
+	if !metaconnect.VerifyWebhookSubscription(q.Get("hub.mode"), q.Get("hub.verify_token"), h.cfg.WebhookVerifyToken) ||
+		!plainChallenge(challenge) {
+		writeErr(w, r, http.StatusForbidden, "meta.webhook_verify_refused", "the webhook verify token does not match")
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+	// plainChallenge allows only letters, digits, '-' and '_', so escaping
+	// changes nothing; it keeps the echo inert by construction.
+	_, _ = io.WriteString(w, html.EscapeString(challenge))
+}
+
+// plainChallenge reports whether a hub.challenge is 1 to 256 letters,
+// digits, '-' or '_' (Meta sends a number); anything else is never echoed.
+func plainChallenge(s string) bool {
+	if s == "" || len(s) > 256 {
+		return false
+	}
+	for _, c := range s {
+		ok := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-' || c == '_'
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// HandleWebhook is Meta's app webhook. The X-Hub-Signature-256 of the raw
+// body (HMAC-SHA256 with the app secret) is checked first: a missing or
+// wrong one gets 401 and changes nothing. A business_integration_uninstall
+// change revokes every connection to that business (token wiped, assets
+// removed, audit v1.org.meta.uninstall by the system); other fields and a
+// body that does not parse are ignored. After a valid signature the answer
+// is 200, so Meta does not retry, unless the database fails (503).
+func (h *Handler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
+	if !h.cfg.Enabled {
+		writeErr(w, r, http.StatusNotFound, "meta.disabled", "the Meta connection is not switched on for this platform")
+		return
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, metaconnect.WebhookBodyLimit))
+	if err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			writeErr(w, r, http.StatusRequestEntityTooLarge, "meta.webhook_too_large", "the webhook body is too large")
+			return
+		}
+		writeErr(w, r, http.StatusBadRequest, "meta.webhook_unreadable", "the webhook body could not be read")
+		return
+	}
+	if !metaconnect.VerifyWebhookSignature(body, r.Header.Get("X-Hub-Signature-256"), h.cfg.AppSecret) {
+		writeErr(w, r, http.StatusUnauthorized, "meta.invalid_signature", "X-Hub-Signature-256 is missing or wrong")
+		return
+	}
+	businesses, err := metaconnect.UninstalledBusinesses(body)
+	if err != nil {
+		h.logger.Warn("metaconnect: a signed webhook body is not JSON, ignored")
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"received": true})
+		return
+	}
+	if len(businesses) > 0 {
+		if h.pool == nil {
+			writeErr(w, r, http.StatusServiceUnavailable, "dependency.database_unavailable", "database is not available")
+			return
+		}
+		if !h.uninstall(w, r, businesses) {
+			return
+		}
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"received": true})
+}
+
+// uninstall revokes the connections to the businesses in one transaction.
+func (h *Handler) uninstall(w http.ResponseWriter, r *http.Request, businesses []string) bool {
+	ctx := r.Context()
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		h.unavailable(w, r)
+		return false
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	for _, b := range businesses {
+		orgs, err := metaconnect.OrgsByBusiness(ctx, tx, b)
+		if err != nil {
+			h.unavailable(w, r)
+			return false
+		}
+		for _, org := range orgs {
+			if _, err := metaconnect.Revoke(ctx, tx, org, "uninstalled_at_meta", true); err != nil {
+				h.unavailable(w, r)
+				return false
+			}
+			if err := h.systemAudit(ctx, r, tx, "v1.org.meta.uninstall", org,
+				map[string]any{"org_id": org.String(), "meta_business_id": b}); err != nil {
+				h.unavailable(w, r)
+				return false
+			}
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		h.unavailable(w, r)
+		return false
+	}
+	return true
 }
