@@ -104,14 +104,14 @@ describe("screen help: lines follow what the person sees", () => {
   it("events list: the owner and the manager read the same lines, in the order of the menu", () => {
     for (const p of [owner, manager]) {
       const h = screenHelp("events", p);
-      expect(h && helpLineIds(h)).toEqual(["nav-new-event", "menu-events", "nav-summary"]);
+      expect(h && helpLineIds(h)).toEqual(["nav-new-event", "menu-events", "nav-summary", "nav-series"]);
       expect(h?.back).toEqual(["nav.events"]);
     }
   });
 
   it("a role that cannot create events does not read about the Add event button", () => {
     const h = screenHelp("events", person(["import.bil24_session"]));
-    expect(h && helpLineIds(h)).toEqual(["menu-events", "nav-summary"]);
+    expect(h && helpLineIds(h)).toEqual(["menu-events", "nav-summary", "nav-series"]);
   });
 
   it("orders: the list is for order.read, the refunds screen reads only its own line, no rights means no help", () => {

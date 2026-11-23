@@ -109,7 +109,7 @@ interface ScreenDef {
 }
 
 const SCREENS: Record<Exclude<ScreenId, "event">, ScreenDef> = {
-  events: { primary: "menu-events", items: ["nav-new-event", "menu-events", "nav-summary"] },
+  events: { primary: "menu-events", items: ["nav-new-event", "menu-events", "nav-summary", "nav-series"] },
   orders: { primary: "menu-orders", items: ["menu-orders", "menu-refunds"] },
   refunds: { primary: "menu-refunds", items: ["menu-refunds"] },
   promo: { primary: "nav-promo", items: "promotion" },

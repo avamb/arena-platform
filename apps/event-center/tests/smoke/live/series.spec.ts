@@ -124,6 +124,7 @@ test.describe("tours (live, two roles)", () => {
   test("owner: link an event from its edit screen, the badge in the list, archive", async ({ page, request }) => {
     const tour = await apiFind(request, "org_admin", RENAMED);
     await signInAs(page, person(env, "org_admin"));
+    await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`));
     await page.goto(`/o/${env.org_id}/events/${env.event_id}/edit`);
     await page.getByTestId("event-series-select").selectOption(tour.id);
     await page.getByTestId("event-series-save").click();
