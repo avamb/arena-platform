@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/adminnotify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/metaconnect"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesnotify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/secretbox"
@@ -263,6 +264,18 @@ func TestRun_GraphErrors_LiveDB(t *testing.T) {
 	dead := "act_" + uuid.NewString()[:8]
 	orgDead := f.org(dead)
 	f.stub.set(dead, stubAnswer{400, `{"error":{"message":"Error validating access token","code":190,"type":"OAuthException"}}`})
+	owner := uuid.New()
+	f.exec(`INSERT INTO users (id, email, password_hash) VALUES ($1, $2, 'x')`, owner, "mins-owner-"+owner.String()[:8]+"@example.test")
+	f.exec(`INSERT INTO memberships (user_id, org_id, role) VALUES ($1, $2, 'org_admin')`, owner, orgDead)
+	f.t.Cleanup(func() {
+		_, _ = f.pool.Exec(f.ctx, `DELETE FROM worker_jobs WHERE payload->>'user_id' = $1`, owner.String())
+		_, _ = f.pool.Exec(f.ctx, `DELETE FROM memberships WHERE user_id = $1`, owner)
+		_, _ = f.pool.Exec(f.ctx, `DELETE FROM users WHERE id = $1`, owner)
+	})
+	notices := func() int {
+		return f.count(`SELECT count(*) FROM worker_jobs WHERE job_type = $1 AND payload->>'user_id' = $2 AND payload->>'kind' = $3`,
+			adminnotify.JobTypeEmail, owner.String(), adminnotify.KindMetaConnectionBroken)
+	}
 	res, err := s.Run(f.ctx, orgDead, ModeScheduled, runAt)
 	if err != nil || res.ErrorCode != "graph_190" {
 		t.Fatalf("190: %+v %v", res, err)
@@ -287,6 +300,16 @@ func TestRun_GraphErrors_LiveDB(t *testing.T) {
 	// The next run makes no Graph call at all.
 	if res, _ := s.Run(f.ctx, orgDead, ModeManual, runAt.Add(time.Hour)); res.ErrorCode != CodeNotConnected {
 		t.Errorf("after 190: %+v", res)
+	}
+	if n := notices(); n != 1 {
+		t.Errorf("owner notices after the first 190 and one more run = %d, want 1", n)
+	}
+	// A second 190 on an already broken connection tells nobody again.
+	if _, err := s.graphFailed(f.ctx, orgDead, runAt.Add(2*time.Hour), Result{}, &metaconnect.GraphError{Code: 190}); err != nil {
+		t.Fatal(err)
+	}
+	if n := notices(); n != 1 {
+		t.Errorf("owner notices after a second 190 = %d, want 1", n)
 	}
 
 	denied := "act_" + uuid.NewString()[:8]

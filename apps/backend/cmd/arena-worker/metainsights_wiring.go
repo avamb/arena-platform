@@ -31,6 +31,9 @@ func buildMetaInsights(pool *pgxpool.Pool, cfg *config.Config, notifier *salesno
 		Announcer: announcer,
 		Logger:    logger,
 		Every:     cfg.MetaInsightsEvery,
+
+		EventCenterURL: cfg.EventCenterPublicURL,
+		OwnerTelegram:  cfg.EventsTelegramBotToken != "",
 	})
 }
 

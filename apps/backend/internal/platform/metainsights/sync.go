@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/adminnotify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/metaconnect"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/secretbox"
 )
@@ -40,6 +41,11 @@ type Options struct {
 	Every time.Duration
 	// SweepInterval is how often the sweep runs (DefaultSweepInterval).
 	SweepInterval time.Duration
+	// EventCenterURL is the origin of the link in the owners' notice of a
+	// broken connection (EVENT_CENTER_PUBLIC_URL); empty means no link.
+	EventCenterURL string
+	// OwnerTelegram says the worker can send Telegram messages.
+	OwnerTelegram bool
 }
 
 // Syncer runs the insights sync of one organization and the sweep.
@@ -51,6 +57,9 @@ type Syncer struct {
 	logger    *slog.Logger
 	every     time.Duration
 	interval  time.Duration
+
+	eventCenterURL string
+	ownerTelegram  bool
 }
 
 // New builds a Syncer. A nil Client reads the real Graph host.
@@ -64,7 +73,8 @@ func New(o Options) *Syncer {
 	if o.SweepInterval <= 0 {
 		o.SweepInterval = DefaultSweepInterval
 	}
-	return &Syncer{pool: o.Pool, box: o.Box, client: o.Client, announcer: o.Announcer, logger: o.Logger, every: o.Every, interval: o.SweepInterval}
+	return &Syncer{pool: o.Pool, box: o.Box, client: o.Client, announcer: o.Announcer, logger: o.Logger, every: o.Every, interval: o.SweepInterval,
+		eventCenterURL: o.EventCenterURL, ownerTelegram: o.OwnerTelegram}
 }
 
 // Result is what one run did.
@@ -248,7 +258,7 @@ func (s *Syncer) graphFailed(ctx context.Context, orgID uuid.UUID, now time.Time
 	res.ErrorCode = code
 	switch class {
 	case ClassTokenInvalid:
-		changed, err := metaconnect.MarkTokenInvalid(ctx, s.pool, orgID, code)
+		changed, err := s.markTokenInvalid(ctx, orgID, code)
 		if err != nil {
 			return res, err
 		}
@@ -264,6 +274,29 @@ func (s *Syncer) graphFailed(ctx context.Context, orgID uuid.UUID, now time.Time
 		s.logger.Warn("metainsights: Graph call failed, the next sweep tries again", "org_id", orgID.String(), "code", code)
 	}
 	return res, s.setError(ctx, orgID, now, code)
+}
+
+// markTokenInvalid moves the connection to error and, in the SAME
+// transaction and only when it changed, queues the owners' notice, exactly as
+// the CAPI path does (conversions.PGStore.MarkMetaTokenInvalid).
+func (s *Syncer) markTokenInvalid(ctx context.Context, orgID uuid.UUID, code string) (bool, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	changed, err := metaconnect.MarkTokenInvalid(ctx, tx, orgID, code)
+	if err != nil || !changed {
+		return false, err
+	}
+	if _, err := adminnotify.NotifyMetaConnectionBroken(ctx, tx, orgID, s.eventCenterURL,
+		adminnotify.Options{Telegram: s.ownerTelegram, Logger: s.logger}); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // writeRun upserts the rows and campaigns of a run and deletes the rows of
