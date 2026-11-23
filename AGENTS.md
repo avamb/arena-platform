@@ -387,6 +387,7 @@ Stripe, Flitt and AllPay hosted checkout, payment modules, webhook state machine
 * PayPlus (internal/adapters/payplus, spec 47 §3, do…
 * A buyer e-mail is checked by emailaddr.Valid befor…
 * The legacy webhook routes bind an event to the organization whose secret verified it
+* Wallet domains are registered in EACH organizer's Stripe account by arena (platform hosts + channel site domains, never CORS_ALLOWED_ORIGINS)
 
 ### [Refunds](docs/agents/refunds.md)
 

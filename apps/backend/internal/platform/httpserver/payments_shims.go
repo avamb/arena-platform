@@ -9,7 +9,9 @@ import (
 	"net/http"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hpayments"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/paymentdomains"
 )
 
 // paymentsHandler constructs a hpayments.Handler from the server's dependencies.
@@ -27,7 +29,26 @@ func (s *Server) paymentsHandler() *hpayments.Handler {
 		WithFlittBaseURL(s.flittBaseURL()).
 		WithAllPayBaseURL(s.allpayBaseURL()).
 		WithPayPlusBaseURL(s.payplusBaseURL()).
-		WithCallbackBase(s.cfg.APIPublicBaseURL())
+		WithCallbackBase(s.cfg.APIPublicBaseURL()).
+		WithDomainSyncer(s.walletDomainSyncer())
+}
+
+// walletDomainSyncer builds the wallet-domain syncer (spec 65 E3) on the same
+// Stripe root as the credential check, so a stub stands in for Stripe in tests.
+func (s *Server) walletDomainSyncer() *paymentdomains.Syncer {
+	if s.paymentConfigQueries == nil {
+		return nil
+	}
+	var platform []string
+	if s.cfg != nil {
+		platform = s.cfg.WalletPlatformDomains()
+	}
+	return &paymentdomains.Syncer{
+		Queries:         s.paymentConfigQueries,
+		Options:         payments.Options{StripeAPIBaseURL: s.stripeBaseURL()},
+		PlatformDomains: platform,
+		Logger:          s.logger,
+	}
 }
 
 // ─── type aliases ─────────────────────────────────────────────────────────────
@@ -92,4 +113,8 @@ func (s *Server) handleVerifyPaymentConfig(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) handleDeletePaymentConfig(w http.ResponseWriter, r *http.Request) {
 	s.paymentsHandler().HandleDeletePaymentConfig(w, r)
+}
+
+func (s *Server) handleListPaymentMethodDomains(w http.ResponseWriter, r *http.Request) {
+	s.paymentsHandler().HandleListPaymentMethodDomains(w, r)
 }

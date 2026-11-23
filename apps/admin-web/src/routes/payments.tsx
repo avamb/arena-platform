@@ -59,6 +59,7 @@ import { config as appConfig } from "@/lib/config";
 import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useScope } from "@/lib/auth/ScopeContext";
+import { WalletDomainsBlock, walletDomainsQueryKey, type WalletDomainsEnvelope } from "@/components/WalletDomains";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
 import { orgContextFromLocation } from "@/lib/routing/orgContext";
 import {
@@ -382,6 +383,7 @@ interface PaymentConfigEnvelope {
   readonly payment_config: PaymentConfig;
   /** Advisory findings of the verify route about the webhook endpoint. */
   readonly webhook_warnings?: readonly string[];
+  readonly payment_method_domains?: WalletDomainsEnvelope["payment_method_domains"];
 }
 
 // ---------------------------------------------------------------------------
@@ -1166,11 +1168,14 @@ function PaymentsBody({
       id: "connection",
       header: "Connection",
       renderCell: (c) => (
+        <>
         <VerificationBadge
           status={c.verification_status}
           error={c.verification_error}
           verifiedAt={c.verified_at}
         />
+        {c.provider === "stripe" ? <WalletDomainsBlock orgId={c.org_id} configId={c.id} /> : null}
+        </>
       ),
     },
     {
@@ -1330,6 +1335,11 @@ function VerifyButton({ config }: { config: PaymentConfig }) {
     onSuccess: (data) => {
       setError(null);
       setWarnings(data.webhook_warnings ?? []);
+      if (data.payment_method_domains) {
+        queryClient.setQueryData<WalletDomainsEnvelope>(walletDomainsQueryKey(config.org_id, config.id), {
+          payment_method_domains: data.payment_method_domains,
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["payment_configs"] });
     },
     // A failed REQUEST is not a failed credential: the verdict lives on the
