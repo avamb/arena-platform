@@ -183,20 +183,22 @@ export function MetaAdsView(p: MetaAdsViewProps) {
           {t("meta.revokedText")}
         </p>
       )}
-      <dl className="kv" data-testid="meta-details">
-        <dt>{t("meta.business")}</dt>
-        <dd data-testid="meta-business">{conn.meta_business_id !== "" ? conn.meta_business_id : t("meta.businessNone")}</dd>
-        {conn.connected_by !== null && conn.connected_by === p.meId && (
-          <>
-            <dt>{t("meta.connectedBy")}</dt>
-            <dd data-testid="meta-connected-by">{t("meta.connectedByYou")}</dd>
-          </>
-        )}
-        <dt>{t("meta.connectedAt")}</dt>
-        <dd data-testid="meta-connected-at">{formatDateTime(conn.connected_at, zone, locale)}</dd>
-        <dt>{t("meta.scopes")}</dt>
-        <dd data-testid="meta-scopes">{conn.scopes.length > 0 ? conn.scopes.join(", ") : t("meta.scopesNone")}</dd>
-      </dl>
+      {usable && (
+        <dl className="kv" data-testid="meta-details">
+          <dt>{t("meta.business")}</dt>
+          <dd data-testid="meta-business">{conn.meta_business_id !== "" ? conn.meta_business_id : t("meta.businessNone")}</dd>
+          {conn.connected_by !== null && conn.connected_by === p.meId && (
+            <>
+              <dt>{t("meta.connectedBy")}</dt>
+              <dd data-testid="meta-connected-by">{t("meta.connectedByYou")}</dd>
+            </>
+          )}
+          <dt>{t("meta.connectedAt")}</dt>
+          <dd data-testid="meta-connected-at">{formatDateTime(conn.connected_at, zone, locale)}</dd>
+          <dt>{t("meta.scopes")}</dt>
+          <dd data-testid="meta-scopes">{conn.scopes.length > 0 ? conn.scopes.join(", ") : t("meta.scopesNone")}</dd>
+        </dl>
+      )}
       {usable && (
         <div data-testid="meta-pickers" aria-busy={p.saving}>
           <fieldset disabled={p.saving}>
@@ -213,32 +215,36 @@ export function MetaAdsView(p: MetaAdsViewProps) {
         </div>
       )}
       {usable && selectedPageId !== "" && p.renderPage?.(selectedPageId)}
-      {KINDS.map(({ kind, title }) => {
-        const list = assetsOf(kind);
-        return (
-          <section key={kind} aria-labelledby={`meta-assets-${kind}`} data-testid={`meta-assets-${kind}`}>
-            <h2 id={`meta-assets-${kind}`}>{t(title)}</h2>
-            {list.length === 0 ? (
-              <p>{t("meta.assetsNone")}</p>
-            ) : (
-              <ul>
-                {list.map((a) => (
-                  <li key={a.meta_id} data-selected={a.selected ? "true" : undefined}>
-                    {name(a)} ({a.meta_id}){a.currency !== null && a.currency !== "" ? `, ${a.currency}` : ""}
-                    {a.selected ? " ✓" : ""}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        );
-      })}
-      <p className="actions">
-        {!usable && connectButton("meta.reconnect")}{" "}
-        <button type="button" className="btn" disabled={p.connecting} onClick={p.onAskDisconnect} data-testid="meta-disconnect">
-          {t("meta.disconnect")}
-        </button>
-      </p>
+      {usable &&
+        KINDS.map(({ kind, title }) => {
+          const list = assetsOf(kind);
+          return (
+            <section key={kind} aria-labelledby={`meta-assets-${kind}`} data-testid={`meta-assets-${kind}`}>
+              <h2 id={`meta-assets-${kind}`}>{t(title)}</h2>
+              {list.length === 0 ? (
+                <p>{t("meta.assetsNone")}</p>
+              ) : (
+                <ul>
+                  {list.map((a) => (
+                    <li key={a.meta_id} data-selected={a.selected ? "true" : undefined}>
+                      {name(a)} ({a.meta_id}){a.currency !== null && a.currency !== "" ? `, ${a.currency}` : ""}
+                      {a.selected ? " ✓" : ""}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          );
+        })}
+      {usable ? (
+        <p className="actions">
+          <button type="button" className="btn" disabled={p.connecting} onClick={p.onAskDisconnect} data-testid="meta-disconnect">
+            {t("meta.disconnect")}
+          </button>
+        </p>
+      ) : (
+        <p className="actions">{connectButton("meta.reconnect")}</p>
+      )}
       {p.confirming && (
         <ConfirmPressDialog
           title={t("meta.disconnect.title")}
@@ -393,11 +399,20 @@ export function MetaAdsBody({ orgId, returned, meId, navigate }: MetaAdsBodyProp
   };
 
   const disconnect = async () => {
-    const stored = await disconnectMeta(orgId);
-    queryClient.setQueryData(key, stored);
-    setConfirming(false);
-    setNotice(null);
-    setFailure(null);
+    try {
+      const stored = await disconnectMeta(orgId);
+      // A GET started before the disconnect must not overwrite the answer; the page card's cache goes too.
+      await queryClient.cancelQueries({ queryKey: key });
+      queryClient.setQueryData(key, stored);
+      await queryClient.invalidateQueries({ queryKey: key });
+      queryClient.removeQueries({ queryKey: ["metaPage", orgId] });
+      setConfirming(false);
+      setNotice(null);
+      setFailure(null);
+    } catch (error) {
+      setConfirming(false);
+      setFailure(error);
+    }
   };
 
   return (

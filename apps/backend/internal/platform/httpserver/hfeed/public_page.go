@@ -52,6 +52,10 @@ type hostedPageOrgResponse struct {
 	Slug    string  `json:"slug"`
 	Name    string  `json:"name"`
 	LogoURL *string `json:"logo_url"`
+	// TrackingEnabled is true when the organizer measures ads (Meta, Google):
+	// the page then asks the visitor for cookie consent. See
+	// public_page_tracking.go.
+	TrackingEnabled bool `json:"tracking_enabled"`
 }
 
 // hostedPageEventResponse is the event slice of the hosted page response.
@@ -200,8 +204,9 @@ func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 
 	resp := hostedPageResponse{
 		Org: hostedPageOrgResponse{
-			Slug: resolved.OrgSlug,
-			Name: resolved.OrgName,
+			Slug:            resolved.OrgSlug,
+			Name:            resolved.OrgName,
+			TrackingEnabled: h.trackingEnabled(ctx, resolved.OrgID),
 		},
 		Event: hostedPageEventResponse{
 			ID:               resolved.EventID.String(),
@@ -351,8 +356,9 @@ func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Reques
 
 	resp := hostedPromoterPageResponse{
 		Org: hostedPageOrgResponse{
-			Slug: org.OrgSlug,
-			Name: org.OrgName,
+			Slug:            org.OrgSlug,
+			Name:            org.OrgName,
+			TrackingEnabled: h.trackingEnabled(ctx, org.OrgID),
 		},
 		DefaultLocale: org.OrgDefaultLocale,
 		Events:        []hostedPageEventResponse{},
