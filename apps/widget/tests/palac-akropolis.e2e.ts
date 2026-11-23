@@ -384,7 +384,7 @@ async function setupPalacRoutes(
 
   // GET /v1/public/checkout/{token}
   const checkoutStatusBody = opts.checkoutStatus ?? PAID_STATUS;
-  await ctx.route(`**/v1/public/checkout/${CHECKOUT_TOKEN}`, (route) => {
+  await ctx.route(new RegExp(`/v1/public/checkout/${CHECKOUT_TOKEN}([?].*)?$`), (route) => {
     const req = route.request();
     // Only handle GETs (not the recover POST which has a longer path)
     if (req.method() === 'GET') {
