@@ -8317,6 +8317,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/feeds/{feed_token}/site": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the public settings of a static site
+         * @description Returns the organizer's own block for the "thank you" page of a static
+         *     site, read from the sales channel of the feed token. Only the
+         *     `thank_you` block is ever returned, no other channel setting. No JWT
+         *     required: the feed token in the path is the credential. Rate-limited
+         *     per token and per IP. Cached publicly for a short time.
+         */
+        get: operations["getPublicFeedSite"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/feeds/{feed_token}/series": {
         parameters: {
             query?: never;
@@ -24868,6 +24892,22 @@ export interface components {
             translations: {
                 [key: string]: unknown;
             };
+        };
+        /** @description The organizer's block for the thank-you page of a static site, trimmed and length-capped by the server. */
+        FeedSiteThankYou: {
+            /** @description Heading of the block, at most 120 characters. May be empty when the text is set. */
+            title: string;
+            /** @description Body text, at most 1000 characters. May be empty when the title is set. */
+            text: string;
+            /** @description Promo code to show to the buyer, at most 64 characters, or null. */
+            promo_code: string | null;
+            /** @description Absolute https link of the block, or null. */
+            url: string | null;
+        };
+        /** @description Public settings of a static site that sells through a feed token. */
+        FeedSiteSettings: {
+            /** @description The thank-you block, or null when the organizer set none. */
+            thank_you: components["schemas"]["FeedSiteThankYou"] | null;
         };
         /** @description List-tours response of a feed. */
         FeedSeriesListEnvelope: {
@@ -70733,6 +70773,56 @@ export interface operations {
             };
             /** @description Invalid JSON body, empty batch, or batch exceeds maximum size. */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicFeedSite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque feed token (from `agent_feed_tokens.token`). */
+                feed_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The site settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedSiteSettings"];
+                };
+            };
+            /** @description Unknown or inactive feed token (`feed.token_not_found`). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

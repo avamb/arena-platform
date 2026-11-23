@@ -267,6 +267,7 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 		r.Get("/public/feeds/{feed_token}/events", s.handlePublicFeedEvents)
 		r.Get("/public/feeds/{feed_token}/events/{event_id}", s.handlePublicFeedEvent)
 		// Tours (event_series): shown to a feed through its visible events.
+		r.Get("/public/feeds/{feed_token}/site", s.handlePublicFeedSite)
 		r.Get("/public/feeds/{feed_token}/series", s.handlePublicFeedSeries)
 		r.Get("/public/feeds/{feed_token}/series/{series_id}", s.handlePublicFeedSeriesItem)
 		// Hosted tour page; "series" is a fixed segment of three, so it never
