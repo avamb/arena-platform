@@ -254,8 +254,11 @@ describe('declines', () => {
     expect(isCardDecline({ type: 'validation_error', code: 'incomplete_number' })).toBe(true);
     expect(isCardDecline({ code: 'insufficient_funds' })).toBe(true);
     for (const type of ['invalid_request_error', 'api_error', 'api_connection_error', 'authentication_error', 'rate_limit_error']) {
-      expect(isCardDecline({ type, code: 'card_declined' }), type).toBe(false);
+      expect(isCardDecline({ type, code: 'resource_missing' }), type).toBe(false);
     }
+    // A known decline code counts whatever the type (a 3-D Secure failure is
+    // typed invalid_request_error).
+    expect(isCardDecline({ type: 'invalid_request_error', code: 'payment_intent_authentication_failure' })).toBe(true);
     expect(isCardDecline({ code: 'something_unknown' })).toBe(false);
     expect(isCardDecline(undefined)).toBe(false);
   });
@@ -484,7 +487,7 @@ describe('errors that are not a decline', () => {
     h.ctrl.destroy();
   });
 
-  it('offers "start again" when the hosted page answers 409', async () => {
+  it('after a confirm, a 409 from the hosted page returns the buyer to the same form, never "start again"', async () => {
     const h = setup([{ type: 'error', error: { type: 'api_error' } }], [status('pending')]);
     h.postHosted.mockRejectedValueOnce(
       Object.assign(new Error('409'), { status: 409, code: 'checkout.hosted_fallback_unavailable' }),
@@ -492,7 +495,9 @@ describe('errors that are not a decline', () => {
     await ready(h);
     await h.ctrl.submit();
     expect(h.redirect).not.toHaveBeenCalled();
-    expect(h.last().phase).toBe('unavailable');
+    expect(h.last().phase).toBe('declined');
+    expect(h.last().group).toBe('other');
+    expect(h.states.some((s) => s.phase === 'unavailable')).toBe(false);
     h.ctrl.destroy();
   });
 
@@ -717,5 +722,73 @@ describe('the client secret', () => {
     expect(h.express.destroy).toHaveBeenCalled();
     expect(h.payment.destroy).toHaveBeenCalled();
     expect(h.destroy).toHaveBeenCalled();
+  });
+});
+
+describe('a confirm was attempted: never "start again" (no second payment)', () => {
+  const conflict = () =>
+    Object.assign(new Error('409'), { status: 409, code: 'checkout.hosted_fallback_unavailable' });
+  const down = () => Object.assign(new Error('503'), { status: 503, code: 'checkout.payment_start_failed' });
+
+  it('confirm throws, hosted 409, status stays pending: polls a while, then back on the same form', async () => {
+    const h = setup([new Error('network')], [status('pending')]);
+    h.postHosted.mockRejectedValueOnce(conflict());
+    await ready(h);
+    await h.ctrl.submit();
+    expect(h.getStatus.mock.calls.length).toBeGreaterThan(1);
+    expect(h.states.some((s) => s.phase === 'unavailable')).toBe(false);
+    expect(h.last().phase).toBe('declined');
+    expect(h.last().group).toBe('other');
+    expect(h.last().canPay).toBe(true);
+    expect(h.open).toHaveBeenCalledTimes(1);
+    // The same form can be confirmed again.
+    await h.ctrl.submit();
+    expect(h.confirm).toHaveBeenCalledTimes(2);
+    h.ctrl.destroy();
+  });
+
+  it('confirm throws, hosted 503, status stays pending: back on the same form', async () => {
+    const h = setup([new Error('network')], [status('pending')]);
+    h.postHosted.mockRejectedValueOnce(down());
+    await ready(h);
+    await h.ctrl.submit();
+    expect(h.states.some((s) => s.phase === 'unavailable')).toBe(false);
+    expect(h.last().phase).toBe('declined');
+    expect(h.last().group).toBe('other');
+    h.ctrl.destroy();
+  });
+
+  it('confirm throws, hosted 409, the status becomes paid while polling: paid', async () => {
+    const h = setup([new Error('network')], [status('pending'), status('pending'), status('paid')]);
+    h.postHosted.mockRejectedValueOnce(conflict());
+    await ready(h);
+    await h.ctrl.submit();
+    expect(h.last().phase).toBe('paid');
+    expect(h.states.some((s) => s.phase === 'unavailable')).toBe(false);
+    expect(h.events.some((e) => e.step === 'payment_succeeded')).toBe(true);
+    h.ctrl.destroy();
+  });
+
+  it('an init failure with no confirm still offers "start again"', async () => {
+    const h = setup([], [status('pending')]);
+    h.open.mockRejectedValueOnce(new Error('stripe did not load'));
+    h.postHosted.mockRejectedValueOnce(conflict());
+    await h.ctrl.start({ express: 'E', payment: 'P' });
+    expect(h.confirm).not.toHaveBeenCalled();
+    expect(h.last().phase).toBe('unavailable');
+    h.ctrl.destroy();
+  });
+
+  it('a 3-D Secure failure stays on the form as auth_failed, with no hosted fallback', async () => {
+    const h = setup(
+      [{ type: 'error', error: { type: 'invalid_request_error', code: 'payment_intent_authentication_failure' } }],
+      [status('pending')],
+    );
+    await ready(h);
+    await h.ctrl.submit();
+    expect(h.postHosted).not.toHaveBeenCalled();
+    expect(h.last().phase).toBe('declined');
+    expect(h.last().group).toBe('auth_failed');
+    h.ctrl.destroy();
   });
 });

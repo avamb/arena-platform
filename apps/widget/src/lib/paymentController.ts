@@ -105,6 +105,11 @@ export interface PaymentControllerOptions {
   slowPollIntervalMs?: number;
   /** Total polling time once Stripe accepted the payment (default 15 min). */
   lateSettleMaxMs?: number;
+  /**
+   * After a failed confirm whose hosted fallback gave no page: how long to ask
+   * the platform before returning the buyer to the same form (default 12 s).
+   */
+  recoverPollMaxMs?: number;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
 }
@@ -135,15 +140,17 @@ function errorCode(err: unknown): string {
  * so the caller falls back to the hosted page.
  *
  * Stripe types a decline `card_error` and a bad field `validation_error`. An
- * error with no type at all is judged by its code: a known decline code counts,
- * an unknown one does not.
+ * error whose code is a known decline (or 3-D Secure failure) counts whatever
+ * its type; an unknown code counts only under one of those two types.
  */
 export function isCardDecline(err: StripeErrorLike | null | undefined): boolean {
   if (!err) return false;
+  // A known decline code wins whatever the type: a 3-D Secure failure comes
+  // typed `invalid_request_error` (payment_intent_authentication_failure) and
+  // is still the bank's answer, so the buyer stays on the form.
+  if (declineGroup(err) !== 'other') return true;
   const type = (err.type ?? '').toLowerCase();
-  if (type === 'card_error' || type === 'validation_error') return true;
-  if (type) return false;
-  return declineGroup(err) !== 'other';
+  return type === 'card_error' || type === 'validation_error';
 }
 
 const defaultSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -168,6 +175,7 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
   const lateMax = opts.lateSettleMaxMs ?? 15 * 60_000;
   const budget = opts.initTimeoutMs ?? STRIPE_INIT_TIMEOUT_MS;
   const walletWait = opts.walletWaitMs ?? 1500;
+  const recoverMax = opts.recoverPollMaxMs ?? 12_000;
 
   let state: PaymentUiState = { phase: 'loading', canPay: false, walletsAvailable: false };
   let checkout: CheckoutLike | null = null;
@@ -236,6 +244,10 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
         opts.redirect(redirect_url);
         return;
       }
+      if (attempts > 0) {
+        await recoverAfterConfirm();
+        return;
+      }
       set({ phase: 'unavailable' });
     } catch (err) {
       const code = errorCode(err);
@@ -246,11 +258,52 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
         await settle(lateMax, true);
         return;
       }
+      if (attempts > 0) {
+        // A confirm already ran on this session, so the money may have moved
+        // (the backend's 30-min floor check answers 409 before it asks Stripe
+        // whether the session is paid). Never "start again" here: that opens
+        // a new checkout and the buyer pays twice.
+        await recoverAfterConfirm();
+        return;
+      }
       // 409 hosted_fallback_unavailable / not_payable (or the service being
       // down). Before telling the buyer to start again, ask the platform once:
       // the order may have been paid in the meantime.
       await settleOnceOrGiveUp();
     }
+  }
+
+  /**
+   * A confirm was attempted and the hosted page is not available. Ask the
+   * platform for a short while; if the order is still pending, put the buyer
+   * back on the SAME embedded session (it was not expired, and Stripe never
+   * pays one Checkout Session twice), as a decline of group 'other'.
+   */
+  async function recoverAfterConfirm(): Promise<void> {
+    set({ phase: 'confirming', canPay: false });
+    const deadline = now() + recoverMax;
+    for (;;) {
+      if (destroyed) return;
+      try {
+        const status = await opts.getStatus();
+        if (destroyed) return;
+        if (status.status === 'paid') {
+          opts.steps.emit('payment_succeeded');
+          set({ phase: 'paid', status });
+          return;
+        }
+        if (status.status !== 'pending') {
+          set({ phase: 'terminal', status });
+          return;
+        }
+      } catch {
+        /* a failed poll says nothing: keep asking until the deadline */
+      }
+      if (now() >= deadline) break;
+      await sleep(pollInterval);
+    }
+    if (destroyed) return;
+    set({ phase: 'declined', group: 'other', canPay: sessionCanConfirm || paymentComplete });
   }
 
   async function settleOnceOrGiveUp(): Promise<void> {

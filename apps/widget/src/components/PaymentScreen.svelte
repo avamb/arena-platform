@@ -97,7 +97,11 @@
   );
   const showWarn = $derived(Number.isFinite(secondsLeft) && secondsLeft > 0 && secondsLeft <= 300);
   const holdTime = $derived(formatHoldTime(expiresAt, locale));
-  const amountText = $derived(total != null && currency ? formatPrice(total, currency) : '');
+  // Stripe's own total once known, so the summary and the pay button never
+  // show two different amounts; ours only until Stripe's first update.
+  const amountText = $derived(
+    ui.totalText || (total != null && currency ? formatPrice(total, currency) : ''),
+  );
   // "Pay 52,50 €" names the amount and the act. The amount is the one STRIPE's
   // session prints: confirm() throws unless the page shows it. Ours is only the
   // answer before Stripe's first update; without either, "Pay now".
