@@ -73,7 +73,7 @@ type catalogAction struct {
 // turns it into a -99 envelope rather than degrading.
 //
 // externalOnly names the events whose every listed session is sold by a
-// partner box office (sessions.sales_mode = 'external', migration 0220):
+// partner box office (sessions.sales_mode = 'external', migration 0221):
 // the caller leaves them out of the actionList, so a site never learns of
 // an event it cannot sell.
 func (h *Handler) loadActionEvents(
@@ -179,7 +179,7 @@ func (h *Handler) loadActionEvents(
 }
 
 // withoutExternalSessions drops the sessions a partner box office sells
-// (hcheckout.SessionSellable, migration 0220) and their tiers, and reports
+// (hcheckout.SessionSellable, migration 0221) and their tiers, and reports
 // the events left with no listed session because of it.
 func withoutExternalSessions(
 	sessions []gen.ActionEventRow, tiers []gen.ActionEventTierRow,

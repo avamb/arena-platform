@@ -1,5 +1,5 @@
 // Hand-maintained typed query wrapper; follows sqlc output conventions.
-// source: session_external_sales.sql (migration 0220, spec 63 §14.1)
+// source: session_external_sales.sql (migration 0221, spec 63 §14.1)
 
 package gen
 
@@ -27,7 +27,7 @@ WHERE  id       = $1
 RETURNING ` + sessionColumns
 
 // SetSessionSalesMode writes who sells the tickets of an active session and
-// the partner fields in one statement (migration 0220). For
+// the partner fields in one statement (migration 0221). For
 // SessionSalesModePlatform pass nil for all four partner fields; for
 // SessionSalesModeExternal url and sellerName are required (https only),
 // priceFromMinor and currency go together. The table CHECKs reject any

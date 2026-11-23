@@ -24,7 +24,7 @@
 --                    a session the organizer declared sold out has none
 --   future_external_sessions
 --                    future sessions a partner box office sells (sales_mode
---                    'external', migration 0220); they own no seats, so they
+--                    'external', migration 0221); they own no seats, so they
 --                    are never selling and have no places left here
 SELECT s.event_id,
        count(*)::bigint                                   AS session_count,

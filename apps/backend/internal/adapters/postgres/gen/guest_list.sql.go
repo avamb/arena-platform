@@ -297,7 +297,7 @@ FROM   guest_list_subscriptions gs
 JOIN   users    u ON u.id = gs.user_id
 JOIN   events   e ON e.org_id = gs.org_id AND e.deleted_at IS NULL AND e.status = 'published'
 JOIN   sessions s ON s.event_id = e.id AND s.deleted_at IS NULL AND s.status <> 'cancelled'
-               -- A session a partner box office sells (migration 0220) has
+               -- A session a partner box office sells (migration 0221) has
                -- no platform guests: no automatic list.
                AND s.sales_mode = 'platform'
                AND s.start_at >= $1::timestamptz - $2::interval
@@ -332,7 +332,7 @@ WHERE  guest_list_deliveries.sent_at IS NULL
 // moment again, so a list is never sent twice; a session moved before its
 // list went out gets the row back for its new moment. Only receivers of
 // guestListReceiverSQL, a published event, a live session the platform sells
-// (sales_mode 'platform', migration 0220) and at least one active ticket get
+// (sales_mode 'platform', migration 0221) and at least one active ticket get
 // a row.
 func (q *Queries) ScheduleGuestListDeliveries(ctx context.Context, now time.Time, grace time.Duration) (int64, error) {
 	tag, err := q.db.Exec(ctx, scheduleGuestListDeliveries, now, grace)

@@ -1,5 +1,5 @@
 // Package extsale holds the rules of a session that a partner box office
-// sells (sessions.sales_mode = 'external', migration 0220, spec 63 §14): the
+// sells (sessions.sales_mode = 'external', migration 0221, spec 63 §14): the
 // check of the partner's address and name, the conversion of the display
 // price "from" between major and minor units, and the lock rules of a change
 // of the sales mode. It is pure (no database, no HTTP), so the organizer API,

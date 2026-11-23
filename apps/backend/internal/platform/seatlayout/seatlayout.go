@@ -194,7 +194,7 @@ type Batch struct {
 var (
 	ErrSessionNotFound = errors.New("seatlayout: session not found")
 	// ErrSessionSoldExternally: a partner box office sells the session
-	// (sessions.sales_mode = 'external', migration 0220); it owns no seats
+	// (sessions.sales_mode = 'external', migration 0221); it owns no seats
 	// or categories here. Read under the sessions row lock.
 	ErrSessionSoldExternally = errors.New("seatlayout: session is sold by a partner box office")
 	ErrBatchNotFound         = errors.New("seatlayout: batch not found")

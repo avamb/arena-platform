@@ -459,7 +459,7 @@ var orgIsolationAuditedSafe = map[string]string{
 	"PUT /v1/organizations/{org_id}/events/{event_id}/contact":      "events",
 	"PUT /v1/organizations/{org_id}/events/{id}/promoter":           "events",
 	"PATCH /v1/organizations/{org_id}/promoters/{id}":               "promoters",
-	// hcatalog tours (migration 0221, series.go): every query is keyed by
+	// hcatalog tours (migration 0222, series.go): every query is keyed by
 	// (series id, org id); a foreign tour is 404 series.not_found.
 	"GET /v1/organizations/{org_id}/series/{series_id}":                          "series",
 	"PATCH /v1/organizations/{org_id}/series/{series_id}":                        "series",

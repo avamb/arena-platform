@@ -183,7 +183,7 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 			externalOnly map[uuid.UUID]bool
 		)
 		byEvent, externalOnly, aerr = h.loadActionEvents(ctx, channel.OrgID, cartFeePercent(channel), hiddenIDs)
-		// An event sold only by a partner box office (migration 0220) is
+		// An event sold only by a partner box office (migration 0221) is
 		// not in the catalog at all: the site cannot sell it.
 		events = withoutExternalOnlyEvents(events, externalOnly)
 		if aerr != nil {

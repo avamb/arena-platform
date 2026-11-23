@@ -481,7 +481,7 @@ func buildEventBundles(src bundleSource) EventBundleReadResponse {
 		}
 		ae.DoorsOpenTime = &doors
 		if v := extsale.ViewFromRow(s); v != nil {
-			// A partner-sold session reads back as externalSale (migration 0220);
+			// A partner-sold session reads back as externalSale (migration 0221);
 			// a platform session leaves the key out, which keeps the mode.
 			sale := bil24compat.ImportExternalSale{URL: v.URL, SellerName: v.SellerName, PriceFrom: v.PriceFrom}
 			if v.Currency != nil {

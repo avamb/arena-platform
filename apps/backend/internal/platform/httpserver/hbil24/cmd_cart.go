@@ -398,7 +398,7 @@ func (h *Handler) writeHoldError(ctx context.Context, w http.ResponseWriter, com
 		resp.Data = map[string]any{"conflicts": conflicts.Conflicts}
 		writeBil24JSON(w, http.StatusOK, resp)
 	case errors.Is(err, hcheckout.ErrSessionSoldExternally):
-		// A partner box office sells this session (migration 0220): the
+		// A partner box office sells this session (migration 0221): the
 		// platform never holds its places. 101, as for closed sales.
 		writeBil24JSON(w, http.StatusOK, bil24Error(command, ResultCodeUserVisible,
 			h.localizeDesc("", "", "bil24.sales_closed",

@@ -1,4 +1,4 @@
--- 0220_session_external_sales.sql — a session sold by a partner box office
+-- 0221_session_external_sales.sql — a session sold by a partner box office
 -- (spec 63 §14.1, Л-3).
 --
 -- sessions.sales_mode tells who sells the tickets of a session:
@@ -59,18 +59,18 @@ ALTER TABLE sessions
 COMMENT ON COLUMN sessions.sales_mode IS
     'Who sells the tickets of the session: platform (arena) or external (a '
     'partner box office). An external session is never held or sold here. '
-    'Migration 0220.';
+    'Migration 0221.';
 COMMENT ON COLUMN sessions.external_ticket_url IS
     'The partner box office of an external session, https only. NULL for a '
-    'platform session. Migration 0220.';
+    'platform session. Migration 0221.';
 COMMENT ON COLUMN sessions.external_seller_name IS
     'The name of the partner box office (1 to 80 characters). NULL for a '
-    'platform session. Migration 0220.';
+    'platform session. Migration 0221.';
 COMMENT ON COLUMN sessions.display_price_from_minor IS
     'The display price "from" of an external session in minor units, set '
-    'together with display_currency. Migration 0220.';
+    'together with display_currency. Migration 0221.';
 COMMENT ON COLUMN sessions.display_currency IS
-    'The currency of display_price_from_minor. Migration 0220.';
+    'The currency of display_price_from_minor. Migration 0221.';
 
 -- +goose Down
 SET LOCAL lock_timeout = '5s';

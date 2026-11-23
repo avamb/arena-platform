@@ -360,7 +360,7 @@ func issueTarget(ctx context.Context, txq *gen.Queries, orgID, sessionID uuid.UU
 		return target, fmt.Errorf("hinvitations: session lookup: %w", err)
 	}
 	// A session a partner box office sells (sessions.sales_mode = 'external',
-	// migration 0220) never gets a ticket here, not even an invitation (spec
+	// migration 0221) never gets a ticket here, not even an invitation (spec
 	// 63 §14.2). Read under the sessions row lock bumpSessionVersion took.
 	mode, err := txq.LockSessionSalesMode(ctx, sessionID)
 	if errors.Is(err, pgx.ErrNoRows) {

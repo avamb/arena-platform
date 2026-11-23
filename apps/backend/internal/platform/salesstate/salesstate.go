@@ -25,7 +25,7 @@ const (
 	SoldOut   = "sold_out"  // set by hand, or no free place is left
 	Ended     = "ended"     // the session's sales end has passed
 	Cancelled = "cancelled" // the session itself was cancelled
-	External  = "external"  // a partner box office sells it (migration 0220)
+	External  = "external"  // a partner box office sells it (migration 0221)
 )
 
 // Sources of a change, recorded in session_sales_state_changes.source: the

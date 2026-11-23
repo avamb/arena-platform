@@ -63,7 +63,7 @@ type ActionEventRow struct {
 	SeatsTotal         int32      `json:"seats_total"`
 	SeatsAvailable     int32      `json:"seats_available"`
 	LedgerAvailable    int32      `json:"ledger_available"`
-	// SalesMode is sessions.sales_mode (migration 0220). The gateway never
+	// SalesMode is sessions.sales_mode (migration 0221). The gateway never
 	// lists an external session (hcheckout.SessionSellable); it is projected
 	// rather than filtered so the handler can also drop an event whose
 	// every listed session is external.

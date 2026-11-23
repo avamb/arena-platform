@@ -3,7 +3,7 @@
 package himports
 
 // event_bundle_external_sale_integration_test.go — spec 63 §14.4 (migration
-// 0220): actionEvent.externalSale of the arena event bundle. An object hands
+// 0221): actionEvent.externalSale of the arena event bundle. An object hands
 // the session to a partner box office (no categoryList needed), the read
 // gives it back, absent keeps the mode, null puts the session back on the
 // platform, and the lock rules and the address check answer the house errors.

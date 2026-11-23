@@ -1,5 +1,5 @@
 /**
- * A date sold by a partner box office (spec 63, task L-3, migration 0220).
+ * A date sold by a partner box office (spec 63, task L-3, migration 0221).
  *
  * One form for the wizard (a date of a new event) and for the date's own card
  * (a PATCH of an existing session): the person names the box office link, its

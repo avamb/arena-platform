@@ -1,6 +1,6 @@
 //go:build integration
 
-// external_session_l3_integration_test.go — spec 63 §14.2 (migration 0220):
+// external_session_l3_integration_test.go — spec 63 §14.2 (migration 0221):
 // a session a partner box office sells (sessions.sales_mode = 'external')
 // is never held through the public widget surface:
 //

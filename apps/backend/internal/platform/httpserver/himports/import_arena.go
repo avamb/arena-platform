@@ -1028,7 +1028,7 @@ func resolveArenaPromoter(ctx context.Context, q *gen.Queries, plan importPlan) 
 	return promoterChange{set: true, promoterID: p.ID}, nil
 }
 
-// applyArenaSeries applies action.arenaSeriesId (migration 0221) inside the
+// applyArenaSeries applies action.arenaSeriesId (migration 0222) inside the
 // import transaction: absent keeps the event's tour, null or "" removes the
 // link, a UUID links one of the organization's ACTIVE tours. Anything else is
 // 422 import.invalid_series, the rule of PATCH .../events/{id} series_id.

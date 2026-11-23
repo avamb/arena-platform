@@ -37,7 +37,7 @@ func TestSalesStateFor(t *testing.T) {
 			gen.EventSalesFacts{SessionCount: 1, FutureSessions: 1, Selling: false, PlacesLeft: true}, true, SalesStateUpcoming},
 		{"sales ended before the start, places left", "published",
 			gen.EventSalesFacts{SessionCount: 1, FutureSessions: 1, Selling: false, PlacesLeft: true}, true, SalesStateUpcoming},
-		// Partner box office sessions (migration 0220) own no seats.
+		// Partner box office sessions (migration 0221) own no seats.
 		{"only partner sessions: external, not sold out", "published",
 			gen.EventSalesFacts{SessionCount: 2, FutureSessions: 2, FutureExternalSessions: 2}, true, SalesStateExternal},
 		{"only partner sessions in the future, a past platform one", "published",

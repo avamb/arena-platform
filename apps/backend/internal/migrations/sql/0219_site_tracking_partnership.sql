@@ -1,4 +1,4 @@
--- 0218_site_tracking_partnership.sql — spec 63, L-10 and L-5.
+-- 0219_site_tracking_partnership.sql — spec 63, L-10 and L-5.
 --
 -- L-10, server-side tracking of a static site (POST /v1/public/feeds/{token}/track):
 --   * sales_funnel_daily gets the step outbound_click: a click on a partner box

@@ -26,7 +26,7 @@ type SessionSalesFactsRow struct {
 	HeldPlaces      int64
 	Selling         bool
 	OpensLater      bool
-	// SalesMode is who sells the tickets (migration 0220): "platform" or
+	// SalesMode is who sells the tickets (migration 0221): "platform" or
 	// "external". The partner fields are set only for an external session.
 	SalesMode             string
 	ExternalTicketURL     *string

@@ -1,5 +1,5 @@
 // series.go implements an organization's tours (event_series, migration
-// 0221, spec 63 section 15.1) and the tour link of an event.
+// 0222, spec 63 section 15.1) and the tour link of an event.
 //
 // A tour groups several events under one name, public address and set of
 // page materials. An event names its tour in events.series_id; NO link means

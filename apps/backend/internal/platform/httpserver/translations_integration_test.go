@@ -3,7 +3,7 @@
 package httpserver
 
 // Spec 63 section 16.4: the organizer API of an event's content translations
-// and the machine translation job. Run against a migrated database (0219).
+// and the machine translation job. Run against a migrated database (0220).
 
 import (
 	"context"

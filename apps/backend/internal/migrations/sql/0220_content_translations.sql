@@ -1,4 +1,4 @@
--- 0219_content_translations.sql — organizer-editable translations of an
+-- 0220_content_translations.sql — organizer-editable translations of an
 -- event's content (spec 08_architecture/63 §16.1, task Л-1).
 --
 -- events.content_locale    the language of the original text: a lowercase

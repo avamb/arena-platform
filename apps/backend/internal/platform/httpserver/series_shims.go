@@ -2,7 +2,7 @@ package httpserver
 
 import "net/http"
 
-// Tours of an organization (migration 0221, hcatalog/series.go).
+// Tours of an organization (migration 0222, hcatalog/series.go).
 func (s *Server) handleListSeries(w http.ResponseWriter, r *http.Request) {
 	s.catalogHandler().HandleListSeries(w, r)
 }

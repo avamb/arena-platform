@@ -33,7 +33,7 @@ const (
 // Refusals of the tier-create transaction, read back by HandleCreateTier.
 var (
 	// errTierSoldExternally: the session is sold by a partner box office
-	// (sessions.sales_mode = 'external', migration 0220), read under the
+	// (sessions.sales_mode = 'external', migration 0221), read under the
 	// session row lock.
 	errTierSoldExternally = errors.New("hcatalog: session is sold by a partner box office")
 	// errTierSessionGone: the session row vanished before its lock.
@@ -307,7 +307,7 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// A session a partner box office sells owns no tiers (migration 0220).
+	// A session a partner box office sells owns no tiers (migration 0221).
 	if _, _, _, salesMode, smErr := h.tierQueries.GetSessionSalesState(ctx, sessionID); smErr == nil && salesMode == gen.SessionSalesModeExternal {
 		writeSoldExternally(w, r)
 		return

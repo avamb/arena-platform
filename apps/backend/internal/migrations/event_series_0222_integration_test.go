@@ -1,6 +1,6 @@
 //go:build integration
 
-// event_series_0221_integration_test.go — migration 0221 (spec 63 Л-2, tours):
+// event_series_0222_integration_test.go — migration 0222 (spec 63 Л-2, tours):
 // the composite foreign key keeps an event and its tour in one organization,
 // tour and event slugs share one namespace (trigger, 23505
 // event_series_slug_namespace) both ways, deleting a tour clears only
@@ -23,9 +23,9 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
-func section0221(t *testing.T, which string) string {
+func section0222(t *testing.T, which string) string {
 	t.Helper()
-	body, err := os.ReadFile("sql/0221_event_series.sql")
+	body, err := os.ReadFile("sql/0222_event_series.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func expectPgErr(t *testing.T, ctx context.Context, tx pgx.Tx, what, code, const
 	}
 }
 
-func TestMigration0221_EventSeries(t *testing.T) {
+func TestMigration0222_EventSeries(t *testing.T) {
 	ctx := context.Background()
 	conn := connectDB(t)
 	tx, err := conn.Begin(ctx)
@@ -75,14 +75,14 @@ func TestMigration0221_EventSeries(t *testing.T) {
 	newOrg := func(tag string) uuid.UUID {
 		var id uuid.UUID
 		if err := tx.QueryRow(ctx, `INSERT INTO organizations (name, slug) VALUES ($1, $2) RETURNING id`,
-			"mig0221 "+tag, "mig0221-"+tag+"-"+stamp).Scan(&id); err != nil {
+			"mig0222 "+tag, "mig0222-"+tag+"-"+stamp).Scan(&id); err != nil {
 			t.Fatalf("org %s: %v", tag, err)
 		}
 		return id
 	}
 	newEvent := func(org uuid.UUID, slug string) uuid.UUID {
 		var id uuid.UUID
-		if err := tx.QueryRow(ctx, `INSERT INTO events (org_id, name, slug) VALUES ($1, 'mig 0221', $2) RETURNING id`,
+		if err := tx.QueryRow(ctx, `INSERT INTO events (org_id, name, slug) VALUES ($1, 'mig 0222', $2) RETURNING id`,
 			org, slug).Scan(&id); err != nil {
 			t.Fatalf("event %s: %v", slug, err)
 		}
@@ -172,7 +172,7 @@ func TestMigration0221_EventSeries(t *testing.T) {
 	}
 
 	// Down, then Up again.
-	if _, err := tx.Exec(ctx, section0221(t, "down")); err != nil {
+	if _, err := tx.Exec(ctx, section0222(t, "down")); err != nil {
 		t.Fatalf("down: %v", err)
 	}
 	var exists bool
@@ -180,7 +180,7 @@ func TestMigration0221_EventSeries(t *testing.T) {
 	    OR EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'events' AND column_name = 'series_id')`).Scan(&exists); err != nil || exists {
 		t.Fatalf("after down: still present=%v err=%v", exists, err)
 	}
-	if _, err := tx.Exec(ctx, section0221(t, "up")); err != nil {
+	if _, err := tx.Exec(ctx, section0222(t, "up")); err != nil {
 		t.Fatalf("up again: %v", err)
 	}
 	if _, err := gen.New(tx).CreateEventSeries(ctx, orgA, gen.EventSeriesParams{Slug: "again", Name: "Again"}); err != nil {

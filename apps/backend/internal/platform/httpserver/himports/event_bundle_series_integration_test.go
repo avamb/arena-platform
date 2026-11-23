@@ -1,7 +1,7 @@
 //go:build integration
 
 // event_bundle_series_integration_test.go — action.arenaSeriesId of the
-// event-bundle import (migration 0221, spec 63 Л-2): absent keeps the tour,
+// event-bundle import (migration 0222, spec 63 Л-2): absent keeps the tour,
 // a UUID links an active tour, null or "" unlinks, and an unknown, foreign or
 // archived tour answers 422 import.invalid_series at /action/arenaSeriesId
 // (the dry run reports it too). The read-back bundle names the tour.

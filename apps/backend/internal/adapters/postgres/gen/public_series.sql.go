@@ -1,7 +1,7 @@
 // Hand-maintained typed query wrapper; follows sqlc output conventions.
 // source: public_series.sql
 //
-// Public reads of tours (event_series, migration 0221, spec 63 section 15.1):
+// Public reads of tours (event_series, migration 0222, spec 63 section 15.1):
 // the feed's /series routes and the hosted tour page.
 
 package gen

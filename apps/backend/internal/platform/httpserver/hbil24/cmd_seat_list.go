@@ -144,7 +144,7 @@ func (h *Handler) handleBil24GetSeatList(w http.ResponseWriter, r *http.Request,
 	}
 
 	// A session a partner box office sells (sessions.sales_mode =
-	// 'external', migration 0220) does not exist for the gateway: the
+	// 'external', migration 0221) does not exist for the gateway: the
 	// catalog leaves it out, so its seat list answers "not found" too.
 	if h.tierQueries != nil {
 		if _, _, _, mode, serr := h.tierQueries.GetSessionSalesState(ctx, sessionID); serr == nil && !hcheckout.SessionSellable(mode) {

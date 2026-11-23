@@ -1,7 +1,7 @@
 //go:build integration
 
 // external_sales_l3b_integration_test.go — spec 63 §14.1, §14.3, §14.4
-// (migration 0220) through the real router: an organizer hands a session to a
+// (migration 0221) through the real router: an organizer hands a session to a
 // partner box office with POST/PATCH .../sessions, the lock rules answer 409
 // session.sales_mode_locked, the session owns no tiers (409
 // session.sold_externally), and the public feed shows the partner block with

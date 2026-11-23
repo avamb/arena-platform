@@ -46,7 +46,7 @@ type SessionRow struct {
 	// "doors open" time, never after StartAt.
 	SalesEndAt  time.Time  `json:"sales_end_at"`
 	DoorsOpenAt *time.Time `json:"doors_open_at"`
-	// SalesMode is who sells the tickets (migration 0220): "platform" or
+	// SalesMode is who sells the tickets (migration 0221): "platform" or
 	// "external". An external session carries the partner's box office URL
 	// and name, and optionally a display price "from" with its currency;
 	// a platform session carries none of them.
@@ -57,7 +57,7 @@ type SessionRow struct {
 	DisplayCurrency       *string `json:"display_currency"`
 }
 
-// Session sales modes (migration 0220, sessions.sales_mode).
+// Session sales modes (migration 0221, sessions.sales_mode).
 const (
 	SessionSalesModePlatform = "platform"
 	SessionSalesModeExternal = "external"

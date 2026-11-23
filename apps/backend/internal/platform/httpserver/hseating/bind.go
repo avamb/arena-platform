@@ -330,7 +330,7 @@ func (h *Handler) bindSessionSeatingCore(
 	}
 
 	// A session a partner box office sells (sessions.sales_mode =
-	// 'external', migration 0220) owns no plan, seats or categories here.
+	// 'external', migration 0221) owns no plan, seats or categories here.
 	// Read under the row lock just taken, so a concurrent switch of the
 	// mode (PATCH .../sessions/{id}) serializes with this bind.
 	salesMode, err := qtx.LockSessionSalesMode(ctx, sessionID)

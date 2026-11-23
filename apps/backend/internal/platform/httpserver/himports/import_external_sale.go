@@ -1,5 +1,5 @@
 // import_external_sale.go: actionEvent.externalSale of the arena event
-// bundle (migration 0220, spec 63 §14.4). Absent keeps the session's sales
+// bundle (migration 0221, spec 63 §14.4). Absent keeps the session's sales
 // mode, null puts it back on sale on the platform, an object hands it to a
 // partner box office. The rules (address, name, price, lock) are extsale's,
 // the same ones the organizer API applies.

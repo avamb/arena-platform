@@ -81,7 +81,7 @@ type Session struct {
 	EventID uuid.UUID
 	OrgID   uuid.UUID
 	State   State
-	// SalesMode is sessions.sales_mode (migration 0220). A session a
+	// SalesMode is sessions.sales_mode (migration 0221). A session a
 	// partner box office sells ("external") has no buyers on the platform:
 	// Apply journals its change but queues no letter.
 	SalesMode string
@@ -484,7 +484,7 @@ func Apply(ctx context.Context, tx DB, in Input) (Result, error) {
 	if len(kinds) == 0 {
 		return Result{}, nil
 	}
-	// A session a partner box office sells (migration 0220) has no buyers
+	// A session a partner box office sells (migration 0221) has no buyers
 	// on the platform: the change is journaled, no letter is queued.
 	var orders []AffectedOrder
 	if !sess.External() {

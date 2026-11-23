@@ -62,7 +62,7 @@ var (
 	// (session_sales_states, migration 0183), whatever places are left.
 	ErrSessionSoldOut = errors.New("hcheckout: session is sold out")
 	// ErrSessionSoldExternally — a partner box office sells the tickets of
-	// the session (sessions.sales_mode = 'external', migration 0220). The
+	// the session (sessions.sales_mode = 'external', migration 0221). The
 	// platform never holds or sells its places: REST 409
 	// session.sold_externally, gateway 101.
 	ErrSessionSoldExternally = errors.New("hcheckout: session is sold by a partner box office")
@@ -70,7 +70,7 @@ var (
 
 // SessionSellable reports whether the platform itself sells the tickets of
 // a session with the given sales mode (sessions.sales_mode, migration
-// 0220). It is the ONE predicate of spec 63 §14.2: every hold path reaches
+// 0221). It is the ONE predicate of spec 63 §14.2: every hold path reaches
 // it through CheckSessionSalesOpen, and the gateway catalog and seat list
 // use it to leave an external session out. An empty mode (a row read
 // without the column) counts as the platform's.

@@ -5121,7 +5121,7 @@ export interface paths {
         /**
          * List the organization's tours
          * @description Returns the organization's active tours ordered by position, then name
-         *     (migration 0221). `?include_archived=true` adds archived ones. Requires
+         *     (migration 0222). `?include_archived=true` adds archived ones. Requires
          *     `event.read` and membership of the organization.
          */
         get: operations["listSeries"];
@@ -7038,8 +7038,14 @@ export interface paths {
          *     `barcode_authorities_type_check` constraint
          *     (`platform`, `legacy_bil24`, `external_platform`, `guest_list`).
          *     `label` is a human-readable display name for operator UIs.
+         *     There is at most one authority per `type` (unique index of
+         *     migration 0219): a type that already has an authority answers
+         *     409 `barcode_authority.type_exists`.
          *
-         *     Requires JWT + the `barcode.create` permission.
+         *     Requires JWT + the `barcode.create` permission, and the caller
+         *     must be a platform superadmin: any other caller, including an
+         *     organization owner or an organization API key, gets 403
+         *     `barcode.superadmin_only`.
          */
         post: operations["createBarcodeAuthority"];
         delete?: never;
@@ -7955,10 +7961,12 @@ export interface paths {
          *          credential against `agent_feed_tokens` and resolves
          *          the scanner scope (organization + sales channel).
          *       2. For each entry:
-         *          - resolves `credential_code` to a `tickets` row when
-         *            possible (unresolved credentials still produce an
-         *            audit-only `scan_events` row);
-         *          - inserts a `scan_events` row scoped to the resolved
+         *          - resolves `credential_code` to a `tickets` row of the
+         *            token's organization when possible (unresolved
+         *            credentials, and credentials of a ticket of another
+         *            organization, still produce an audit-only `scan_events`
+         *            row with no event, session or ticket);
+         *          - inserts a `scan_events` row scoped to the token's
          *            organization, idempotent on
          *            `(credential_code, scanned_at)`;
          *          - on a fresh `admitted` insert, flips
@@ -8173,7 +8181,7 @@ export interface paths {
          *         loaded. A session a partner box office sells (see `sales_mode`)
          *         reports the sixth state `external`.
          *       * `sales_mode` — who sells the tickets of the session (migration
-         *         0220): `platform` or `external`.
+         *         0221): `platform` or `external`.
          *       * `external` — null for a platform session. For an external one the
          *         partner's box office: `{ url, seller_name, price_from, currency }`
          *         with `price_from` in MAJOR units of `currency` (both null when the
@@ -9679,13 +9687,17 @@ export interface paths {
         };
         /**
          * List external barcode batches
-         * @description List external barcode batches. Requires the `barcode_batch.read` permission.
+         * @description List external barcode batches. Requires the `barcode_batch.read`
+         *     permission, and the caller must be a platform superadmin: any other
+         *     caller gets 403 `barcode.superadmin_only`.
          */
         get: operations["listBarcodeBatches"];
         put?: never;
         /**
          * Upload an external barcode batch
-         * @description Upload an external barcode batch. Requires the `barcode_batch.upload` permission.
+         * @description Upload an external barcode batch. Requires the `barcode_batch.upload`
+         *     permission, and the caller must be a platform superadmin: any other
+         *     caller gets 403 `barcode.superadmin_only`.
          */
         post: operations["uploadBarcodeBatch"];
         delete?: never;
@@ -9703,7 +9715,9 @@ export interface paths {
         };
         /**
          * Get a barcode batch by ID
-         * @description Get a barcode batch by ID.
+         * @description Get a barcode batch by ID. Requires the `barcode_batch.read`
+         *     permission, and the caller must be a platform superadmin: any other
+         *     caller gets 403 `barcode.superadmin_only`.
          */
         get: operations["getBarcodeBatch"];
         put?: never;
@@ -9725,7 +9739,9 @@ export interface paths {
         put?: never;
         /**
          * Approve a barcode batch for registration
-         * @description Approve a barcode batch for registration.
+         * @description Approve a barcode batch for registration. Requires the
+         *     `barcode_batch.approve` permission, and the caller must be a platform
+         *     superadmin: any other caller gets 403 `barcode.superadmin_only`.
          */
         post: operations["approveBarcodeBatch"];
         delete?: never;
@@ -9745,7 +9761,9 @@ export interface paths {
         put?: never;
         /**
          * Reject a barcode batch
-         * @description Reject a barcode batch.
+         * @description Reject a barcode batch. Requires the `barcode_batch.approve`
+         *     permission, and the caller must be a platform superadmin: any other
+         *     caller gets 403 `barcode.superadmin_only`.
          */
         post: operations["rejectBarcodeBatch"];
         delete?: never;
@@ -15539,7 +15557,7 @@ export interface components {
              *     photo report. `shop_product` (migration 0172) is a picture of a
              *     merchandise shop product; `shop_digital` is the file a digital
              *     shop product sells (offered to the buyer only after payment).
-             *     `event_series` (migration 0221) is the poster or the wide photo
+             *     `event_series` (migration 0222) is the poster or the wide photo
              *     of a tour.
              * @enum {string}
              */
@@ -23998,7 +24016,7 @@ export interface components {
             promoter_name?: string | null;
             /**
              * Format: uuid
-             * @description The tour (event series, migration 0221) the event belongs to.
+             * @description The tour (event series, migration 0222) the event belongs to.
              *     Null when the event stands alone (the public feed leaves the
              *     field out then). Set by PATCH
              *     .../events/{id} `series_id`.
@@ -24034,7 +24052,7 @@ export interface components {
              *     before the start), `draft` (future sessions exist but the event
              *     is not published, so nobody can buy, whatever its sessions
              *     say), `external` (every future session is sold by a partner box
-             *     office, `sales_mode` `external`, migration 0220; such sessions
+             *     office, `sales_mode` `external`, migration 0221; such sessions
              *     own no places here, so an event with platform sessions as well
              *     follows the rules above over those) and `archived` (every
              *     session has ended, the event has no session, or the event is
@@ -24360,7 +24378,7 @@ export interface components {
             promoter_id?: string | null;
         };
         /**
-         * @description A tour (event series, migration 0221, spec 63): several events under
+         * @description A tour (event series, migration 0222, spec 63): several events under
          *     one name, public address and set of page materials. The slug shares
          *     one address space with the organization's active event slugs.
          */
@@ -26616,7 +26634,7 @@ export interface components {
             email_note_format?: string;
             /**
              * Format: uuid
-             * @description The event's tour (migration 0221). Absent keeps the link, null
+             * @description The event's tour (migration 0222). Absent keeps the link, null
              *     (or an empty string) removes it, a UUID links an ACTIVE tour of
              *     the organization. An unknown, foreign or archived tour answers
              *     422 `event.invalid_series`.
@@ -26959,7 +26977,7 @@ export interface components {
              * @description The session's sales state, the one every sales channel follows
              *     (migration 0183): `open`, `soon`, `sold_out`, `ended` or
              *     `cancelled`, or `external` when a partner box office sells the
-             *     session (migration 0220). Present on the session list and the
+             *     session (migration 0221). Present on the session list and the
              *     single read; absent on the create and update answers.
              * @example open
              */
@@ -27056,7 +27074,7 @@ export interface components {
              */
             has_overlapping_sessions: boolean;
             /**
-             * @description Who sells the tickets of this session (migration 0220): `platform`
+             * @description Who sells the tickets of this session (migration 0221): `platform`
              *     (default) or `external`. An external session is sold by a partner
              *     box office at `external.url`; the platform holds and sells nothing
              *     for it (409 `session.sold_externally`) and the session owns no
@@ -27072,7 +27090,7 @@ export interface components {
         };
         /**
          * @description The partner box office that sells the tickets of an external session
-         *     (migration 0220, spec 63 section 14). The platform shows a button to
+         *     (migration 0221, spec 63 section 14). The platform shows a button to
          *     `url` instead of its own ticket picker.
          */
         SessionExternalSale: {
@@ -27240,7 +27258,7 @@ export interface components {
              */
             currency?: string | null;
             /**
-             * @description Who sells the tickets: `platform` or `external` (migration 0220).
+             * @description Who sells the tickets: `platform` or `external` (migration 0221).
              *     Any other value is 400 `session.invalid_sales_mode`. `external`
              *     needs the `external` object (422 `session.external_required`).
              *     A session with a seating plan cannot be external
@@ -27357,7 +27375,7 @@ export interface components {
             notice?: components["schemas"]["SessionChangeNotice"];
             /**
              * @description Change who sells the tickets: `platform` or `external` (migration
-             *     0220). Absent keeps it. `platform` to `external` is allowed only
+             *     0221). Absent keeps it. `platform` to `external` is allowed only
              *     while the session has no orders, tickets, holds, seats or tiers;
              *     `external` back to `platform` only while it has no seats or tiers;
              *     otherwise 409 `session.sales_mode_locked`. Any other value is 400
@@ -35229,7 +35247,7 @@ export interface components {
              */
             promoterId?: string | null;
             /**
-             * @description Arena event-bundle extension (source=arena only; migration 0221):
+             * @description Arena event-bundle extension (source=arena only; migration 0222):
              *     absent keeps the event's tour, null or "" removes the link, a
              *     UUID links one of the organization's active tours. Anything else
              *     answers 422 `import.invalid_series` at `/action/arenaSeriesId`.
@@ -35323,7 +35341,7 @@ export interface components {
              */
             arenaSeatingPlanVersionId?: string;
             /**
-             * @description Arena extension, source=arena only (migration 0220): who sells
+             * @description Arena extension, source=arena only (migration 0221): who sells
              *     this session's tickets. Absent keeps the session's sales mode;
              *     null puts it back on sale on the platform; an object hands it to
              *     a partner box office (`url` https only, a host name, not a
@@ -59949,7 +59967,7 @@ export interface operations {
              *     (`notice.message` over 1000 visible characters),
              *     `session.change_message_invalid` (`notice.message` has forbidden
              *     characters or too many links; `error.details.reason`), and for
-             *     the sales mode (migration 0220) `session.external_required`,
+             *     the sales mode (migration 0221) `session.external_required`,
              *     `session.external_not_applicable`, `session.invalid_external_url`,
              *     `session.invalid_external_seller_name`,
              *     `session.invalid_external_price`, `session.invalid_external_currency`.
@@ -65885,8 +65903,23 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `barcode.create` permission. */
+            /**
+             * @description Caller lacks the `barcode.create` permission, or is not a
+             *     platform superadmin (`barcode.superadmin_only`).
+             */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description An authority of this `type` already exists
+             *     (`barcode_authority.type_exists`).
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -73654,7 +73687,10 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Insufficient permission (`barcode_batch.read`). */
+            /**
+             * @description Insufficient permission (`barcode_batch.read`), or the caller
+             *     is not a platform superadmin (`barcode.superadmin_only`).
+             */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -73717,7 +73753,10 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Insufficient permission (`barcode_batch.upload`). */
+            /**
+             * @description Insufficient permission (`barcode_batch.upload`), or the caller
+             *     is not a platform superadmin (`barcode.superadmin_only`).
+             */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -73756,6 +73795,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BarcodeBatch"];
+                };
+            };
+            /**
+             * @description Insufficient permission (`barcode_batch.read`), or the caller
+             *     is not a platform superadmin (`barcode.superadmin_only`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Batch not found. */
@@ -73799,6 +73850,18 @@ export interface operations {
                     "application/json": components["schemas"]["BarcodeBatch"];
                 };
             };
+            /**
+             * @description Insufficient permission (`barcode_batch.approve`), or the caller
+             *     is not a platform superadmin (`barcode.superadmin_only`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Batch not found. */
             404: {
                 headers: {
@@ -73838,6 +73901,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BarcodeBatch"];
+                };
+            };
+            /**
+             * @description Insufficient permission (`barcode_batch.approve`), or the caller
+             *     is not a platform superadmin (`barcode.superadmin_only`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Batch not found. */

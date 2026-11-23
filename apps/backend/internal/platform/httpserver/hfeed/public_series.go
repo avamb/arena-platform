@@ -1,5 +1,5 @@
 // public_series.go implements the public side of tours (event_series,
-// migration 0221, spec 63 section 15.1):
+// migration 0222, spec 63 section 15.1):
 //
 //	GET /v1/public/feeds/{feed_token}/series
 //	GET /v1/public/feeds/{feed_token}/series/{series_id}

@@ -113,15 +113,15 @@ func TestEventOriginal_FieldsRendersTextFormat(t *testing.T) {
 }
 
 // TestSupported_MatchesMigrationCheck keeps Supported and the CHECK of
-// content_translations.locale (migration 0219) in step.
+// content_translations.locale (migration 0220) in step.
 func TestSupported_MatchesMigrationCheck(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "..", "migrations", "sql", "0219_content_translations.sql"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "migrations", "sql", "0220_content_translations.sql"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	m := regexp.MustCompile(`locale\s+text\s+NOT NULL CHECK \(locale IN \(([^)]*)\)\)`).FindSubmatch(b)
 	if m == nil {
-		t.Fatal("locale CHECK not found in 0219")
+		t.Fatal("locale CHECK not found in 0220")
 	}
 	var got []string
 	for _, part := range strings.Split(string(m[1]), ",") {

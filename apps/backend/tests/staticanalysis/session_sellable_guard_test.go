@@ -1,6 +1,6 @@
 // session_sellable_guard_test.go keeps spec 63 §14.2 true: a session a
 // partner box office sells (sessions.sales_mode = 'external', migration
-// 0220) never takes a hold. The predicate is hcheckout.SessionSellable, and
+// 0221) never takes a hold. The predicate is hcheckout.SessionSellable, and
 // every hold path reaches it through the category gate:
 //
 //	CheckSessionSalesOpen -> SalesModeRefusal -> SessionSellable

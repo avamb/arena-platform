@@ -81,7 +81,7 @@ var gateWithheldCases = []struct {
 		wantErr: hcheckout.ErrSessionCancelled,
 	},
 	{
-		// Spec 63 §14.2 (migration 0220): a session a partner box office
+		// Spec 63 §14.2 (migration 0221): a session a partner box office
 		// sells never takes a hold, whatever its categories say.
 		name: "session sold by a partner",
 		withdraw: func(t *testing.T, ctx context.Context, pool *pgxpool.Pool, tierID uuid.UUID) {

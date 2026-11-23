@@ -375,7 +375,7 @@ type publicFeedSessionResponse struct {
 	SalesState string                   `json:"sales_state"`
 	Tiers      []publicFeedTierResponse `json:"tiers"`
 	// SalesMode is who sells the tickets: "platform" or "external" (migration
-	// 0220). For "external" the sales_state is "external", tiers is empty and
+	// 0221). For "external" the sales_state is "external", tiers is empty and
 	// External carries the partner's box office; buyers go there instead of
 	// buying here. External is null for a platform session.
 	SalesMode string        `json:"sales_mode"`

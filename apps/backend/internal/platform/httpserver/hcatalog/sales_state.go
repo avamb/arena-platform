@@ -25,7 +25,7 @@ const (
 	SalesStateArchived = "archived" // every session has ended, or the event is cancelled/archived
 	SalesStateDraft    = "draft"    // future sessions exist but the event is not published: nobody can buy
 	// SalesStateExternal: every future session is sold by a partner box
-	// office (sessions.sales_mode = 'external', migration 0220) — the
+	// office (sessions.sales_mode = 'external', migration 0221) — the
 	// session list's salesstate.External, for the whole event.
 	SalesStateExternal = salesstate.External
 )

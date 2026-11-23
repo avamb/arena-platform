@@ -1,5 +1,5 @@
 // session_sales_mode.go: the sales_mode / external block of POST and PATCH
-// .../sessions (migration 0220, spec 63 §14.4). The rules themselves live in
+// .../sessions (migration 0221, spec 63 §14.4). The rules themselves live in
 // internal/platform/extsale; this file only reads the wire shape and writes
 // the refusals in the house envelope.
 package hcatalog

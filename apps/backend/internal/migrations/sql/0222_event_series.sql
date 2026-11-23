@@ -1,4 +1,4 @@
--- 0221_event_series.sql — a tour (series of events), spec 63 section 15.1 (Л-2).
+-- 0222_event_series.sql — a tour (series of events), spec 63 section 15.1 (Л-2).
 --
 -- event_series is a tour of an organization: one name, one public address
 -- and one set of page materials shared by several events (one per city). An

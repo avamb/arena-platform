@@ -88,7 +88,7 @@ WHERE  s.id = $1
 // GetSessionSalesState returns when ticket sales for the session close, the
 // session's own status, the organizer's sales state (migration 0183:
 // "soon" / "sold_out", "" when none is set) AND who sells the tickets
-// (sessions.sales_mode, migration 0220: "platform" / "external"). The hold
+// (sessions.sales_mode, migration 0221: "platform" / "external"). The hold
 // gate (hcheckout.CheckSessionSalesOpen) refuses every NEW hold on an
 // external session, once the sales end has passed, for a 'cancelled'
 // session (a cancelled date keeps its row and its tiers) and while a sales
@@ -115,7 +115,7 @@ WHERE  id = $1
 FOR NO KEY UPDATE`
 
 // LockSessionSalesMode locks the session row and returns who sells its
-// tickets (sessions.sales_mode, migration 0220). A transaction that creates
+// tickets (sessions.sales_mode, migration 0221). A transaction that creates
 // tiers or seats calls it FIRST (lock order: sessions first), so a
 // concurrent switch to 'external' cannot slip between its check and its
 // INSERT. MUST be called inside a transaction. pgx.ErrNoRows for an unknown

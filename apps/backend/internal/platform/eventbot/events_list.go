@@ -47,7 +47,7 @@ const (
 	salesStateSoldOut  = "sold_out"
 	salesStateArchived = "archived"
 	salesStateDraft    = "draft"    // not published: nobody can buy, whatever the sessions say
-	salesStateExternal = "external" // every future date is sold by a partner box office (migration 0220)
+	salesStateExternal = "external" // every future date is sold by a partner box office (migration 0221)
 )
 
 // eventsDialog is the list's state, stored as the bot_dialogs row's JSON.

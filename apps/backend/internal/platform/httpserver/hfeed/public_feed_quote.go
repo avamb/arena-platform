@@ -173,7 +173,7 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 		))
 		return
 	}
-	// A session a partner box office sells (migration 0220): 409
+	// A session a partner box office sells (migration 0221): 409
 	// session.sold_externally, the answer checkout/start gives.
 	if gateErr := hcheckout.CheckSessionSellable(ctx, h.reservationQueries, sessionID, time.Now().UTC()); gateErr != nil {
 		hcheckout.WriteCategoryGateError(w, r, gateErr)

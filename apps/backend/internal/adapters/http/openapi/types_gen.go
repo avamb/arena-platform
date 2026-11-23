@@ -7466,7 +7466,7 @@ type CreateSessionRequest struct {
 	// it; a category's own sale_window_end can only close sooner.
 	SalesEndAt *time.Time `json:"sales_end_at"`
 
-	// SalesMode Who sells the tickets: `platform` or `external` (migration 0220).
+	// SalesMode Who sells the tickets: `platform` or `external` (migration 0221).
 	// Any other value is 400 `session.invalid_sales_mode`. `external`
 	// needs the `external` object (422 `session.external_required`).
 	// A session with a seating plan cannot be external
@@ -8912,14 +8912,14 @@ type EventItem struct {
 	// before the start), `draft` (future sessions exist but the event
 	// is not published, so nobody can buy, whatever its sessions
 	// say), `external` (every future session is sold by a partner box
-	// office, `sales_mode` `external`, migration 0220; such sessions
+	// office, `sales_mode` `external`, migration 0221; such sessions
 	// own no places here, so an event with platform sessions as well
 	// follows the rules above over those) and `archived` (every
 	// session has ended, the event has no session, or the event is
 	// cancelled/archived). Empty only when the lookup failed.
 	SalesState string `json:"sales_state"`
 
-	// SeriesId The tour (event series, migration 0221) the event belongs to.
+	// SeriesId The tour (event series, migration 0222) the event belongs to.
 	// Null when the event stands alone (the public feed leaves the
 	// field out then). Set by PATCH
 	// .../events/{id} `series_id`.
@@ -10578,7 +10578,7 @@ type ImportBil24SessionAction struct {
 	// 409 import.action_mismatch.
 	ArenaEventId *openapi_types.UUID `json:"arenaEventId,omitempty"`
 
-	// ArenaSeriesId Arena event-bundle extension (source=arena only; migration 0221):
+	// ArenaSeriesId Arena event-bundle extension (source=arena only; migration 0222):
 	// absent keeps the event's tour, null or "" removes the link, a
 	// UUID links one of the organization's active tours. Anything else
 	// answers 422 `import.invalid_series` at `/action/arenaSeriesId`.
@@ -10706,7 +10706,7 @@ type ImportBil24SessionActionEvent struct {
 	// keeps its default session duration (currently 3 hours).
 	EndTime *string `json:"endTime,omitempty"`
 
-	// ExternalSale Arena extension, source=arena only (migration 0220): who sells
+	// ExternalSale Arena extension, source=arena only (migration 0221): who sells
 	// this session's tickets. Absent keeps the session's sales mode;
 	// null puts it back on sale on the platform; an object hands it to
 	// a partner box office (`url` https only, a host name, not a
@@ -12178,7 +12178,7 @@ type MediaObject struct {
 	// photo report. `shop_product` (migration 0172) is a picture of a
 	// merchandise shop product; `shop_digital` is the file a digital
 	// shop product sells (offered to the buyer only after payment).
-	// `event_series` (migration 0221) is the poster or the wide photo
+	// `event_series` (migration 0222) is the poster or the wide photo
 	// of a tour.
 	OwnerType MediaObjectOwnerType `json:"owner_type"`
 
@@ -12214,7 +12214,7 @@ type MediaObject struct {
 // photo report. `shop_product` (migration 0172) is a picture of a
 // merchandise shop product; `shop_digital` is the file a digital
 // shop product sells (offered to the buyer only after payment).
-// `event_series` (migration 0221) is the poster or the wide photo
+// `event_series` (migration 0222) is the poster or the wide photo
 // of a tour.
 type MediaObjectOwnerType string
 
@@ -19714,7 +19714,7 @@ type SellerProviderReceipt struct {
 	Forced bool `json:"forced"`
 }
 
-// Series A tour (event series, migration 0221, spec 63): several events under
+// Series A tour (event series, migration 0222, spec 63): several events under
 // one name, public address and set of page materials. The slug shares
 // one address space with the organization's active event slugs.
 type Series struct {
@@ -20035,7 +20035,7 @@ type SessionEnvelope struct {
 }
 
 // SessionExternalSale The partner box office that sells the tickets of an external session
-// (migration 0220, spec 63 section 14). The platform shows a button to
+// (migration 0221, spec 63 section 14). The platform shows a button to
 // `url` instead of its own ticket picker.
 type SessionExternalSale struct {
 	// Currency ISO 4217 code of `price_from`, null together with it.
@@ -20152,7 +20152,7 @@ type SessionItem struct {
 	// own sale_window_end can only close that category sooner.
 	SalesEndAt time.Time `json:"sales_end_at"`
 
-	// SalesMode Who sells the tickets of this session (migration 0220): `platform`
+	// SalesMode Who sells the tickets of this session (migration 0221): `platform`
 	// (default) or `external`. An external session is sold by a partner
 	// box office at `external.url`; the platform holds and sells nothing
 	// for it (409 `session.sold_externally`) and the session owns no
@@ -20162,7 +20162,7 @@ type SessionItem struct {
 	// SalesState The session's sales state, the one every sales channel follows
 	// (migration 0183): `open`, `soon`, `sold_out`, `ended` or
 	// `cancelled`, or `external` when a partner box office sells the
-	// session (migration 0220). Present on the session list and the
+	// session (migration 0221). Present on the session list and the
 	// single read; absent on the create and update answers.
 	SalesState *string `json:"sales_state,omitempty"`
 
@@ -23683,7 +23683,7 @@ type UpdateEventRequest struct {
 	// override. Nil leaves unchanged.
 	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
 
-	// SeriesId The event's tour (migration 0221). Absent keeps the link, null
+	// SeriesId The event's tour (migration 0222). Absent keeps the link, null
 	// (or an empty string) removes it, a UUID links an ACTIVE tour of
 	// the organization. An unknown, foreign or archived tour answers
 	// 422 `event.invalid_series`.
@@ -24139,7 +24139,7 @@ type UpdateSessionRequest struct {
 	SalesEndAt *time.Time `json:"sales_end_at"`
 
 	// SalesMode Change who sells the tickets: `platform` or `external` (migration
-	// 0220). Absent keeps it. `platform` to `external` is allowed only
+	// 0221). Absent keeps it. `platform` to `external` is allowed only
 	// while the session has no orders, tickets, holds, seats or tiers;
 	// `external` back to `platform` only while it has no seats or tiers;
 	// otherwise 409 `session.sales_mode_locked`. Any other value is 400

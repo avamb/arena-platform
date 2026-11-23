@@ -180,7 +180,7 @@ func (h *Handler) batchScope(w http.ResponseWriter, r *http.Request) (orgID, ses
 
 // writeSoldExternally answers 409 session.sold_externally: a partner box
 // office sells the session (sessions.sales_mode = 'external', migration
-// 0220), so it has no seating plan, seats or categories here.
+// 0221), so it has no seating plan, seats or categories here.
 func writeSoldExternally(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 		extsale.CodeSoldExternally,
@@ -194,7 +194,7 @@ func (h *Handler) HandleCreateSeatBatch(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	// A session a partner box office sells owns no seats (migration 0220).
+	// A session a partner box office sells owns no seats (migration 0221).
 	// This early answer is best effort; ApplyBatch re-reads the mode under
 	// the sessions row lock (seatlayout.ErrSessionSoldExternally).
 	if _, _, _, salesMode, smErr := h.queries.GetSessionSalesState(r.Context(), sessionID); smErr == nil && salesMode == gen.SessionSalesModeExternal {

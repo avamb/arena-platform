@@ -1,6 +1,6 @@
 //go:build integration
 
-// external_session_integration_test.go — spec 63 §14.2 (migration 0220): a
+// external_session_integration_test.go — spec 63 §14.2 (migration 0221): a
 // batch on a session a partner box office sells is refused under the
 // sessions row lock with ErrSessionSoldExternally and writes nothing, while
 // another organization still gets ErrSessionNotFound.

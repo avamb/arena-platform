@@ -818,7 +818,7 @@ components:
             photo report. `shop_product` (migration 0172) is a picture of a
             merchandise shop product; `shop_digital` is the file a digital
             shop product sells (offered to the buyer only after payment).
-            `event_series` (migration 0221) is the poster or the wide photo
+            `event_series` (migration 0222) is the poster or the wide photo
             of a tour.
         owner_id:
           type: string
@@ -10798,7 +10798,7 @@ components:
           type: [string, "null"]
           format: uuid
           description: |
-            The tour (event series, migration 0221) the event belongs to.
+            The tour (event series, migration 0222) the event belongs to.
             Null when the event stands alone (the public feed leaves the
             field out then). Set by PATCH
             .../events/{id} `series_id`.
@@ -10834,7 +10834,7 @@ components:
             before the start), `draft` (future sessions exist but the event
             is not published, so nobody can buy, whatever its sessions
             say), `external` (every future session is sold by a partner box
-            office, `sales_mode` `external`, migration 0220; such sessions
+            office, `sales_mode` `external`, migration 0221; such sessions
             own no places here, so an event with platform sessions as well
             follows the rules above over those) and `archived` (every
             session has ended, the event has no session, or the event is
@@ -11182,7 +11182,7 @@ components:
       type: object
       required: [id, org_id, slug, name, description_html, poster_media_id, poster_url, hero_media_id, hero_url, hero_video_url, partners_text_html, hide_children_in_lists, position, event_count, archived_at, created_at, updated_at, translations]
       description: |
-        A tour (event series, migration 0221, spec 63): several events under
+        A tour (event series, migration 0222, spec 63): several events under
         one name, public address and set of page materials. The slug shares
         one address space with the organization's active event slugs.
       properties:
@@ -13926,7 +13926,7 @@ components:
           type: [string, "null"]
           format: uuid
           description: |
-            The event's tour (migration 0221). Absent keeps the link, null
+            The event's tour (migration 0222). Absent keeps the link, null
             (or an empty string) removes it, a UUID links an ACTIVE tour of
             the organization. An unknown, foreign or archived tour answers
             422 `event.invalid_series`.
@@ -14381,7 +14381,7 @@ components:
             The session's sales state, the one every sales channel follows
             (migration 0183): `open`, `soon`, `sold_out`, `ended` or
             `cancelled`, or `external` when a partner box office sells the
-            session (migration 0220). Present on the session list and the
+            session (migration 0221). Present on the session list and the
             single read; absent on the create and update answers.
           example: open
         manual_sales_state:
@@ -14479,7 +14479,7 @@ components:
         sales_mode:
           type: string
           description: |
-            Who sells the tickets of this session (migration 0220): `platform`
+            Who sells the tickets of this session (migration 0221): `platform`
             (default) or `external`. An external session is sold by a partner
             box office at `external.url`; the platform holds and sells nothing
             for it (409 `session.sold_externally`) and the session owns no
@@ -14498,7 +14498,7 @@ components:
       required: [url, seller_name, price_from, currency]
       description: |
         The partner box office that sells the tickets of an external session
-        (migration 0220, spec 63 section 14). The platform shows a button to
+        (migration 0221, spec 63 section 14). The platform shows a button to
         `url` instead of its own ticket picker.
       properties:
         url:
@@ -14666,7 +14666,7 @@ components:
         sales_mode:
           type: string
           description: |
-            Who sells the tickets: `platform` or `external` (migration 0220).
+            Who sells the tickets: `platform` or `external` (migration 0221).
             Any other value is 400 `session.invalid_sales_mode`. `external`
             needs the `external` object (422 `session.external_required`).
             A session with a seating plan cannot be external
@@ -14787,7 +14787,7 @@ components:
           type: string
           description: |
             Change who sells the tickets: `platform` or `external` (migration
-            0220). Absent keeps it. `platform` to `external` is allowed only
+            0221). Absent keeps it. `platform` to `external` is allowed only
             while the session has no orders, tickets, holds, seats or tiers;
             `external` back to `platform` only while it has no seats or tiers;
             otherwise 409 `session.sales_mode_locked`. Any other value is 400
@@ -24172,7 +24172,7 @@ components:
         arenaSeriesId:
           type: [string, "null"]
           description: |
-            Arena event-bundle extension (source=arena only; migration 0221):
+            Arena event-bundle extension (source=arena only; migration 0222):
             absent keeps the event's tour, null or "" removes the link, a
             UUID links one of the organization's active tours. Anything else
             answers 422 `import.invalid_series` at `/action/arenaSeriesId`.
@@ -24267,7 +24267,7 @@ components:
             plan or touches places. Omitted when empty.
         externalSale:
           description: |
-            Arena extension, source=arena only (migration 0220): who sells
+            Arena extension, source=arena only (migration 0221): who sells
             this session's tickets. Absent keeps the session's sales mode;
             null puts it back on sale on the platform; an object hands it to
             a partner box office (`url` https only, a host name, not a
@@ -47559,7 +47559,7 @@ paths:
       summary: List the organization's tours
       description: |
         Returns the organization's active tours ordered by position, then name
-        (migration 0221). `?include_archived=true` adds archived ones. Requires
+        (migration 0222). `?include_archived=true` adds archived ones. Requires
         `event.read` and membership of the organization.
       tags: [v1]
       security:
@@ -48766,7 +48766,7 @@ paths:
             (`notice.message` over 1000 visible characters),
             `session.change_message_invalid` (`notice.message` has forbidden
             characters or too many links; `error.details.reason`), and for
-            the sales mode (migration 0220) `session.external_required`,
+            the sales mode (migration 0221) `session.external_required`,
             `session.external_not_applicable`, `session.invalid_external_url`,
             `session.invalid_external_seller_name`,
             `session.invalid_external_price`, `session.invalid_external_currency`.
@@ -55096,8 +55096,14 @@ paths:
         `barcode_authorities_type_check` constraint
         (`platform`, `legacy_bil24`, `external_platform`, `guest_list`).
         `label` is a human-readable display name for operator UIs.
+        There is at most one authority per `type` (unique index of
+        migration 0219): a type that already has an authority answers
+        409 `barcode_authority.type_exists`.
 
-        Requires JWT + the `barcode.create` permission.
+        Requires JWT + the `barcode.create` permission, and the caller
+        must be a platform superadmin: any other caller, including an
+        organization owner or an organization API key, gets 403
+        `barcode.superadmin_only`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -55155,7 +55161,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Caller lacks the `barcode.create` permission.
+          description: |
+            Caller lacks the `barcode.create` permission, or is not a
+            platform superadmin (`barcode.superadmin_only`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            An authority of this `type` already exists
+            (`barcode_authority.type_exists`).
           content:
             application/json:
               schema:
@@ -58470,10 +58486,12 @@ paths:
              credential against `agent_feed_tokens` and resolves
              the scanner scope (organization + sales channel).
           2. For each entry:
-             - resolves `credential_code` to a `tickets` row when
-               possible (unresolved credentials still produce an
-               audit-only `scan_events` row);
-             - inserts a `scan_events` row scoped to the resolved
+             - resolves `credential_code` to a `tickets` row of the
+               token's organization when possible (unresolved
+               credentials, and credentials of a ticket of another
+               organization, still produce an audit-only `scan_events`
+               row with no event, session or ticket);
+             - inserts a `scan_events` row scoped to the token's
                organization, idempotent on
                `(credential_code, scanned_at)`;
              - on a fresh `admitted` insert, flips
@@ -59062,7 +59080,7 @@ paths:
             loaded. A session a partner box office sells (see `sales_mode`)
             reports the sixth state `external`.
           * `sales_mode` — who sells the tickets of the session (migration
-            0220): `platform` or `external`.
+            0221): `platform` or `external`.
           * `external` — null for a platform session. For an external one the
             partner's box office: `{ url, seller_name, price_from, currency }`
             with `price_from` in MAJOR units of `currency` (both null when the
@@ -63000,7 +63018,10 @@ paths:
     get:
       operationId: listBarcodeBatches
       summary: List external barcode batches
-      description: List external barcode batches. Requires the `barcode_batch.read` permission.
+      description: |
+        List external barcode batches. Requires the `barcode_batch.read`
+        permission, and the caller must be a platform superadmin: any other
+        caller gets 403 `barcode.superadmin_only`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -63023,7 +63044,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Insufficient permission (`barcode_batch.read`).
+          description: |
+            Insufficient permission (`barcode_batch.read`), or the caller
+            is not a platform superadmin (`barcode.superadmin_only`).
           content:
             application/json:
               schema:
@@ -63037,7 +63060,10 @@ paths:
     post:
       operationId: uploadBarcodeBatch
       summary: Upload an external barcode batch
-      description: Upload an external barcode batch. Requires the `barcode_batch.upload` permission.
+      description: |
+        Upload an external barcode batch. Requires the `barcode_batch.upload`
+        permission, and the caller must be a platform superadmin: any other
+        caller gets 403 `barcode.superadmin_only`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -63073,7 +63099,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Insufficient permission (`barcode_batch.upload`).
+          description: |
+            Insufficient permission (`barcode_batch.upload`), or the caller
+            is not a platform superadmin (`barcode.superadmin_only`).
           content:
             application/json:
               schema:
@@ -63089,7 +63117,10 @@ paths:
     get:
       operationId: getBarcodeBatch
       summary: Get a barcode batch by ID
-      description: Get a barcode batch by ID.
+      description: |
+        Get a barcode batch by ID. Requires the `barcode_batch.read`
+        permission, and the caller must be a platform superadmin: any other
+        caller gets 403 `barcode.superadmin_only`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -63106,6 +63137,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BarcodeBatch"
+        "403":
+          description: |
+            Insufficient permission (`barcode_batch.read`), or the caller
+            is not a platform superadmin (`barcode.superadmin_only`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Batch not found.
           content:
@@ -63123,7 +63162,10 @@ paths:
     post:
       operationId: approveBarcodeBatch
       summary: Approve a barcode batch for registration
-      description: Approve a barcode batch for registration.
+      description: |
+        Approve a barcode batch for registration. Requires the
+        `barcode_batch.approve` permission, and the caller must be a platform
+        superadmin: any other caller gets 403 `barcode.superadmin_only`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -63140,6 +63182,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BarcodeBatch"
+        "403":
+          description: |
+            Insufficient permission (`barcode_batch.approve`), or the caller
+            is not a platform superadmin (`barcode.superadmin_only`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Batch not found.
           content:
@@ -63157,7 +63207,10 @@ paths:
     post:
       operationId: rejectBarcodeBatch
       summary: Reject a barcode batch
-      description: Reject a barcode batch.
+      description: |
+        Reject a barcode batch. Requires the `barcode_batch.approve`
+        permission, and the caller must be a platform superadmin: any other
+        caller gets 403 `barcode.superadmin_only`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -63174,6 +63227,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BarcodeBatch"
+        "403":
+          description: |
+            Insufficient permission (`barcode_batch.approve`), or the caller
+            is not a platform superadmin (`barcode.superadmin_only`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Batch not found.
           content:

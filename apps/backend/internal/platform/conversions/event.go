@@ -10,7 +10,7 @@ import (
 )
 
 // Kinds of an event without an order (conversion_deliveries.kind, migration
-// 0218). The purchase kind stays the order's.
+// 0219). The purchase kind stays the order's.
 const (
 	KindPageView         = "page_view"
 	KindViewContent      = "view_content"

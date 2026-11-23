@@ -1,4 +1,4 @@
--- event_series.sql — tours of an organization (migration 0221, spec 63 Л-2).
+-- event_series.sql — tours of an organization (migration 0222, spec 63 Л-2).
 -- Wrappers are hand-maintained in gen/event_series.sql.go.
 
 -- name: CreateEventSeries :one

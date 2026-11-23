@@ -508,7 +508,7 @@ Session lifecycle and times, event status and sales state, promoters, sales chan
 * The hold gate refuses a cancelled session, and the…
 * A VERIFIED venue is open to every organization (mi…
 * A city is found before it is created: citymatch.FindInCountry (any name, any language, slug, alias of its own country)
-* A partner session (sales_mode external, migration 0220) is never sold by arena: CheckSessionSellable on every sale path, LockSessionSalesMode before tier/seat/plan writes
+* A partner session (sales_mode external, migration 0221) is never sold by arena: CheckSessionSellable on every sale path, LockSessionSalesMode before tier/seat/plan writes
 
 ### [Telegram bot: core, wizard and screens](docs/agents/bot-core-wizard.md)
 
@@ -572,6 +572,7 @@ Order lists and cards, resend, invitations (bot and web), MACS and door scan eve
 * POST /v1/scanner/scan-events (feed-token scan uploa…
 * The guest list's reason for a replaced ticket follows ticket_reissues.reason
 * The flat barcode and scanner routes (/v1/scan, /v1/scanner/snapshot|validate, /v1/barcodes, /v1/barcodes/{id}) are retired (2026-11-21)
+* Barcode authorities and batches are for a platform superadmin only (403 barcode.superadmin_only), one authority per type (0218); a scan upload resolves only tickets of the token's organization
 
 ### [Web event center: foundations](docs/agents/web-event-center-core.md)
 
@@ -661,7 +662,7 @@ Public page materials, seller block, terms, consent, statistics beacon, widget l
 * Sales page materials (task sales-page-materials, 2…
 * The organizer's terms of sale are a template plus…
 * The hosted page's statistics beacon (task 2-3, HP-…
-* Content translations (migration 0219): one table for events and series, a manual text is never overwritten by the machine
+* Content translations (migration 0220): one table for events and series, a manual text is never overwritten by the machine
 
 ### [Posters, formatted text and the Telegram mini app](docs/agents/posters-rich-text-miniapp.md)
 

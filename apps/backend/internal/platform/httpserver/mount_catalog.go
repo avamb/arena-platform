@@ -91,7 +91,7 @@ func (s *Server) mountEventRoutes(r chi.Router) {
 			s.applyAuth(pr, "event.update", "events")
 			pr.Put("/organizations/{org_id}/events/{id}/promoter", s.handleSetEventPromoter)
 		})
-		// Migration 0221: tours (event_series), no permission of their own.
+		// Migration 0222: tours (event_series), no permission of their own.
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "event.read", "events")
 			pr.Get("/organizations/{org_id}/series", s.handleListSeries)

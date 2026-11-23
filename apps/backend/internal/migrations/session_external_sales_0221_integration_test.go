@@ -1,6 +1,6 @@
 //go:build integration
 
-// session_external_sales_0220_integration_test.go — migration 0220 (spec 63
+// session_external_sales_0221_integration_test.go — migration 0221 (spec 63
 // §14.1) on a migrated database: sessions.sales_mode defaults to
 // 'platform', an external session needs an https URL and a seller name, a
 // platform session carries none of the partner fields, and the display
@@ -17,7 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-func TestMigration0220_SessionSalesModeChecks(t *testing.T) {
+func TestMigration0221_SessionSalesModeChecks(t *testing.T) {
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, integrationDSN(t))
 	if err != nil {
@@ -35,10 +35,10 @@ func TestMigration0220_SessionSalesModeChecks(t *testing.T) {
 		t.Skipf("no organization in the database (seed it first): %v", err)
 	}
 	var event, venue, session, mode string
-	if err := tx.QueryRow(ctx, `INSERT INTO events (org_id, name) VALUES ($1, 'mig 0220') RETURNING id::text`, org).Scan(&event); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO events (org_id, name) VALUES ($1, 'mig 0221') RETURNING id::text`, org).Scan(&event); err != nil {
 		t.Fatal(err)
 	}
-	if err := tx.QueryRow(ctx, `INSERT INTO venues (org_id, name, timezone) VALUES ($1, 'mig 0220', 'UTC') RETURNING id::text`, org).Scan(&venue); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO venues (org_id, name, timezone) VALUES ($1, 'mig 0221', 'UTC') RETURNING id::text`, org).Scan(&venue); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.QueryRow(ctx, `INSERT INTO sessions (event_id, venue_id, start_at, end_at, capacity_total, status, currency, currency_source)

@@ -1,7 +1,7 @@
 // Package contenttranslate keeps organizer-editable translations of an event's
 // (later a series') content: name, short description, description and the
 // photo-report text, one row per locale in content_translations (migration
-// 0219, spec 08_architecture/63 §16).
+// 0220, spec 08_architecture/63 §16).
 //
 // A translation is written by hand (source manual) or by the machine
 // translator (source machine). source_hash is the hash of the original fields
@@ -46,7 +46,7 @@ const (
 )
 
 // Supported is the platform list of content locales (spec 63 §16.2). It must
-// match the CHECK of content_translations.locale in migration 0219.
+// match the CHECK of content_translations.locale in migration 0220.
 var Supported = []string{"cs", "de", "en", "es", "et", "fi", "fr", "he", "hu", "it", "lt", "lv", "pl", "ru", "uk"}
 
 // NormalizeLocale turns "cs-CZ", "CS" or "cs_CZ" into "cs". ok is false for a

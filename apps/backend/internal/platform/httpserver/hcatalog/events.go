@@ -193,7 +193,7 @@ type EventResponse struct {
 	// promoter. Hydrated by hydrateEvents, never by EventFromRow.
 	PromoterID   *string `json:"promoter_id"`
 	PromoterName *string `json:"promoter_name"`
-	// SeriesID / SeriesName name the event's tour (migration 0221). Both nil
+	// SeriesID / SeriesName name the event's tour (migration 0222). Both nil
 	// means the event stands alone. Hydrated by hydrateEvents, never by
 	// EventFromRow.
 	SeriesID   *string `json:"series_id"`
@@ -735,7 +735,7 @@ type updateEventRequest struct {
 	// "art" (HTML, spec 44).
 	EmailNoteFormat string `json:"email_note_format"`
 	// SeriesID links the event to a tour of the organization (migration
-	// 0221): absent keeps, null or "" unlinks, a UUID links.
+	// 0222): absent keeps, null or "" unlinks, a UUID links.
 	SeriesID optionalString `json:"series_id"`
 }
 

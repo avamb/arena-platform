@@ -20,7 +20,7 @@ import (
 )
 
 // defaultContentLocale is what an event without a readable content_locale is
-// reported as (the column default of migration 0219).
+// reported as (the column default of migration 0220).
 const defaultContentLocale = "en"
 
 // eventOriginal is what the feed needs of an event beyond its row: the

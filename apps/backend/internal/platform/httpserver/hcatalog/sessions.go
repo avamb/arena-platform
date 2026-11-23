@@ -195,7 +195,7 @@ type SessionResponse struct {
 	UpdatedAt              string  `json:"updated_at"`
 	HasOverlappingSessions bool    `json:"has_overlapping_sessions"`
 	// SalesMode is who sells the tickets ("platform" or "external", migration
-	// 0220). External is the partner's box office block, null for a platform
+	// 0221). External is the partner's box office block, null for a platform
 	// session.
 	SalesMode string        `json:"sales_mode"`
 	External  *extsale.View `json:"external"`
@@ -368,7 +368,7 @@ type createSessionRequest struct {
 	// start) and optional doors-open time (migration 0128).
 	SalesEndAt  *string         `json:"sales_end_at"`
 	DoorsOpenAt json.RawMessage `json:"doors_open_at"`
-	// SalesMode / External say who sells the tickets (migration 0220):
+	// SalesMode / External say who sells the tickets (migration 0221):
 	// "platform" (default) or "external" with the partner's box office.
 	SalesMode *string         `json:"sales_mode"`
 	External  json.RawMessage `json:"external"`
@@ -535,7 +535,7 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Who sells the tickets (migration 0220): a partner-sold session owns no
+	// Who sells the tickets (migration 0221): a partner-sold session owns no
 	// places, so it cannot carry a seating plan.
 	salesWrite, ok := parseSalesModeWrite(w, r, req.SalesMode, req.External)
 	if !ok {
@@ -929,7 +929,7 @@ type updateSessionRequest struct {
 	// Notice carries the organizer's own text for the letter the buyers get
 	// when this save moves or cancels the session (sessionchange package).
 	Notice *sessionNoticeRequest `json:"notice"`
-	// SalesMode / External change who sells the tickets (migration 0220):
+	// SalesMode / External change who sells the tickets (migration 0221):
 	// absent = keep. External without SalesMode edits the partner block of a
 	// session that is already external.
 	SalesMode *string         `json:"sales_mode"`
@@ -1109,7 +1109,7 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Who sells the tickets (migration 0220): the shape is checked here, the
+	// Who sells the tickets (migration 0221): the shape is checked here, the
 	// lock rules inside the transaction that holds the session row.
 	salesWrite, ok := parseSalesModeWrite(w, r, req.SalesMode, req.External)
 	if !ok {

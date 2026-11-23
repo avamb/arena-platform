@@ -1,5 +1,5 @@
 // sales_mode_gate_test.go pins spec 63 §14.2: a session a partner box office
-// sells (sessions.sales_mode = 'external', migration 0220) never takes a
+// sells (sessions.sales_mode = 'external', migration 0221) never takes a
 // hold, and the refusal maps to 409 session.sold_externally.
 package hcheckout
 

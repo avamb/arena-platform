@@ -579,7 +579,7 @@ func (h *Handler) writeCartHoldError(
 				"Category is sold out", cartSoldOutParams(pricing, capErr.TierID)),
 		))
 	case errors.Is(err, hcheckout.ErrSessionSoldExternally):
-		// A partner box office sells this session (migration 0220): 101,
+		// A partner box office sells this session (migration 0221): 101,
 		// the same answer as for closed sales.
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeUserVisible,

@@ -1,7 +1,7 @@
 // Hand-maintained typed query wrapper; follows sqlc output conventions.
 // source: event_series.sql
 //
-// Tours of an organization (migration 0221, spec 63 section 15.1). A tour
+// Tours of an organization (migration 0222, spec 63 section 15.1). A tour
 // groups several events under one name, address and set of page materials;
 // an event names its tour in events.series_id. The shared EventRow scanners
 // do NOT read series_id: callers read it through ListSeriesIDsForEvents.

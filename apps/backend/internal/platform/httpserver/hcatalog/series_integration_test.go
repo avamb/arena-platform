@@ -1,7 +1,7 @@
 //go:build integration
 
 // series_integration_test.go — the tours API of spec 63 Л-2 against a live
-// database migrated past 0221, driven through the REAL handlers: CRUD and
+// database migrated past 0222, driven through the REAL handlers: CRUD and
 // archive, the tour link of PATCH .../events/{id} (a foreign or archived tour
 // is 422 event.invalid_series, series_id/series_name come back), and the one
 // address space of tour and event slugs (409 both ways).

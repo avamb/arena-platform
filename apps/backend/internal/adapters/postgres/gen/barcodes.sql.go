@@ -116,6 +116,7 @@ const getBarcodeAuthorityByType = `-- name: GetBarcodeAuthorityByType :one
 SELECT id, type, label, created_at
 FROM   barcode_authorities
 WHERE  type = $1
+ORDER  BY created_at, id
 LIMIT  1`
 
 // GetBarcodeAuthorityByType resolves an authority by its type string.

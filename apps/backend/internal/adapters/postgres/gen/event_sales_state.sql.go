@@ -61,7 +61,7 @@ type EventSalesFacts struct {
 	Selling        bool       `json:"selling"`
 	PlacesLeft     bool       `json:"places_left"`
 	// FutureExternalSessions counts the future sessions a partner box office
-	// sells (sessions.sales_mode = 'external', migration 0220). They own no
+	// sells (sessions.sales_mode = 'external', migration 0221). They own no
 	// seats, so they never count as selling nor as having places left.
 	FutureExternalSessions int64 `json:"future_external_sessions"`
 }

@@ -437,7 +437,7 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 		))
 		return
 	}
-	// A session a partner box office sells (migration 0220) is never held
+	// A session a partner box office sells (migration 0221) is never held
 	// here: 409 session.sold_externally before any tier is looked up (such
 	// a session has none). The hold transaction checks it again.
 	if gateErr := hcheckout.CheckSessionSellable(ctx, h.reservationQueries, sessionID, time.Now().UTC()); gateErr != nil {

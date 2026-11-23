@@ -1,6 +1,6 @@
 //go:build integration
 
-// external_sales_guards_integration_test.go — spec 63 §14.2 (migration 0220)
+// external_sales_guards_integration_test.go — spec 63 §14.2 (migration 0221)
 // through the real router: a session a partner box office sells takes no
 // seating plan (409 session.sold_externally on the bind) and no staff
 // invitation (409 session.sold_externally on the issue), and the organizer's

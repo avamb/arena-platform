@@ -120,7 +120,7 @@ type ImportSessionAction struct {
 	// (the organization itself is the promoter), a UUID names one of the
 	// organization's active promoters. The Bil24-format importer ignores it.
 	PromoterID *string `json:"promoterId"`
-	// ArenaSeriesID is an arena-native event-bundle extension (migration 0221,
+	// ArenaSeriesID is an arena-native event-bundle extension (migration 0222,
 	// source=arena only): absent keeps the event's tour as it is, null or ""
 	// removes the link, a UUID links one of the organization's active tours
 	// (422 import.invalid_series at /action/arenaSeriesId otherwise).
@@ -194,7 +194,7 @@ type ImportSessionActionEvent struct {
 	// bundle never re-binds a plan or touches places. Omitted from JSON when
 	// empty, so a general-admission bundle reads exactly as before.
 	ArenaSeatingPlanVersionID string `json:"arenaSeatingPlanVersionId,omitempty"`
-	// ExternalSale (arena extension, source=arena only, migration 0220, spec
+	// ExternalSale (arena extension, source=arena only, migration 0221, spec
 	// 63 §14.4) says a partner box office sells this session's tickets, as
 	// ImportExternalSale. Absent keeps the session's sales mode, null puts it
 	// back on sale on the platform, an object hands it to the partner (the

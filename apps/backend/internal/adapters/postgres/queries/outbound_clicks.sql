@@ -1,7 +1,7 @@
 -- name: RecordOutboundClick :exec
 -- RecordOutboundClick adds one click on a partner box office (the seller name,
 -- at most 64 characters) to the event's counter of the day (spec 63, L-10,
--- migration 0218). No visitor data is kept.
+-- migration 0219). No visitor data is kept.
 INSERT INTO outbound_clicks_daily (org_id, event_id, day, seller, hits)
 VALUES ($1, $2, $3, $4, 1)
 ON CONFLICT (event_id, day, seller) DO UPDATE
