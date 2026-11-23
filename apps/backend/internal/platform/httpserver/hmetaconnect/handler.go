@@ -11,6 +11,8 @@
 //	POST   /v1/integrations/meta/data-deletion     (public, Meta signed_request)
 //	GET    /v1/integrations/meta/webhook           (public, verify token)
 //	POST   /v1/integrations/meta/webhook           (public, X-Hub-Signature-256)
+//	GET    /v1/organizations/{org_id}/integrations/meta/campaigns
+//	POST   /v1/organizations/{org_id}/integrations/meta/campaigns/{campaign_id}/status
 //
 // The organization routes need org.update in the path organization (the
 // owner) and refuse an organization API key. No answer, log line or audit
@@ -68,6 +70,10 @@ type Settings struct {
 	// the GET subscription check of the app webhook. Empty refuses it.
 	WebhookVerifyToken string
 	Edges              []metaconnect.Edge
+	// OwnerTelegram is true when the worker can send Telegram messages
+	// (EVENTS_TELEGRAM_BOT_TOKEN set): a broken connection then also tells
+	// the owners through the event-center bot.
+	OwnerTelegram bool
 }
 
 // Handler serves the routes. The organization routes run after the

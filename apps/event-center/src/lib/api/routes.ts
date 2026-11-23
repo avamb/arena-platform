@@ -344,6 +344,9 @@ export const API = {
   metaIntegrationDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/integrations/meta" },
   metaConnect: { method: "POST", path: "/v1/organizations/{org_id}/integrations/meta/connect" },
   metaFinish: { method: "POST", path: "/v1/organizations/{org_id}/integrations/meta/finish" },
+  // Campaigns of the selected ad account: the list and pause / resume (only the status changes).
+  metaCampaigns: { method: "GET", path: "/v1/organizations/{org_id}/integrations/meta/campaigns" },
+  metaCampaignStatus: { method: "POST", path: "/v1/organizations/{org_id}/integrations/meta/campaigns/{campaign_id}/status" },
   channels: { method: "GET", path: "/v1/organizations/{org_id}/channels" },
   shopSettings: { method: "GET", path: "/v1/organizations/{org_id}/shop/settings" },
   shopSettingsPut: { method: "PUT", path: "/v1/organizations/{org_id}/shop/settings" },

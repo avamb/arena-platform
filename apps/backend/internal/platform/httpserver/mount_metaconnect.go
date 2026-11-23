@@ -37,6 +37,7 @@ func (s *Server) metaConnectHandler() *hmetaconnect.Handler {
 			EventCenterURL:        c.EventCenterPublicURL,
 			DataDeletionStatusURL: c.MetaDataDeletionStatusURL,
 			WebhookVerifyToken:    c.MetaWebhookVerifyToken,
+			OwnerTelegram:         c.EventsTelegramBotToken != "",
 		}
 		if settings.Enabled {
 			if edges, err := metaconnect.ParseEdges(c.MetaAssetEdges); err == nil {
@@ -73,7 +74,23 @@ func (s *Server) mountMetaConnectRoutes(r chi.Router) {
 		pr.Get("/organizations/{org_id}/integrations/meta", s.handleGetMetaIntegration)
 		pr.Patch("/organizations/{org_id}/integrations/meta", s.handlePatchMetaIntegration)
 		pr.Delete("/organizations/{org_id}/integrations/meta", s.handleDeleteMetaIntegration)
+		pr.Get("/organizations/{org_id}/integrations/meta/campaigns", s.handleListMetaCampaigns)
+		pr.Post("/organizations/{org_id}/integrations/meta/campaigns/{campaign_id}/status", s.handleSetMetaCampaignStatus)
 	})
+}
+
+func (s *Server) handleListMetaCampaigns(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.metaConnectHandler().HandleListCampaigns(w, r)
+}
+
+func (s *Server) handleSetMetaCampaignStatus(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.metaConnectHandler().HandleSetCampaignStatus(w, r)
 }
 
 func (s *Server) handleMetaCallback(w http.ResponseWriter, r *http.Request) {

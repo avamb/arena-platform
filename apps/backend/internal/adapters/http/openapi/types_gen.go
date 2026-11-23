@@ -526,6 +526,12 @@ const (
 	Page      MetaAssetKind = "page"
 )
 
+// Defines values for MetaCampaignSetStatus.
+const (
+	MetaCampaignActive MetaCampaignSetStatus = "ACTIVE"
+	MetaCampaignPaused MetaCampaignSetStatus = "PAUSED"
+)
+
 // Defines values for MetaConnectionStatus.
 const (
 	MetaConnectionStatusActive  MetaConnectionStatus = "active"
@@ -11959,6 +11965,55 @@ type MetaAssetKind string
 type MetaCallbackReceived struct {
 	// Received Always true.
 	Received bool `json:"received"`
+}
+
+// MetaCampaign One campaign of the selected ad account, as Meta reports it.
+type MetaCampaign struct {
+	// EffectiveStatus The delivery status Meta computes, such as ACTIVE, PAUSED,
+	// CAMPAIGN_PAUSED, IN_PROCESS or WITH_ISSUES.
+	EffectiveStatus string `json:"effective_status"`
+
+	// Id The Meta campaign id (digits).
+	Id string `json:"id"`
+
+	// Name The campaign name in Meta, empty when Meta sent none.
+	Name string `json:"name"`
+
+	// Status The status the advertiser set, such as ACTIVE, PAUSED, DELETED or
+	// ARCHIVED. Only ACTIVE and PAUSED campaigns can be changed here.
+	Status string `json:"status"`
+}
+
+// MetaCampaignList The campaigns of the ad account selected in the organization's Meta connection.
+type MetaCampaignList struct {
+	// AdAccountId The selected ad account, act_ followed by digits.
+	AdAccountId string `json:"ad_account_id"`
+
+	// Campaigns The campaigns, at most 1000 (five pages of 200), in Meta's order.
+	Campaigns []MetaCampaign `json:"campaigns"`
+}
+
+// MetaCampaignSetStatus The only two statuses the platform sets on a Meta campaign: PAUSED
+// stops the delivery, ACTIVE resumes it. Nothing else of a campaign is
+// ever changed.
+type MetaCampaignSetStatus string
+
+// MetaCampaignStatusRequest The status to set on the campaign.
+type MetaCampaignStatusRequest struct {
+	// Status PAUSED to stop the campaign, ACTIVE to resume it.
+	Status MetaCampaignSetStatus `json:"status"`
+}
+
+// MetaCampaignStatusResult The campaign after the request.
+type MetaCampaignStatusResult struct {
+	// Campaign The campaign. After a change `status` is the new status and
+	// `effective_status` is what Meta reported just before the change.
+	Campaign MetaCampaign `json:"campaign"`
+
+	// Changed true when the status was changed at Meta now; false when the
+	// campaign already had this status (nothing was sent to Meta and
+	// nothing was audited).
+	Changed bool `json:"changed"`
 }
 
 // MetaConnectStart What the event center needs to open the Meta login (spec 66 section
@@ -27304,6 +27359,9 @@ type ImportEventBundleJSONRequestBody = ImportEventBundleRequest
 
 // UpdateMetaIntegrationJSONRequestBody defines body for UpdateMetaIntegration for application/json ContentType.
 type UpdateMetaIntegrationJSONRequestBody = UpdateMetaIntegrationRequest
+
+// SetMetaCampaignStatusJSONRequestBody defines body for SetMetaCampaignStatus for application/json ContentType.
+type SetMetaCampaignStatusJSONRequestBody = MetaCampaignStatusRequest
 
 // FinishMetaConnectJSONRequestBody defines body for FinishMetaConnect for application/json ContentType.
 type FinishMetaConnectJSONRequestBody = MetaFinishRequest
