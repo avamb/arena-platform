@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 )
 
 // ErrSignedRequestInvalid is the only error of ParseSignedRequest.
@@ -19,11 +20,19 @@ type SignedRequest struct {
 	IssuedAt int64
 }
 
+// Accepted age of a signed_request: issued at most SignedRequestMaxAge ago
+// and at most SignedRequestMaxSkew in the future.
+const (
+	SignedRequestMaxAge  = 24 * time.Hour
+	SignedRequestMaxSkew = 5 * time.Minute
+)
+
 // ParseSignedRequest verifies Meta's signed_request ("<sig>.<payload>", both
 // base64url without padding; sig = HMAC-SHA256(app secret, payload as sent))
-// and decodes it. The algorithm must be HMAC-SHA256 and the user id present.
-// The signature is compared in constant time.
-func ParseSignedRequest(raw, appSecret string) (SignedRequest, error) {
+// and decodes it. The algorithm must be HMAC-SHA256, the user id present and
+// issued_at within SignedRequestMaxAge before now and SignedRequestMaxSkew
+// after it. The signature is compared in constant time.
+func ParseSignedRequest(raw, appSecret string, now time.Time) (SignedRequest, error) {
 	raw = strings.TrimSpace(raw)
 	if appSecret == "" || raw == "" || len(raw) > 8192 {
 		return SignedRequest{}, ErrSignedRequestInvalid
@@ -58,6 +67,10 @@ func ParseSignedRequest(raw, appSecret string) (SignedRequest, error) {
 	}
 	uid := jsonID(body.UserID)
 	if uid == "" {
+		return SignedRequest{}, ErrSignedRequestInvalid
+	}
+	issued := time.Unix(body.IssuedAt, 0)
+	if body.IssuedAt <= 0 || issued.Before(now.Add(-SignedRequestMaxAge)) || issued.After(now.Add(SignedRequestMaxSkew)) {
 		return SignedRequest{}, ErrSignedRequestInvalid
 	}
 	return SignedRequest{UserID: uid, IssuedAt: body.IssuedAt}, nil

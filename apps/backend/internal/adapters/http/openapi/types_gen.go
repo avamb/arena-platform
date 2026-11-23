@@ -11962,13 +11962,11 @@ type MetaCallbackReceived struct {
 }
 
 // MetaConnectStart What the event center needs to open the Meta login (spec 66 section
-// 4.1). Two login modes come back to the same callback. JS SDK (main):
-// call `FB.login` with `config_id`, `response_type: 'code'` and
-// `override_default_response_type: true`, then send the browser to
-// `GET /v1/integrations/meta/callback?code=<code>&state=<state>` with
-// `state` from this answer. Redirect (fallback): open `login_url`, which
-// carries its own state. A state is valid for 10 minutes, for this
-// person and this organization only.
+// 4.1). Open `login_url` in the same tab. Meta sends the person to
+// `GET /v1/integrations/meta/callback`, which hands code and state back
+// to the event center in the URL fragment; the event center then posts
+// them to `POST .../integrations/meta/finish`. The state is valid for
+// 10 minutes, for this person and this organization only.
 type MetaConnectStart struct {
 	// AppId The Meta app id (public).
 	AppId string `json:"app_id"`
@@ -11979,12 +11977,9 @@ type MetaConnectStart struct {
 	// GraphVersion The Graph API version, such as v25.0.
 	GraphVersion string `json:"graph_version"`
 
-	// LoginUrl The dialog/oauth address of a redirect login (mode redirect), with
-	// its own signed state; empty when META_OAUTH_REDIRECT_URL is not set.
+	// LoginUrl The Meta dialog/oauth address with the signed state and
+	// redirect_uri = META_OAUTH_REDIRECT_URL.
 	LoginUrl string `json:"login_url"`
-
-	// State Signed state of a JS SDK login (mode js). Opaque.
-	State string `json:"state"`
 }
 
 // MetaConnection The stored connection. The access token is never returned.
@@ -12038,6 +12033,17 @@ type MetaDataDeletionAnswer struct {
 
 	// Url The status page of the deletion, with the confirmation code.
 	Url string `json:"url"`
+}
+
+// MetaFinishRequest The code and the state the callback put into the URL fragment of the
+// event center, posted once by the signed-in person who started the
+// login.
+type MetaFinishRequest struct {
+	// Code The login code from Meta, at most 4096 characters.
+	Code string `json:"code"`
+
+	// State The signed state from the same fragment. Opaque.
+	State string `json:"state"`
 }
 
 // MetaIntegration The Meta connection of an organization.
@@ -27243,6 +27249,9 @@ type ImportEventBundleJSONRequestBody = ImportEventBundleRequest
 
 // UpdateMetaIntegrationJSONRequestBody defines body for UpdateMetaIntegration for application/json ContentType.
 type UpdateMetaIntegrationJSONRequestBody = UpdateMetaIntegrationRequest
+
+// FinishMetaConnectJSONRequestBody defines body for FinishMetaConnect for application/json ContentType.
+type FinishMetaConnectJSONRequestBody = MetaFinishRequest
 
 // CancelStaffInvitationJSONRequestBody defines body for CancelStaffInvitation for application/json ContentType.
 type CancelStaffInvitationJSONRequestBody = StaffInvitationCancelRequest

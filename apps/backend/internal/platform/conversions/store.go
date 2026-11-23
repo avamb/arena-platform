@@ -29,6 +29,10 @@ type Settings struct {
 	MetaTestEventCode string
 	GA4MeasurementID  string
 	GA4APISecret      string
+	// MetaErr is set when the Meta connection could not be read (a database
+	// or key error). Only a Meta delivery is affected: it retries and never
+	// falls back to another pixel; GA4 is sent as usual.
+	MetaErr error
 }
 
 // Meta token sources of Settings.MetaTokenSource.
@@ -185,9 +189,11 @@ func (s *PGStore) Settings(ctx context.Context, orgID uuid.UUID) (Settings, bool
 		pixelID, token, conn, err = metaconnect.ActiveDataset(ctx, s.pool, s.box, orgID)
 		if err != nil {
 			// A database or key error: never fall back to another pixel
-			// silently, the delivery retries. secretbox errors carry no
-			// secret.
-			return Settings{}, false, errors.New("meta connection: " + err.Error())
+			// silently, the Meta delivery retries; GA4 is not blocked.
+			// secretbox errors carry no secret.
+			st.MetaPixelID, st.MetaCAPIToken, st.MetaTokenSource = "", "", ""
+			st.MetaErr = errors.New("meta connection: " + err.Error())
+			return st, true, nil
 		}
 	}
 	st, ok := chooseMeta(st, manual, pixelID, token, conn)

@@ -21,7 +21,7 @@ const testSecret = "app-secret-for-tests"
 func TestState_RoundTrip(t *testing.T) {
 	org, user := uuid.New(), uuid.New()
 	now := time.Unix(1_800_000_000, 0)
-	raw, err := SignState(testSecret, org, user, ModeJS, now)
+	raw, err := SignState(testSecret, org, user, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,10 +32,10 @@ func TestState_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("verify: %v", err)
 	}
-	if st.OrgID != org || st.UserID != user || st.Mode != ModeJS || st.Nonce == "" {
+	if st.OrgID != org || st.UserID != user || st.Nonce == "" {
 		t.Fatalf("state = %+v", st)
 	}
-	raw2, _ := SignState(testSecret, org, user, ModeJS, now)
+	raw2, _ := SignState(testSecret, org, user, now)
 	if raw2 == raw {
 		t.Error("two states must differ (nonce)")
 	}
@@ -44,11 +44,11 @@ func TestState_RoundTrip(t *testing.T) {
 func TestState_Refusals(t *testing.T) {
 	org, user := uuid.New(), uuid.New()
 	now := time.Unix(1_800_000_000, 0)
-	raw, _ := SignState(testSecret, org, user, ModeRedirect, now)
+	raw, _ := SignState(testSecret, org, user, now)
 	p, sig, _ := strings.Cut(raw, ".")
 
 	// A state of another organization, re-signed by nobody: swap the payload.
-	foreign, _ := json.Marshal(State{OrgID: uuid.New(), UserID: user, Mode: ModeRedirect, Exp: now.Add(StateTTL).Unix(), Nonce: "x"})
+	foreign, _ := json.Marshal(State{OrgID: uuid.New(), UserID: user, Exp: now.Add(StateTTL).Unix(), Nonce: "x"})
 	swapped := base64.RawURLEncoding.EncodeToString(foreign) + "." + sig
 
 	cases := map[string]struct {
@@ -71,9 +71,6 @@ func TestState_Refusals(t *testing.T) {
 			t.Errorf("%s: err = %v, want ErrStateInvalid", name, err)
 		}
 	}
-	if _, err := SignState(testSecret, org, user, "popup", now); err == nil {
-		t.Error("an unknown mode must be refused")
-	}
 }
 
 func signRequest(secret string, payload map[string]any) string {
@@ -85,13 +82,14 @@ func signRequest(secret string, payload map[string]any) string {
 }
 
 func TestParseSignedRequest(t *testing.T) {
+	srNow := time.Unix(1700000000, 0).Add(time.Hour)
 	good := signRequest(testSecret, map[string]any{"algorithm": "HMAC-SHA256", "user_id": "12345", "issued_at": 1700000000})
-	sr, err := ParseSignedRequest(good, testSecret)
+	sr, err := ParseSignedRequest(good, testSecret, srNow)
 	if err != nil || sr.UserID != "12345" || sr.IssuedAt != 1700000000 {
 		t.Fatalf("good = %+v, %v", sr, err)
 	}
-	num := signRequest(testSecret, map[string]any{"algorithm": "HMAC-SHA256", "user_id": 987654321})
-	if sr, err := ParseSignedRequest(num, testSecret); err != nil || sr.UserID != "987654321" {
+	num := signRequest(testSecret, map[string]any{"algorithm": "HMAC-SHA256", "user_id": 987654321, "issued_at": 1700000000})
+	if sr, err := ParseSignedRequest(num, testSecret, srNow); err != nil || sr.UserID != "987654321" {
 		t.Fatalf("numeric user id = %+v, %v", sr, err)
 	}
 	bad := map[string]string{
@@ -102,13 +100,16 @@ func TestParseSignedRequest(t *testing.T) {
 		"no dot":       "abc",
 		"empty":        "",
 		"tampered":     good[:len(good)-3] + "xyz",
+		"no issued_at": signRequest(testSecret, map[string]any{"algorithm": "HMAC-SHA256", "user_id": "1"}),
+		"older 24h":    signRequest(testSecret, map[string]any{"algorithm": "HMAC-SHA256", "user_id": "1", "issued_at": srNow.Add(-SignedRequestMaxAge - time.Second).Unix()}),
+		"future 5min":  signRequest(testSecret, map[string]any{"algorithm": "HMAC-SHA256", "user_id": "1", "issued_at": srNow.Add(SignedRequestMaxSkew + time.Second).Unix()}),
 	}
 	for name, raw := range bad {
-		if _, err := ParseSignedRequest(raw, testSecret); !errors.Is(err, ErrSignedRequestInvalid) {
+		if _, err := ParseSignedRequest(raw, testSecret, srNow); !errors.Is(err, ErrSignedRequestInvalid) {
 			t.Errorf("%s: err = %v", name, err)
 		}
 	}
-	if _, err := ParseSignedRequest(good, ""); err == nil {
+	if _, err := ParseSignedRequest(good, "", srNow); err == nil {
 		t.Error("an empty app secret must refuse")
 	}
 }

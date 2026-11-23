@@ -5,7 +5,9 @@ package httpserver
 // org.update in the path organization (the owner) and refuse an API key, like
 // conversion-settings. The callback and Meta's two signed_request callbacks
 // are public: the signed state and the app-secret signature are the
-// credentials. The routes are always mounted; when META_* is incomplete GET
+// credentials. The callback never exchanges the code: it hands code and state
+// to the event center in the URL fragment and the signed-in owner posts them
+// to .../integrations/meta/finish (no login CSRF). The routes are always mounted; when META_* is incomplete GET
 // answers enabled=false and connect answers 503 meta.disabled.
 
 import (
@@ -62,6 +64,7 @@ func (s *Server) mountMetaConnectRoutes(r chi.Router) {
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "org.update", "organizations")
 		pr.Post("/organizations/{org_id}/integrations/meta/connect", s.handleMetaConnect)
+		pr.Post("/organizations/{org_id}/integrations/meta/finish", s.handleMetaFinish)
 		pr.Get("/organizations/{org_id}/integrations/meta", s.handleGetMetaIntegration)
 		pr.Patch("/organizations/{org_id}/integrations/meta", s.handlePatchMetaIntegration)
 		pr.Delete("/organizations/{org_id}/integrations/meta", s.handleDeleteMetaIntegration)
@@ -85,6 +88,13 @@ func (s *Server) handleMetaConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.metaConnectHandler().HandleConnect(w, r)
+}
+
+func (s *Server) handleMetaFinish(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.metaConnectHandler().HandleFinish(w, r)
 }
 
 func (s *Server) handleGetMetaIntegration(w http.ResponseWriter, r *http.Request) {

@@ -395,7 +395,9 @@ Connection of an organizer's Meta business, the encrypted BISU token, CAPI throu
 * The Meta token is the first secret encrypted at rest (secretbox, META_TOKEN_ENC_KEY)
 * One connection per organization: org_meta_connections + org_meta_assets (migration 0218)
 * The login is the server redirect with config_id; the event center does NOT load the Facebook JS SDK
-* The callback never answers JSON on a Meta outcome, it redirects to the event center
+* The public callback NEVER exchanges the code (login CSRF): fragment to the event center, then POST .../meta/finish with a state of this person and org
+* A Meta signed_request older than 24 h or more than 5 min ahead is refused
+* A Meta connection that cannot be read never blocks GA4 (Settings.MetaErr)
 * Which Graph edges list ad accounts and pages is not confirmed for BISU: META_ASSET_EDGES decides
 * CAPI takes the connection first, the manual token second; only code 190 breaks the connection
 * META_GRAPH_BASE_URL is a test seam and is refused in production

@@ -4024,6 +4024,9 @@ export const uk: Record<MessageKey, string> = {
   "meta.reason.graph_failed": "Meta не відповіла. Спробуйте за кілька хвилин.",
   "meta.reason.unavailable": "Підключення до Meta зараз недоступне.",
   "meta.reason.unknown": "Підключення не вдалося. Спробуйте ще раз.",
+  "meta.reason.state_invalid": "Вхід у Meta застарів. Почніть знову.",
+  "meta.reason.state_mismatch": "Цей вхід у Meta почала інша людина або для іншої організації. Почніть вхід самі.",
+  "meta.finishing": "Завершуємо підключення до Meta…",
   "meta.notConfigured": "Підключення Meta не налаштовано на сервері",
   "meta.connectedByYou": "ви",
 };

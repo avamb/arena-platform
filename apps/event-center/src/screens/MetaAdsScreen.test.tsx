@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /**
  * "Advertising -> Meta": the five states, the choice of dataset and ad account (PATCH), the disconnect question
- * (DELETE only after the confirm button), the connect start with a mocked Facebook SDK and the messages per reason.
+ * (DELETE only after the confirm button), the connect start (redirect to login_url), the finish
+ * from the callback's fragment and the messages per reason.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
@@ -9,18 +10,31 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/components/ScreenHelp", () => ({ ScreenHelp: () => null }));
+vi.mock("@/screens/OrgLayout", () => ({ useOrg: () => ({ orgId: "org1", access: { can: () => false } }) }));
+vi.mock("@/lib/auth", () => ({ useMe: () => ({ data: undefined }) }));
+vi.mock("@tanstack/react-router", () => ({ useSearch: () => ({ meta: "finish" }) }));
 vi.mock("@/lib/api/metaApi", () => ({
   fetchMetaIntegration: vi.fn(),
   selectMetaAssets: vi.fn(),
   disconnectMeta: vi.fn(),
   startMetaConnect: vi.fn(),
+  finishMetaConnect: vi.fn(),
 }));
 
-import { disconnectMeta, fetchMetaIntegration, selectMetaAssets, startMetaConnect, type MetaConnection, type MetaIntegration } from "@/lib/api/metaApi";
+import {
+  disconnectMeta,
+  fetchMetaIntegration,
+  finishMetaConnect,
+  selectMetaAssets,
+  startMetaConnect,
+  type MetaConnection,
+  type MetaIntegration,
+} from "@/lib/api/metaApi";
+import { ApiError } from "@/lib/api/http";
 import { I18nProvider } from "@/lib/i18n";
-import { REASON_KEY, META_REASONS, metaReturn, type MetaReturn } from "@/lib/metaConnect";
+import { META_FINISH_KEY, REASON_KEY, META_REASONS, metaReturn, type MetaReturn } from "@/lib/metaConnect";
 import { en } from "@/lib/i18n/en";
-import { MetaAdsBody } from "@/screens/MetaAdsScreen";
+import { MetaAdsBody, MetaAdsScreen } from "@/screens/MetaAdsScreen";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -51,7 +65,13 @@ function conn(over: Partial<MetaConnection> = {}): MetaConnection {
 }
 const integration = (enabled: boolean, connection: MetaConnection | null): MetaIntegration => ({ enabled, connection });
 
-async function mount(returned: MetaReturn = null, navigate?: (url: string) => void, meId?: string): Promise<HTMLElement> {
+async function mount(
+  returned: MetaReturn = null,
+  navigate?: (url: string) => void,
+  meId?: string,
+  stored?: { code: string; state: string; org: string },
+): Promise<HTMLElement> {
+  if (stored !== undefined) sessionStorage.setItem(META_FINISH_KEY, JSON.stringify(stored));
   const el = document.createElement("div");
   document.body.appendChild(el);
   const r = createRoot(el);
@@ -79,9 +99,10 @@ async function click(node: HTMLElement | null) {
 }
 
 beforeEach(() => {
-  for (const fn of [fetchMetaIntegration, selectMetaAssets, disconnectMeta, startMetaConnect]) vi.mocked(fn).mockReset();
+  for (const fn of [fetchMetaIntegration, selectMetaAssets, disconnectMeta, startMetaConnect, finishMetaConnect]) vi.mocked(fn).mockReset();
 });
 afterEach(() => {
+  sessionStorage.clear();
   while (roots.length > 0) act(() => (roots.pop() as Root).unmount());
   document.body.innerHTML = "";
 });
@@ -193,7 +214,7 @@ describe("disconnect", () => {
 });
 
 describe("connect", () => {
-  const started = { app_id: "1", config_id: "c", graph_version: "v25.0", state: "S", login_url: "https://fb.example/login" };
+  const started = { app_id: "1", config_id: "c", graph_version: "v25.0", login_url: "https://fb.example/login" };
 
   it("starts the connect and sends the browser to login_url", async () => {
     vi.mocked(fetchMetaIntegration).mockResolvedValue(integration(true, null));
@@ -217,10 +238,51 @@ describe("connect", () => {
 });
 
 describe("the return from the callback", () => {
-  it("shows the success", async () => {
-    vi.mocked(fetchMetaIntegration).mockResolvedValue(integration(true, conn()));
-    const el = await mount(metaReturn("connected", undefined));
+  it("finish: consumes the stored entry once, posts code and state once and shows the success", async () => {
+    vi.mocked(fetchMetaIntegration).mockResolvedValue(integration(true, null));
+    vi.mocked(finishMetaConnect).mockResolvedValue(integration(true, conn()));
+    const el = await mount(metaReturn("finish", undefined), undefined, undefined, { code: "C1", state: "ST1", org: "org1" });
+    expect(sessionStorage.getItem(META_FINISH_KEY)).toBeNull();
+    expect(finishMetaConnect).toHaveBeenCalledTimes(1);
+    expect(finishMetaConnect).toHaveBeenCalledWith("org1", { code: "C1", state: "ST1" });
     expect(id(el, "meta-returned-ok")?.textContent).toBe(en["meta.result.connected"]);
+    expect(id(el, "meta-status")?.getAttribute("data-status")).toBe("active");
+    // A second visit to ?meta=finish finds nothing: no second post.
+    const el2 = await mount(metaReturn("finish", undefined));
+    expect(finishMetaConnect).toHaveBeenCalledTimes(1);
+    expect(id(el2, "meta-returned-error")?.getAttribute("data-reason")).toBe("no_code");
+  });
+
+  it("finish for another organization: the entry is dropped and nothing is posted", async () => {
+    vi.mocked(fetchMetaIntegration).mockResolvedValue(integration(true, null));
+    const el = await mount(metaReturn("finish", undefined), undefined, undefined, { code: "C9", state: "ST9", org: "other" });
+    expect(finishMetaConnect).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(META_FINISH_KEY)).toBeNull();
+    expect(id(el, "meta-returned-error")?.getAttribute("data-reason")).toBe("no_code");
+  });
+
+  it("while the finish is in flight the Connect button is hidden", async () => {
+    vi.mocked(fetchMetaIntegration).mockResolvedValue(integration(true, null));
+    vi.mocked(finishMetaConnect).mockReturnValue(new Promise(() => undefined));
+    const el = await mount(metaReturn("finish", undefined), undefined, undefined, { code: "C3", state: "ST3", org: "org1" });
+    expect(id(el, "meta-finishing")).not.toBeNull();
+    expect(id(el, "meta-connect")).toBeNull();
+  });
+
+  it("finish refused: shows the message of the reason", async () => {
+    vi.mocked(fetchMetaIntegration).mockResolvedValue(integration(true, null));
+    vi.mocked(finishMetaConnect).mockRejectedValue(new ApiError(403, "meta.state_mismatch", "x"));
+    const el = await mount(metaReturn("finish", undefined), undefined, undefined, { code: "C2", state: "ST2", org: "org1" });
+    const box = id(el, "meta-returned-error");
+    expect(box?.getAttribute("data-reason")).toBe("state_mismatch");
+    expect(box?.textContent).toBe(en["meta.reason.state_mismatch"]);
+  });
+
+  it("finish without a stored entry posts nothing", async () => {
+    vi.mocked(fetchMetaIntegration).mockResolvedValue(integration(true, null));
+    const el = await mount(metaReturn("finish", undefined));
+    expect(finishMetaConnect).not.toHaveBeenCalled();
+    expect(id(el, "meta-returned-error")?.getAttribute("data-reason")).toBe("no_code");
   });
 
   it("shows a message of its own for every reason", async () => {
@@ -230,5 +292,29 @@ describe("the return from the callback", () => {
       const box = id(el, "meta-returned-error");
       expect(box?.textContent, reason).toBe(en[REASON_KEY[reason === "other" ? "unknown" : (reason as (typeof META_REASONS)[number])]]);
     }
+  });
+});
+
+describe("a non-owner", () => {
+  it("renders the owner-only note and leaves no code in the address", async () => {
+    window.history.replaceState(null, "", "/o/org1/ads/meta?meta=finish");
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const r = createRoot(el);
+    roots.push(r);
+    await act(async () => {
+      r.render(
+        <QueryClientProvider client={new QueryClient()}>
+          <I18nProvider locale="en">
+            <MetaAdsScreen />
+          </I18nProvider>
+        </QueryClientProvider>,
+      );
+      await sleep(30);
+    });
+    expect(id(el, "meta-owner-only")).not.toBeNull();
+    expect(finishMetaConnect).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe("");
+    expect(window.location.href).not.toContain("code=");
   });
 });

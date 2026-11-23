@@ -12,6 +12,7 @@ export type MetaConnection = S["MetaConnection"];
 export type MetaAsset = S["MetaAsset"];
 export type MetaConnectStart = S["MetaConnectStart"];
 export type MetaSelection = S["UpdateMetaIntegrationRequest"];
+export type MetaFinish = S["MetaFinishRequest"];
 
 const org = (orgId: string) => ({ org_id: orgId });
 
@@ -30,4 +31,9 @@ export function disconnectMeta(orgId: string): Promise<MetaIntegration> {
 
 export function startMetaConnect(orgId: string): Promise<MetaConnectStart> {
   return call<MetaConnectStart>({ route: API.metaConnect, params: org(orgId) });
+}
+
+/** Finishes the login with the code and the state of the callback's fragment (once per login). */
+export function finishMetaConnect(orgId: string, body: MetaFinish): Promise<MetaIntegration> {
+  return call<MetaIntegration>({ route: API.metaFinish, params: org(orgId), body });
 }

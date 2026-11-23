@@ -346,12 +346,12 @@ func ActiveDataset(ctx context.Context, q Querier, box *secretbox.Box, orgID uui
 }
 
 // MarkTokenInvalid moves an ACTIVE connection to error with reason (a short
-// code, never a token). It reports true only for the call that changed the
-// row, so the owner is told once.
+// code, never a token) and wipes the dead token. It reports true only for the
+// call that changed the row, so the owner is told once.
 func MarkTokenInvalid(ctx context.Context, q Querier, orgID uuid.UUID, reason string) (bool, error) {
 	tag, err := q.Exec(ctx, `
 		UPDATE org_meta_connections
-		   SET status = 'error', last_error = $2, checked_at = now(), updated_at = now()
+		   SET status = 'error', access_token_enc = NULL, last_error = $2, checked_at = now(), updated_at = now()
 		 WHERE org_id = $1 AND status = 'active'`, orgID, clip(reason, 200))
 	if err != nil {
 		return false, err

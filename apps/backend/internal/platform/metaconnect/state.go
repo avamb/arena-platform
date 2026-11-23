@@ -21,17 +21,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// Login modes recorded in the state. The mode decides the redirect_uri of the
-// code exchange: Meta wants the same address the login dialog used.
-const (
-	// ModeJS is a login through the JS SDK (FB.login): the exchange sends an
-	// empty redirect_uri.
-	ModeJS = "js"
-	// ModeRedirect is a login through the dialog/oauth address: the exchange
-	// sends META_OAUTH_REDIRECT_URL.
-	ModeRedirect = "redirect"
-)
-
 // StateTTL is how long a signed state is accepted.
 const StateTTL = 10 * time.Minute
 
@@ -47,7 +36,6 @@ var ErrStateInvalid = errors.New("metaconnect: state is invalid or expired")
 type State struct {
 	OrgID  uuid.UUID `json:"o"`
 	UserID uuid.UUID `json:"u"`
-	Mode   string    `json:"m"`
 	Exp    int64     `json:"e"`
 	Nonce  string    `json:"n"`
 }
@@ -60,18 +48,15 @@ func stateKey(appSecret string) []byte {
 
 // SignState builds the state for one login of userID into orgID. The value
 // is base64url(json) + "." + base64url(HMAC-SHA256).
-func SignState(appSecret string, orgID, userID uuid.UUID, mode string, now time.Time) (string, error) {
+func SignState(appSecret string, orgID, userID uuid.UUID, now time.Time) (string, error) {
 	if appSecret == "" {
 		return "", errors.New("metaconnect: no app secret")
-	}
-	if mode != ModeJS && mode != ModeRedirect {
-		return "", errors.New("metaconnect: unknown login mode")
 	}
 	nonce := make([]byte, 16)
 	if _, err := rand.Read(nonce); err != nil {
 		return "", errors.New("metaconnect: cannot read a random nonce")
 	}
-	st := State{OrgID: orgID, UserID: userID, Mode: mode, Exp: now.Add(StateTTL).Unix(), Nonce: hex.EncodeToString(nonce)}
+	st := State{OrgID: orgID, UserID: userID, Exp: now.Add(StateTTL).Unix(), Nonce: hex.EncodeToString(nonce)}
 	payload, err := json.Marshal(st)
 	if err != nil {
 		return "", err
@@ -109,7 +94,7 @@ func VerifyState(appSecret, raw string, now time.Time) (State, error) {
 	if err := json.Unmarshal(payload, &st); err != nil {
 		return State{}, ErrStateInvalid
 	}
-	if st.OrgID == uuid.Nil || st.UserID == uuid.Nil || (st.Mode != ModeJS && st.Mode != ModeRedirect) || st.Nonce == "" {
+	if st.OrgID == uuid.Nil || st.UserID == uuid.Nil || st.Nonce == "" {
 		return State{}, ErrStateInvalid
 	}
 	if now.Unix() >= st.Exp || st.Exp > now.Add(StateTTL+time.Minute).Unix() {

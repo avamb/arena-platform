@@ -4082,6 +4082,9 @@ export const ru: Record<MessageKey, string> = {
   "meta.reason.graph_failed": "Meta не ответила. Попробуйте через несколько минут.",
   "meta.reason.unavailable": "Подключение к Meta сейчас недоступно.",
   "meta.reason.unknown": "Подключение не удалось. Попробуйте ещё раз.",
+  "meta.reason.state_invalid": "Вход в Meta устарел. Начните заново.",
+  "meta.reason.state_mismatch": "Этот вход в Meta начал другой человек или для другой организации. Начните вход сами.",
+  "meta.finishing": "Завершаем подключение к Meta…",
   "meta.notConfigured": "Подключение Meta не настроено на сервере",
   "meta.connectedByYou": "вы",
 };

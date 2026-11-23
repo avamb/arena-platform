@@ -163,6 +163,10 @@ func handle(ctx context.Context, store Store, senders Senders, logger *slog.Logg
 	var sendErr error
 	switch d.Provider {
 	case "meta":
+		if st.MetaErr != nil {
+			retry("settings: "+st.MetaErr.Error(), false)
+			return
+		}
 		if !st.MetaReady() {
 			skip("not_configured")
 			return

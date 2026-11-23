@@ -5058,9 +5058,38 @@ export interface paths {
          *     answers the Meta login parameters (spec 66 section 4.1). Nothing is
          *     stored. Requires `org.update` (the owner); an organization API key is
          *     refused. The person who starts must still hold `org.update` here
-         *     through an active membership when Meta sends them back.
+         *     through an active membership when they finish the login.
          */
         post: operations["startMetaConnect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/integrations/meta/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish connecting the organization's Meta business
+         * @description The signed-in person posts the code and the state the callback put
+         *     into the URL fragment (spec 66 section 4.1). The state must be valid
+         *     and name this organization AND the caller, otherwise 403
+         *     `meta.state_mismatch`: a login started by someone else cannot be
+         *     finished in your session. Checks again that the caller holds
+         *     `org.update` here through an active membership, exchanges the code
+         *     (redirect_uri = META_OAUTH_REDIRECT_URL), reads `/me`, the granted
+         *     permissions and the shared objects, stores the connection with the
+         *     token sealed and audits `v1.org.meta.connect`. Requires `org.update`
+         *     (the owner); an organization API key is refused.
+         */
+        post: operations["finishMetaConnect"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5111,15 +5140,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Finish a Meta login and send the person back to the event center
-         * @description Public, no login: the signed state is the credential. Checks the state
-         *     (signature, 10 minutes, organization, person), checks again that the
-         *     person holds `org.update` there through an active membership,
-         *     exchanges the code (redirect_uri = META_OAUTH_REDIRECT_URL for a
-         *     redirect login, empty for a JS SDK login), reads `/me`, the granted
-         *     permissions and the shared objects, stores the connection with the
-         *     token sealed and audits `v1.org.meta.connect`. Every outcome of the
-         *     login is a redirect to the event center, never JSON.
+         * Send the person back from the Meta login to the event center
+         * @description Public, no login. Checks only the signature and the 10 minutes of
+         *     the state, and never exchanges the code: a public GET that stored a
+         *     connection would let anyone finish a login in another person's
+         *     session (login CSRF). Code and state go to the event center in the
+         *     URL fragment, never the query; the signed-in person then posts them
+         *     to `POST /v1/organizations/{org_id}/integrations/meta/finish`. Every
+         *     outcome is a redirect to the event center, never JSON.
          */
         get: operations["metaLoginCallback"];
         put?: never;
@@ -30535,13 +30563,11 @@ export interface components {
         };
         /**
          * @description What the event center needs to open the Meta login (spec 66 section
-         *     4.1). Two login modes come back to the same callback. JS SDK (main):
-         *     call `FB.login` with `config_id`, `response_type: 'code'` and
-         *     `override_default_response_type: true`, then send the browser to
-         *     `GET /v1/integrations/meta/callback?code=<code>&state=<state>` with
-         *     `state` from this answer. Redirect (fallback): open `login_url`, which
-         *     carries its own state. A state is valid for 10 minutes, for this
-         *     person and this organization only.
+         *     4.1). Open `login_url` in the same tab. Meta sends the person to
+         *     `GET /v1/integrations/meta/callback`, which hands code and state back
+         *     to the event center in the URL fragment; the event center then posts
+         *     them to `POST .../integrations/meta/finish`. The state is valid for
+         *     10 minutes, for this person and this organization only.
          */
         MetaConnectStart: {
             /** @description The Meta app id (public). */
@@ -30550,13 +30576,22 @@ export interface components {
             config_id: string;
             /** @description The Graph API version, such as v25.0. */
             graph_version: string;
-            /** @description Signed state of a JS SDK login (mode js). Opaque. */
-            state: string;
             /**
-             * @description The dialog/oauth address of a redirect login (mode redirect), with
-             *     its own signed state; empty when META_OAUTH_REDIRECT_URL is not set.
+             * @description The Meta dialog/oauth address with the signed state and
+             *     redirect_uri = META_OAUTH_REDIRECT_URL.
              */
             login_url: string;
+        };
+        /**
+         * @description The code and the state the callback put into the URL fragment of the
+         *     event center, posted once by the signed-in person who started the
+         *     login.
+         */
+        MetaFinishRequest: {
+            /** @description The login code from Meta, at most 4096 characters. */
+            code: string;
+            /** @description The signed state from the same fragment. Opaque. */
+            state: string;
         };
         /** @description A dataset (pixel), ad account or page the organizer shared with the platform. */
         MetaAsset: {
@@ -57518,6 +57553,15 @@ export interface operations {
                     "application/json": components["schemas"]["MetaConnectStart"];
                 };
             };
+            /** @description org_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Missing or invalid credentials. */
             401: {
                 headers: {
@@ -57547,6 +57591,87 @@ export interface operations {
             };
         };
     };
+    finishMetaConnect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaFinishRequest"];
+            };
+        };
+        responses: {
+            /** @description Connected; the connection as stored now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaIntegration"];
+                };
+            };
+            /**
+             * @description org_id is not a UUID, the body is invalid (`meta.invalid_body`),
+             *     the code is missing (`meta.no_code`) or the state is invalid or
+             *     expired (`meta.state_invalid`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Caller lacks `org.update` in the organization (`meta.forbidden`
+             *     when it was lost after connect), is an API key
+             *     (`meta.api_key_forbidden`), or the state names another
+             *     organization or person (`meta.state_mismatch`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Meta refused the code (`meta.exchange_failed`) or did not answer (`meta.graph_failed`). */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Meta connection is switched off (`meta.disabled`) or the database is unavailable (`meta.unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getMetaIntegration: {
         parameters: {
             query?: never;
@@ -57566,6 +57691,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MetaIntegration"];
+                };
+            };
+            /** @description org_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Missing or invalid credentials. */
@@ -57616,6 +57750,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MetaIntegration"];
+                };
+            };
+            /** @description org_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Missing or invalid credentials. */
@@ -57681,7 +57824,7 @@ export interface operations {
                     "application/json": components["schemas"]["MetaIntegration"];
                 };
             };
-            /** @description Invalid body (`meta.invalid_body`). */
+            /** @description org_id is not a UUID, or the body is invalid (`meta.invalid_body`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -57754,11 +57897,11 @@ export interface operations {
         requestBody?: never;
         responses: {
             /**
-             * @description Redirect to `EVENT_CENTER_PUBLIC_URL/o/{org_id}/ads/meta?meta=connected`,
-             *     or `?meta=error&reason=<code>` with reason denied, no_code,
-             *     forbidden, exchange_failed, graph_failed or unavailable. A state
-             *     that cannot be trusted (`state_invalid`) or a switched-off feature
-             *     (`disabled`) goes to the event center root.
+             * @description Redirect to
+             *     `EVENT_CENTER_PUBLIC_URL/o/{org_id}/ads/meta?meta=finish#code=<code>&state=<state>`,
+             *     or `?meta=error&reason=<code>` with reason denied or no_code. A
+             *     state that cannot be trusted (`state_invalid`) or a switched-off
+             *     feature (`disabled`) goes to the event center root.
              */
             302: {
                 headers: {
@@ -57805,7 +57948,7 @@ export interface operations {
                     "application/json": components["schemas"]["MetaCallbackReceived"];
                 };
             };
-            /** @description signed_request missing or wrongly signed (`meta.invalid_signed_request`). */
+            /** @description signed_request missing, wrongly signed, issued more than 24 hours ago or more than 5 minutes ahead (`meta.invalid_signed_request`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -57847,7 +57990,7 @@ export interface operations {
                     "application/json": components["schemas"]["MetaDataDeletionAnswer"];
                 };
             };
-            /** @description signed_request missing or wrongly signed (`meta.invalid_signed_request`). */
+            /** @description signed_request missing, wrongly signed, issued more than 24 hours ago or more than 5 minutes ahead (`meta.invalid_signed_request`). */
             400: {
                 headers: {
                     [name: string]: unknown;

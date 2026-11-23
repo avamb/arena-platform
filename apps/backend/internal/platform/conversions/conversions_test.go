@@ -159,6 +159,42 @@ func TestGA4Sender_PurchaseMajorUnits(t *testing.T) {
 	}
 }
 
+// TestMetaConnectionErrorDoesNotBlockGA4: a Meta connection that cannot be
+// read (database or key error) retries the Meta delivery only; GA4 sends.
+func TestMetaConnectionErrorDoesNotBlockGA4(t *testing.T) {
+	hits := map[string]int{}
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hits[r.URL.Path]++
+		mu.Unlock()
+		w.WriteHeader(204)
+	}))
+	defer srv.Close()
+	senders := Senders{Meta: MetaSender{BaseURL: srv.URL}, GA4: GA4Sender{BaseURL: srv.URL}}
+	connErr := Settings{GA4MeasurementID: "G-X", GA4APISecret: "ga-secret", MetaErr: errTest("meta connection: secretbox: cannot open")}
+
+	f, _ := newFake("ga4", true)
+	f.settings = connErr
+	if _, err := RunOnce(context.Background(), f, senders, slog.Default(), time.Now()); err != nil || f.status != "sent" {
+		t.Fatalf("ga4 with a broken Meta connection: status=%s reason=%s err=%v", f.status, f.reason, err)
+	}
+	f, _ = newFake("meta", true)
+	f.settings = connErr
+	if _, err := RunOnce(context.Background(), f, senders, slog.Default(), time.Now()); err != nil || f.status != "retry" || !strings.Contains(f.reason, "meta connection") {
+		t.Fatalf("meta with a broken Meta connection: status=%s reason=%s err=%v", f.status, f.reason, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if hits["/mp/collect"] != 1 || len(hits) != 1 {
+		t.Fatalf("hits = %v, want GA4 only", hits)
+	}
+}
+
+type errTest string
+
+func (e errTest) Error() string { return string(e) }
+
 func TestNoConsentSendsNothing(t *testing.T) {
 	hit := false
 	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) { hit = true }))
@@ -348,7 +384,7 @@ func TestManualToken190_KeepsTodaysBehaviour(t *testing.T) {
 
 func TestMetaSender_VersionAndBaseFromConfig(t *testing.T) {
 	var path string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { path = r.URL.Path }))
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { path = r.URL.Path }))
 	defer srv.Close()
 	if err := (MetaSender{BaseURL: srv.URL + "/", Version: "v26.0"}).Send(context.Background(), "77", "t", "", Purchase{}); err != nil {
 		t.Fatal(err)

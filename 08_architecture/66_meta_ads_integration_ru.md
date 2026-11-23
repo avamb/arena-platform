@@ -63,21 +63,25 @@
 ### 4.1. Поток
 
 1. Владелец организации в ивент-центре: «Реклама → Meta → Подключить».
-2. Вход Meta открывается **через JS SDK в ивент-центре**: `FB.login(cb, {config_id, response_type: 'code', override_default_response_type: true})`. Это документированный путь для Login for Business. Ивент-центр получает `code` и передаёт его API вместе с подписанным `state`. Запасной вариант — серверный редирект `dialog/oauth?...&config_id=…&response_type=code&redirect_uri=…`. Он правдоподобен, но в документации Login for Business не показан, поэтому **первым делом М1 — короткая проба на реальном входе**, какой вариант берём.
+2. `connect` подписывает `state` (org_id, user_id, срок 10 мин) и отдаёт `login_url`. Ивент-центр переходит по нему в той же вкладке: серверный редирект `dialog/oauth?...&config_id=…&response_type=code&redirect_uri=META_OAUTH_REDIRECT_URL`. JS SDK не используем.
 3. Организатор выбирает в окне Meta бизнес и пиксели и подтверждает.
-4. Сервер проверяет `state` (подпись, срок 10 мин, org_id, user_id — защита от CSRF и подмены организации; на стенде — свой адрес возврата), меняет `code` на токен BISU секретом приложения (только сервер), затем:
+4. Meta шлёт человека на публичный `GET /v1/integrations/meta/callback`. Колбэк **код не обменивает**. Он проверяет только подпись и срок `state`. Затем он отправляет человека в ивент-центр: `/o/{org}/ads/meta?meta=finish#code=…&state=…`. Код и `state` идут во фрагменте, не в query: их нет в логах сервера и в Referer. Отказ или ошибка: `?meta=error&reason=…`.
+5. Страница сразу стирает фрагмент из адреса (`history.replaceState`). Затем она один раз шлёт `code` и `state` на `POST .../integrations/meta/finish` в сессии вошедшего человека. Так закрыт login CSRF: чужая ссылка с кодом не подключит чужой бизнес к вашей организации.
+6. `finish` проверяет `state`: подпись, срок, `state.org` = организация пути, `state.user` = вошедший человек (иначе 403 `meta.state_mismatch`). Затем снова проверяет `org.update` через активное членство. Затем меняет `code` на токен BISU секретом приложения (только сервер) и:
    - `GET /me?fields=id,client_business_id` — бизнес клиента и **app-scoped id** (нужен для callbacks Meta, §4.3);
    - пиксели и рекламные кабинеты клиента — отдельными вызовами (рёбра бизнеса вроде `owned_pixels`/`client_pixels`, `owned_ad_accounts`/`client_ad_accounts`; **точные рёбра проверить на пробе**, в документации шаблона их нет);
-   - сохраняет всё и отправляет человека обратно в ивент-центр.
-5. Владелец выбирает пиксель для серверных покупок (если их несколько) и, начиная с М2, рекламный кабинет.
-6. «Отключить»: удаляем токен у себя и отзываем доступ в Meta. Дополнительно Meta может сама прислать deauthorize / data-deletion callback (`signed_request`, подпись секретом приложения) — обрабатываем оба.
+   - сохраняет всё и отвечает `{enabled, connection}`. Ошибки — JSON с кодом причины.
+7. Владелец выбирает пиксель для серверных покупок (если их несколько) и, начиная с М2, рекламный кабинет.
+8. «Отключить»: удаляем токен у себя и отзываем доступ в Meta. Дополнительно Meta может сама прислать deauthorize / data-deletion callback (`signed_request`, подпись секретом приложения) — обрабатываем оба.
 
 ### 4.1а. Проба по документации Meta (22.11, до живого входа)
 
 | Вопрос | Что сказано у Meta | Что сделано в коде М1 |
 |---|---|---|
-| Вариант входа | Оба описаны в [Facebook Login for Business](https://developers.facebook.com/docs/facebook-login/facebook-login-for-business). Через JS SDK: `FB.login` с `config_id`, `response_type: 'code'`, `override_default_response_type: true`. Через `dialog/oauth`: с `config_id=`. Для BISU нужен `response_type=code` ([шаблон CAPI](https://developers.facebook.com/documentation/facebook-login/facebook-login-for-business/conversions-api-integration-template/)) | **Берём серверный редирект** (`login_url` в ответе `connect`). JS SDK требовал бы ослабить CSP и COOP всего ивент-центра, а окно после `await` режет блокировщик. Сервер принимает и `state` режима JS (обмен с пустым `redirect_uri`), но ивент-центр его не использует |
-| `redirect_uri` при обмене `code` | В примере обмена для BISU `redirect_uri` нет. Общий ручной поток требует тот же адрес, что был в окне входа | Режим входа записан в `state`. Редирект: шлём `META_OAUTH_REDIRECT_URL`. JS SDK: пустой `redirect_uri`. **Проверить на живом входе** |
+| Вариант входа | Оба описаны в [Facebook Login for Business](https://developers.facebook.com/docs/facebook-login/facebook-login-for-business). Через JS SDK: `FB.login` с `config_id`, `response_type: 'code'`, `override_default_response_type: true`. Через `dialog/oauth`: с `config_id=`. Для BISU нужен `response_type=code` ([шаблон CAPI](https://developers.facebook.com/documentation/facebook-login/facebook-login-for-business/conversions-api-integration-template/)) | **Берём только серверный редирект** (`login_url` в ответе `connect`). JS SDK требовал бы ослабить CSP и COOP всего ивент-центра, а окно после `await` режет блокировщик. Режима JS в коде нет (23.11) |
+| `redirect_uri` при обмене `code` | В примере обмена для BISU `redirect_uri` нет. Общий ручной поток требует тот же адрес, что был в окне входа | `finish` всегда шлёт `META_OAUTH_REDIRECT_URL`. **Проверить на живом входе** |
+| Где обменивать `code` | Meta шлёт `code` и `state` на адрес возврата | Публичный колбэк не обменивает: только проверяет `state` и передаёт код во фрагменте. Обмен — в `finish` под входом владельца, `state` должен назвать этого человека и эту организацию (защита от login CSRF, 23.11) |
+| Срок `signed_request` | `issued_at` в полезной нагрузке | Отказ, если `issued_at` старше 24 ч или больше чем на 5 мин в будущем |
 | `expires_in` у BISU | Токен BISU по умолчанию бессрочный, есть ли поле в ответе — не сказано | Сохраняем срок, если он есть, иначе NULL |
 | `/me?fields=id,client_business_id` | Описано | Как в §4.1 |
 | Пиксели | `/{business}/owned_pixels`, `/{business}/client_pixels` (шаблон CAPI) | По умолчанию |
@@ -101,12 +105,14 @@
 
 ### 4.3. Маршруты (в `openapi.yaml`, с генерацией Go-типов и TS-клиента)
 
-- `POST /v1/organizations/{org_id}/integrations/meta/connect` → `{ "login_url": … }`
-- `GET  /v1/integrations/meta/callback` — публичный, без входа, только с действующим `state`; на ошибку — редирект в ивент-центр с кодом, а не JSON
+- `POST /v1/organizations/{org_id}/integrations/meta/connect` → `{ app_id, config_id, graph_version, login_url }`
+- `GET  /v1/integrations/meta/callback` — публичный, без входа. Проверяет только подпись и срок `state`, код не обменивает. Всегда редирект в ивент-центр, не JSON: `?meta=finish#code=…&state=…` или `?meta=error&reason=…`
+- `POST /v1/organizations/{org_id}/integrations/meta/finish` `{code, state}` — под `org.update` и членством, ключ API отклоняется. `state.org` = организация пути и `state.user` = вошедший человек, иначе 403 `meta.state_mismatch`. Обмен кода, `/me`, объекты, сохранение, аудит. Ответ `{enabled, connection}`
+- Неверный `org_id` в пути любого маршрута организации — 400
 - `GET  /v1/organizations/{org_id}/integrations/meta` → статус, бизнес, объекты, выбранные пиксель и кабинет, `scopes`
 - `PATCH /v1/organizations/{org_id}/integrations/meta` → выбор пикселя и кабинета
 - `DELETE /v1/organizations/{org_id}/integrations/meta` → отключить
-- `POST /v1/integrations/meta/deauthorize` и `POST /v1/integrations/meta/data-deletion` — callbacks Meta по `signed_request` (HTTPS; подпись HMAC-SHA256 секретом приложения, сравнение за постоянное время). В `signed_request` есть только app-scoped `user_id`, подключение ищем по `meta_user_id`. Data-deletion удаляет подключение и объекты и отвечает `{url, confirmation_code}`, как требует Meta; `url` ведёт на страницу статуса удаления
+- `POST /v1/integrations/meta/deauthorize` и `POST /v1/integrations/meta/data-deletion` — callbacks Meta по `signed_request` (HTTPS; подпись HMAC-SHA256 секретом приложения, сравнение за постоянное время; `issued_at` не старше 24 ч и не больше чем на 5 мин в будущем). В `signed_request` есть только app-scoped `user_id`, подключение ищем по `meta_user_id`. Data-deletion удаляет подключение и объекты и отвечает `{url, confirmation_code}`, как требует Meta; `url` ведёт на страницу статуса удаления
 
 Все изменения — в аудит (`v1.org.meta.connect/disconnect/select`), без токена.
 
@@ -121,7 +127,7 @@
 
 `META_APP_ID`, `META_APP_SECRET` (только arena-api и arena-worker, никогда во фронте и репозитории), `META_LOGIN_CONFIG_ID`,
 `META_GRAPH_VERSION`, `META_OAUTH_REDIRECT_URL`, `META_GRAPH_BASE_URL` (тестовый шлюз, запрещён в production),
-ключ шифрования токенов (§9 п.1) — нужен и arena-api, и arena-worker. Пустой `META_APP_ID` **или пустой ключ шифрования** = функция выключена, кнопка не показывается; токен никогда не сохраняется открытым текстом.
+ключ шифрования токенов (§9 п.1) — нужен и arena-api, и arena-worker. `META_OAUTH_REDIRECT_URL` (`https://` в production) нужен только arena-api: воркер вход не ведёт. Пустой `META_APP_ID` **или пустой ключ шифрования** = функция выключена, кнопка не показывается; токен никогда не сохраняется открытым текстом.
 Для стенда: отдельный адрес возврата `api-staging…`; оба адреса вписываются в «Вход через Facebook для компаний → Настройки → Действительные URI перенаправления OAuth».
 
 ### 4.6. Интерфейс
@@ -134,7 +140,7 @@
 
 - Unit: подпись и срок `state`, разбор `signed_request`, выбор токена для CAPI (подключение → ручной → нет).
 - Integration (тег `integration`): весь поток против заглушки Graph (`META_GRAPH_BASE_URL`), отключение, deauthorize, ошибка 190 переводит в `error`.
-- Изоляция организаций: callback со `state` чужой организации и PATCH чужого `meta_id` — отказ.
+- Изоляция организаций: `finish` со `state` чужой организации или другого человека и PATCH чужого `meta_id` — отказ. Тесты через настоящий роутер: владелец A получает 403 на маршрутах B, менеджер — 403, ключ API — отказ.
 - Ручная проверка на стенде: подключение кабинета ABH TEAM реальным входом Meta, тестовое событие в Events Manager (Test events).
 
 **Готово, когда:** на стенде организация ABH TEAM подключена через Meta, тестовая покупка видна в Events Manager через новый токен, отключение отзывает доступ, а `go test` / `npm run type-check` / OpenAPI Check зелёные.

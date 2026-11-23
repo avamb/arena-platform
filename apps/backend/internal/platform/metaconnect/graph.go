@@ -258,7 +258,7 @@ func ParseGraphError(status int, raw []byte) *GraphError {
 }
 
 // ExchangeCode trades a login code for an access token. redirectURI is
-// META_OAUTH_REDIRECT_URL for a dialog/oauth login and "" for a JS SDK one.
+// META_OAUTH_REDIRECT_URL, the address the dialog/oauth login used.
 // Meta documents this call as GET /oauth/access_token with query parameters,
 // so the app secret and the code travel in the URL here: do never puts the
 // URL (a *url.Error) or the answer body into an error, and nothing logs it.

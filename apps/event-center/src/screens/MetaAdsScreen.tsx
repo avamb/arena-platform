@@ -3,10 +3,12 @@
  * chooses the dataset for the server-side purchases and the ad account, and disconnects.
  *
  * States: the platform switch is off (nothing to connect), not connected, connected, error (Meta refused the token),
- * revoked. Connect is the server redirect to Meta's login (`login_url`, no SDK, no popup); the person comes back with `?meta=connected` or `?meta=error&reason=<code>`. The access token never reaches the page.
+ * revoked. Connect is the server redirect to Meta's login (`login_url`, no SDK, no popup); the person comes back with
+ * `?meta=finish` (boot code moved code and state into sessionStorage) or `?meta=error&reason=<code>`. On finish the page takes the stored code and state once (and deletes them) and posts code and state ONCE to the finish route in the signed-in session (no login CSRF:
+ * the server checks that the state names this person and this organization). The access token never reaches the page.
  * The view is a pure component (`MetaAdsView`); the screen owns the queries and the actions.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
 import { ConfirmPressDialog } from "@/components/ConfirmPressDialog";
@@ -17,6 +19,7 @@ import { ErrorBox, Loading } from "@/components/ui";
 import {
   disconnectMeta,
   fetchMetaIntegration,
+  finishMetaConnect,
   selectMetaAssets,
   startMetaConnect,
   type MetaAsset,
@@ -26,7 +29,7 @@ import {
 import { useMe } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
-import { REASON_KEY, metaReturn, startRedirect, type MetaReturn } from "@/lib/metaConnect";
+import { REASON_KEY, finishReason, metaReturn, startRedirect, takeMetaFinish, type MetaReturn } from "@/lib/metaConnect";
 import { browserZone } from "@/lib/shop";
 import { useOrg } from "@/screens/OrgLayout";
 
@@ -46,6 +49,8 @@ export interface MetaAdsViewProps {
   meId?: string;
   notice: MetaNotice;
   connecting: boolean;
+  /** A finish is in flight: no new connect. */
+  finishing?: boolean;
   saving: boolean;
   failure: unknown;
   confirming: boolean;
@@ -97,11 +102,12 @@ export function MetaAdsView(p: MetaAdsViewProps) {
     );
   }
 
-  const connectButton = (label: "meta.connect" | "meta.reconnect") => (
+  const connectButton = (label: "meta.connect" | "meta.reconnect") =>
+    p.finishing === true ? null : (
     <button type="button" className="btn btn-primary" disabled={p.connecting} onClick={p.onConnect} data-testid="meta-connect">
       {p.connecting ? t("meta.connecting") : t(label)}
     </button>
-  );
+    );
 
   if (conn === null) {
     return (
@@ -240,11 +246,49 @@ export interface MetaAdsBodyProps {
   navigate?: (url: string) => void;
 }
 
+/** One finish per login: React may run the effect twice, and Meta accepts a code only once. */
+let lastFinish: { state: string; done: Promise<MetaIntegration> } | null = null;
+
+function finishOnce(orgId: string, login: { code: string; state: string }): Promise<MetaIntegration> {
+  if (lastFinish?.state === login.state) return lastFinish.done;
+  const done = finishMetaConnect(orgId, login);
+  lastFinish = { state: login.state, done };
+  return done;
+}
+
 export function MetaAdsBody({ orgId, returned, meId, navigate }: MetaAdsBodyProps) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const key = ["metaIntegration", orgId];
   const query = useQuery({ queryKey: key, queryFn: () => fetchMetaIntegration(orgId), retry: false });
+  const isFinish = returned?.kind === "finish";
+  const [result, setResult] = useState<MetaReturn>(isFinish ? null : returned);
+  const [finishing, setFinishing] = useState(isFinish);
+  // StrictMode runs the effect twice with the same refs: the stored entry is taken once.
+  const taken = useRef<{ login: { code: string; state: string } | null } | null>(null);
+  useEffect(() => {
+    if (!isFinish) return;
+    if (taken.current === null) {
+      const entry = takeMetaFinish();
+      taken.current = { login: entry !== null && entry.org === orgId ? { code: entry.code, state: entry.state } : null };
+    }
+    const login = taken.current.login;
+    if (login === null) {
+      setResult({ kind: "error", reason: "no_code" });
+      setFinishing(false);
+      return;
+    }
+    finishOnce(orgId, login)
+      .then(async (stored) => {
+        // A GET started before the connection was stored must not overwrite it.
+        await queryClient.cancelQueries({ queryKey: ["metaIntegration", orgId] });
+        queryClient.setQueryData(["metaIntegration", orgId], stored);
+        setResult({ kind: "connected" });
+      })
+      .catch((error: unknown) => setResult({ kind: "error", reason: finishReason(error) }))
+      .finally(() => setFinishing(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per mount: the login is taken once
+  }, []);
   const [connecting, setConnecting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<MetaNotice>(null);
@@ -296,15 +340,21 @@ export function MetaAdsBody({ orgId, returned, meId, navigate }: MetaAdsBodyProp
         <ScreenHelp screenId="adsMeta" />
       </div>
       <p>{t("meta.intro")}</p>
+      {finishing && (
+        <p role="status" data-testid="meta-finishing">
+          {t("meta.finishing")}
+        </p>
+      )}
       {query.isLoading && <Loading label={t("meta.loading")} />}
       {query.error !== null && <ErrorBox error={query.error} onRetry={() => void query.refetch()} />}
       {query.data !== undefined && (
         <MetaAdsView
           data={query.data}
-          returned={returned}
+          returned={result}
           meId={meId}
           notice={notice}
           connecting={connecting}
+          finishing={finishing}
           saving={saving}
           failure={failure}
           confirming={confirming}

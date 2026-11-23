@@ -4082,6 +4082,9 @@ export const en = {
   "meta.reason.graph_failed": "Meta did not answer. Try again in a few minutes.",
   "meta.reason.unavailable": "Meta connection is not available now.",
   "meta.reason.unknown": "The connection failed. Try again.",
+  "meta.reason.state_invalid": "The Meta login is out of date. Start it again.",
+  "meta.reason.state_mismatch": "This Meta login was started by another person or for another organization. Start it again yourself.",
+  "meta.finishing": "Finishing the connection with Meta…",
   "meta.notConfigured": "Meta connection is not set up on the server.",
   "meta.connectedByYou": "You",
 } as const;

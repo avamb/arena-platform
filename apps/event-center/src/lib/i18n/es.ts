@@ -4082,6 +4082,9 @@ export const es: Record<MessageKey, string> = {
   "meta.reason.graph_failed": "Meta no respondió. Inténtalo en unos minutos.",
   "meta.reason.unavailable": "La conexión con Meta no está disponible ahora.",
   "meta.reason.unknown": "La conexión falló. Inténtalo de nuevo.",
+  "meta.reason.state_invalid": "El inicio de sesión en Meta caducó. Empieza de nuevo.",
+  "meta.reason.state_mismatch": "Este inicio de sesión en Meta lo empezó otra persona o para otra organización. Empiézalo tú.",
+  "meta.finishing": "Terminando la conexión con Meta…",
   "meta.notConfigured": "La conexión con Meta no está configurada en el servidor",
   "meta.connectedByYou": "tú",
 };

@@ -7,6 +7,7 @@ import { AuthProvider } from "@/lib/auth";
 import { StepUpProvider } from "@/components/StepUpDialog";
 import { I18nProvider } from "@/lib/i18n";
 import { captureLinkCode } from "@/lib/linkCode";
+import { captureMetaFinish } from "@/lib/metaConnect";
 import { captureTgEdit } from "@/lib/tgEdit";
 import { captureTgInvitations } from "@/lib/tgInvitations";
 import { router } from "@/router";
@@ -22,6 +23,8 @@ captureLinkCode();
 captureTgEdit();
 // The staff invitations page does the same at /tg/invitations (spec 46, 4.2).
 captureTgInvitations();
+// The Meta return carries code and state after "#": into sessionStorage, out of the address and the history.
+captureMetaFinish();
 
 const queryClient = new QueryClient({
   defaultOptions: {

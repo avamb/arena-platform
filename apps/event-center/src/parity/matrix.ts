@@ -1177,8 +1177,8 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Подключение Meta (Реклама → Meta)",
     bot: "— (только веб)",
     web: "R3",
-    routes: [`GET ${O}/integrations/meta`, `PATCH ${O}/integrations/meta`, `DELETE ${O}/integrations/meta`, `POST ${O}/integrations/meta/connect`],
-    note: "Спека 66, разделы 4.1 и 4.6. Экран /o/$orgId/ads/meta только для владельца (`org.update`). Владелец подключает бизнес-аккаунт Meta через переход по `login_url` на окно входа Meta, выбирает датасет для покупок и рекламный аккаунт (PATCH), отключает с вопросом (DELETE). Токен в браузер не приходит. Код входа уходит на `/v1/integrations/meta/callback`, возврат с `?meta=connected` или `?meta=error&reason=…`.",
+    routes: [`GET ${O}/integrations/meta`, `PATCH ${O}/integrations/meta`, `DELETE ${O}/integrations/meta`, `POST ${O}/integrations/meta/connect`, `POST ${O}/integrations/meta/finish`],
+    note: "Спека 66, разделы 4.1 и 4.6. Экран /o/$orgId/ads/meta только для владельца (`org.update`). Владелец подключает бизнес-аккаунт Meta через переход по `login_url` на окно входа Meta, выбирает датасет для покупок и рекламный аккаунт (PATCH), отключает с вопросом (DELETE). Токен в браузер не приходит. Колбэк `/v1/integrations/meta/callback` код не обменивает: возврат с `?meta=finish#code=…&state=…`, страница стирает фрагмент и один раз шлёт код на finish. Ошибка — `?meta=error&reason=…`.",
   },
 ];
 

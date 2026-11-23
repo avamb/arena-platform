@@ -32,6 +32,7 @@ const (
 	itToken    = "EAAB-plaintext-meta-token-0123456789"
 	itMetaUser = "4242"
 	itEC       = "https://events.example.test"
+	itRedirect = "https://api.example.test/v1/integrations/meta/callback"
 )
 
 // itGraph is a Graph stub: one code, one token, a business with two pixels
@@ -131,7 +132,7 @@ func newEnv(t *testing.T) *itEnv {
 		_, _ = pool.Exec(c, `DELETE FROM organizations WHERE id = ANY($1)`, []uuid.UUID{e.orgA, e.orgB})
 		_, _ = pool.Exec(c, `DELETE FROM users WHERE id = ANY($1)`, []uuid.UUID{e.ownerA, e.ownerB, e.mgrA})
 	})
-	e.graph = &itGraph{codes: map[string]string{"code-js": "", "code-redirect": "https://api.example.test/v1/integrations/meta/callback"}}
+	e.graph = &itGraph{codes: map[string]string{"code-1": itRedirect, "code-2": itRedirect, "code-js": ""}}
 	srv := httptest.NewServer(e.graph)
 	t.Cleanup(srv.Close)
 	box, err := secretbox.ParseKeys("v1:" + base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")))
@@ -144,7 +145,7 @@ func newEnv(t *testing.T) *itEnv {
 	}
 	e.h = New(pool, audit.NewPGWriter(pool), Settings{
 		Enabled: true, AppID: "app-1", AppSecret: itSecret, ConfigID: "cfg-1", GraphVersion: "v25.0",
-		RedirectURL: "https://api.example.test/v1/integrations/meta/callback", EventCenterURL: itEC, Edges: edges,
+		RedirectURL: itRedirect, EventCenterURL: itEC, Edges: edges,
 	}, box, metaconnect.NewClient(srv.URL, "v25.0", "app-1", itSecret, srv.Client()), nil)
 	return e
 }
@@ -189,6 +190,39 @@ func (e *itEnv) callback(code, state string) string {
 	return w.Header().Get("Location")
 }
 
+// stateOf reads the signed state out of a connect answer's login_url.
+func stateOf(t *testing.T, a ConnectAnswer) string {
+	t.Helper()
+	u, err := url.Parse(a.LoginURL)
+	if err != nil || u.Query().Get("state") == "" {
+		t.Fatalf("login_url without a state: %q", a.LoginURL)
+	}
+	return u.Query().Get("state")
+}
+
+func (e *itEnv) finish(user, org uuid.UUID, code, state string) *httptest.ResponseRecorder {
+	b, _ := json.Marshal(map[string]string{"code": code, "state": state})
+	return e.call(http.MethodPost, "/finish", string(b), user, org, e.h.HandleFinish)
+}
+
+// login runs connect, the callback and finish for user in org and returns
+// the finish answer. The callback must hand code and state over in the
+// fragment only.
+func (e *itEnv) login(user, org uuid.UUID, code string) *httptest.ResponseRecorder {
+	e.t.Helper()
+	st := stateOf(e.t, e.connect(user, org))
+	loc := e.callback(code, st)
+	prefix := itEC + "/o/" + org.String() + "/ads/meta?meta=finish#"
+	if !strings.HasPrefix(loc, prefix) {
+		e.t.Fatalf("callback location = %q", loc)
+	}
+	frag, err := url.ParseQuery(strings.TrimPrefix(loc, prefix))
+	if err != nil || frag.Get("code") != code || frag.Get("state") != st {
+		e.t.Fatalf("callback fragment = %q", loc)
+	}
+	return e.finish(user, org, frag.Get("code"), frag.Get("state"))
+}
+
 func signedRequest(secret, userID string) string {
 	b, _ := json.Marshal(map[string]any{"algorithm": "HMAC-SHA256", "user_id": userID, "issued_at": time.Now().Unix()})
 	p := base64.RawURLEncoding.EncodeToString(b)
@@ -208,18 +242,26 @@ func TestMetaConnect_FullFlow_LiveDB(t *testing.T) {
 	}
 
 	ans := e.connect(e.ownerA, e.orgA)
-	if ans.AppID != "app-1" || ans.ConfigID != "cfg-1" || ans.State == "" || !strings.Contains(ans.LoginURL, "config_id=cfg-1") ||
-		!strings.Contains(ans.LoginURL, "override_default_response_type=true") || !strings.HasPrefix(ans.LoginURL, "https://www.facebook.com/v25.0/dialog/oauth?") {
+	if ans.AppID != "app-1" || ans.ConfigID != "cfg-1" || !strings.Contains(ans.LoginURL, "config_id=cfg-1") ||
+		!strings.Contains(ans.LoginURL, "override_default_response_type=true") || !strings.HasPrefix(ans.LoginURL, "https://www.facebook.com/v25.0/dialog/oauth?") ||
+		!strings.Contains(ans.LoginURL, "redirect_uri="+url.QueryEscape(itRedirect)) {
 		t.Fatalf("connect answer: %+v", ans)
 	}
-
-	// JS mode: empty redirect_uri at the exchange.
-	loc := e.callback("code-js", ans.State)
-	if loc != itEC+"/o/"+e.orgA.String()+"/ads/meta?meta=connected" {
-		t.Fatalf("callback location = %q", loc)
+	// The callback itself stores nothing: a public GET never exchanges a code.
+	st := stateOf(t, ans)
+	_ = e.callback("code-1", st)
+	var stored int
+	_ = e.pool.QueryRow(ctx, `SELECT count(*) FROM org_meta_connections WHERE org_id = $1`, e.orgA).Scan(&stored)
+	if stored != 0 {
+		t.Fatal("the public callback stored a connection")
+	}
+	w = e.finish(e.ownerA, e.orgA, "code-1", st)
+	body := w.Body.String()
+	if w.Code != 200 || strings.Contains(body, itToken) || !strings.Contains(body, `"status":"active"`) {
+		t.Fatalf("finish: %d %s", w.Code, body)
 	}
 	w = e.call(http.MethodGet, "/", "", e.ownerA, e.orgA, e.h.HandleGet)
-	body := w.Body.String()
+	body = w.Body.String()
 	if w.Code != 200 || strings.Contains(body, itToken) || !strings.Contains(body, `"status":"active"`) ||
 		!strings.Contains(body, `"meta_business_id":"900"`) || !strings.Contains(body, `"selected_ad_account_id":"act_77"`) ||
 		!strings.Contains(body, `"selected_dataset_id":null`) || !strings.Contains(body, `"ads_management"`) || strings.Contains(body, "business_management") {
@@ -297,23 +339,27 @@ func TestMetaConnect_FullFlow_LiveDB(t *testing.T) {
 		t.Fatalf("patch unknown key: %d", w.Code)
 	}
 
-	// Redirect mode reconnects (redirect_uri sent) and keeps the selection.
-	ans = e.connect(e.ownerA, e.orgA)
-	u, _ := url.Parse(ans.LoginURL)
-	if loc := e.callback("code-redirect", u.Query().Get("state")); !strings.HasSuffix(loc, "?meta=connected") {
-		t.Fatalf("redirect mode: %q", loc)
+	// A reconnect keeps the selection.
+	if w := e.login(e.ownerA, e.orgA, "code-2"); w.Code != 200 {
+		t.Fatalf("reconnect: %d %s", w.Code, w.Body.String())
 	}
-	// A JS state with the redirect code fails the exchange (wrong redirect_uri).
-	if loc := e.callback("code-redirect", ans.State); !strings.Contains(loc, "reason=exchange_failed") {
-		t.Fatalf("mode mismatch: %q", loc)
+	// A code the exchange does not accept with META_OAUTH_REDIRECT_URL (a JS
+	// SDK code) fails with a JSON reason, nothing changes.
+	if w := e.login(e.ownerA, e.orgA, "code-js"); w.Code != http.StatusBadGateway || !strings.Contains(w.Body.String(), "meta.exchange_failed") {
+		t.Fatalf("exchange failure: %d %s", w.Code, w.Body.String())
 	}
 	if pix, _, ok, _ := metaconnect.ActiveDataset(ctx, e.pool, e.h.box, e.orgA); !ok || pix != "1002" {
 		t.Fatalf("selection lost on reconnect: %q %v", pix, ok)
 	}
 
-	// MarkTokenInvalid moves active -> error once.
+	// MarkTokenInvalid moves active -> error once and wipes the token.
 	if changed, err := metaconnect.MarkTokenInvalid(ctx, e.pool, e.orgA, "graph_190"); !changed || err != nil {
 		t.Fatalf("mark: %v %v", changed, err)
+	}
+	var wiped bool
+	_ = e.pool.QueryRow(ctx, `SELECT access_token_enc IS NULL FROM org_meta_connections WHERE org_id = $1`, e.orgA).Scan(&wiped)
+	if !wiped {
+		t.Fatal("MarkTokenInvalid kept the dead token")
 	}
 	if changed, _ := metaconnect.MarkTokenInvalid(ctx, e.pool, e.orgA, "graph_190"); changed {
 		t.Fatal("mark twice changed the row again")
@@ -322,13 +368,22 @@ func TestMetaConnect_FullFlow_LiveDB(t *testing.T) {
 		t.Fatal("ActiveDataset of an error connection")
 	}
 
-	// Disconnect: revoke at Meta, wipe, assets gone.
+	// Disconnect of the error connection: the token is already gone, so Meta
+	// is not called; the row is revoked and the assets are gone.
 	w = e.call(http.MethodDelete, "/", "", e.ownerA, e.orgA, e.h.HandleDelete)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"status":"revoked"`) || !strings.Contains(w.Body.String(), `"assets":[]`) {
 		t.Fatalf("delete: %d %s", w.Code, w.Body.String())
 	}
-	if e.graph.revoked != 1 {
-		t.Fatalf("DELETE /me/permissions calls = %d", e.graph.revoked)
+	if e.graph.revoked != 0 {
+		t.Fatalf("DELETE /me/permissions calls with a wiped token = %d", e.graph.revoked)
+	}
+	// Reconnect, then disconnect an active connection: revoke at Meta.
+	if w := e.login(e.ownerA, e.orgA, "code-1"); w.Code != 200 {
+		t.Fatalf("reconnect after disconnect: %d %s", w.Code, w.Body.String())
+	}
+	w = e.call(http.MethodDelete, "/", "", e.ownerA, e.orgA, e.h.HandleDelete)
+	if w.Code != 200 || e.graph.revoked != 1 {
+		t.Fatalf("delete active: %d revoked=%d", w.Code, e.graph.revoked)
 	}
 	var enc *string
 	_ = e.pool.QueryRow(ctx, `SELECT access_token_enc FROM org_meta_connections WHERE org_id = $1`, e.orgA).Scan(&enc)
@@ -345,33 +400,48 @@ func TestMetaConnect_CallbackRefusals_LiveDB(t *testing.T) {
 	ctx := context.Background()
 
 	// A state of orgA's manager (a member without org.update).
-	st, err := metaconnect.SignState(itSecret, e.orgA, e.mgrA, metaconnect.ModeJS, time.Now())
+	st, err := metaconnect.SignState(itSecret, e.orgA, e.mgrA, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loc := e.callback("code-js", st); loc != itEC+"/o/"+e.orgA.String()+"/ads/meta?meta=error&reason=forbidden" {
-		t.Fatalf("manager: %q", loc)
+	if w := e.finish(e.mgrA, e.orgA, "code-1", st); w.Code != 403 || !strings.Contains(w.Body.String(), "meta.forbidden") {
+		t.Fatalf("manager: %d %s", w.Code, w.Body.String())
 	}
-	// A state naming orgB with the person of orgA (not a member of orgB).
-	st, _ = metaconnect.SignState(itSecret, e.orgB, e.ownerA, metaconnect.ModeJS, time.Now())
-	if loc := e.callback("code-js", st); !strings.Contains(loc, "reason=forbidden") {
-		t.Fatalf("foreign org: %q", loc)
+	// A state naming orgB posted to orgA, and a state of another person.
+	st, _ = metaconnect.SignState(itSecret, e.orgB, e.ownerA, time.Now())
+	if w := e.finish(e.ownerA, e.orgA, "code-1", st); w.Code != 403 || !strings.Contains(w.Body.String(), "meta.state_mismatch") {
+		t.Fatalf("foreign org: %d %s", w.Code, w.Body.String())
 	}
-	// The membership is checked again at the callback, not only at connect.
+	st, _ = metaconnect.SignState(itSecret, e.orgA, e.mgrA, time.Now())
+	if w := e.finish(e.ownerA, e.orgA, "code-1", st); w.Code != 403 || !strings.Contains(w.Body.String(), "meta.state_mismatch") {
+		t.Fatalf("state of another person: %d %s", w.Code, w.Body.String())
+	}
+	// Bad bodies and a tampered state.
+	if w := e.call(http.MethodPost, "/finish", `{"code":`, e.ownerA, e.orgA, e.h.HandleFinish); w.Code != 400 || !strings.Contains(w.Body.String(), "meta.invalid_body") {
+		t.Fatalf("bad body: %d %s", w.Code, w.Body.String())
+	}
+	if w := e.finish(e.ownerA, e.orgA, "", stateOf(t, e.connect(e.ownerA, e.orgA))); w.Code != 400 || !strings.Contains(w.Body.String(), "meta.no_code") {
+		t.Fatalf("no code: %d %s", w.Code, w.Body.String())
+	}
+	bad, _ := metaconnect.SignState("other-secret", e.orgA, e.ownerA, time.Now())
+	if w := e.finish(e.ownerA, e.orgA, "code-1", bad); w.Code != 400 || !strings.Contains(w.Body.String(), "meta.state_invalid") {
+		t.Fatalf("bad state at finish: %d %s", w.Code, w.Body.String())
+	}
+	// The membership is checked again at finish, not only at connect.
 	ans := e.connect(e.ownerA, e.orgA)
 	if _, err := e.pool.Exec(ctx, `UPDATE memberships SET status = 'suspended' WHERE user_id = $1`, e.ownerA); err != nil {
 		t.Fatal(err)
 	}
-	if loc := e.callback("code-js", ans.State); !strings.Contains(loc, "reason=forbidden") {
-		t.Fatalf("suspended member: %q", loc)
+	if w := e.finish(e.ownerA, e.orgA, "code-1", stateOf(t, ans)); w.Code != 403 || !strings.Contains(w.Body.String(), "meta.forbidden") {
+		t.Fatalf("suspended member: %d %s", w.Code, w.Body.String())
 	}
-	// Tampered / wrong-secret state goes to the root, never the org page.
-	bad, _ := metaconnect.SignState("other-secret", e.orgA, e.ownerA, metaconnect.ModeJS, time.Now())
-	if loc := e.callback("code-js", bad); loc != itEC+"/?meta=error&reason=state_invalid" {
+	// Tampered / wrong-secret state at the callback goes to the root, never
+	// the org page.
+	if loc := e.callback("code-1", bad); loc != itEC+"/?meta=error&reason=state_invalid" {
 		t.Fatalf("bad state: %q", loc)
 	}
 	// The person cancelled at Meta.
-	st, _ = metaconnect.SignState(itSecret, e.orgB, e.ownerB, metaconnect.ModeJS, time.Now())
+	st, _ = metaconnect.SignState(itSecret, e.orgB, e.ownerB, time.Now())
 	w := e.call(http.MethodGet, "/cb?error=access_denied&state="+url.QueryEscape(st), "", uuid.Nil, uuid.Nil, e.h.HandleCallback)
 	if w.Code != 302 || !strings.Contains(w.Header().Get("Location"), "reason=denied") {
 		t.Fatalf("denied: %d %q", w.Code, w.Header().Get("Location"))
@@ -394,12 +464,26 @@ func TestMetaConnect_CallbackRefusals_LiveDB(t *testing.T) {
 	}
 }
 
+// TestMetaConnect_StaleSignedRequest_LiveDB: a deauthorize older than a day is
+// refused and changes nothing.
+func TestMetaConnect_StaleSignedRequest_LiveDB(t *testing.T) {
+	e := newEnv(t)
+	b, _ := json.Marshal(map[string]any{"algorithm": "HMAC-SHA256", "user_id": itMetaUser, "issued_at": time.Now().Add(-25 * time.Hour).Unix()})
+	p := base64.RawURLEncoding.EncodeToString(b)
+	m := hmac.New(sha256.New, []byte(itSecret))
+	m.Write([]byte(p))
+	body := "signed_request=" + url.QueryEscape(base64.RawURLEncoding.EncodeToString(m.Sum(nil))+"."+p)
+	if w := e.call(http.MethodPost, "/", body, uuid.Nil, uuid.Nil, e.h.HandleDeauthorize); w.Code != 400 {
+		t.Fatalf("stale deauthorize: %d %s", w.Code, w.Body.String())
+	}
+}
+
 func TestMetaConnect_MetaCallbacks_LiveDB(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	for _, p := range []struct{ user, org uuid.UUID }{{e.ownerA, e.orgA}, {e.ownerB, e.orgB}} {
-		if loc := e.callback("code-js", e.connect(p.user, p.org).State); !strings.HasSuffix(loc, "meta=connected") {
-			t.Fatalf("connect %s: %q", p.org, loc)
+		if w := e.login(p.user, p.org, "code-1"); w.Code != 200 {
+			t.Fatalf("connect %s: %d %s", p.org, w.Code, w.Body.String())
 		}
 	}
 	// Bad signature: 400, nothing changes.
@@ -457,6 +541,9 @@ func TestMetaConnect_Disabled_LiveDB(t *testing.T) {
 	}
 	if w := e.call(http.MethodGet, "/cb?code=x&state=y", "", uuid.Nil, uuid.Nil, off.HandleCallback); w.Code != 302 || w.Header().Get("Location") != itEC+"/?meta=error&reason=disabled" {
 		t.Fatalf("callback disabled: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if w := e.call(http.MethodPost, "/finish", `{"code":"x","state":"y"}`, e.ownerA, e.orgA, off.HandleFinish); w.Code != 503 || !strings.Contains(w.Body.String(), "meta.disabled") {
+		t.Fatalf("finish disabled: %d %s", w.Code, w.Body.String())
 	}
 	if w := e.call(http.MethodPost, "/", signedRequest(itSecret, itMetaUser), uuid.Nil, uuid.Nil, off.HandleDeauthorize); w.Code != 503 {
 		t.Fatalf("deauthorize disabled: %d", w.Code)

@@ -2,10 +2,11 @@
 // organization (spec 08_architecture/66, stage M1):
 //
 //	POST   /v1/organizations/{org_id}/integrations/meta/connect
+//	POST   /v1/organizations/{org_id}/integrations/meta/finish
 //	GET    /v1/organizations/{org_id}/integrations/meta
 //	PATCH  /v1/organizations/{org_id}/integrations/meta
 //	DELETE /v1/organizations/{org_id}/integrations/meta
-//	GET    /v1/integrations/meta/callback          (public, signed state)
+//	GET    /v1/integrations/meta/callback          (public, signed state, no exchange)
 //	POST   /v1/integrations/meta/deauthorize       (public, Meta signed_request)
 //	POST   /v1/integrations/meta/data-deletion     (public, Meta signed_request)
 //
@@ -53,7 +54,7 @@ type Settings struct {
 	ConfigID     string
 	GraphVersion string
 	// RedirectURL is META_OAUTH_REDIRECT_URL (the dialog/oauth login and its
-	// code exchange). Empty = no login_url is offered.
+	// code exchange). Empty switches the feature off.
 	RedirectURL string
 	// EventCenterURL is EVENT_CENTER_PUBLIC_URL, where the callback sends the
 	// person back.
@@ -80,7 +81,7 @@ func New(pool *pgxpool.Pool, auditWriter audit.Writer, cfg Settings, box *secret
 	if logger == nil {
 		logger = slog.Default()
 	}
-	if box == nil || graph == nil || len(cfg.Edges) == 0 {
+	if box == nil || graph == nil || len(cfg.Edges) == 0 || cfg.RedirectURL == "" {
 		cfg.Enabled = false
 	}
 	if cfg.DataDeletionStatusURL == "" {
@@ -122,16 +123,12 @@ type ConnectAnswer struct {
 	AppID        string `json:"app_id"`
 	ConfigID     string `json:"config_id"`
 	GraphVersion string `json:"graph_version"`
-	// State is for a JS SDK login (mode js): the event center sends the
-	// person to the callback with the code FB.login returned and this state.
-	State string `json:"state"`
-	// LoginURL is the dialog/oauth address with its own state (mode
-	// redirect); "" when no redirect address is configured.
+	// LoginURL is the dialog/oauth address with a signed state that names the
+	// organization and the caller.
 	LoginURL string `json:"login_url"`
 }
 
-// HandleConnect signs two states (one per login mode) for the caller and
-// answers the login parameters.
+// HandleConnect signs a state for the caller and answers the login address.
 func (h *Handler) HandleConnect(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := h.guard(w, r)
 	if !ok {
@@ -147,28 +144,22 @@ func (h *Handler) HandleConnect(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusForbidden, "meta.user_required", "only a signed-in person can connect Meta")
 		return
 	}
-	now := h.now()
-	jsState, err := metaconnect.SignState(h.cfg.AppSecret, orgID, userID, metaconnect.ModeJS, now)
+	state, err := metaconnect.SignState(h.cfg.AppSecret, orgID, userID, h.now())
 	if err != nil {
 		h.unavailable(w, r)
 		return
 	}
-	ans := ConnectAnswer{AppID: h.cfg.AppID, ConfigID: h.cfg.ConfigID, GraphVersion: h.cfg.GraphVersion, State: jsState}
-	if h.cfg.RedirectURL != "" {
-		redirState, err := metaconnect.SignState(h.cfg.AppSecret, orgID, userID, metaconnect.ModeRedirect, now)
-		if err != nil {
-			h.unavailable(w, r)
-			return
-		}
-		q := url.Values{
-			"client_id":                      {h.cfg.AppID},
-			"config_id":                      {h.cfg.ConfigID},
-			"response_type":                  {"code"},
-			"override_default_response_type": {"true"},
-			"redirect_uri":                   {h.cfg.RedirectURL},
-			"state":                          {redirState},
-		}
-		ans.LoginURL = "https://www.facebook.com/" + h.cfg.GraphVersion + "/dialog/oauth?" + q.Encode()
+	q := url.Values{
+		"client_id":                      {h.cfg.AppID},
+		"config_id":                      {h.cfg.ConfigID},
+		"response_type":                  {"code"},
+		"override_default_response_type": {"true"},
+		"redirect_uri":                   {h.cfg.RedirectURL},
+		"state":                          {state},
+	}
+	ans := ConnectAnswer{
+		AppID: h.cfg.AppID, ConfigID: h.cfg.ConfigID, GraphVersion: h.cfg.GraphVersion,
+		LoginURL: "https://www.facebook.com/" + h.cfg.GraphVersion + "/dialog/oauth?" + q.Encode(),
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	httputil.WriteJSON(w, http.StatusOK, ans)
@@ -178,21 +169,27 @@ func (h *Handler) HandleConnect(w http.ResponseWriter, r *http.Request) {
 // GET /v1/integrations/meta/callback
 // ---------------------------------------------------------------------------
 
-// Redirect reasons (?meta=error&reason=<code>).
+// Redirect reasons of the callback (?meta=error&reason=<code>).
 const (
 	ReasonDisabled     = "disabled"
 	ReasonStateInvalid = "state_invalid"
 	ReasonDenied       = "denied"
 	ReasonNoCode       = "no_code"
-	ReasonForbidden    = "forbidden"
-	ReasonExchange     = "exchange_failed"
-	ReasonGraph        = "graph_failed"
-	ReasonUnavailable  = "unavailable"
 )
 
-// back sends the person to the event center. orgID nil = the event center
-// root (the state could not be trusted). Never a JSON body.
+// back sends the person to the event center with an error reason. orgID nil
+// = the event center root (the state could not be trusted). Never a JSON
+// body.
 func (h *Handler) back(w http.ResponseWriter, r *http.Request, orgID *uuid.UUID, reason string) {
+	q := url.Values{}
+	q.Set("meta", "error")
+	q.Set("reason", reason)
+	h.redirect(w, r, orgID, "?"+q.Encode())
+}
+
+// redirect sends the person to the event center root or to the Meta screen
+// of orgID, with suffix (query and fragment) appended.
+func (h *Handler) redirect(w http.ResponseWriter, r *http.Request, orgID *uuid.UUID, suffix string) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	base := strings.TrimRight(h.cfg.EventCenterURL, "/")
@@ -206,27 +203,23 @@ func (h *Handler) back(w http.ResponseWriter, r *http.Request, orgID *uuid.UUID,
 	if orgID != nil {
 		target = base + "/o/" + orgID.String() + "/ads/meta"
 	}
-	q := url.Values{}
-	if reason == "" {
-		q.Set("meta", "connected")
-	} else {
-		q.Set("meta", "error")
-		q.Set("reason", reason)
-	}
-	http.Redirect(w, r, target+"?"+q.Encode(), http.StatusFound)
+	http.Redirect(w, r, target+suffix, http.StatusFound)
 }
 
-// HandleCallback finishes a login: it verifies the state, checks again that
-// the state's person holds org.update in the state's organization, exchanges
-// the code, reads /me, the permissions and the assets, stores the connection
-// and redirects back to the event center.
+// HandleCallback is where Meta sends the person after the login. It does NOT
+// exchange the code: a public GET would let anyone finish a login into
+// another person's session (login CSRF). It verifies the state's signature
+// and expiry only and hands code and state to the event center in the URL
+// FRAGMENT (never the query, so neither the server logs nor a Referer carry
+// them); the signed-in owner then posts them to HandleFinish.
 func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	if !h.cfg.Enabled {
 		h.back(w, r, nil, ReasonDisabled)
 		return
 	}
 	q := r.URL.Query()
-	st, err := metaconnect.VerifyState(h.cfg.AppSecret, q.Get("state"), h.now())
+	rawState := q.Get("state")
+	st, err := metaconnect.VerifyState(h.cfg.AppSecret, rawState, h.now())
 	if err != nil {
 		h.back(w, r, nil, ReasonStateInvalid)
 		return
@@ -241,36 +234,82 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		h.back(w, r, &org, ReasonNoCode)
 		return
 	}
-	if h.pool == nil {
-		h.back(w, r, &org, ReasonUnavailable)
+	frag := url.Values{"code": {code}, "state": {rawState}}
+	h.redirect(w, r, &org, "?meta=finish#"+frag.Encode())
+}
+
+// ---------------------------------------------------------------------------
+// POST .../integrations/meta/finish
+// ---------------------------------------------------------------------------
+
+// finishRequest is the body of HandleFinish.
+type finishRequest struct {
+	Code  string `json:"code"`
+	State string `json:"state"`
+}
+
+// HandleFinish finishes a login for the signed-in caller: the state must be
+// valid, name the path organization AND the caller. Then it checks again that
+// the caller holds org.update there, exchanges the code, reads /me, the
+// permissions and the assets, stores the connection and answers it.
+func (h *Handler) HandleFinish(w http.ResponseWriter, r *http.Request) {
+	orgID, ok := h.guard(w, r)
+	if !ok {
 		return
 	}
+	if !h.cfg.Enabled {
+		writeErr(w, r, http.StatusServiceUnavailable, "meta.disabled", "the Meta connection is not switched on for this platform")
+		return
+	}
+	actor, _ := auth.ActorFromContext(r.Context())
+	userID, err := uuid.Parse(actor.ID)
+	if err != nil {
+		writeErr(w, r, http.StatusForbidden, "meta.user_required", "only a signed-in person can connect Meta")
+		return
+	}
+	var req finishRequest
+	body, err := io.ReadAll(io.LimitReader(r.Body, 8<<10))
+	dec := json.NewDecoder(bytes.NewReader(body))
+	if err != nil || dec.Decode(&req) != nil || dec.More() {
+		writeErr(w, r, http.StatusBadRequest, "meta.invalid_body", "send code and state")
+		return
+	}
+	if req.Code == "" || len(req.Code) > 4096 {
+		writeErr(w, r, http.StatusBadRequest, "meta.no_code", "the Meta login returned no code")
+		return
+	}
+	st, err := metaconnect.VerifyState(h.cfg.AppSecret, req.State, h.now())
+	if err != nil {
+		writeErr(w, r, http.StatusBadRequest, "meta.state_invalid", "the Meta login is invalid or expired, start it again")
+		return
+	}
+	if st.OrgID != orgID || st.UserID != userID {
+		writeErr(w, r, http.StatusForbidden, "meta.state_mismatch", "this Meta login was started by another person or for another organization")
+		return
+	}
+	org := orgID
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	allowed, err := metaconnect.UserCanConnect(ctx, h.pool, st.UserID, st.OrgID)
+	allowed, err := metaconnect.UserCanConnect(ctx, h.pool, userID, org)
 	if err != nil {
 		h.logger.Error("metaconnect: permission check failed", "org_id", org.String())
-		h.back(w, r, &org, ReasonUnavailable)
+		h.unavailable(w, r)
 		return
 	}
 	if !allowed {
-		h.back(w, r, &org, ReasonForbidden)
+		writeErr(w, r, http.StatusForbidden, "meta.forbidden", "only the owner of the organization can connect Meta")
 		return
 	}
-	redirectURI := ""
-	if st.Mode == metaconnect.ModeRedirect {
-		redirectURI = h.cfg.RedirectURL
-	}
-	tok, err := h.graph.ExchangeCode(ctx, code, redirectURI)
+	tok, err := h.graph.ExchangeCode(ctx, req.Code, h.cfg.RedirectURL)
 	if err != nil {
-		h.logger.Warn("metaconnect: code exchange failed", "org_id", org.String(), "mode", st.Mode, "reason", metaconnect.ErrorCode(err))
-		h.back(w, r, &org, ReasonExchange)
+		h.logger.Warn("metaconnect: code exchange failed", "org_id", org.String(), "reason", metaconnect.ErrorCode(err))
+		writeErr(w, r, http.StatusBadGateway, "meta.exchange_failed", "Meta did not accept the login, start it again")
 		return
 	}
 	me, err := h.graph.Me(ctx, tok.AccessToken)
 	if err != nil {
 		h.logger.Warn("metaconnect: GET /me failed", "org_id", org.String(), "reason", metaconnect.ErrorCode(err))
-		h.back(w, r, &org, ReasonGraph)
+		writeErr(w, r, http.StatusBadGateway, "meta.graph_failed", "Meta did not answer, try again in a minute")
 		return
 	}
 	scopes, err := h.graph.Permissions(ctx, tok.AccessToken)
@@ -281,7 +320,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	assets, skips, err := h.graph.Assets(ctx, tok.AccessToken, me.ClientBusinessID, h.cfg.Edges)
 	if err != nil {
 		h.logger.Warn("metaconnect: reading the assets failed", "org_id", org.String(), "reason", metaconnect.ErrorCode(err))
-		h.back(w, r, &org, ReasonGraph)
+		writeErr(w, r, http.StatusBadGateway, "meta.graph_failed", "Meta did not answer, try again in a minute")
 		return
 	}
 	skipped := make([]string, 0, len(skips))
@@ -294,41 +333,43 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	tx, err := h.pool.Begin(ctx)
 	if err != nil {
-		h.back(w, r, &org, ReasonUnavailable)
+		h.unavailable(w, r)
 		return
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 	if err := metaconnect.SaveConnection(ctx, tx, h.box, metaconnect.NewConnection{
-		OrgID: org, UserID: st.UserID, BusinessID: me.ClientBusinessID, MetaUserID: me.ID,
+		OrgID: org, UserID: userID, BusinessID: me.ClientBusinessID, MetaUserID: me.ID,
 		ConfigID: h.cfg.ConfigID, Token: tok, Scopes: scopes, Assets: assets,
 	}); err != nil {
 		h.logger.Error("metaconnect: saving the connection failed", "org_id", org.String())
-		h.back(w, r, &org, ReasonUnavailable)
+		h.unavailable(w, r)
 		return
 	}
 	if h.audit != nil {
 		if err := h.audit.WriteTx(ctx, tx, audit.Event{
-			OccurredAt: time.Now().UTC(), ActorType: "user", ActorID: st.UserID.String(),
+			OccurredAt: time.Now().UTC(), ActorType: "user", ActorID: userID.String(),
 			Action: "v1.org.meta.connect", ResourceType: "organization", ResourceID: org.String(),
 			RequestID: logging.RequestID(ctx), TraceID: logging.TraceID(ctx), IP: httputil.ExtractClientIP(r),
 			Metadata: map[string]any{
-				"org_id": org.String(), "meta_business_id": me.ClientBusinessID, "mode": st.Mode,
+				"org_id": org.String(), "meta_business_id": me.ClientBusinessID,
 				"datasets": counts[metaconnect.KindDataset], "ad_accounts": counts[metaconnect.KindAdAccount],
 				"pages": counts[metaconnect.KindPage], "skipped_edges": skipped, "scopes": scopes,
 			},
 		}); err != nil {
-			h.back(w, r, &org, ReasonUnavailable)
+			h.unavailable(w, r)
 			return
 		}
 	}
-	if err := tx.Commit(ctx); err != nil {
-		h.back(w, r, &org, ReasonUnavailable)
+	v, err := h.view(ctx, tx, org)
+	if err != nil || tx.Commit(ctx) != nil {
+		h.unavailable(w, r)
 		return
 	}
 	if len(skips) > 0 {
 		h.logger.Info("metaconnect: some asset edges were skipped", "org_id", org.String(), "skipped", strings.Join(skipped, ","))
 	}
-	h.back(w, r, &org, "")
+	w.Header().Set("Cache-Control", "no-store")
+	httputil.WriteJSON(w, http.StatusOK, v)
 }
 
 // ---------------------------------------------------------------------------
@@ -583,7 +624,7 @@ func (h *Handler) signedRequest(w http.ResponseWriter, r *http.Request) (metacon
 		writeErr(w, r, http.StatusBadRequest, "meta.invalid_signed_request", "send signed_request as a form field")
 		return metaconnect.SignedRequest{}, false
 	}
-	sr, err := metaconnect.ParseSignedRequest(r.PostForm.Get("signed_request"), h.cfg.AppSecret)
+	sr, err := metaconnect.ParseSignedRequest(r.PostForm.Get("signed_request"), h.cfg.AppSecret, h.now())
 	if err != nil {
 		writeErr(w, r, http.StatusBadRequest, "meta.invalid_signed_request", "signed_request is missing or its signature is wrong")
 		return metaconnect.SignedRequest{}, false

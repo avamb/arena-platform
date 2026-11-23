@@ -343,7 +343,7 @@ const orgDataRoute = createRoute({
   component: OrgDataScreen,
 });
 
-// Spec 66: "Advertising -> Meta". The callback comes back to this address with ?meta=connected or
+// Spec 66: "Advertising -> Meta". The callback comes back to this address with ?meta=finish (code and state were moved to sessionStorage at boot) or
 // ?meta=error&reason=<code>. The screen itself explains it is the owner's.
 const metaAdsRoute = createRoute({
   getParentRoute: () => orgRoute,

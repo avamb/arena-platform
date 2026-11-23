@@ -218,6 +218,10 @@ func TestConversions_MetaConnectionToken_LiveDB(t *testing.T) {
 	if connStatus != metaconnect.StatusError || connErr != "graph_190" {
 		t.Fatalf("connection after 190: %s %q", connStatus, connErr)
 	}
+	var tokenLeft bool
+	if err := pool.QueryRow(ctx, `SELECT access_token_enc IS NOT NULL FROM org_meta_connections WHERE org_id = $1`, orgID).Scan(&tokenLeft); err != nil || tokenLeft {
+		t.Fatalf("the dead token was not wiped after 190: left=%v err=%v", tokenLeft, err)
+	}
 	// An error connection is no longer a source: a new order queues nothing.
 	order3 := newOrder()
 	_ = leg.Dispatch(ctx, outbox.Event{EventType: EventOrderPaid, AggregateID: order3.String()})
@@ -225,6 +229,49 @@ func TestConversions_MetaConnectionToken_LiveDB(t *testing.T) {
 	_ = pool.QueryRow(ctx, `SELECT count(*) FROM conversion_deliveries WHERE order_id = $1`, order3).Scan(&n3)
 	if n3 != 0 {
 		t.Fatalf("queued for an error connection: %d", n3)
+	}
+}
+
+// TestConversions_MetaConnectionUnreadable_GA4Unblocked_LiveDB: a connection
+// token that does not open (another key) sets Settings.MetaErr only; the
+// manual GA4 credentials still come back and no Meta pixel is offered.
+func TestConversions_MetaConnectionUnreadable_GA4Unblocked_LiveDB(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	sealBox, _ := secretbox.ParseKeys("v1:" + base64.StdEncoding.EncodeToString([]byte(strings.Repeat("s", 32))))
+	otherBox, _ := secretbox.ParseKeys("v1:" + base64.StdEncoding.EncodeToString([]byte(strings.Repeat("o", 32))))
+	orgID := uuid.New()
+	defer func() { _, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id = $1`, orgID) }()
+	if _, err := pool.Exec(ctx, `INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`, orgID, "Unread "+orgID.String()[:8], "unread-"+orgID.String()[:8]); err != nil {
+		t.Fatal(err)
+	}
+	sealed, _ := metaconnect.SealToken(sealBox, orgID, "tok-unreadable")
+	if _, err := pool.Exec(ctx, `INSERT INTO org_meta_connections (org_id, meta_user_id, access_token_enc) VALUES ($1, 'mu', $2)`, orgID, sealed); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO org_meta_assets (org_id, kind, meta_id, name, selected) VALUES ($1, 'dataset', '55', 'P', true)`, orgID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO org_conversion_settings (org_id, ga4_measurement_id, ga4_api_secret) VALUES ($1, 'G-UNREAD', 'ga-sec')`, orgID); err != nil {
+		t.Fatal(err)
+	}
+	st, ok, err := NewPGStore(pool).WithMetaBox(otherBox).Settings(ctx, orgID)
+	if err != nil || !ok {
+		t.Fatalf("Settings: ok=%v err=%v", ok, err)
+	}
+	if st.MetaErr == nil || st.MetaReady() || !st.GA4Ready() || st.GA4MeasurementID != "G-UNREAD" {
+		t.Fatalf("settings = metaErr=%v metaReady=%v ga4=%q", st.MetaErr, st.MetaReady(), st.GA4MeasurementID)
+	}
+	if strings.Contains(st.MetaErr.Error(), "tok-unreadable") {
+		t.Fatalf("MetaErr leaks the token: %v", st.MetaErr)
 	}
 }
 

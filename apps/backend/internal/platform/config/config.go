@@ -2106,7 +2106,8 @@ func (c *Config) validateProduction() []error {
 
 	// 20. A Meta app id switches the Meta connection on (spec 66 section 4.5):
 	// then the secret, the login configuration and a parsable token key are
-	// required, and the OAuth redirect address must be https (api, worker).
+	// required (api, worker), and the OAuth redirect address must be https
+	// (api only: the worker never runs the login).
 	if c.uses(capMeta) && c.MetaAppID != "" {
 		errs = append(errs, c.validateProductionMeta()...)
 	}
@@ -2132,8 +2133,8 @@ func (c *Config) validateProductionMeta() []error {
 			errs = append(errs, fmt.Errorf("META_TOKEN_ENC_KEY is invalid: %w", err))
 		}
 	}
-	if u, err := url.Parse(c.MetaOAuthRedirectURL); c.MetaOAuthRedirectURL == "" || err != nil ||
-		!strings.EqualFold(u.Scheme, "https") || u.Host == "" {
+	if u, err := url.Parse(c.MetaOAuthRedirectURL); c.uses(capMetaLogin) && (c.MetaOAuthRedirectURL == "" || err != nil ||
+		!strings.EqualFold(u.Scheme, "https") || u.Host == "") {
 		errs = append(errs, fmt.Errorf(
 			"META_OAUTH_REDIRECT_URL must be an https:// address in production when META_APP_ID is set (got %q)",
 			c.MetaOAuthRedirectURL,

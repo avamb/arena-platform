@@ -56,10 +56,13 @@ const (
 	// capMeta: META_* (the api runs the Meta login, the worker calls the Graph
 	// API with the sealed tokens; spec 08_architecture/66 section 4.5).
 	capMeta
+	// capMetaLogin: META_OAUTH_REDIRECT_URL (only the api runs the Meta login
+	// and its code exchange; the worker never needs it).
+	capMetaLogin
 )
 
 var roleCapabilities = map[Role][]capability{
-	RoleAPI:     {capJWT, capEdge, capMedia, capPublicURL, capMeta},
+	RoleAPI:     {capJWT, capEdge, capMedia, capPublicURL, capMeta, capMetaLogin},
 	RoleWorker:  {capMail, capOutbox, capMedia, capPublicURL, capVenueGen, capMeta},
 	RoleBot:     {capJWT, capEventsBot},
 	RoleMigrate: nil,
