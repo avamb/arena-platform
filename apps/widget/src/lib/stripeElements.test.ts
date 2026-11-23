@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
-  STRIPE_INIT_TIMEOUT_MS,
+  STRIPE_FORM_READY_TIMEOUT_MS,
+  STRIPE_JS_LOAD_TIMEOUT_MS,
   STRIPE_JS_URL,
   StripeUnavailableError,
   openEmbeddedCheckout,
@@ -20,8 +21,9 @@ describe('Stripe.js source and budget', () => {
     expect(new URL(STRIPE_JS_URL).host).toBe('js.stripe.com');
   });
 
-  it('gives load + init five seconds', () => {
-    expect(STRIPE_INIT_TIMEOUT_MS).toBe(5000);
+  it('gives the script five seconds to load and the whole form fifteen to be ready', () => {
+    expect(STRIPE_JS_LOAD_TIMEOUT_MS).toBe(5000);
+    expect(STRIPE_FORM_READY_TIMEOUT_MS).toBe(15000);
   });
 });
 
@@ -128,7 +130,7 @@ describe('openEmbeddedCheckout', () => {
       loadStripe: async () => factoryFor(checkout),
     });
     const settled = p.catch((e: unknown) => e as StripeUnavailableError);
-    await vi.advanceTimersByTimeAsync(STRIPE_INIT_TIMEOUT_MS + 1);
+    await vi.advanceTimersByTimeAsync(STRIPE_FORM_READY_TIMEOUT_MS + 1);
     const err = await settled;
     expect(err).toBeInstanceOf(StripeUnavailableError);
     expect(err.reason).toBe('timeout');

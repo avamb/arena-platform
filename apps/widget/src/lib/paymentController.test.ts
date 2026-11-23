@@ -8,7 +8,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { createPaymentController, type PaymentUiState } from './paymentController.js';
 import { createPaymentSteps, type PaymentStepEvent } from './paymentSteps.js';
 import type { CheckoutStatusResponse, PaymentBlock } from './checkout.js';
-import { StripeUnavailableError } from './stripeElements.js';
+import { StripeUnavailableError, openEmbeddedCheckout } from './stripeElements.js';
 
 const SECRET = 'cs_test_secret_DO_NOT_LEAK';
 const BLOCK: PaymentBlock = {
@@ -548,6 +548,111 @@ describe('one deadline from start()', () => {
     await slow.ctrl.start({ express: 'E', payment: 'P' });
     await vi.waitFor(() => expect(slow.redirect).toHaveBeenCalled());
     slow.ctrl.destroy();
+  });
+});
+
+describe('two deadlines: script load 5 s, form ready 15 s', () => {
+  function realOpen(h: { checkout: unknown }, loadStripe: () => Promise<unknown>) {
+    return {
+      open: openEmbeddedCheckout as never,
+      loadStripe: loadStripe as never,
+      _h: h,
+    };
+  }
+  const factoryFor = (checkout: unknown) =>
+    (() => ({ initCheckoutElementsSdk: () => checkout })) as never;
+
+  it('falls back when Stripe.js has not loaded in 5 s', async () => {
+    vi.useFakeTimers();
+    try {
+      const h = setup([], [status('pending')], {
+        initTimeoutMs: undefined,
+        ...realOpen({ checkout: null }, () => new Promise(() => {})),
+      });
+      void h.ctrl.start({ express: 'E', payment: 'P' });
+      await vi.advanceTimersByTimeAsync(4900);
+      expect(h.postHosted).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(h.postHosted).toHaveBeenCalledTimes(1);
+      expect(h.redirect).toHaveBeenCalledTimes(1);
+      h.ctrl.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('falls back at once when the script fails to load', async () => {
+    vi.useFakeTimers();
+    try {
+      const h = setup([], [status('pending')], {
+        initTimeoutMs: undefined,
+        ...realOpen({ checkout: null }, async () => {
+          throw new StripeUnavailableError('load');
+        }),
+      });
+      void h.ctrl.start({ express: 'E', payment: 'P' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.redirect).toHaveBeenCalledTimes(1);
+      h.ctrl.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does NOT fall back when the script loaded and loadActions answers at 6 s: the form gets ready', async () => {
+    vi.useFakeTimers();
+    try {
+      const express = fakeElement();
+      const payment = fakeElement();
+      const checkout = {
+        on: vi.fn(),
+        createExpressCheckoutElement: () => express,
+        createPaymentElement: () => payment,
+        destroy: vi.fn(),
+        loadActions: () =>
+          new Promise((r) => setTimeout(() => r({ type: 'success', actions: { confirm: vi.fn() } }), 6000)),
+      };
+      const h = setup([], [status('pending')], {
+        initTimeoutMs: undefined,
+        ...realOpen({ checkout }, async () => factoryFor(checkout)),
+      });
+      void h.ctrl.start({ express: 'E', payment: 'P' });
+      await vi.advanceTimersByTimeAsync(6100);
+      expect(h.postHosted).not.toHaveBeenCalled();
+      expect(h.last().phase).toBe('loading');
+      payment.fire('ready');
+      expect(h.last().phase).toBe('ready');
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(h.postHosted).not.toHaveBeenCalled();
+      h.ctrl.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('falls back at 15 s when the form never becomes ready', async () => {
+    vi.useFakeTimers();
+    try {
+      const checkout = {
+        on: vi.fn(),
+        createExpressCheckoutElement: () => fakeElement(),
+        createPaymentElement: () => fakeElement(),
+        destroy: vi.fn(),
+        loadActions: async () => ({ type: 'success', actions: { confirm: vi.fn() } }),
+      };
+      const h = setup([], [status('pending')], {
+        initTimeoutMs: undefined,
+        ...realOpen({ checkout }, async () => factoryFor(checkout)),
+      });
+      void h.ctrl.start({ express: 'E', payment: 'P' });
+      await vi.advanceTimersByTimeAsync(14_900);
+      expect(h.postHosted).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(h.postHosted).toHaveBeenCalledTimes(1);
+      h.ctrl.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

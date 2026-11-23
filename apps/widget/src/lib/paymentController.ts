@@ -12,9 +12,10 @@
  * Stripe's `confirm()` answer: a successful confirm only starts the polling.
  * `client_secret` lives in the `block` argument and goes to Stripe only.
  *
- * One 5-second budget, counted from `start()`, covers loading Stripe.js, init,
- * `loadActions()` and the Payment Element's `ready`. Past it the hosted page
- * is used.
+ * Two budgets, both counted from `start()`: Stripe.js must LOAD within 5 s
+ * (a load failure falls back at once), and the whole path to the Payment
+ * Element's `ready` (init, `loadActions()`, ready) has 15 s. Past either the
+ * hosted page is used.
  */
 
 import type { CheckoutStatusResponse, PaymentBlock } from './checkout.js';
@@ -26,8 +27,10 @@ import {
   type PaymentSteps,
 } from './paymentSteps.js';
 import {
+  loadStripeJs,
   openEmbeddedCheckout,
-  STRIPE_INIT_TIMEOUT_MS,
+  STRIPE_FORM_READY_TIMEOUT_MS,
+  STRIPE_JS_LOAD_TIMEOUT_MS,
   type CheckoutActionsLike,
   type CheckoutLike,
   type ElementLike,
@@ -94,8 +97,10 @@ export interface PaymentControllerOptions {
   /** Replaceable in tests. */
   open?: (o: OpenOptions) => ReturnType<typeof openEmbeddedCheckout>;
   loadStripe?: OpenOptions['loadStripe'];
-  /** The single budget from start() to the card form being ready. */
+  /** The budget from start() to the card form being ready (default 15 s). */
   initTimeoutMs?: number;
+  /** The budget from start() to Stripe.js having loaded (default 5 s). */
+  loadTimeoutMs?: number;
   /** How long to wait for the wallet availability before reporting the form view without it. */
   walletWaitMs?: number;
   pollIntervalMs?: number;
@@ -173,7 +178,9 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
   // How long to keep asking after Stripe accepted the payment (the hold end plus
   // a few minutes, computed by the caller).
   const lateMax = opts.lateSettleMaxMs ?? 15 * 60_000;
-  const budget = opts.initTimeoutMs ?? STRIPE_INIT_TIMEOUT_MS;
+  const budget = opts.initTimeoutMs ?? STRIPE_FORM_READY_TIMEOUT_MS;
+  const loadBudget = opts.loadTimeoutMs ?? STRIPE_JS_LOAD_TIMEOUT_MS;
+  const rawLoadStripe = opts.loadStripe ?? loadStripeJs;
   const walletWait = opts.walletWaitMs ?? 1500;
   const recoverMax = opts.recoverPollMaxMs ?? 12_000;
 
@@ -187,6 +194,7 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
   let paymentComplete = false;
   let sessionCanConfirm = false;
   let deadlineTimer: ReturnType<typeof setTimeout> | null = null;
+  let loadTimer: ReturnType<typeof setTimeout> | null = null;
   let walletTimer: ReturnType<typeof setTimeout> | null = null;
   let timedOut = false;
   let paymentReady = false;
@@ -202,6 +210,12 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
   function clearDeadline(): void {
     if (deadlineTimer) clearTimeout(deadlineTimer);
     deadlineTimer = null;
+    clearLoadTimer();
+  }
+
+  function clearLoadTimer(): void {
+    if (loadTimer) clearTimeout(loadTimer);
+    loadTimer = null;
   }
 
   function recomputeCanPay(): void {
@@ -414,24 +428,37 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
   return {
     async start(mounts) {
       set({ phase: 'loading' });
-      // ONE deadline for everything up to the card form being ready.
-      deadlineTimer = setTimeout(() => {
-        if (state.phase === 'loading' && !destroyed) {
+      const expire = (): void => {
+        if (state.phase === 'loading' && !destroyed && !timedOut) {
           timedOut = true;
           void fallBackToHosted();
         }
-      }, budget);
+      };
+      // Deadline for everything up to the card form being ready.
+      deadlineTimer = setTimeout(expire, budget);
+      // Stripe.js itself must have loaded much sooner (spec 65 §3).
+      let scriptLoaded = false;
+      loadTimer = setTimeout(() => {
+        if (!scriptLoaded) expire();
+      }, loadBudget);
 
       let opened;
       try {
-        // No budget of its own: the deadline above is the only one.
+        // No budget of its own: the deadlines above are the only ones.
         opened = await open({
           publishableKey: opts.block.publishable_key,
           clientSecret: opts.block.client_secret,
           locale: opts.locale,
-          loadStripe: opts.loadStripe,
+          loadStripe: async () => {
+            const factory = await rawLoadStripe();
+            scriptLoaded = true;
+            clearLoadTimer();
+            return factory;
+          },
           timeoutMs: Number.POSITIVE_INFINITY,
         });
+        scriptLoaded = true;
+        clearLoadTimer();
       } catch {
         if (!timedOut) await fallBackToHosted();
         return;

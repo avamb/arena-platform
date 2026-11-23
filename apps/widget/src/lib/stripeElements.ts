@@ -6,9 +6,10 @@
  *  - Stripe.js is loaded ONLY from js.stripe.com, as the versioned script that
  *    matches the pinned API version (2026-03-25.dahlia), never from npm and
  *    never from a host-supplied address.
- *  - Loading + init + `loadActions()` share ONE budget of 5 seconds. Past it
- *    (or on a CSP refusal, a network error, a throwing init) the caller falls
- *    back to the hosted page.
+ *  - The script has 5 s to load; loading + init + `loadActions()` + the element
+ *    being ready have 15 s in total (the controller enforces both). On a CSP
+ *    refusal, a network error or a throwing init the caller falls back to the
+ *    hosted page at once.
  *  - The client secret is passed to Stripe and nowhere else: not logged, not
  *    stored, not put into an error message.
  *
@@ -19,8 +20,11 @@
 /** Versioned Stripe.js matching API version 2026-03-25.dahlia. */
 export const STRIPE_JS_URL = 'https://js.stripe.com/dahlia/stripe.js';
 
-/** Load + init budget before the hosted fallback (spec 65 §3.5). */
-export const STRIPE_INIT_TIMEOUT_MS = 5000;
+/** Stripe.js script load budget before the hosted fallback (spec 65 §3). */
+export const STRIPE_JS_LOAD_TIMEOUT_MS = 5000;
+
+/** Whole start-to-ready budget (load, init, loadActions, element ready). */
+export const STRIPE_FORM_READY_TIMEOUT_MS = 15000;
 
 /** Locales Stripe.js knows among the widget's: everything else is `auto`. */
 const STRIPE_LOCALES = new Set(['en', 'ru', 'cs', 'he', 'es']);
@@ -77,7 +81,7 @@ export interface StripeLike {
 
 export type StripeFactory = (publishableKey: string, options?: Record<string, unknown>) => StripeLike;
 
-/** Stripe.js did not load, init failed, or the 5 s budget ran out. */
+/** Stripe.js did not load, init failed, or the time budget ran out. */
 export class StripeUnavailableError extends Error {
   readonly reason: 'timeout' | 'load' | 'init';
   constructor(reason: 'timeout' | 'load' | 'init') {
@@ -174,7 +178,7 @@ export interface OpenOptions {
  */
 export function openEmbeddedCheckout(opts: OpenOptions): Promise<OpenedCheckout> {
   const load = opts.loadStripe ?? loadStripeJs;
-  const budget = opts.timeoutMs ?? STRIPE_INIT_TIMEOUT_MS;
+  const budget = opts.timeoutMs ?? STRIPE_FORM_READY_TIMEOUT_MS;
 
   const work = (async (): Promise<OpenedCheckout> => {
     let factory: StripeFactory;
