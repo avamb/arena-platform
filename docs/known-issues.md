@@ -107,6 +107,7 @@
 - Callbacks deauthorize и data-deletion вписываются в панель Meta только после выката М1. Странице `arenasoldout.com/legal/data-deletion` нужно понимать параметр `?code=` (задача в arena-site).
 - Вебхук приложения вписывается в панель Meta после выката: «Вебхуки → Application», адрес `https://<api>/v1/integrations/meta/webhook`, проверочный токен = `META_WEBHOOK_VERIFY_TOKEN` (секрет arena-api), подписка на поле `business_integration_uninstall`. Без токена Meta не подтвердит подписку.
 - Поля тела `business_integration_uninstall` взяты из документации без живой пробы: id бизнеса читается из `value.business_manager_id`, иначе из `value.business_id`. Проверить на первом удалении приложения клиентом; если Meta присылает id в другом поле, подключение не отзовётся (узнается по ошибке 190).
+- Пауза и возобновление кампании (`POST /{campaign_id}` со `status`) проверены только заглушкой Graph. На первом живом вызове сверить: поле `account_id` в ответе `GET /{campaign_id}` (без префикса `act_`), ответ `{"success": true}` на POST и то, что токен BISU с `ads_management` вообще может менять кампании клиентского кабинета. Если `success` не придёт, маршрут ответит 502, хотя Meta могла изменить кампанию; запись `v1.org.meta.campaign_status` в аудите при этом уже есть.
 - Для М4/М5 в конфигурацию входа надо добавить `ads_management`, и организаторам придётся подключиться заново.
 
 ### Риски без реализации

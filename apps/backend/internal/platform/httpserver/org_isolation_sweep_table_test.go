@@ -321,6 +321,14 @@ func sweepRouteSet() map[string]bool {
 // handler really loads the child and compares its organization to {org_id}; if
 // in doubt add a sweepRows entry instead — a failing row is cheaper than a leak.
 var orgIsolationAuditedSafe = map[string]string{
+	// Meta campaign pause/resume (spec 66, hmetaconnect/campaigns.go): the child
+	// is not a row of ours. The handler reads the campaign from the Graph API
+	// with the token of {org_id}'s own connection and requires its account_id
+	// to be the SELECTED ad account of that connection
+	// (metaconnect.SameAdAccount); anything else is 404 meta.campaign_not_found
+	// and no POST is sent. hmetaconnect/campaigns_integration_test.go drives a
+	// campaign of another ad account and expects 404 with no POST.
+	"POST /v1/organizations/{org_id}/integrations/meta/campaigns/{campaign_id}/status": "meta campaigns",
 	// Staff invitations (spec 46, INV-02, hinvitations): issue and list load the
 	// session with GetInvitationSessionTarget and compare its organization;
 	// cancel loads the order with GetInvitationOrder(order_id, org_id).

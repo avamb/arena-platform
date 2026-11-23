@@ -403,6 +403,7 @@ Connection of an organizer's Meta business, the encrypted BISU token, CAPI throu
 * META_GRAPH_BASE_URL is a test seam and is refused in production
 * A broken Meta connection tells its owners once, in the transaction of the break (meta_connection_broken, owners = membership role with org.update)
 * Meta's app webhook is GET|POST /v1/integrations/meta/webhook: verify token, X-Hub-Signature-256, only business_integration_uninstall revokes
+* Campaign pause/resume is the ONLY write to an organizer's ads: owner only, PAUSED|ACTIVE only, Graph account check before POST, audit before POST
 
 ### [Refunds](docs/agents/refunds.md)
 

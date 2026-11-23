@@ -19000,6 +19000,80 @@ components:
           type: string
           description: The confirmation code Meta shows the person.
 
+    MetaCampaignSetStatus:
+      type: string
+      enum: [PAUSED, ACTIVE]
+      x-enum-varnames: [MetaCampaignPaused, MetaCampaignActive]
+      description: |
+        The only two statuses the platform sets on a Meta campaign: PAUSED
+        stops the delivery, ACTIVE resumes it. Nothing else of a campaign is
+        ever changed.
+
+    MetaCampaign:
+      type: object
+      required: [id, name, status, effective_status]
+      description: One campaign of the selected ad account, as Meta reports it.
+      properties:
+        id:
+          type: string
+          description: The Meta campaign id (digits).
+        name:
+          type: string
+          description: The campaign name in Meta, empty when Meta sent none.
+        status:
+          type: string
+          description: |
+            The status the advertiser set, such as ACTIVE, PAUSED, DELETED or
+            ARCHIVED. Only ACTIVE and PAUSED campaigns can be changed here.
+        effective_status:
+          type: string
+          description: |
+            The delivery status Meta computes, such as ACTIVE, PAUSED,
+            CAMPAIGN_PAUSED, IN_PROCESS or WITH_ISSUES.
+
+    MetaCampaignList:
+      type: object
+      required: [ad_account_id, campaigns]
+      description: The campaigns of the ad account selected in the organization's Meta connection.
+      properties:
+        ad_account_id:
+          type: string
+          description: The selected ad account, act_ followed by digits.
+        campaigns:
+          type: array
+          description: The campaigns, at most 1000 (five pages of 200), in Meta's order.
+          items:
+            $ref: "#/components/schemas/MetaCampaign"
+
+    MetaCampaignStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [status]
+      description: The status to set on the campaign.
+      properties:
+        status:
+          description: PAUSED to stop the campaign, ACTIVE to resume it.
+          allOf:
+            - $ref: "#/components/schemas/MetaCampaignSetStatus"
+
+    MetaCampaignStatusResult:
+      type: object
+      required: [campaign, changed]
+      description: The campaign after the request.
+      properties:
+        campaign:
+          description: |
+            The campaign. After a change `status` is the new status and
+            `effective_status` is what Meta reported just before the change.
+          allOf:
+            - $ref: "#/components/schemas/MetaCampaign"
+        changed:
+          type: boolean
+          description: |
+            true when the status was changed at Meta now; false when the
+            campaign already had this status (nothing was sent to Meta and
+            nothing was audited).
+
     PublicMarketingConsent:
       type: object
       required: [accepted]
@@ -46908,6 +46982,217 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/integrations/meta/campaigns:
+    get:
+      operationId: listMetaCampaigns
+      summary: List the campaigns of the selected Meta ad account
+      description: |
+        Reads the campaigns of the ad account selected in the organization's
+        Meta connection from Meta (id, name, status, effective status; at
+        most five pages of 200). Nothing is stored. Requires `org.update`
+        (the owner), checked again in the database; an organization API key
+        is refused. When Meta answers that the token is invalid (Graph code
+        190) the connection is moved to error, the owners are told once and
+        the answer is 409 `meta.reconnect_required`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The campaigns of the selected ad account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaCampaignList"
+        "400":
+          description: org_id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: |
+            Caller lacks `org.update` in the organization (`meta.forbidden`
+            when the database check refuses), is an API key
+            (`meta.api_key_forbidden`), is not a signed-in person
+            (`meta.user_required`), or Meta refused the call for lack of
+            permission (`meta.permission_denied`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The organization has no Meta connection (`meta.not_connected`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            The connection does not work and must be made again
+            (`meta.reconnect_required`), or no ad account is selected
+            (`meta.no_ad_account`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Meta throttled the call (`meta.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: Meta did not answer or failed (`meta.graph_error`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The Meta connection is switched off (`meta.disabled`) or the database is unavailable (`meta.unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/integrations/meta/campaigns/{campaign_id}/status:
+    post:
+      operationId: setMetaCampaignStatus
+      summary: Pause or resume one campaign of the selected Meta ad account
+      description: |
+        Reads the campaign from Meta first: it must belong to the ad account
+        selected in the organization's Meta connection, otherwise 404 and
+        nothing is sent to Meta. A deleted or archived campaign (any status
+        other than ACTIVE or PAUSED) is refused with 409. When the campaign
+        already has the status the answer is 200 with `changed` false and
+        nothing is sent or audited. Otherwise the change is audited as
+        `v1.org.meta.campaign_status` with the campaign, the old and the
+        new status BEFORE it is sent (no audit row, 503 and nothing sent),
+        then only `status` is posted to Meta (never a budget or any other
+        field); a failed post is audited again as
+        `v1.org.meta.campaign_status_failed` with the error code. Requires `org.update` (the owner), checked again in the
+        database; an organization API key is refused. Graph code 190 moves
+        the connection to error and tells the owners once (409
+        `meta.reconnect_required`).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: campaign_id
+          in: path
+          required: true
+          description: The Meta campaign id, 1 to 32 digits.
+          schema:
+            type: string
+            pattern: "^[0-9]{1,32}$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetaCampaignStatusRequest"
+      responses:
+        "200":
+          description: The campaign has the requested status now; `changed` says whether it was changed by this call.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaCampaignStatusResult"
+        "400":
+          description: |
+            org_id is not a UUID, campaign_id is not 1 to 32 digits
+            (`meta.invalid_campaign_id`), or the body is not
+            `{"status":"PAUSED"}` or `{"status":"ACTIVE"}` (`meta.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: |
+            Caller lacks `org.update` in the organization (`meta.forbidden`
+            when the database check refuses), is an API key
+            (`meta.api_key_forbidden`), is not a signed-in person
+            (`meta.user_required`), or Meta refused the call for lack of
+            permission (`meta.permission_denied`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            The organization has no Meta connection (`meta.not_connected`),
+            or the campaign is not in the selected ad account or Meta does
+            not know it (`meta.campaign_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            The connection does not work and must be made again
+            (`meta.reconnect_required`), no ad account is selected
+            (`meta.no_ad_account`), or the campaign is deleted or archived
+            (`meta.campaign_not_changeable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            Meta refused this status change of this campaign (Graph code 100
+            on the change, `meta.campaign_rejected`); the connection stays
+            as it is. The attempt is audited as
+            `v1.org.meta.campaign_status_failed`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Meta throttled the call (`meta.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: Meta did not answer, failed or did not confirm the change (`meta.graph_error`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The Meta connection is switched off (`meta.disabled`), or the database or the audit log is unavailable (`meta.unavailable`).
           content:
             application/json:
               schema:

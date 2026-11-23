@@ -13,6 +13,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
 import { ConfirmPressDialog } from "@/components/ConfirmPressDialog";
 import { ErrorNotice } from "@/components/ErrorNotice";
+import { MetaCampaigns } from "@/components/MetaCampaigns";
 import { SelectField } from "@/components/FormField";
 import { ScreenHelp } from "@/components/ScreenHelp";
 import { ErrorBox, Loading } from "@/components/ui";
@@ -364,6 +365,9 @@ export function MetaAdsBody({ orgId, returned, meId, navigate }: MetaAdsBodyProp
           onDisconnect={disconnect}
           onCancelDisconnect={() => setConfirming(false)}
         />
+      )}
+      {query.data?.connection?.status === "active" && (query.data.connection.selected_ad_account_id ?? "") !== "" && (
+        <MetaCampaigns orgId={orgId} adAccountId={query.data.connection.selected_ad_account_id ?? ""} />
       )}
     </section>
   );
