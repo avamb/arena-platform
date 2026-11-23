@@ -13,7 +13,7 @@ import (
 )
 
 // PaymentMethodDomainRow is one wallet domain of a payment configuration
-// (migration 0218). LastError is the provider's own wording: operator-facing.
+// (migration 0219). LastError is the provider's own wording: operator-facing.
 type PaymentMethodDomainRow struct {
 	ID               uuid.UUID  `json:"id"`
 	PaymentConfigID  uuid.UUID  `json:"payment_config_id"`

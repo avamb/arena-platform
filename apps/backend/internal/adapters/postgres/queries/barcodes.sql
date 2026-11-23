@@ -17,6 +17,7 @@ WHERE  id = $1;
 SELECT id, type, label, created_at
 FROM   barcode_authorities
 WHERE  type = $1
+ORDER  BY created_at, id
 LIMIT  1;
 
 -- name: ListBarcodeAuthorities :many

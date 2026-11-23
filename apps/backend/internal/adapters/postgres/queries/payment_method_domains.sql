@@ -1,5 +1,5 @@
 -- payment_method_domains.sql — wallet domains of a Stripe configuration
--- (migration 0218, spec 65 section 5). The Go wrappers are hand-maintained in
+-- (migration 0219, spec 65 section 5). The Go wrappers are hand-maintained in
 -- gen/payment_method_domains.sql.go.
 
 -- name: ListPaymentMethodDomains :many

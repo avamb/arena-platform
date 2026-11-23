@@ -16,9 +16,11 @@ package mint
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -55,15 +57,24 @@ func TestEAN13_CrossAuthorityCollisionForcesRedraw(t *testing.T) {
 		t.Fatalf("GetBarcodeAuthorityByType(platform): %v — run arena-migrate/arena-seed first", err)
 	}
 
-	// A dedicated legacy_bil24 authority row to own the colliding barcode —
-	// mirrors the real future import, which lands in this exact authority.
-	legacyAuthority, err := q.InsertBarcodeAuthority(ctx, "legacy_bil24", "mint_test legacy_bil24")
+	// The legacy_bil24 authority owns the colliding barcode — mirrors the
+	// real import, which lands in this exact authority. There is at most one
+	// authority per type (migration 0218), so fetch-or-create it and delete
+	// it afterwards only when this test created it.
+	legacyAuthority, err := q.GetBarcodeAuthorityByType(ctx, "legacy_bil24")
 	if err != nil {
-		t.Fatalf("InsertBarcodeAuthority(legacy_bil24): %v", err)
+		if !errors.Is(err, pgx.ErrNoRows) {
+			t.Fatalf("GetBarcodeAuthorityByType(legacy_bil24): %v", err)
+		}
+		legacyAuthority, err = q.InsertBarcodeAuthority(ctx, "legacy_bil24", "mint_test legacy_bil24")
+		if err != nil {
+			t.Fatalf("InsertBarcodeAuthority(legacy_bil24): %v", err)
+		}
+		createdID := legacyAuthority.ID
+		defer func() {
+			_, _ = pool.Exec(ctx, "DELETE FROM barcode_authorities WHERE id = $1", createdID)
+		}()
 	}
-	defer func() {
-		_, _ = pool.Exec(ctx, "DELETE FROM barcode_authorities WHERE id = $1", legacyAuthority.ID)
-	}()
 
 	// A random-looking but fixed 13-digit collision fixture (the checksum
 	// need not be valid — InsertBarcodeIfUnique does not validate it, only

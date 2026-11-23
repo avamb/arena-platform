@@ -366,7 +366,7 @@ func TestBarcode142_CreateAuthorityRequiresJWT(t *testing.T) {
 
 func TestBarcode142_CreateAuthorityMissingType(t *testing.T) {
 	s := buildBarcode142Server(t)
-	tok := mintBarcodeToken(t, s, []string{"admin"})
+	tok := mintBarcodeToken(t, s, []string{"platform_superadmin"})
 
 	body := `{"label":"Test Authority"}`
 	rec := httptest.NewRecorder()
@@ -382,7 +382,7 @@ func TestBarcode142_CreateAuthorityMissingType(t *testing.T) {
 
 func TestBarcode142_CreateAuthorityInvalidType(t *testing.T) {
 	s := buildBarcode142Server(t)
-	tok := mintBarcodeToken(t, s, []string{"admin"})
+	tok := mintBarcodeToken(t, s, []string{"platform_superadmin"})
 
 	body := `{"type":"invalid_type","label":"Test"}`
 	rec := httptest.NewRecorder()
@@ -398,7 +398,7 @@ func TestBarcode142_CreateAuthorityInvalidType(t *testing.T) {
 
 func TestBarcode142_CreateAuthorityMissingLabel(t *testing.T) {
 	s := buildBarcode142Server(t)
-	tok := mintBarcodeToken(t, s, []string{"admin"})
+	tok := mintBarcodeToken(t, s, []string{"platform_superadmin"})
 
 	body := `{"type":"platform"}`
 	rec := httptest.NewRecorder()
