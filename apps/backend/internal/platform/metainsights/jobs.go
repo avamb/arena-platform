@@ -23,12 +23,35 @@ const (
 	// ...and the Madrid local hour is in [NightFromHour, NightToHour).
 	NightFromHour = 3
 	NightToHour   = 7
-	// RetryAfter is the shortest gap between two runs the sweep starts for
-	// one organization, so a run that keeps failing (no access, throttled)
-	// is not repeated every 10 minutes. META_INSIGHTS_EVERY below it
-	// shortens it.
+	// RetryAfter is the gap after a successful run before the sweep starts
+	// the next one (META_INSIGHTS_EVERY below it shortens it), and the
+	// first back-off after a failed run, which nothing shortens.
 	RetryAfter = time.Hour
+	// MaxBackoff caps the back-off of an organization that keeps failing.
+	MaxBackoff = 24 * time.Hour
 )
+
+// Backoff is how long the sweep waits after the last of failures
+// consecutive failed runs: 1 h, 2 h, 4 h ... at most MaxBackoff. failures
+// below 1 counts as 1.
+func Backoff(failures int) time.Duration {
+	d := RetryAfter
+	for i := 1; i < failures && d < MaxBackoff; i++ {
+		d *= 2
+	}
+	if d > MaxBackoff {
+		d = MaxBackoff
+	}
+	return d
+}
+
+// lastRunFailed: a run happened and it is not the last success.
+func lastRunFailed(st State) bool {
+	if st.Failures > 0 || st.LastError != "" {
+		return true
+	}
+	return st.LastRunAt != nil && (st.LastSuccessAt == nil || st.LastRunAt.After(*st.LastSuccessAt))
+}
 
 var madrid = loadMadrid()
 
@@ -51,10 +74,14 @@ func loadMadrid() *time.Location {
 //   - interval when every (META_INSIGHTS_EVERY, 0 = off) has passed since
 //     the last success.
 //
-// No mode is due within RetryAfter (or every, when shorter) of the last run.
+// After a successful run no mode is due within RetryAfter (or every, when
+// shorter); after a failed run none is due within Backoff(st.Failures),
+// never under 1 hour whatever every is.
 func Due(st State, selectedAccount string, now time.Time, every time.Duration) (mode string, due bool) {
 	gap := RetryAfter
-	if every > 0 && every < gap {
+	if lastRunFailed(st) {
+		gap = Backoff(st.Failures)
+	} else if every > 0 && every < gap {
 		gap = every
 	}
 	if st.LastRunAt != nil && now.Sub(*st.LastRunAt) < gap {
@@ -99,7 +126,8 @@ func ScheduleInitialJob(ctx context.Context, pool *pgxpool.Pool) error {
 func (s *Syncer) Sweep(ctx context.Context, now time.Time) (int, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT c.org_id, a.meta_id,
-		       st.ad_account_id, st.backfill_done_at, st.last_run_at, st.last_success_at
+		       st.ad_account_id, st.backfill_done_at, st.last_run_at, st.last_success_at,
+		       COALESCE(st.last_error, ''), COALESCE(st.failures, 0)
 		  FROM org_meta_connections c
 		  JOIN org_meta_assets a ON a.org_id = c.org_id AND a.kind = 'ad_account' AND a.selected
 		  JOIN organizations o   ON o.id = c.org_id AND o.deleted_at IS NULL
@@ -121,7 +149,7 @@ func (s *Syncer) Sweep(ctx context.Context, now time.Time) (int, error) {
 			acct    *string
 			st      State
 		)
-		if err := rows.Scan(&org, &account, &acct, &st.BackfillDoneAt, &st.LastRunAt, &st.LastSuccessAt); err != nil {
+		if err := rows.Scan(&org, &account, &acct, &st.BackfillDoneAt, &st.LastRunAt, &st.LastSuccessAt, &st.LastError, &st.Failures); err != nil {
 			rows.Close()
 			return 0, err
 		}

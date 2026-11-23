@@ -430,6 +430,81 @@ func TestMetaAdsRoutes_Numbers(t *testing.T) {
 	}
 }
 
+// Left out of the numbers: a legacy-imported order, an order of a Bil24
+// gateway channel, a checkout of a test channel (it links no event) and the
+// rows of another ad account (another currency).
+func TestMetaAdsRoutes_LegacyGatewayTestAndOtherAccountLeftOut(t *testing.T) {
+	e := metaRtEnv(t)
+	org := e.org(t, "adsL")
+	s := newMetaAdsSeed(t, e, org)
+	act := "act_L" + org.String()[:6]
+	s.connect(act, "EUR")
+	owner := e.user(t, "ownerL")
+	e.member(t, owner, org, "org_admin")
+	tok := e.token(t, owner)
+
+	s.spend(act, "c1", "a1", "2026-11-02", "EUR", 1000, 100)
+	s.spend("act_old"+org.String()[:6], "c9", "a9", "2026-11-02", "USD", 7777, 700) // another account
+	e1, e2 := s.event("Kept"), s.event("Test only")
+	gateway := uuid.New()
+	s.exec(`INSERT INTO sales_channels (id, org_id, name, payment_mode, provider, settings)
+	        VALUES ($1, $2, $3, 'direct_merchant', 'stripe', jsonb_build_object('gateway', jsonb_build_object('token_hash', $4::text)))`,
+		gateway, org, "Gateway "+gateway.String()[:8], "h-"+gateway.String())
+	s.order(e1, e1.channel, "c1", "public_feed", "EUR", 3000, "2026-11-02 12:00:00+00")
+	s.order(e1, e1.channel, "c1", "legacy_import", "EUR", 5000, "2026-11-02 13:00:00+00")
+	s.order(e1, gateway, "c1", "public_feed", "EUR", 6000, "2026-11-02 14:00:00+00")
+	s.order(e1, e1.channel, "c9", "public_feed", "EUR", 900, "2026-11-02 15:00:00+00") // campaign of the other account
+	s.checkout(e2, e2.testChannel, "c1", "2026-11-03 10:00:00+00")
+
+	q := "?from=2026-11-01&to=2026-11-10"
+	base := "/v1/organizations/" + org.String()
+	m := metaAdsJSON(t, e.expect(t, http.StatusOK, http.MethodGet, base+"/events/"+e1.id.String()+"/ads/meta"+q, tok, "", ""))
+	wantField(t, m, "meta.spend_minor", 1000)
+	wantField(t, m, "meta.currency", "EUR")
+	wantField(t, m, "ours.paid_orders", 1)
+	wantField(t, m, "ours.revenue_net_minor", 3000)
+	wantField(t, m, "shared_spend", false)
+	if list, _ := m["campaigns"].([]any); len(list) != 1 {
+		t.Fatalf("event campaigns: %v", m["campaigns"])
+	}
+	if c1 := campaignByID(t, m, "c1"); c1["shared"] != false || c1["paid_orders"] != float64(1) {
+		t.Errorf("c1: %v", c1)
+	}
+	m = metaAdsJSON(t, e.expect(t, http.StatusOK, http.MethodGet, base+"/events/"+e2.id.String()+"/ads/meta"+q, tok, "", ""))
+	if list, _ := m["campaigns"].([]any); len(list) != 0 {
+		t.Errorf("a test-channel checkout linked a campaign: %v", m["campaigns"])
+	}
+	m = metaAdsJSON(t, e.expect(t, http.StatusOK, http.MethodGet, base+"/ads/meta/summary"+q, tok, "", ""))
+	wantField(t, m, "meta.spend_minor", 1000)
+	wantField(t, m, "meta.currency", "EUR")
+	if list, _ := m["campaigns"].([]any); len(list) != 1 {
+		t.Errorf("summary campaigns: %v", m["campaigns"])
+	}
+	if evs, _ := m["events"].([]any); len(evs) != 1 || evs[0].(map[string]any)["revenue_net_minor"] != float64(3000) {
+		t.Errorf("summary events: %v", m["events"])
+	}
+}
+
+// No selected ad account and no history: the reports read no row at all,
+// not the rows of every account.
+func TestMetaAdsRoutes_NoAccountReadsNothing(t *testing.T) {
+	e := metaRtEnv(t)
+	org := e.org(t, "adsZ")
+	s := newMetaAdsSeed(t, e, org)
+	s.connect("act_Z"+org.String()[:6], "EUR")
+	s.exec(`UPDATE org_meta_assets SET selected = false WHERE org_id = $1`, org)
+	owner := e.user(t, "ownerZ")
+	e.member(t, owner, org, "org_admin")
+	tok := e.token(t, owner)
+	s.spend("act_x"+org.String()[:6], "cx", "ax", "2026-11-02", "EUR", 1000, 10)
+	s.spend("act_y"+org.String()[:6], "cy", "ay", "2026-11-02", "USD", 2000, 10)
+	m := metaAdsJSON(t, e.expect(t, http.StatusOK, http.MethodGet, "/v1/organizations/"+org.String()+"/ads/meta/summary?from=2026-11-01&to=2026-11-10", tok, "", ""))
+	wantField(t, m, "meta.spend_minor", 0)
+	if list, _ := m["campaigns"].([]any); len(list) != 0 {
+		t.Errorf("campaigns without an account: %v", m["campaigns"])
+	}
+}
+
 // Spend in one currency and orders in another: MER is null.
 func TestMetaAdsRoutes_DifferentCurrencyHasNoMER(t *testing.T) {
 	e := metaRtEnv(t)

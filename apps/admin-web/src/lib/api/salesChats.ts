@@ -28,19 +28,21 @@ export type SalesChatPatchRequest = Schemas["SalesChatPatchRequest"];
 const enc = encodeURIComponent;
 
 /** What a chat can hear, in the order the screen lists them. */
-export const CHAT_KINDS = ["tickets", "shop_sale", "shop_delivery"] as const;
+export const CHAT_KINDS = ["tickets", "shop_sale", "shop_delivery", "ads"] as const;
 export type ChatKind = (typeof CHAT_KINDS)[number];
 
 const KIND_LABELS: Record<ChatKind, string> = {
   tickets: "Tickets",
   shop_sale: "Shop sales",
   shop_delivery: "Delivery",
+  ads: "Meta ads",
 };
 
 const KIND_HINTS: Record<ChatKind, string> = {
   tickets: "Ticket sales and refunds.",
   shop_sale: "A message for each shop sale: order number, amount and products. No buyer data.",
   shop_delivery: "The full card of the shop order with the step buttons. It is for the people who pack and deliver.",
+  ads: "A daily summary of the Meta ads of yesterday: spend, clicks and our paid orders from these ads.",
 };
 
 export function kindLabel(kind: string): string {

@@ -150,6 +150,35 @@ func TestPlanRange(t *testing.T) {
 	}
 }
 
+func TestBackoff(t *testing.T) {
+	for n, want := range map[int]time.Duration{
+		-1: time.Hour, 0: time.Hour, 1: time.Hour, 2: 2 * time.Hour, 3: 4 * time.Hour,
+		4: 8 * time.Hour, 5: 16 * time.Hour, 6: 24 * time.Hour, 7: 24 * time.Hour, 1000: 24 * time.Hour,
+	} {
+		if got := Backoff(n); got != want {
+			t.Errorf("Backoff(%d) = %v, want %v", n, got, want)
+		}
+	}
+}
+
+func TestMetaTotalsAddNeverMixesCurrencies(t *testing.T) {
+	m := MetaTotals{Currency: "EUR"}
+	if !m.add(MetaTotals{Currency: "eur", SpendMinor: 100, Impressions: 5}) {
+		t.Fatal("same currency refused")
+	}
+	if m.add(MetaTotals{Currency: "USD", SpendMinor: 900, Impressions: 50}) {
+		t.Fatal("another currency added")
+	}
+	if m.SpendMinor != 100 || m.Impressions != 5 || m.Currency != "EUR" {
+		t.Fatalf("totals = %+v", m)
+	}
+	var empty MetaTotals
+	empty.add(MetaTotals{Currency: "ILS", SpendMinor: 7})
+	if empty.Currency != "ILS" || empty.SpendMinor != 7 {
+		t.Fatalf("empty totals = %+v", empty)
+	}
+}
+
 func TestDue(t *testing.T) {
 	// 2026-11-23 is winter time in Madrid: UTC+1.
 	at := func(h, m int) time.Time { return time.Date(2026, 11, 23, h, m, 0, 0, time.UTC) }
@@ -181,9 +210,32 @@ func TestDue(t *testing.T) {
 		{"night, failed 30 minutes ago", ok(night, 25*time.Hour, 30*time.Minute), "act_1", night, 0, ""},
 		{"every elapsed", ok(day, 31*time.Minute, 31*time.Minute), "act_1", day, 30 * time.Minute, ModeInterval},
 		{"every not elapsed", ok(day, 20*time.Minute, 20*time.Minute), "act_1", day, 30 * time.Minute, ""},
-		{"every shortens the retry gap", ok(day, 3*time.Hour, 20*time.Minute), "act_1", day, 15 * time.Minute, ModeInterval},
+		{"every shortens the gap after a success", ok(day, 20*time.Minute, 20*time.Minute), "act_1", day, 15 * time.Minute, ModeInterval},
+		{"a failed run waits 1 h even with every 15m", ok(day, 3*time.Hour, 20*time.Minute), "act_1", day, 15 * time.Minute, ""},
+		{"a failed run is retried after 1 h", ok(day, 3*time.Hour, 61*time.Minute), "act_1", day, 15 * time.Minute, ModeInterval},
 		{"every off", ok(day, 10*time.Hour, 10*time.Hour), "act_1", day, 0, ""},
 	}
+	failed := func(n int, run time.Duration) State {
+		s := ok(day, 50*time.Hour, run)
+		s.LastError, s.Failures = "graph_rate_limited", n
+		return s
+	}
+	cases = append(cases, []struct {
+		name     string
+		st       State
+		account  string
+		now      time.Time
+		every    time.Duration
+		wantMode string
+	}{
+		{"1 failure, 59 min", failed(1, 59*time.Minute), "act_1", day, 15 * time.Minute, ""},
+		{"1 failure, 61 min", failed(1, 61*time.Minute), "act_1", day, 15 * time.Minute, ModeInterval},
+		{"3 failures, 3 h 59", failed(3, 239*time.Minute), "act_1", day, 15 * time.Minute, ""},
+		{"3 failures, 4 h 01", failed(3, 241*time.Minute), "act_1", day, 15 * time.Minute, ModeInterval},
+		{"10 failures, 23 h", failed(10, 23*time.Hour), "act_1", day, 15 * time.Minute, ""},
+		{"10 failures, 25 h", failed(10, 25*time.Hour), "act_1", day, 15 * time.Minute, ModeInterval},
+		{"failed backfill waits too", State{LastRunAt: ago(day, 30*time.Minute), LastError: "graph_190", Failures: 1}, "act_1", day, 15 * time.Minute, ""},
+	}...)
 	for _, c := range cases {
 		mode, due := Due(c.st, c.account, c.now, c.every)
 		if mode != c.wantMode || due != (c.wantMode != "") {
@@ -310,7 +362,7 @@ func TestClient_InsightsParsesAndPages(t *testing.T) {
 		t.Errorf("row 2 = %+v", rows[1])
 	}
 
-	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"error":{"message":"Error validating access token: secret text","code":190,"error_subcode":460,"type":"OAuthException"}}`))
 	}))

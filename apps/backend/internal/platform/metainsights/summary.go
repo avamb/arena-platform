@@ -22,7 +22,8 @@ type Summary struct {
 	LinkClicks  int64
 	Purchases   int64
 	// Ours are the paid orders of the day whose utm_campaign is a campaign
-	// of the organization's ad spend, per order currency.
+	// of the ad account's spend, per order currency (complimentary, test,
+	// legacy-imported and Bil24-gateway orders left out).
 	Ours []OurMoney
 }
 
@@ -109,15 +110,16 @@ func (s *Syncer) loadSummary(ctx context.Context, orgID uuid.UUID, account, curr
 		       WHERE r.state = 'succeeded'
 		  ) rf ON true
 		 WHERE o.org_id = $1
-		   AND o.source <> 'complimentary'
+		   AND o.source NOT IN ('complimentary', 'legacy_import')
 		   AND NOT o.is_test
 		   AND o.status IN ('paid', 'partially_refunded', 'refunded')
+		   AND NOT EXISTS (`+gatewayChannelOf+`)
 		   AND o.created_at >= $2::date - 1 AND o.created_at < $2::date + 2
 		   AND (o.created_at AT TIME ZONE $3::text)::date = $2::date
 		   AND COALESCE(NULLIF(o.attribution ->> 'utm_campaign', ''), cs.attribution ->> 'utm_campaign')
-		       IN (SELECT DISTINCT campaign_id FROM ad_spend_daily WHERE org_id = $1)
+		       IN (SELECT DISTINCT campaign_id FROM ad_spend_daily WHERE org_id = $1 AND ad_account_id = $4)
 		 GROUP BY o.currency
-		 ORDER BY o.currency`, orgID, day, tz)
+		 ORDER BY o.currency`, orgID, day, tz, account)
 	if err != nil {
 		return Summary{}, false, err
 	}

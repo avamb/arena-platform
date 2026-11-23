@@ -8,8 +8,9 @@ package metainsights
 // when its utm_campaign (orders.attribution first, then the checkout's) is a
 // campaign_id of the organization's ad spend. A campaign belongs to an event
 // when a checkout of that event ever carried its id; a campaign of more than
-// one event is shared and its spend is not split. Complimentary and test
-// orders are never counted; the refunds are the succeeded ones of the sales
+// one event is shared and its spend is not split. Complimentary, test,
+// legacy-imported and Bil24-gateway orders and checkouts of test channels are
+// never counted; the refunds are the succeeded ones of the sales
 // funnel (gen/sales_funnel.sql.go listFunnelServerRows).
 
 import (
@@ -106,7 +107,8 @@ type SyncInfo struct {
 	LastError     string
 	BackfillDone  bool
 	// HistoryAccount is the account whose rows the reports read: the
-	// selected one, else the one of the stored history, "" = every row.
+	// selected one, else the one of the stored history; "" = no row at all
+	// (never every account: their currencies may differ).
 	HistoryAccount string
 }
 
@@ -188,7 +190,12 @@ type MetaTotals struct {
 	PurchaseValueMinor int64
 }
 
-func (m *MetaTotals) add(o MetaTotals) {
+// add sums o into m. Totals of another currency are never added: add
+// reports false and m is unchanged.
+func (m *MetaTotals) add(o MetaTotals) bool {
+	if m.Currency != "" && o.Currency != "" && !strings.EqualFold(m.Currency, o.Currency) {
+		return false
+	}
 	m.SpendMinor += o.SpendMinor
 	m.Impressions += o.Impressions
 	m.Clicks += o.Clicks
@@ -198,6 +205,7 @@ func (m *MetaTotals) add(o MetaTotals) {
 	if m.Currency == "" {
 		m.Currency = o.Currency
 	}
+	return true
 }
 
 // EventRef is an event a campaign is linked to.
@@ -280,14 +288,25 @@ type window struct {
 func (w window) fromS() string { return w.from.Format(dateLayout) }
 func (w window) toS() string   { return w.to.Format(dateLayout) }
 
-// campaignsCTE is the set of the organization's campaigns (all time) with
-// the last known name and currency. Params: $1 org, $2 account (empty = all).
+// gatewayChannelOf is the body of a NOT EXISTS that leaves out an order of
+// a Bil24-gateway channel (orders alias o), exactly like the sales funnel
+// (gen/sales_funnel.sql.go listFunnelServerRows).
+const gatewayChannelOf = `
+	SELECT 1 FROM sales_channels gsc
+	 WHERE gsc.id = o.channel_id
+	   AND (gsc.settings #>> '{gateway,token_hash}' IS NOT NULL
+	        OR gsc.settings ->> 'gateway_token_hash' IS NOT NULL)`
+
+// campaignsCTE is the set of the organization's campaigns (all time) of ONE
+// ad account with the last known name and currency. Params: $1 org, $2
+// account; an empty account matches no row (never every account, whose
+// currencies may differ).
 const campaignsCTE = `camps AS (
 	SELECT campaign_id,
 	       (array_agg(campaign_name ORDER BY day DESC))[1] AS name,
 	       (array_agg(currency ORDER BY day DESC))[1] AS currency
 	  FROM ad_spend_daily
-	 WHERE org_id = $1 AND ($2::text = '' OR ad_account_id = $2::text)
+	 WHERE org_id = $1 AND ad_account_id = $2::text
 	 GROUP BY campaign_id)`
 
 // loadCampaigns reads every campaign of the organization with its spend in
@@ -300,7 +319,7 @@ func loadCampaigns(ctx context.Context, q Querier, w window) ([]CampaignReport, 
 		       sum(clicks)::bigint AS clicks, sum(link_clicks)::bigint AS link_clicks,
 		       sum(meta_purchases)::bigint AS purchases, sum(meta_purchase_value_minor)::bigint AS purchase_value
 		  FROM ad_spend_daily
-		 WHERE org_id = $1 AND ($2::text = '' OR ad_account_id = $2::text)
+		 WHERE org_id = $1 AND ad_account_id = $2::text
 		   AND day BETWEEN $3::date AND $4::date
 		 GROUP BY campaign_id)
 	SELECT c.campaign_id, COALESCE(NULLIF(ac.name, ''), c.name, ''), COALESCE(ac.effective_status, ''),
@@ -339,7 +358,9 @@ func loadLinks(ctx context.Context, q Querier, w window) (map[string][]EventRef,
 	          FROM checkout_sessions cs
 	          JOIN reservations r ON r.id = cs.reservation_id
 	          JOIN sessions s ON s.id = r.session_id
+	          JOIN sales_channels sc ON sc.id = cs.channel_id
 	         WHERE cs.org_id = $1
+	           AND NOT sc.is_test
 	           AND cs.attribution ->> 'utm_campaign' IN (SELECT campaign_id FROM camps)
 	       ) l
 	  JOIN events e ON e.id = l.event_id AND e.org_id = $1 AND e.deleted_at IS NULL
@@ -397,9 +418,10 @@ func loadOrders(ctx context.Context, q Querier, w window) ([]orderAgg, error) {
 		       WHERE r.state = 'succeeded'
 		  ) rf ON true
 		 WHERE o.org_id = $1
-		   AND o.source <> 'complimentary'
+		   AND o.source NOT IN ('complimentary', 'legacy_import')
 		   AND NOT o.is_test
 		   AND o.status IN ('paid', 'partially_refunded', 'refunded')
+		   AND NOT EXISTS (`+gatewayChannelOf+`)
 		   AND o.created_at >= $3::date - 1 AND o.created_at < $4::date + 2
 		   AND (o.created_at AT TIME ZONE $5::text)::date BETWEEN $3::date AND $4::date
 		   AND ($6::uuid IS NULL OR o.event_id = $6::uuid))
@@ -611,6 +633,9 @@ func BuildOrgSummary(ctx context.Context, q Querier, orgID uuid.UUID, info SyncI
 				row = &EventRow{EventID: e.EventID, Name: e.Name}
 				events[e.EventID] = row
 				order = append(order, e.EventID)
+			}
+			if row.Currency != "" && c.Meta.Currency != "" && !strings.EqualFold(row.Currency, c.Meta.Currency) {
+				continue // never add spend of another currency
 			}
 			row.SpendMinor += c.Meta.SpendMinor
 			if row.Currency == "" {

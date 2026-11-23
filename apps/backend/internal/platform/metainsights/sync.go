@@ -138,13 +138,15 @@ func (s *Syncer) loadConn(ctx context.Context, orgID uuid.UUID) (connInfo, bool,
 	return c, true, nil
 }
 
-// setError records a run that ended without data.
+// setError records a run that ended without data and counts it as one more
+// consecutive failure (the back-off of Due).
 func (s *Syncer) setError(ctx context.Context, orgID uuid.UUID, now time.Time, code string) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO meta_insights_state (org_id, last_run_at, last_error, updated_at)
-		VALUES ($1, $2, $3, now())
+		INSERT INTO meta_insights_state (org_id, last_run_at, last_error, failures, updated_at)
+		VALUES ($1, $2, $3, 1, now())
 		ON CONFLICT (org_id) DO UPDATE
-		   SET last_run_at = EXCLUDED.last_run_at, last_error = EXCLUDED.last_error, updated_at = now()`,
+		   SET last_run_at = EXCLUDED.last_run_at, last_error = EXCLUDED.last_error,
+		       failures = meta_insights_state.failures + 1, updated_at = now()`,
 		orgID, now.UTC(), code)
 	return err
 }
@@ -211,14 +213,15 @@ func (s *Syncer) Run(ctx context.Context, orgID uuid.UUID, mode string, now time
 	res.Deleted = deleted
 	backfilled := effMode == ModeBackfill
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO meta_insights_state (org_id, ad_account_id, backfill_done_at, last_run_at, last_success_at, last_error, updated_at)
-		VALUES ($1, $2, CASE WHEN $3 THEN $4::timestamptz END, $4, $4, NULL, now())
+		INSERT INTO meta_insights_state (org_id, ad_account_id, backfill_done_at, last_run_at, last_success_at, last_error, failures, updated_at)
+		VALUES ($1, $2, CASE WHEN $3 THEN $4::timestamptz END, $4, $4, NULL, 0, now())
 		ON CONFLICT (org_id) DO UPDATE
 		   SET ad_account_id    = EXCLUDED.ad_account_id,
 		       backfill_done_at = CASE WHEN $3 THEN $4::timestamptz ELSE meta_insights_state.backfill_done_at END,
 		       last_run_at      = $4,
 		       last_success_at  = $4,
 		       last_error       = NULL,
+		       failures         = 0,
 		       updated_at       = now()`,
 		orgID, conn.account, backfilled, now.UTC()); err != nil {
 		return res, err

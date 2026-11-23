@@ -56,6 +56,11 @@ describe("kinds", () => {
     expect(toggleKind(["shop_delivery"], "tickets", true)).toEqual(["tickets", "shop_delivery"]);
     expect(toggleKind(["tickets", "shop_delivery"], "tickets", false)).toEqual(["shop_delivery"]);
   });
+
+  it("knows the Meta ads summary, so an edit keeps it", () => {
+    expect(kindsLabel(["ads", "tickets"])).toBe("Tickets, Meta ads");
+    expect(toggleKind(["tickets", "ads"], "shop_sale", true)).toEqual(["tickets", "shop_sale", "ads"]);
+  });
 });
 
 describe("buildAddChatRequest", () => {

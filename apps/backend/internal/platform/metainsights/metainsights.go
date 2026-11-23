@@ -79,6 +79,9 @@ type State struct {
 	LastError string
 	// ManualNotBefore is the earliest time of the next manual refresh.
 	ManualNotBefore *time.Time
+	// Failures is the number of consecutive failed runs since the last
+	// success (0 after a success); it sets the back-off of the sweep.
+	Failures int
 }
 
 // LoadState reads the sync state of orgID; an organization without a row
@@ -87,9 +90,9 @@ func LoadState(ctx context.Context, q Querier, orgID uuid.UUID) (State, error) {
 	var s State
 	var acct, lastErr *string
 	err := q.QueryRow(ctx, `
-		SELECT ad_account_id, backfill_done_at, last_run_at, last_success_at, last_error, manual_not_before
+		SELECT ad_account_id, backfill_done_at, last_run_at, last_success_at, last_error, manual_not_before, failures
 		  FROM meta_insights_state WHERE org_id = $1`, orgID).
-		Scan(&acct, &s.BackfillDoneAt, &s.LastRunAt, &s.LastSuccessAt, &lastErr, &s.ManualNotBefore)
+		Scan(&acct, &s.BackfillDoneAt, &s.LastRunAt, &s.LastSuccessAt, &lastErr, &s.ManualNotBefore, &s.Failures)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return State{}, nil
 	}
@@ -111,14 +114,54 @@ type syncPayload struct {
 	Mode  string `json:"mode"`
 }
 
+// TxBeginner starts a transaction; *pgxpool.Pool and pgx.Tx (a savepoint)
+// both satisfy it.
+type TxBeginner interface {
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
+
+// lockOrgSync takes the transaction-scoped advisory lock of the syncs of
+// orgID. Every writer of a meta.insights_sync job (the sweep and the manual
+// refresh) takes it before it looks for a waiting job, so two of them at
+// once never both see "none waiting" and queue two.
+func lockOrgSync(ctx context.Context, tx Querier, orgID uuid.UUID) error {
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, SyncJobType+":"+orgID.String()); err != nil {
+		return fmt.Errorf("metainsights: lock org sync: %w", err)
+	}
+	return nil
+}
+
 // enqueueSync queues a sync of orgID unless one is already pending or
-// claimed for it. It reports whether a row was added.
-func enqueueSync(ctx context.Context, q Querier, orgID uuid.UUID, mode string) (bool, error) {
+// claimed for it, in its own transaction under the org's sync lock. It
+// reports whether a row was added.
+func enqueueSync(ctx context.Context, db TxBeginner, orgID uuid.UUID, mode string) (bool, error) {
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := lockOrgSync(ctx, tx, orgID); err != nil {
+		return false, err
+	}
+	added, err := insertSyncLocked(ctx, tx, orgID, mode)
+	if err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return added, nil
+}
+
+// insertSyncLocked adds the job unless one is waiting; the caller holds
+// lockOrgSync in tx. The NOT EXISTS runs after the lock was granted, so (read
+// committed) it sees a job another holder of the lock committed.
+func insertSyncLocked(ctx context.Context, tx Querier, orgID uuid.UUID, mode string) (bool, error) {
 	body, err := json.Marshal(syncPayload{OrgID: orgID.String(), Mode: mode})
 	if err != nil {
 		return false, err
 	}
-	tag, err := q.Exec(ctx, `
+	tag, err := tx.Exec(ctx, `
 		INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
 		SELECT $1, $2::jsonb, 3, 'pending', now()
 		 WHERE NOT EXISTS (
@@ -135,9 +178,43 @@ func enqueueSync(ctx context.Context, q Querier, orgID uuid.UUID, mode string) (
 // days, or 90 days when the backfill is still due). At most one refresh per
 // RefreshThrottle: inside the throttle nothing is queued, queued is false and
 // notBefore is when the next refresh is allowed. When a sync of the
-// organization is already waiting, the refresh joins it (queued true). The
-// caller checks the connection and the permission; q may be a transaction.
-func EnqueueRefresh(ctx context.Context, q Querier, orgID uuid.UUID, now time.Time) (queued bool, notBefore time.Time, err error) {
+// organization is already waiting, the refresh joins it (queued true). An
+// organization without an ACTIVE connection with a token gets queued false,
+// a zero notBefore and no throttle stamp. The stamp and the job are written
+// in ONE transaction under the org's sync lock. The caller checks the
+// permission; db may be a pool or a transaction.
+func EnqueueRefresh(ctx context.Context, db TxBeginner, orgID uuid.UUID, now time.Time) (queued bool, notBefore time.Time, err error) {
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return false, time.Time{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := lockOrgSync(ctx, tx, orgID); err != nil {
+		return false, time.Time{}, err
+	}
+	var active bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM org_meta_connections
+		                WHERE org_id = $1 AND status = $2 AND access_token_enc IS NOT NULL AND access_token_enc <> '')`,
+		orgID, metaconnect.StatusActive).Scan(&active); err != nil {
+		return false, time.Time{}, err
+	}
+	if !active {
+		return false, time.Time{}, nil
+	}
+	queued, notBefore, err = stampAndEnqueue(ctx, tx, orgID, now)
+	if err != nil {
+		return false, time.Time{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, time.Time{}, err
+	}
+	return queued, notBefore, nil
+}
+
+// stampAndEnqueue is the throttle stamp and the job of EnqueueRefresh inside
+// its transaction.
+func stampAndEnqueue(ctx context.Context, q Querier, orgID uuid.UUID, now time.Time) (queued bool, notBefore time.Time, err error) {
 	next := now.UTC().Add(RefreshThrottle)
 	var got time.Time
 	err = q.QueryRow(ctx, `
@@ -161,7 +238,7 @@ func EnqueueRefresh(ctx context.Context, q Querier, orgID uuid.UUID, now time.Ti
 	if err != nil {
 		return false, time.Time{}, err
 	}
-	if _, err := enqueueSync(ctx, q, orgID, ModeManual); err != nil {
+	if _, err := insertSyncLocked(ctx, q, orgID, ModeManual); err != nil {
 		return false, time.Time{}, err
 	}
 	return true, got.UTC(), nil

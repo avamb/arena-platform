@@ -13,6 +13,7 @@
 -- meta_insights_state  one row per organization: which ad account the history
 --                      belongs to, the 90-day backfill, the last run and its
 --                      short error code (never a token or Meta's message), the
+--                      count of consecutive failed runs (back-off) and the
 --                      throttle of a manual refresh.
 -- meta_graph_calls     Graph calls and failed calls per UTC day, organization
 --                      and endpoint (Marketing API Access Tier: 500 calls in
@@ -73,8 +74,12 @@ CREATE TABLE meta_insights_state (
     last_success_at   timestamptz,
     last_error        text,
     manual_not_before timestamptz,
+    failures          int         NOT NULL DEFAULT 0,
     updated_at        timestamptz NOT NULL DEFAULT now()
 );
+
+COMMENT ON COLUMN meta_insights_state.failures IS
+    'Consecutive failed runs since the last success; the sweep waits 1 h, 2 h, 4 h ... at most 24 h after a failed run.';
 
 COMMENT ON TABLE meta_insights_state IS
     'Insights sync state of an organization (spec 66 M2). last_error is a short code, never a token or Meta''s message.';

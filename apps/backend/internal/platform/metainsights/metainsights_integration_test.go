@@ -415,6 +415,106 @@ func TestEnqueueRefresh_Throttle_LiveDB(t *testing.T) {
 	}
 }
 
+// No active connection: no throttle stamp, no job, queued false.
+func TestEnqueueRefresh_NoConnection_LiveDB(t *testing.T) {
+	f := newFixture(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	for _, status := range []string{"error", "gone"} {
+		org := f.org("act_" + uuid.NewString()[:8])
+		if status == "gone" {
+			f.exec(`DELETE FROM org_meta_assets WHERE org_id = $1`, org)
+			f.exec(`DELETE FROM org_meta_connections WHERE org_id = $1`, org)
+		} else {
+			f.exec(`UPDATE org_meta_connections SET status = 'error', access_token_enc = NULL WHERE org_id = $1`, org)
+		}
+		queued, nb, err := EnqueueRefresh(f.ctx, f.pool, org, now)
+		if err != nil || queued || !nb.IsZero() {
+			t.Fatalf("%s: %v %s %v", status, queued, nb, err)
+		}
+		if n := f.count(`SELECT count(*) FROM meta_insights_state WHERE org_id = $1`, org); n != 0 {
+			t.Errorf("%s: throttle stamped (%d rows)", status, n)
+		}
+		if n := f.count(`SELECT count(*) FROM worker_jobs WHERE job_type = $1 AND payload ->> 'org_id' = $2`, SyncJobType, org.String()); n != 0 {
+			t.Errorf("%s: jobs = %d", status, n)
+		}
+	}
+}
+
+// Many sweeps and refreshes at once still leave ONE waiting sync per org.
+func TestEnqueueSync_ConcurrentOneJob_LiveDB(t *testing.T) {
+	f := newFixture(t)
+	org := f.org("act_" + uuid.NewString()[:8])
+	now := time.Now().UTC().Truncate(time.Second)
+	var wg sync.WaitGroup
+	errs := make(chan error, 40)
+	for i := 0; i < 40; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			var err error
+			if i%2 == 0 {
+				_, err = enqueueSync(f.ctx, f.pool, org, ModeInterval)
+			} else {
+				_, _, err = EnqueueRefresh(f.ctx, f.pool, org, now.Add(time.Duration(i)*RefreshThrottle))
+			}
+			if err != nil {
+				errs <- err
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatal(err)
+	}
+	if n := f.count(`SELECT count(*) FROM worker_jobs WHERE job_type = $1 AND payload ->> 'org_id' = $2`, SyncJobType, org.String()); n != 1 {
+		t.Fatalf("sync jobs = %d, want 1", n)
+	}
+}
+
+// A failed run counts a consecutive failure; the sweep backs off 1 h, 2 h
+// ... even with META_INSIGHTS_EVERY=15m; a success resets the count.
+func TestRun_FailureBackoff_LiveDB(t *testing.T) {
+	f := newFixture(t)
+	act := "act_" + uuid.NewString()[:8]
+	org := f.org(act)
+	f.stub.set(act, page(insightRow("a1", "c1", "2026-11-22", "1.00")))
+	s := New(Options{Pool: f.pool, Box: f.box, Client: NewClient(f.srv.URL, "v25.0", nil), Logger: slog.Default(), Every: 15 * time.Minute})
+	day := time.Date(2026, 11, 23, 12, 0, 0, 0, time.UTC) // 13:00 Madrid
+	if res, err := s.Run(f.ctx, org, ModeBackfill, day); err != nil || res.ErrorCode != "" {
+		t.Fatalf("backfill: %+v %v", res, err)
+	}
+	f.stub.set(act, stubAnswer{400, `{"error":{"message":"too many calls","code":80004,"type":"OAuthException"}}`})
+	t1 := day.Add(time.Hour)
+	t2 := t1.Add(2 * time.Hour)
+	for i, at := range []time.Time{t1, t2} {
+		if res, err := s.Run(f.ctx, org, ModeInterval, at); err != nil || res.ErrorCode != CodeGraphRateLimited {
+			t.Fatalf("failure %d: %+v %v", i+1, res, err)
+		}
+	}
+	st, err := LoadState(f.ctx, f.pool, org)
+	if err != nil || st.Failures != 2 || st.LastError != CodeGraphRateLimited {
+		t.Fatalf("state after two failures: %+v %v", st, err)
+	}
+	pending := func() int {
+		return f.count(`SELECT count(*) FROM worker_jobs WHERE job_type = $1 AND payload ->> 'org_id' = $2`, SyncJobType, org.String())
+	}
+	// 1 h 59 after the second failure: 2 h back-off, nothing queued.
+	if _, err := s.Sweep(f.ctx, t2.Add(119*time.Minute)); err != nil || pending() != 0 {
+		t.Fatalf("sweep inside the back-off: jobs %d %v", pending(), err)
+	}
+	if _, err := s.Sweep(f.ctx, t2.Add(121*time.Minute)); err != nil || pending() != 1 {
+		t.Fatalf("sweep after the back-off: jobs %d %v", pending(), err)
+	}
+	f.stub.set(act, page(insightRow("a1", "c1", "2026-11-23", "1.00")))
+	if res, err := s.Run(f.ctx, org, ModeInterval, t2.Add(3*time.Hour)); err != nil || res.ErrorCode != "" {
+		t.Fatalf("success: %+v %v", res, err)
+	}
+	if st, _ := LoadState(f.ctx, f.pool, org); st.Failures != 0 || st.LastError != "" {
+		t.Errorf("a success did not reset the back-off: %+v", st)
+	}
+}
+
 type stubSender struct {
 	mu   sync.Mutex
 	sent map[string][]string
