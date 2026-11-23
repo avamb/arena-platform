@@ -89,6 +89,12 @@ func BuildBundle(d *Draft, idx int, actionID int64, posterURL, externalRef strin
 	for _, c := range d.Channels {
 		req.ChannelIDs = append(req.ChannelIDs, c.ID)
 	}
+	if ext := d.extOf(idx); ext != nil {
+		// A partner box office sells this date: the bundle carries the block and
+		// no categories (an existing date without the key would be left as it is).
+		req.ActionEvent.ExternalSale = externalWire(ext, d.currencyOrGuess())
+		return req
+	}
 	if s.seated() {
 		// A date sold by a seating plan: the plan binds the places, the bundle
 		// only prices the categories (S1b). Nothing else of the ticket part
@@ -298,6 +304,7 @@ func (w *Wizard) Save(ctx context.Context, io SaveIO, ws WizSession, d *Draft, d
 			d.Saved.ActionID = res.CompatIDs.ActionID
 			d.Saved.EventID = res.EventID
 		}
+		w.linkNewEventSeries(ctx, io, ws, d) // the tour of a new event (L-2)
 		if d.Mode == ModeEdit {
 			// A date added to an existing event now has an id of its own; a
 			// later retry re-sends it by that id, never under a second key.

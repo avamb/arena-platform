@@ -1,0 +1,116 @@
+{{define "subject"}}{{with .Reissue}}Uudet lippunne — {{$.EventName}}{{else}}{{if gt (len .Tickets) 1}}Liput — {{.EventName}}{{else}}Lippu — {{.EventName}}{{end}}{{end}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="fi" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lippunne</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:28px 32px 8px 32px;color:#22333D;font-size:16px;">Hei{{with .HolderName}} {{.}}{{end}}!</td></tr>
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">{{with .Reissue}}{{if .Typo}}Ostoksen yhteydessä annetussa sähköpostiosoitteessa oli kirjoitusvirhe, joten ensimmäinen lippunne sisältänyt viesti meni toiseen osoitteeseen. Otitte yhteyttä järjestäjään ja vahvistitte tietonne. Olemme myöntäneet teille uudet liput, ne ovat liitteenä.<br><br>Ensimmäisen viestin liput eivät ole enää voimassa. Sisään pääsee vain uusilla lipuilla.{{else}}Pyynnöstänne olemme myöntäneet uudet liput aiempien tilalle. Ne ovat liitteenä.<br><br>Aiemmat liput eivät ole enää voimassa. Sisään pääsee vain uusilla lipuilla.{{end}}<br><br>Paikkanne ja maksunne eivät ole muuttuneet.{{with .OrderNumber}} Tilausnumero: {{.}}.{{end}}{{else}}{{if gt (len .Tickets) 1}}Kiitos ostoksestanne. Liput tapahtumaan “{{.EventName}}” ovat tämän sähköpostin liitteenä (PDF-tiedostot).{{else}}Kiitos ostoksestanne. Lippunne tapahtumaan “{{.EventName}}” on tämän sähköpostin liitteenä (PDF).{{end}}{{end}}</td></tr>
+  <tr><td style="padding:8px 32px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-left:4px solid {{.Accent}};background:#f8f9fa;"><tr><td style="padding:12px 16px;color:#22333D;font-size:14px;line-height:1.6;">
+      <strong>{{.EventName}}</strong>{{with .SessionStart}}<br>{{.}}{{end}}{{with .DoorsOpen}}<br>Ovet aukeavat {{.}}{{end}}{{with .VenueName}}<br>{{.}}{{end}}{{with .Directions.GoogleURL}}<br>Reittiohjeet: <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a>{{end}}
+    </td></tr></table>
+  </td></tr>
+  <tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">{{if gt (len .Tickets) 1}}Liput ({{len .Tickets}}){{else}}Lippu{{end}}</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5;border-collapse:collapse;">
+    {{range .Tickets}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">Nro {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .DownloadURL}}<br><a href="{{.}}" style="color:{{$.Accent}};font-size:13px;">Lataa PDF</a>{{end}}</td>{{with .Price}}<td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td>{{end}}</tr>
+    {{else}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">Nro {{.TicketID}}{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · Sektori {{.}}{{end}}{{with .SeatRow}} · Rivi {{.}}{{end}}{{with .SeatNumber}} · Paikka {{.}}{{end}}</td></tr>
+    {{end}}</table>
+  </td></tr>
+  {{with .Payment}}<tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">Maksu</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5;border-collapse:collapse;">
+      <tr><td style="padding:4px 0;color:#46555f;">Tilaus</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">Nro {{.OrderNumber}}</td></tr>
+      {{with .PaidAt}}<tr><td style="padding:4px 0;color:#46555f;">Maksupäivä</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      {{with .Subtotal}}<tr><td style="padding:4px 0;color:#46555f;">Liput</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      {{with .Discount}}<tr><td style="padding:4px 0;color:#46555f;">Alennus</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">−{{.}}</td></tr>{{end}}
+      {{with .ServiceFee}}<tr><td style="padding:4px 0;color:#46555f;">Palvelumaksu</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      <tr><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;">Maksettu yhteensä</td><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;white-space:nowrap;text-align:right;">{{.Total}}</td></tr>
+    </table>
+  </td></tr>{{end}}
+  {{with .EventNote.HTML}}<tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">Tapahtumasta</div>
+    <div style="color:#46555f;font-size:14px;line-height:1.6;">{{.}}</div>
+  </td></tr>{{end}}
+  {{if .WithdrawalNotice}}<tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Tiettynä päivänä järjestettävän tapahtuman lippuihin ei sovelleta peruuttamisoikeutta. Tilauksenne tuli sitovaksi maksun yhteydessä.</td></tr>{{end}}
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Avatkaa tiedosto puhelimessanne ja näyttäkää viivakoodi sisäänkäynnillä — tulostaminen ei ole tarpeen.</td></tr>
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+    Vastaanottaja: {{.RecipientEmail}}<br><br>
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Yhteystiedot: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Yhteystiedot: <a href="{{.}}" style="color:#666">Kirjoita järjestäjälle</a>{{end}}{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Lippujen käsittely: arenasoldout.com</a>{{end}}</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Jos napsautatte ”Peruuta tilaus”, lippunne sisältävät viestit ja tilaustanne koskevat tärkeät viestit eivät enää saavu teille. Emme lähetä markkinointiviestejä ilman suostumustanne.</p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+Hei{{with .HolderName}} {{.}}{{end}}!
+
+{{with .Reissue}}{{if .Typo}}Ostoksen yhteydessä annetussa sähköpostiosoitteessa oli kirjoitusvirhe, joten ensimmäinen lippunne sisältänyt viesti meni toiseen osoitteeseen. Otitte yhteyttä järjestäjään ja vahvistitte tietonne. Olemme myöntäneet teille uudet liput, ne ovat liitteenä.
+
+Ensimmäisen viestin liput eivät ole enää voimassa. Sisään pääsee vain uusilla lipuilla.{{else}}Pyynnöstänne olemme myöntäneet uudet liput aiempien tilalle. Ne ovat liitteenä.
+
+Aiemmat liput eivät ole enää voimassa. Sisään pääsee vain uusilla lipuilla.{{end}}
+
+Paikkanne ja maksunne eivät ole muuttuneet.{{with .OrderNumber}} Tilausnumero: {{.}}.{{end}}{{else}}{{if gt (len .Tickets) 1}}Kiitos ostoksestanne. Liput tapahtumaan “{{.EventName}}” ovat tämän sähköpostin liitteenä (PDF-tiedostot).{{else}}Kiitos ostoksestanne. Lippunne tapahtumaan “{{.EventName}}” on tämän sähköpostin liitteenä (PDF).{{end}}{{end}}
+
+{{.EventName}}
+{{with .SessionStart}}{{.}}
+{{end}}{{with .DoorsOpen}}Ovet aukeavat {{.}}
+{{end}}{{with .VenueName}}{{.}}
+{{end}}{{with .Directions.GoogleURL}}Reittiohjeet: Google Maps {{.}} · Waze {{$.Directions.WazeURL}}
+{{end}}
+{{if gt (len .Tickets) 1}}Liput ({{len .Tickets}}){{else}}Lippu{{end}}:
+{{range .Tickets}}- Nro {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .Price}} · {{.}}{{end}}{{with .DownloadURL}}
+  Lataa PDF: {{.}}{{end}}
+{{else}}- Nro {{.TicketID}}{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · Sektori {{.}}{{end}}{{with .SeatRow}} · Rivi {{.}}{{end}}{{with .SeatNumber}} · Paikka {{.}}{{end}}
+{{end}}{{with .Payment}}
+Maksu:
+- Tilaus: Nro {{.OrderNumber}}
+{{with .PaidAt}}- Maksupäivä: {{.}}
+{{end}}{{with .Subtotal}}- Liput: {{.}}
+{{end}}{{with .Discount}}- Alennus: −{{.}}
+{{end}}{{with .ServiceFee}}- Palvelumaksu: {{.}}
+{{end}}- Maksettu yhteensä: {{.Total}}
+{{end}}
+{{with .EventNote.Plain}}Tapahtumasta:
+{{.}}
+
+{{end}}{{if .WithdrawalNotice}}Tiettynä päivänä järjestettävän tapahtuman lippuihin ei sovelleta peruuttamisoikeutta. Tilauksenne tuli sitovaksi maksun yhteydessä.
+
+{{end}}Avatkaa tiedosto puhelimessanne ja näyttäkää viivakoodi sisäänkäynnillä — tulostaminen ei ole tarpeen.
+{{template "contact_text" .}}Vastaanottaja: {{.RecipientEmail}}
+
+--
+{{.Branding.SellerLabel}} {{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
+{{end}}{{with .Branding.PaymentLine}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}Yhteystiedot: {{.}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Yhteystiedot: {{.}}
+{{end}}{{end}}
+{{if not .WhiteLabel}}Lippujen käsittely: arenasoldout.com — https://arenasoldout.com{{end}}
+
+Jos napsautatte ”Peruuta tilaus”, lippunne sisältävät viestit ja tilaustanne koskevat tärkeät viestit eivät enää saavu teille. Emme lähetä markkinointiviestejä ilman suostumustanne.
+{{end}}

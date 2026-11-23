@@ -165,6 +165,10 @@ export type ApiErrorStem =
   // 5-3
   | "saleTimeInvalid"
   | "doorsAfterStart"
+  // Spec 63, L-3: a date a partner box office sells
+  | "externalInvalid"
+  | "salesModeLocked"
+  | "soldExternally"
   // 5-4
   | "tierPriceInvalid"
   | "tierCapacityInvalid"
@@ -279,6 +283,8 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "eventInvalidTransition", "eventNeedsSession", "eventNeedsTier",
   // 5-3
   "saleTimeInvalid", "doorsAfterStart",
+  // Spec 63, L-3
+  "externalInvalid", "salesModeLocked", "soldExternally",
   // 5-4
   "tierPriceInvalid", "tierCapacityInvalid", "tierPriceWindows",
   "smartPriceOn", "smartPriceSchedule", "smartPricePlaces", "smartPriceNoRoom", "smartPriceTooLate", "smartPriceSeated",
@@ -453,6 +459,16 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "session.invalid_sales_end_at": "saleTimeInvalid",
   "session.invalid_doors_open_at": "saleTimeInvalid",
   "session.doors_after_start": "doorsAfterStart",
+  // Spec 63, L-3: a date a partner box office sells
+  "session.invalid_external_url": "externalInvalid",
+  "session.invalid_external_seller_name": "externalInvalid",
+  "session.invalid_external_price": "externalInvalid",
+  "session.invalid_external_currency": "externalInvalid",
+  "session.external_required": "externalInvalid",
+  "session.external_not_applicable": "externalInvalid",
+  "import.invalid_external_sale": "externalInvalid",
+  "session.sales_mode_locked": "salesModeLocked",
+  "session.sold_externally": "soldExternally",
   // 5-4: PATCH tier and PUT price-schedule
   "tier.invalid_fixed_price": "tierPriceInvalid",
   "tier.invalid_free_price": "tierPriceInvalid",

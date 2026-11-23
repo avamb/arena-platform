@@ -34,9 +34,17 @@ const draftSchemaVersion = 4
 
 // Steps of the wizard (Draft.Step).
 const (
+	// The first question of a new event: who sells the tickets (spec 63 L-3).
+	// "Partner" asks the box office address, its name and an optional "from"
+	// price (wizard_external.go) and skips every ticket question.
+	stEvSeller      = "ev_seller"
+	stExtURL        = "ext_url"
+	stExtName       = "ext_name"
+	stExtPrice      = "ext_price"
 	stEvName        = "ev_name"
 	stEvAge         = "ev_age"
 	stEvPromoter    = "ev_promoter"
+	stEvSeries      = "ev_series"
 	stPromoterName  = "promoter_name"
 	stPromoterLegal = "promoter_legal"
 	stEvPoster      = "ev_poster"
@@ -122,6 +130,9 @@ type Draft struct {
 	Sessions []DraftSession `json:"sessions"`
 	Cur      int            `json:"cur"` // session being edited
 	Tickets  DraftTickets   `json:"tickets"`
+	// External is the partner box office that sells every date the draft adds
+	// (nil: the platform sells). See wizard_external.go.
+	External *DraftExternal `json:"external,omitempty"`
 	Currency string         `json:"currency"`
 	Channels []RefItem      `json:"channels"`
 	Publish  bool           `json:"publish"`
@@ -173,12 +184,16 @@ type DraftEvent struct {
 	// (ModeEdit): the arena id the bundle addresses, and the event's
 	// updated_at at load time, so a change made elsewhere meanwhile is
 	// noticed before the save.
-	EventID       string `json:"event_id,omitempty"`
-	UpdatedAt     string `json:"updated_at,omitempty"`
-	Name          string `json:"name"`
-	Age           string `json:"age"`
-	PromoterID    string `json:"promoter_id"` // "" = the organization itself
-	PromoterName  string `json:"promoter_name"`
+	EventID      string `json:"event_id,omitempty"`
+	UpdatedAt    string `json:"updated_at,omitempty"`
+	Name         string `json:"name"`
+	Age          string `json:"age"`
+	PromoterID   string `json:"promoter_id"` // "" = the organization itself
+	PromoterName string `json:"promoter_name"`
+	// SeriesID/SeriesName name the tour a NEW event is bound to ("" = none);
+	// the bind rides on PATCH right after the first date is saved.
+	SeriesID      string `json:"series_id,omitempty"`
+	SeriesName    string `json:"series_name,omitempty"`
 	PosterMediaID string `json:"poster_media_id"`
 	PosterW       int    `json:"poster_w"`
 	PosterH       int    `json:"poster_h"`
@@ -228,6 +243,10 @@ type DraftSession struct {
 	// "" for a date sold without seats. PlanName is only for the screens.
 	PlanVersionID string `json:"plan_version_id,omitempty"`
 	PlanName      string `json:"plan_name,omitempty"`
+	// External is the partner box office an existing date is sold by, as it
+	// was read back (ModeEdit); nil for a date the platform sells and for a
+	// date the draft adds (those follow Draft.External).
+	External *DraftExternal `json:"external,omitempty"`
 }
 
 // DraftTickets is the ticket part of the draft.
@@ -350,6 +369,9 @@ type DraftScratch struct {
 	// NoPlanVenueID is the existing venue just chosen that has no seating
 	// plan: the places question says so and offers another venue.
 	NoPlanVenueID string `json:"no_plan_venue_id,omitempty"`
+	// Ext is the partner block an edited event is being re-entered into: it
+	// replaces the loaded one only when the last question is answered.
+	Ext *DraftExternal `json:"ext,omitempty"`
 }
 
 // DraftSaved is what the non-atomic save already wrote.
@@ -360,6 +382,8 @@ type DraftSaved struct {
 	Sessions   []SavedSession `json:"sessions"`
 	Warnings   []string       `json:"warnings"`
 	LastReason string         `json:"last_reason"`
+	// SeriesDone is set once the new event's tour bind was tried (L-2).
+	SeriesDone bool `json:"series_done,omitempty"`
 }
 
 // SavedSession records one saved date. Done is what the retry looks at: an
@@ -551,7 +575,7 @@ func (w *Wizard) WithPageHints(on bool) *Wizard {
 // NewDraft starts a draft at the first question, seeded with the remembered
 // defaults where the question has one.
 func NewDraft() *Draft {
-	return &Draft{Version: draftSchemaVersion, Mode: ModeCreate, Step: stEvName, Publish: true}
+	return &Draft{Version: draftSchemaVersion, Mode: ModeCreate, Step: stEvSeller, Publish: true}
 }
 
 // ─── parsing helpers ──────────────────────────────────────────────────────────
@@ -949,6 +973,9 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 	}
 
 	switch d.Step {
+	case stEvSeller, stExtURL, stExtName, stExtPrice:
+		return w.applyExternal(ws, d, text, data)
+
 	case stEvName:
 		if data == "poster" && w.posterHints && d.Mode == ModeCreate {
 			d.goTo(stEvPosterAsk)
@@ -1008,7 +1035,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		switch {
 		case data == "prom:org":
 			d.Event.PromoterID, d.Event.PromoterName = "", ""
-			d.next(stEvPoster)
+			w.afterPromoter(ctx, ws, d)
 		case data == "prom:new":
 			d.goTo(stPromoterName)
 		case data == "keep":
@@ -1021,7 +1048,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			for _, p := range promoters {
 				if p.ID == ws.Defaults.PromoterID {
 					d.Event.PromoterID, d.Event.PromoterName = p.ID, p.Name
-					d.next(stEvPoster)
+					w.afterPromoter(ctx, ws, d)
 					return "", nil
 				}
 			}
@@ -1034,10 +1061,15 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			for _, p := range promoters {
 				if p.ID == id {
 					d.Event.PromoterID, d.Event.PromoterName = p.ID, p.Name
-					d.next(stEvPoster)
+					w.afterPromoter(ctx, ws, d)
 					return "", nil
 				}
 			}
+		}
+
+	case stEvSeries:
+		if err := w.applySeries(ctx, ws, d, data); err != nil {
+			return "", err
 		}
 
 	case stPromoterName:
@@ -1073,7 +1105,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		}
 		d.Event.PromoterID, d.Event.PromoterName = p.ID, p.Name
 		d.Scratch.NewPromo = ""
-		d.next(stEvPoster)
+		w.afterPromoter(ctx, ws, d)
 
 	case stEvPoster:
 		switch {
@@ -1284,6 +1316,11 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			d.Cur = len(d.Sessions)
 			d.goTo(stSDate)
 		case "next":
+			if d.External != nil {
+				// A partner sells the tickets: there are no categories to ask.
+				d.section(stXDescription)
+				break
+			}
 			if d.Mode != ModeEdit && d.allDatesOwnTickets() {
 				// Every date is sold by a seating plan and was priced with it:
 				// there is nothing left for the shared ticket questions.
@@ -1609,6 +1646,10 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			d.Scratch.PrevSessions = len(d.Sessions)
 			d.Cur = len(d.Sessions)
 		case "e:tickets":
+			if d.External != nil {
+				d.openExternalEdit()
+				break
+			}
 			d.openTicketsEdit()
 		}
 
@@ -1716,6 +1757,10 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 				d.openTicketsEdit()
 				break
 			}
+			if d.External != nil {
+				d.openExternalEdit()
+				break
+			}
 			if d.anySeated() {
 				d.Scratch.Edit = "tickets"
 				d.Step = stTDate
@@ -1770,7 +1815,7 @@ func (w *Wizard) createVenue(ctx context.Context, ws WizSession, d *Draft) (stri
 		s.CountryID = v.NewCountry.ID
 	}
 	d.Scratch.NewVenue = VenueCreate{}
-	if w.canUploadPlans() {
+	if d.External == nil && w.canUploadPlans() {
 		// A venue made now has no hall plan: offer to send one.
 		d.planUploadAsk(planAfterFinish)
 		return "", nil

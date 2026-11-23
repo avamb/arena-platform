@@ -54,7 +54,8 @@ func (f *fakeStore) MarkFailed(_ context.Context, _ uuid.UUID, r string) error {
 }
 
 func newFake(provider string, consent bool) (*fakeStore, Delivery) {
-	d := Delivery{ID: uuid.New(), OrderID: uuid.New(), OrgID: uuid.New(), Provider: provider, CreatedAt: time.Unix(1700000000, 0)}
+	oid := uuid.New()
+	d := Delivery{ID: uuid.New(), OrderID: &oid, OrgID: uuid.New(), Provider: provider, CreatedAt: time.Unix(1700000000, 0)}
 	f := &fakeStore{
 		settings: Settings{MetaPixelID: "123", MetaCAPIToken: "tok-secret", GA4MeasurementID: "G-X", GA4APISecret: "ga-secret"},
 		consent:  consent,

@@ -163,6 +163,9 @@ services:
       # The key lives on the api only; the bot calls the route. Empty = off.
       POSTER_LLM_API_KEY: "${POSTER_LLM_API_KEY:-}"
       POSTER_LLM_MODEL: "${POSTER_LLM_MODEL:-claude-sonnet-5}"
+      # Machine translation of event texts (spec 63 section 16.4); api and worker. Empty = off.
+      TRANSLATE_LLM_API_KEY: "${TRANSLATE_LLM_API_KEY:-}"
+      TRANSLATE_LLM_MODEL: "${TRANSLATE_LLM_MODEL:-claude-sonnet-5-5}"
       # Provider choice: anthropic (default) or gemini, with an optional fallback
       # provider tried once. GEMINI_API_KEY is the key of the gemini provider.
       POSTER_LLM_PROVIDER: "${POSTER_LLM_PROVIDER:-anthropic}"
@@ -278,6 +281,9 @@ services:
       # profile set VENUE_GEN_URL=http://venue_gen:8090 and the same token.
       VENUE_GEN_URL: "${VENUE_GEN_URL:-}"
       VENUE_GEN_TOKEN: "${VENUE_GEN_TOKEN:-}"
+      # Machine translation of event texts (spec 63 section 16.4). Empty = off.
+      TRANSLATE_LLM_API_KEY: "${TRANSLATE_LLM_API_KEY:-}"
+      TRANSLATE_LLM_MODEL: "${TRANSLATE_LLM_MODEL:-claude-sonnet-5-5}"
       HEALTH_ADDR: "http://localhost:9091"
 
       DEFAULT_LOCALE: "en"

@@ -46,7 +46,22 @@ type SessionRow struct {
 	// "doors open" time, never after StartAt.
 	SalesEndAt  time.Time  `json:"sales_end_at"`
 	DoorsOpenAt *time.Time `json:"doors_open_at"`
+	// SalesMode is who sells the tickets (migration 0221): "platform" or
+	// "external". An external session carries the partner's box office URL
+	// and name, and optionally a display price "from" with its currency;
+	// a platform session carries none of them.
+	SalesMode             string  `json:"sales_mode"`
+	ExternalTicketURL     *string `json:"external_ticket_url"`
+	ExternalSellerName    *string `json:"external_seller_name"`
+	DisplayPriceFromMinor *int64  `json:"display_price_from_minor"`
+	DisplayCurrency       *string `json:"display_currency"`
 }
+
+// Session sales modes (migration 0221, sessions.sales_mode).
+const (
+	SessionSalesModePlatform = "platform"
+	SessionSalesModeExternal = "external"
+)
 
 // scanSessionRow scans a single sessions row into a SessionRow.
 func scanSessionRow(row interface {
@@ -72,13 +87,18 @@ func scanSessionRow(row interface {
 		&s.DeletedAt,
 		&s.SalesEndAt,
 		&s.DoorsOpenAt,
+		&s.SalesMode,
+		&s.ExternalTicketURL,
+		&s.ExternalSellerName,
+		&s.DisplayPriceFromMinor,
+		&s.DisplayCurrency,
 	)
 	return s, err
 }
 
 // sessionColumns is the canonical RETURNING / SELECT column list shared by
 // every query that yields a full SessionRow.
-const sessionColumns = `id, event_id, venue_id, start_at, end_at, capacity_total, capacity_override, status, admission_mode, seating_plan_version_id, poster_media_id, currency, currency_source, created_at, updated_at, deleted_at, sales_end_at, doors_open_at`
+const sessionColumns = `id, event_id, venue_id, start_at, end_at, capacity_total, capacity_override, status, admission_mode, seating_plan_version_id, poster_media_id, currency, currency_source, created_at, updated_at, deleted_at, sales_end_at, doors_open_at, sales_mode, external_ticket_url, external_seller_name, display_price_from_minor, trim(display_currency)::text AS display_currency`
 
 // ─────────────────────────────────────────────────────────────────────────────
 // InsertSession

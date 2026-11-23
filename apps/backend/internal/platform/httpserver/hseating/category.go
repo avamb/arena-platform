@@ -411,6 +411,8 @@ func (h *Handler) writeCategoryBatchError(
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 			"session.not_found", "session not found", r,
 		))
+	case errors.Is(err, seatlayout.ErrSessionSoldExternally):
+		writeSoldExternally(w, r)
 	case errors.As(err, &auditErr):
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"seating.audit_failed", "failed to write audit event", r,

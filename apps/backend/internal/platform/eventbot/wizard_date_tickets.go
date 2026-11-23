@@ -191,6 +191,14 @@ func placesOf(t DraftTickets) int {
 // otherwise "one more date?".
 func (d *Draft) afterSessionStep() string {
 	if d.Mode == ModeEdit && d.Cur > 0 && d.Cur < len(d.Sessions) && d.Sessions[d.Cur].SessionID == "" {
+		if d.External != nil {
+			// A partner sells the new date too: it has no categories to ask
+			// about, and the date counts as finished.
+			if d.Sessions[d.Cur].Tickets == nil {
+				d.Sessions[d.Cur].Tickets = &DraftTickets{}
+			}
+			return stSMore
+		}
 		if d.Sessions[d.Cur].Tickets != nil {
 			return stSConfirm
 		}

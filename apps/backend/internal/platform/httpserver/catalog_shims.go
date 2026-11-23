@@ -37,7 +37,8 @@ func (s *Server) catalogHandler() *hcatalog.Handler {
 		WithSeatingBinder(s.bindSeatingForSessionCreate).
 		WithCatalogEventPublisher(s.publishCatalogEvent).
 		WithPublicBaseURL(s.apiPublicURL()).
-		WithTicketsBaseURL(s.ticketsBaseURL())
+		WithTicketsBaseURL(s.ticketsBaseURL()).
+		WithMediaURLSigner(s.signedMediaURL)
 }
 
 // bindSeatingForSessionCreate adapts hseating's inline bind (AB-36 step 3)

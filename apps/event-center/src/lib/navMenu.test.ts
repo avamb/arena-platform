@@ -41,6 +41,12 @@ describe("navGroups", () => {
     ]);
   });
 
+  it("puts Tours in the Events section for a person with event.read, and nowhere else", () => {
+    const withTours = shape([...OWNER, "event.read"]);
+    expect(withTours.find(([id]) => id === "events")?.[1]).toEqual(["menu-events", "nav-summary", "nav-series"]);
+    expect(shape(OWNER).find(([id]) => id === "events")?.[1]).toEqual(["menu-events", "nav-summary"]);
+  });
+
   it("drops what a manager without org.update and billing.read cannot use", () => {
     vi.stubEnv("VITE_FEATURE_WIZARD", "1");
     const manager = OWNER.filter((p) => p !== "org.update" && p !== "billing.read" && p !== "payment_config.read");

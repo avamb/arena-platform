@@ -33,6 +33,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/contactform"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/outboundlink"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -206,6 +207,14 @@ func NormalizeChannelSettings(raw json.RawMessage) (json.RawMessage, string) {
 			b, _ := json.Marshal(rec)
 			if msg := contactform.ValidateRecipients(b); msg != "" {
 				return nil, msg
+			}
+		}
+	}
+	if site, ok := obj["site"].(map[string]any); ok {
+		if op, present := site["outbound_params"]; present {
+			b, _ := json.Marshal(op)
+			if _, err := outboundlink.Parse(b); err != nil {
+				return nil, err.Error()
 			}
 		}
 	}

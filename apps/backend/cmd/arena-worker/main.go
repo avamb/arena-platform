@@ -58,6 +58,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/cartreminder"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/contactform"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/contenttranslate"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/conversions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/convertjob"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customerimport"
@@ -310,6 +311,7 @@ func run() error {
 	registerDisputeHandlers(registry, pool.Pool, cfg, salesNotifier, opsNotifier, buildEmailSender(cfg, logger), logger)
 	registerPaymentReceiptHandler(registry, pool.Pool, cfg, mediaRepo, logger)
 	registerVenuePlanGenerateHandler(registry, pool.Pool, cfg, mediaRepo, logger)
+	registerContentTranslateHandler(registry, pool.Pool, cfg, logger)
 	registerTicketReissueHandler(registry, pool.Pool, cfg, logger)
 	registerPaymentRecoverHandler(registry, pool.Pool, cfg, logger)
 	registerBillingReconcileHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
@@ -936,6 +938,20 @@ func registerVenuePlanGenerateHandler(reg *worker.Registry, pool *pgxpool.Pool, 
 	reg.Register(venueplangenerate.JobTypeSweep, venueplangenerate.NewSweepHandler(opts))
 	logger.Info("venue_plan.generate handler registered",
 		"generator_configured", g != nil, "media_configured", mediaRepo != nil)
+}
+
+// registerContentTranslateHandler registers content.translate (spec 63 section
+// 16.4). It always registers: without TRANSLATE_LLM_API_KEY the handler logs
+// and completes without writing (the api refuses to enqueue then).
+func registerContentTranslateHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger) {
+	var tr contenttranslate.Translator
+	if cfg.TranslateLLMAPIKey != "" {
+		tr = contenttranslate.NewAnthropic(cfg.TranslateLLMAPIKey, cfg.TranslateLLMModel, cfg.TranslateLLMBaseURL, nil)
+	}
+	reg.Register(contenttranslate.JobType, contenttranslate.NewHandler(contenttranslate.Options{
+		Store: contenttranslate.PGStore{DB: pool}, Translator: tr, Logger: logger,
+	}))
+	logger.Info("content.translate handler registered", "translator_configured", tr != nil)
 }
 
 // buildVenueGenerator returns the generator client, or nil (generator off).

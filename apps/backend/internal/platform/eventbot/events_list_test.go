@@ -32,7 +32,7 @@ func names(events []openapi.EventItem) []string {
 func TestEventChip(t *testing.T) {
 	t.Parallel()
 	for state, want := range map[string]string{
-		"on_sale": "●", "upcoming": "○", "sold_out": "✕", "archived": "✓", "draft": "📝", "": "·", "mystery": "·",
+		"on_sale": "●", "upcoming": "○", "sold_out": "✕", "archived": "✓", "draft": "📝", "external": "↗", "": "·", "mystery": "·",
 	} {
 		if got := EventChip(state); got != want {
 			t.Errorf("EventChip(%q) = %q, want %q", state, got, want)

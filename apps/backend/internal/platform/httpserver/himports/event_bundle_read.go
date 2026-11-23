@@ -70,6 +70,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/extsale"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
@@ -100,6 +101,10 @@ const (
 	// bundle leaves the promoter alone (promoterId absent) instead of naming
 	// one the import would refuse.
 	WarnBundlePromoterArchived = "event_bundle.promoter_archived"
+	// WarnBundleSeriesArchived - the event's tour is archived; the bundle
+	// leaves the tour alone (arenaSeriesId absent) instead of naming one the
+	// import would refuse.
+	WarnBundleSeriesArchived = "event_bundle.series_archived"
 	// WarnBundleChainBroken — a category hands its places to one the session
 	// no longer has; the link is written as removed.
 	WarnBundleChainBroken = "event_bundle.chain_link_missing"
@@ -155,6 +160,10 @@ type bundleSource struct {
 	// PromoterID is the promoter linked to the event, nil for none.
 	PromoterID       *uuid.UUID
 	PromoterArchived bool
+	// SeriesID is the tour linked to the event, nil for none. SeriesArchived
+	// says the tour is archived.
+	SeriesID       *uuid.UUID
+	SeriesArchived bool
 	// EmailNote is the event's own letter text, "" when it has none.
 	EmailNote string
 	// EmailNoteFormat is the format the note is stored in ("art" or "text"),
@@ -254,6 +263,22 @@ func loadBundleSource(ctx context.Context, q *gen.Queries, orgID, eventID uuid.U
 			return bundleSource{}, fmt.Errorf("read promoter: %w", err)
 		default:
 			src.PromoterArchived = p.ArchivedAt != nil
+		}
+	}
+
+	seriesLinks, err := q.ListSeriesIDsForEvents(ctx, []uuid.UUID{eventID})
+	if err != nil {
+		return bundleSource{}, fmt.Errorf("read event series: %w", err)
+	}
+	if sid, linked := seriesLinks[eventID]; linked {
+		s, err := q.GetEventSeries(ctx, sid, orgID)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+		case err != nil:
+			return bundleSource{}, fmt.Errorf("read series: %w", err)
+		default:
+			src.SeriesID = &sid
+			src.SeriesArchived = s.ArchivedAt != nil
 		}
 	}
 
@@ -384,6 +409,18 @@ func buildEventBundles(src bundleSource) EventBundleReadResponse {
 		none := ""
 		promoter = &none
 	}
+	// "" = the event stands alone (posting it back clears no tour).
+	noSeries := ""
+	series := bil24compat.NullableString{Present: true, Value: &noSeries}
+	switch {
+	case src.SeriesID != nil && src.SeriesArchived:
+		series = bil24compat.NullableString{}
+		warn(WarnBundleSeriesArchived,
+			"the event's tour is archived: the bundles leave the tour as it is (action.arenaSeriesId is absent)")
+	case src.SeriesID != nil:
+		id := src.SeriesID.String()
+		series.Value = &id
+	}
 	// "" = the event has no letter text of its own (posting it back clears nothing).
 	emailNote := src.EmailNote
 	channelIDs := make([]string, 0, len(src.ChannelIDs))
@@ -443,6 +480,17 @@ func buildEventBundles(src bundleSource) EventBundleReadResponse {
 			doors = s.DoorsOpenAt.In(loc).Format(time.RFC3339)
 		}
 		ae.DoorsOpenTime = &doors
+		if v := extsale.ViewFromRow(s); v != nil {
+			// A partner-sold session reads back as externalSale (migration 0221);
+			// a platform session leaves the key out, which keeps the mode.
+			sale := bil24compat.ImportExternalSale{URL: v.URL, SellerName: v.SellerName, PriceFrom: v.PriceFrom}
+			if v.Currency != nil {
+				sale.Currency = *v.Currency
+			}
+			if raw, err := json.Marshal(sale); err == nil {
+				ae.ExternalSale = raw
+			}
+		}
 		checkBundleTimes(ae, s, loc, warn)
 		checkBundleInstants(ss, src.Windows, warn)
 
@@ -455,6 +503,7 @@ func buildEventBundles(src bundleSource) EventBundleReadResponse {
 				DescriptionFormat: src.DescriptionFormat,
 				Age:               derefString(src.Event.AgeRating),
 				PromoterID:        promoter,
+				ArenaSeriesID:     series,
 				EmailNote:         &emailNote,
 				EmailNoteFormat:   src.EmailNoteFormat,
 			},

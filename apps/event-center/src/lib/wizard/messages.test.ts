@@ -27,11 +27,13 @@ describe("check messages", () => {
   it("only name codes the server really raises", () => {
     // The server owns the codes: a renamed one would silently lose its text.
     const root = fileURLToPath(new URL("../../../../backend/internal/platform/httpserver/himports/", import.meta.url));
-    const sources = ["import_arena.go", "bil24_session.go", "import_exec.go", "types.go", "dry_run.go", "import_chain.go", "import_sale_times.go"]
+    const sources = ["import_arena.go", "bil24_session.go", "import_exec.go", "types.go", "dry_run.go", "import_chain.go", "import_sale_times.go", "import_external_sale.go"]
       .map((f) => readFileSync(root + f, "utf8"))
       .join("\n");
+    // The codes of a date a partner box office sells (spec 63, L-3) are the extsale package's.
+    const extsale = readFileSync(fileURLToPath(new URL("../../../../backend/internal/platform/extsale/extsale.go", import.meta.url)), "utf8");
     for (const code of [...KNOWN_ERROR_CODES, ...KNOWN_WARNING_CODES]) {
-      expect(sources.includes(`"${code}"`), code).toBe(true);
+      expect((sources + extsale).includes(`"${code}"`), code).toBe(true);
     }
   });
 });

@@ -94,7 +94,18 @@ export interface PageStrings {
   lightboxPrev: string;
   lightboxNext: string;
   partnerOpen: string;
+  /** Tour (event series) page: heading over the list of its events, the
+   * partners block, "from {price}" and the plural forms of the summary line
+   * ("{n}" is replaced by the number). */
+  seriesEvents: string;
+  seriesPartners: string;
+  seriesFrom: string;
+  seriesCities: PluralForms;
+  seriesOnSale: PluralForms;
 }
+
+/** Texts by Intl.PluralRules category; `other` is the fallback. */
+export type PluralForms = Partial<Record<Intl.LDMLPluralRule, string>> & { other: string };
 
 const STRINGS: Record<PageLocale, PageStrings> = {
   en: {
@@ -164,6 +175,11 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     lightboxPrev: "Previous photo",
     lightboxNext: "Next photo",
     partnerOpen: "Buy there",
+    seriesEvents: "Dates and cities",
+    seriesPartners: "Partners",
+    seriesFrom: "from {price}",
+    seriesCities: { one: "{n} city", other: "{n} cities" },
+    seriesOnSale: { one: "on sale in {n} city", other: "on sale in {n} cities" },
   },
   ru: {
     loading: 'Загрузка события…',
@@ -232,6 +248,11 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     lightboxPrev: "Предыдущее фото",
     lightboxNext: "Следующее фото",
     partnerOpen: "Купить там",
+    seriesEvents: "Даты и города",
+    seriesPartners: "Партнёры",
+    seriesFrom: "от {price}",
+    seriesCities: { one: "{n} город", few: "{n} города", many: "{n} городов", other: "{n} города" },
+    seriesOnSale: { one: "в продаже в {n} городе", few: "в продаже в {n} городах", many: "в продаже в {n} городах", other: "в продаже в {n} городах" },
   },
   cs: {
     loading: 'Načítání akce…',
@@ -300,6 +321,11 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     lightboxPrev: "Předchozí fotka",
     lightboxNext: "Další fotka",
     partnerOpen: "Koupit tam",
+    seriesEvents: "Termíny a města",
+    seriesPartners: "Partneři",
+    seriesFrom: "od {price}",
+    seriesCities: { one: "{n} město", few: "{n} města", many: "{n} města", other: "{n} měst" },
+    seriesOnSale: { one: "v prodeji v {n} městě", few: "v prodeji v {n} městech", many: "v prodeji v {n} městech", other: "v prodeji v {n} městech" },
   },
   he: {
     loading: 'טוען את האירוע…',
@@ -368,6 +394,11 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     lightboxPrev: "התמונה הקודמת",
     lightboxNext: "התמונה הבאה",
     partnerOpen: "לקנות שם",
+    seriesEvents: "תאריכים וערים",
+    seriesPartners: "שותפים",
+    seriesFrom: "החל מ-{price}",
+    seriesCities: { one: "עיר אחת", two: "שתי ערים", other: "{n} ערים" },
+    seriesOnSale: { one: "במכירה בעיר אחת", two: "במכירה בשתי ערים", other: "במכירה ב-{n} ערים" },
   },
   es: {
     loading: 'Cargando evento…',
@@ -436,6 +467,11 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     lightboxPrev: "Foto anterior",
     lightboxNext: "Foto siguiente",
     partnerOpen: "Comprar allí",
+    seriesEvents: "Fechas y ciudades",
+    seriesPartners: "Socios",
+    seriesFrom: "desde {price}",
+    seriesCities: { one: "{n} ciudad", other: "{n} ciudades" },
+    seriesOnSale: { one: "a la venta en {n} ciudad", other: "a la venta en {n} ciudades" },
   },
 };
 

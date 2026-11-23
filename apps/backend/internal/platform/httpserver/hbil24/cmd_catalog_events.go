@@ -71,18 +71,24 @@ type catalogAction struct {
 // lost their sessions looks to the WP plugin like "this action is over", which
 // would unpublish live events on the site. handleBil24GetAllActions therefore
 // turns it into a -99 envelope rather than degrading.
+//
+// externalOnly names the events whose every listed session is sold by a
+// partner box office (sessions.sales_mode = 'external', migration 0221):
+// the caller leaves them out of the actionList, so a site never learns of
+// an event it cannot sell.
 func (h *Handler) loadActionEvents(
 	ctx context.Context, orgID uuid.UUID, feePercent float64, hiddenEvents []uuid.UUID,
-) (map[uuid.UUID]catalogAction, error) {
+) (byEvent map[uuid.UUID]catalogAction, externalOnly map[uuid.UUID]bool, err error) {
 	sessions, err := h.eventQueries.ListActionEventsByOrg(ctx, orgID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	tiers, err := h.eventQueries.ListActionEventTiersByOrg(ctx, orgID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	sessions, tiers = withoutHiddenSessions(sessions, tiers, hiddenEvents)
+	sessions, tiers, externalOnly = withoutExternalSessions(sessions, tiers)
 
 	// Feature #498 (W1-B3b): batch-resolve every action_event / venue / city /
 	// category_price id up front — one EnsureMany round-trip pair per kind for
@@ -161,15 +167,66 @@ func (h *Handler) loadActionEvents(
 	// would let a site reopen a sale the organizer closed.
 	manual, err := h.eventQueries.ListManualSalesStatesByOrg(ctx, orgID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// Add-on categories (migration 0197) do not keep a session on sale.
 	addon, err := h.eventQueries.ListAddonTierIDsByOrg(ctx, orgID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return h.projectActionEvents(ctx, orgID, sessions, tiers, prices, feePercent, chain, manual, addon), nil
+	return h.projectActionEvents(ctx, orgID, sessions, tiers, prices, feePercent, chain, manual, addon), externalOnly, nil
+}
+
+// withoutExternalSessions drops the sessions a partner box office sells
+// (hcheckout.SessionSellable, migration 0221) and their tiers, and reports
+// the events left with no listed session because of it.
+func withoutExternalSessions(
+	sessions []gen.ActionEventRow, tiers []gen.ActionEventTierRow,
+) ([]gen.ActionEventRow, []gen.ActionEventTierRow, map[uuid.UUID]bool) {
+	external := map[uuid.UUID]bool{}
+	platform := map[uuid.UUID]bool{}
+	dropped := map[uuid.UUID]struct{}{}
+	kept := make([]gen.ActionEventRow, 0, len(sessions))
+	for _, s := range sessions {
+		if !hcheckout.SessionSellable(s.SalesMode) {
+			external[s.EventID] = true
+			dropped[s.SessionID] = struct{}{}
+			continue
+		}
+		platform[s.EventID] = true
+		kept = append(kept, s)
+	}
+	if len(dropped) == 0 {
+		return sessions, tiers, nil
+	}
+	keptTiers := make([]gen.ActionEventTierRow, 0, len(tiers))
+	for _, t := range tiers {
+		if _, no := dropped[t.Tier.SessionID]; !no {
+			keptTiers = append(keptTiers, t)
+		}
+	}
+	externalOnly := make(map[uuid.UUID]bool, len(external))
+	for id := range external {
+		if !platform[id] {
+			externalOnly[id] = true
+		}
+	}
+	return kept, keptTiers, externalOnly
+}
+
+// withoutExternalOnlyEvents drops the events withoutExternalSessions named.
+func withoutExternalOnlyEvents(events []gen.EventRow, externalOnly map[uuid.UUID]bool) []gen.EventRow {
+	if len(externalOnly) == 0 {
+		return events
+	}
+	out := make([]gen.EventRow, 0, len(events))
+	for _, e := range events {
+		if !externalOnly[e.ID] {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // catalogChain is the part of a chain of categories (migration 0112) the

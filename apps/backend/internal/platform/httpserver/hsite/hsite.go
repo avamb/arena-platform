@@ -3,11 +3,12 @@
 //
 //	POST /v1/public/feeds/{feed_token}/organizer-contact      (П-17)
 //	POST /v1/public/feeds/{feed_token}/marketing-subscriptions (П-10)
+//	POST /v1/public/feeds/{feed_token}/track                  (Л-10, track.go)
 //
 // The site is addressed by its feed token, not by an organization slug: such a
 // channel has no hosted page. Every form is protected by Cloudflare Turnstile,
 // and the server-side check is scoped to the form: the widget action must be
-// the form's own (club, contact, private_event; my_tickets for the "my
+// the form's own (club, contact, private_event, partnership; my_tickets for the "my
 // tickets" link request) and the host the token was solved on must be one of
 // the channel's site origins (sales_channels.settings.site.origins). A channel
 // without origins has no site forms (404), and a request without a valid token
@@ -16,7 +17,7 @@
 // Channel settings read here (all plain JSON in sales_channels.settings):
 //
 //	site.origins                       ["https://vinoandco.events", "https://new.vinoandco.events"]
-//	contact_form.recipients.<topic>    ["owner@example.com", ...]  topic: contact | private_event
+//	contact_form.recipients.<topic>    ["owner@example.com", ...]  topic: contact | private_event | partnership
 //
 // Guard is the shared piece: ChannelByFeedToken resolves the channel and
 // Guard.Captcha runs the scoped Turnstile check, so another site route (the
@@ -48,6 +49,7 @@ const (
 	ActionClub         = "club"
 	ActionContact      = "contact"
 	ActionPrivateEvent = "private_event"
+	ActionPartnership  = "partnership"
 	ActionMyTickets    = "my_tickets"
 )
 
@@ -66,6 +68,10 @@ type Channel struct {
 	// contact e-mail or its owner's account e-mail exists, so a topic without
 	// its own recipients still reaches somebody.
 	HasFallbackAddress bool
+	// TrackKeyHash is settings.site.track_key_hash: the SHA-256 hex of the
+	// secret the site's nginx sends as X-Site-Key to the track route. Empty
+	// when the channel has none.
+	TrackKeyHash string
 }
 
 // ErrNoChannel: unknown or inactive feed token, or a channel without site
@@ -78,7 +84,8 @@ SELECT sc.id, sc.org_id, o.name, COALESCE(o.default_locale, ''),
        sc.settings #> '{contact_form,recipients}',
        COALESCE(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') <> ''
          OR COALESCE(btrim(o.contact_email), '') <> ''
-         OR COALESCE(` + gen.OwnerRecipientSQL + `, '') <> ''
+         OR COALESCE(` + gen.OwnerRecipientSQL + `, '') <> '',
+       COALESCE(sc.settings #>> '{site,track_key_hash}', '')
 FROM agent_feed_tokens ft
 JOIN sales_channels sc ON sc.id = ft.sales_channel_id
 JOIN organizations o ON o.id = sc.org_id
@@ -97,7 +104,7 @@ func ChannelByFeedToken(ctx context.Context, pool *pgxpool.Pool, token string) (
 		c       Channel
 		origins []byte
 	)
-	err := pool.QueryRow(ctx, channelSQL, token).Scan(&c.ID, &c.OrgID, &c.OrgName, &c.OrgLocale, &origins, &c.Recipients, &c.HasFallbackAddress)
+	err := pool.QueryRow(ctx, channelSQL, token).Scan(&c.ID, &c.OrgID, &c.OrgName, &c.OrgLocale, &origins, &c.Recipients, &c.HasFallbackAddress, &c.TrackKeyHash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Channel{}, ErrNoChannel
 	}

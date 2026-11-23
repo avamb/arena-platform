@@ -13,6 +13,13 @@ var seatWords = map[string][3]string{
 	"fr": {"Secteur", "Rang", "Place"},
 	"he": {"אזור", "שורה", "מקום"},
 	"ru": {"Сектор", "Ряд", "Место"},
+	"uk": {"Сектор", "Ряд", "Місце"},
+	"pl": {"Sektor", "Rząd", "Miejsce"},
+	"hu": {"Szektor", "Sor", "Ülőhely"},
+	"et": {"Sektor", "Rida", "Koht"},
+	"lv": {"Sektors", "Rinda", "Vieta"},
+	"lt": {"Sektorius", "Eilė", "Vieta"},
+	"fi": {"Sektori", "Rivi", "Paikka"},
 }
 
 // FormatSeat puts a ticket's seat coordinates into one line in the buyer's

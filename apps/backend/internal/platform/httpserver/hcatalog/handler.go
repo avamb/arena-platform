@@ -6,6 +6,7 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -84,6 +85,9 @@ type Handler struct {
 	// sales pages; it feeds the event card's public_url (publicurl.Page).
 	// Empty when unset: public_url is then "". Wired via WithTicketsBaseURL.
 	ticketsBaseURL string
+	// mediaSigner builds the absolute signed URL of a media object (poster of
+	// a tour). nil means the host-relative /v1/media-files/{id}.
+	mediaSigner func(ctx context.Context, mediaID uuid.UUID) string
 	// emailNoteTestLimiter caps the test letters of the event's own letter
 	// text per organization (EC-31). Wired by WithEmailNoteTestLimiter; nil
 	// means no cap.
@@ -156,6 +160,13 @@ func (h *Handler) WithPublicBaseURL(u string) *Handler {
 // public_url is then empty.
 func (h *Handler) WithTicketsBaseURL(u string) *Handler {
 	h.ticketsBaseURL = u
+	return h
+}
+
+// WithMediaURLSigner wires the builder of absolute signed media URLs used for
+// the pictures of a tour.
+func (h *Handler) WithMediaURLSigner(s func(ctx context.Context, mediaID uuid.UUID) string) *Handler {
+	h.mediaSigner = s
 	return h
 }
 

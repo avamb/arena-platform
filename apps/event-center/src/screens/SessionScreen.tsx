@@ -14,6 +14,9 @@ import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { Badge, DownloadButton, ErrorBox, Loading } from "@/components/ui";
 import { CategoryCard } from "@/components/CategoryCard";
+import { ExternalLabel, ExternalLine } from "@/components/ExternalSaleFields";
+import { SessionSalesMode } from "@/components/SessionSalesMode";
+import { isExternalSession } from "@/lib/externalSale";
 import { SalesFigures } from "@/components/SalesFigures";
 import { SessionSaleTimes } from "@/components/SessionSaleTimes";
 import { SessionSalesState } from "@/components/SessionSalesState";
@@ -135,6 +138,8 @@ export function SessionScreen() {
   const head = summary.data?.session;
   const tz = head?.venue_timezone ?? null;
   const startAt = head?.start_at ?? item?.start_at ?? null;
+  // Spec 63, L-3: a partner box office sells this date. The platform has no sales, guests, orders or categories to show.
+  const external = isExternalSession(item);
 
   if (summary.isLoading || sessions.isLoading) return <Loading />;
   if (head === undefined && item === undefined) {
@@ -158,15 +163,21 @@ export function SessionScreen() {
           <li>{t("session.doors", { time: formatDateTime(item.doors_open_at, tz, locale) })}</li>
         )}
         {item !== undefined && <li>{t("session.salesEnd", { time: formatDateTime(item.sales_end_at, tz, locale) })}</li>}
+        {external && item?.external !== null && item?.external !== undefined && (
+          <li>
+            <ExternalLabel external={item.external} />
+          </li>
+        )}
         {(head?.status ?? item?.status) === "cancelled" && (
           <li>
             <Badge tone="bad">{t("event.cancelled")}</Badge>
           </li>
         )}
       </ul>
+      {external && <ExternalLine />}
 
       <div className="actions">
-        {canSales && canSessions && (
+        {canSales && canSessions && !external && (
           <>
             <DownloadButton
               label="session.csvSales"
@@ -192,14 +203,14 @@ export function SessionScreen() {
             />
           </>
         )}
-        {canSales && (
+        {canSales && !external && (
           <>
             <Link to="/o/$orgId/orders" params={{ orgId }} search={{ session: sessionId }} className="btn">
               {t("session.orders")}
             </Link>
           </>
         )}
-        {canSessions && (
+        {canSessions && !external && (
           <DownloadButton
             label="event.sample"
             testId="sample-ticket"
@@ -207,7 +218,7 @@ export function SessionScreen() {
           />
         )}
         {/* S2b: the hall of a seated date (paint with categories, close and open seats, lay out). */}
-        {access.can("session.seats.manage") && item !== undefined && item.admission_mode !== "general_admission" && (
+        {access.can("session.seats.manage") && item !== undefined && !external && item.admission_mode !== "general_admission" && (
           <Link
             to="/o/$orgId/events/$eventId/sessions/$sessionId/seats"
             params={{ orgId, eventId, sessionId }}
@@ -219,7 +230,7 @@ export function SessionScreen() {
           </Link>
         )}
         {/* Spec 46: invitations on chosen seats (and general admission places) of this date. */}
-        {(access.can("complimentary.read") || access.can("complimentary.issue")) && (
+        {(access.can("complimentary.read") || access.can("complimentary.issue")) && !external && (
           <Link
             to="/o/$orgId/events/$eventId/sessions/$sessionId/invitations"
             params={{ orgId, eventId, sessionId }}
@@ -253,7 +264,7 @@ export function SessionScreen() {
         />
       )}
 
-      {summary.data !== undefined && (
+      {summary.data !== undefined && !external && (
         <section aria-labelledby="session-summary">
           <h2 id="session-summary">{t("session.summary")}</h2>
           <SalesFigures
@@ -287,10 +298,10 @@ export function SessionScreen() {
           )}
         </section>
       )}
-      {summary.error !== null && <ErrorBox error={summary.error} onRetry={() => void summary.refetch()} />}
-      {!canSales && <p className="notice">{t("event.noSales")}</p>}
+      {summary.error !== null && !external && <ErrorBox error={summary.error} onRetry={() => void summary.refetch()} />}
+      {!canSales && !external && <p className="notice">{t("event.noSales")}</p>}
 
-      {canTiers && (
+      {canTiers && !external && (
         <section aria-labelledby="session-tiers">
           <h2 id="session-tiers">{t("event.categories")}</h2>
           {tiers.isLoading && <Loading />}
@@ -324,7 +335,7 @@ export function SessionScreen() {
       )}
 
       {/* Migration 0183: open / coming soon / sold out for every channel. */}
-      {access.can("session.read") && item !== undefined && (
+      {access.can("session.read") && item !== undefined && !external && (
         <SessionSalesState
           key={`${orgId}:${sessionId}`}
           orgId={orgId}
@@ -332,6 +343,17 @@ export function SessionScreen() {
           sessionId={sessionId}
           timezone={tz}
           canUpdate={canUpdate}
+          cancelled={(head?.status ?? item.status) === "cancelled"}
+        />
+      )}
+      {/* Spec 63, L-3: who sells the tickets, the platform or a partner box office. */}
+      {canUpdate && item !== undefined && (
+        <SessionSalesMode
+          key={`${orgId}:${sessionId}:${item.sales_mode}:${item.updated_at}`}
+          orgId={orgId}
+          eventId={eventId}
+          sessionId={sessionId}
+          session={item}
           cancelled={(head?.status ?? item.status) === "cancelled"}
         />
       )}
@@ -350,8 +372,8 @@ export function SessionScreen() {
         />
       )}
       {/* M2 */}
-      {canSales && <SessionTickets orgId={orgId} sessionId={sessionId} tz={tz} />}
-      {canSales && <GuestListSubscription orgId={orgId} />}
+      {canSales && !external && <SessionTickets orgId={orgId} sessionId={sessionId} tz={tz} />}
+      {canSales && !external && <GuestListSubscription orgId={orgId} />}
     </article>
   );
 }
