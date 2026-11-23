@@ -4608,6 +4608,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/{event_id}/translations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the original texts and the translations of an event
+         * @description Returns the original texts of the event in its content language, the hash of
+         *     that original, the stored translations (each with `translation_stale`), the
+         *     platform's supported locales and the languages of the organization's sites.
+         *     `machine_available` is false when machine translation is switched off.
+         *     Requires `event.read` and membership of the organization.
+         */
+        get: operations["listEventContentTranslations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/translations/machine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue a machine translation of an event
+         * @description Queues the worker job `content.translate` and answers 202. The job translates
+         *     only what is missing or out of date, and never replaces a manual translation
+         *     (there is no way to ask for that: delete the manual translation first).
+         *     Answers 503 `translation.not_configured` when machine translation is switched off.
+         *     Requires `event.update` and membership of the organization.
+         */
+        post: operations["requestEventMachineTranslation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/translations/{locale}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Write a manual translation of an event
+         * @description Replaces the translation of one locale as a whole and marks it `manual`. The
+         *     texts are sanitized; the translation is stamped with the hash of the current
+         *     original, so it is fresh until the original changes.
+         *     Requires `event.update` and membership of the organization.
+         */
+        put: operations["putEventContentTranslation"];
+        post?: never;
+        /**
+         * Remove a translation of an event
+         * @description Removes the translation of one locale, manual or machine. This is also how a
+         *     manual text is made replaceable by the machine.
+         *     Requires `event.update` and membership of the organization.
+         */
+        delete: operations["deleteEventContentTranslation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/report-text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the photo-report text of an event
+         * @description Writes the photo-report text of the original event, sanitized by the rich-text
+         *     description profile. A null or blank text clears it. A translation of it is
+         *     written with `PUT .../translations/{locale}`.
+         *     Requires `event.update` and membership of the organization.
+         */
+        put: operations["setEventReportText"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/events/{event_id}/photo-report": {
         parameters: {
             query?: never;
@@ -5043,6 +5143,70 @@ export interface paths {
         patch: operations["updatePromoter"];
         trace?: never;
     };
+    "/v1/organizations/{org_id}/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the organization's tours
+         * @description Returns the organization's active tours ordered by position, then name
+         *     (migration 0222). `?include_archived=true` adds archived ones. Requires
+         *     `event.read` and membership of the organization.
+         */
+        get: operations["listSeries"];
+        put?: never;
+        /**
+         * Create a tour
+         * @description Adds a tour to the organization. Requires `event.update` and
+         *     membership of the organization. Without `slug` the address is derived
+         *     from the name. Answers 409 `series.slug_taken` when the typed slug is
+         *     used by another tour or an active event of the organization, 422
+         *     `series.invalid` for a bad name, slug, video link, text or a media
+         *     object of another organization.
+         */
+        post: operations["createSeries"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/series/{series_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a tour with its events
+         * @description Returns the tour with the short cards of its active events. Requires
+         *     `event.read` and membership of the organization. Another
+         *     organization's tour answers 404.
+         */
+        get: operations["getSeries"];
+        put?: never;
+        post?: never;
+        /**
+         * Archive a tour
+         * @description Sets `archived_at`. The events keep their `series_id`; an archived
+         *     tour can no longer be linked to an event and its page answers 404.
+         *     Requires `event.update` and membership of the organization.
+         */
+        delete: operations["archiveSeries"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a tour
+         * @description Partial update (absent = keep, null = clear a nullable field).
+         *     Requires `event.update` and membership of the organization.
+         */
+        patch: operations["updateSeries"];
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/conversion-settings": {
         parameters: {
             query?: never;
@@ -5073,6 +5237,228 @@ export interface paths {
          *     changed keys, never the values.
          */
         patch: operations["updateConversionSettings"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/integrations/meta/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start connecting the organization's Meta business
+         * @description Signs the login state for the caller and this organization and
+         *     answers the Meta login parameters (spec 66 section 4.1). Nothing is
+         *     stored. Requires `org.update` (the owner); an organization API key is
+         *     refused. The person who starts must still hold `org.update` here
+         *     through an active membership when they finish the login.
+         */
+        post: operations["startMetaConnect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/integrations/meta/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish connecting the organization's Meta business
+         * @description The signed-in person posts the code and the state the callback put
+         *     into the URL fragment (spec 66 section 4.1). The state must be valid
+         *     and name this organization AND the caller, otherwise 403
+         *     `meta.state_mismatch`: a login started by someone else cannot be
+         *     finished in your session. Checks again that the caller holds
+         *     `org.update` here through an active membership, exchanges the code
+         *     (redirect_uri = META_OAUTH_REDIRECT_URL), reads `/me`, the granted
+         *     permissions and the shared objects, stores the connection with the
+         *     token sealed and audits `v1.org.meta.connect`. Requires `org.update`
+         *     (the owner); an organization API key is refused.
+         */
+        post: operations["finishMetaConnect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/integrations/meta": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the organization's Meta connection
+         * @description Whether the feature is on, the status, the business, the shared
+         *     datasets, ad accounts and pages and which are selected, and the
+         *     granted permissions. The token is never returned. Requires
+         *     `org.update` (the owner); an organization API key is refused.
+         */
+        get: operations["getMetaIntegration"];
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect the organization's Meta business
+         * @description Asks Meta to drop the access (`DELETE /me/permissions`, best effort),
+         *     then always wipes the stored token, sets the connection to revoked
+         *     and removes the shared objects. Audited as `v1.org.meta.disconnect`.
+         *     Requires `org.update` (the owner); an organization API key is refused.
+         */
+        delete: operations["deleteMetaIntegration"];
+        options?: never;
+        head?: never;
+        /**
+         * Select the dataset, the ad account and the page the platform uses
+         * @description Marks the given shared objects as selected (one per kind). Audited as
+         *     `v1.org.meta.select`. Requires `org.update` (the owner); an
+         *     organization API key is refused.
+         */
+        patch: operations["updateMetaIntegration"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/integrations/meta/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show the selected Facebook Page as Meta shows it now
+         * @description Reads the selected Page live from the Graph API
+         *     (`GET /{page_id}?fields=name,category,link,fan_count,picture{url}`)
+         *     with the connection token (permission `pages_read_engagement`). Nothing
+         *     of the answer is stored or logged. A Graph error 190 moves the
+         *     connection to error and tells its owners, like a 190 of the
+         *     Conversions API. Requires `org.update` (the owner); an organization
+         *     API key is refused.
+         */
+        get: operations["getMetaPagePreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/integrations/meta/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Send the person back from the Meta login to the event center
+         * @description Public, no login. Checks only the signature and the 10 minutes of
+         *     the state, and never exchanges the code: a public GET that stored a
+         *     connection would let anyone finish a login in another person's
+         *     session (login CSRF). Code and state go to the event center in the
+         *     URL fragment, never the query; the signed-in person then posts them
+         *     to `POST /v1/organizations/{org_id}/integrations/meta/finish`. Every
+         *     outcome is a redirect to the event center, never JSON.
+         */
+        get: operations["metaLoginCallback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/integrations/meta/deauthorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Meta tells the platform a person removed the app
+         * @description Public: Meta's deauthorize callback, signed with the app secret
+         *     (constant-time compare). Every connection made by the signed
+         *     app-scoped user id is deleted at once with its shared objects, like
+         *     a data deletion. Audited as `v1.org.meta.deauthorize` (system actor);
+         *     the audit row stays.
+         */
+        post: operations["metaDeauthorizeCallback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/integrations/meta/data-deletion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Meta asks the platform to delete a person's data
+         * @description Public: Meta's data-deletion callback, signed with the app secret.
+         *     Every connection made by the signed app-scoped user id is deleted
+         *     with its shared objects. Audited as `v1.org.meta.data_deletion`
+         *     (system actor) with the confirmation code. Answers what Meta requires.
+         */
+        post: operations["metaDataDeletionCallback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/integrations/meta/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Meta checks the app webhook subscription
+         * @description Public: the subscription check Meta makes when the webhook is set up
+         *     in the Meta app (Webhooks, object Application). With `hub.mode`
+         *     `subscribe` and `hub.verify_token` equal to
+         *     `META_WEBHOOK_VERIFY_TOKEN` (constant-time compare) the answer is
+         *     `hub.challenge` as plain text. Reads and changes nothing.
+         */
+        get: operations["metaWebhookVerify"];
+        put?: never;
+        /**
+         * Meta tells the platform a business removed the app
+         * @description Public: Meta's app webhook. `X-Hub-Signature-256` must be
+         *     `sha256=<hex>` of the HMAC-SHA256 of the raw body with the app
+         *     secret (constant-time compare); the body is at most 64 KB. A change
+         *     with the field `business_integration_uninstall` deletes every
+         *     connection to that business with its shared objects; audited as
+         *     `v1.org.meta.uninstall` (system actor), the audit row stays. Other fields are ignored. After a valid signature the answer
+         *     is 200, so Meta does not send the change again.
+         */
+        post: operations["metaWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/organizations/{org_id}/seller-profile": {
@@ -6907,7 +7293,7 @@ export interface paths {
          *     (`platform`, `legacy_bil24`, `external_platform`, `guest_list`).
          *     `label` is a human-readable display name for operator UIs.
          *     There is at most one authority per `type` (unique index of
-         *     migration 0218): a type that already has an authority answers
+         *     migration 0219): a type that already has an authority answers
          *     409 `barcode_authority.type_exists`.
          *
          *     Requires JWT + the `barcode.create` permission, and the caller
@@ -7963,6 +8349,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/feeds/{feed_token}/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the tours visible in a feed
+         * @description Returns the non-archived tours that have at least one event visible in
+         *     THIS feed (the same visibility as `/events`). No JWT required: the
+         *     feed token in the path is the credential. Rate-limited per token and
+         *     per IP.
+         */
+        get: operations["listPublicFeedSeries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/feeds/{feed_token}/series/{series_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one tour visible in a feed
+         * @description Returns the tour. Answers 404 when it is archived, belongs to another
+         *     organization or has no event visible in this feed. No JWT required.
+         *     Rate-limited per token and per IP.
+         */
+        get: operations["getPublicFeedSeries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/feeds/{feed_token}/events/{event_id}": {
         parameters: {
             query?: never;
@@ -8001,7 +8432,18 @@ export interface paths {
          *         `sold_out`, every tier reports `available: 0`, the session has
          *         no seat map links and every hold is refused; the widget shows
          *         the state instead of the picker. `""` only when it could not be
-         *         loaded.
+         *         loaded. A session a partner box office sells (see `sales_mode`)
+         *         reports the sixth state `external`.
+         *       * `sales_mode` — who sells the tickets of the session (migration
+         *         0221): `platform` or `external`.
+         *       * `external` — null for a platform session. For an external one the
+         *         partner's box office: `{ url, seller_name, price_from, currency }`
+         *         with `price_from` in MAJOR units of `currency` (both null when the
+         *         organizer gave no price). The session's `tiers` is `[]`, it has no
+         *         seat map links and every hold is refused (409
+         *         `session.sold_externally`); the widget and the hosted page show a
+         *         button to `url` instead of the picker. An event whose sessions are
+         *         all external stays in the feed list.
          *       * `service_fee_percent` — the channel's service charge as a
          *         decimal string (`"5.00"` = 5 %, `"0.00"` = none), applied on
          *         top of the ticket prices at checkout; the widget shows it as
@@ -8238,6 +8680,32 @@ export interface paths {
          *     publication/token state can change at any time.
          */
         get: operations["getPublicPromoterPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/pages/{org_slug}/series/{series_slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve the page of a tour
+         * @description Backs the page `https://tickets.arenasoldout.com/{org_slug}/{series_slug}`
+         *     of a tour. Answers the tour, its events visible on the hosted page and
+         *     the same organization, seller and contact-form blocks as the
+         *     organization page. 404 `page.not_found` when the organization or the
+         *     tour is unknown, the tour is archived or none of its events is
+         *     published on the hosted-page channel. No JWT required. Rate-limited
+         *     per client IP.
+         */
+        get: operations["getPublicSeriesPage"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8865,7 +9333,8 @@ export interface paths {
          * @description The contact form of a static site that sells through a feed token
          *     (spec 62 section 10.2). It extends the hosted page's form: the site is
          *     addressed by its feed token, the message carries a `topic`
-         *     (`contact` or `private_event`), a `last_name` and a `phone`, and the
+         *     (`contact`, `private_event` or `partnership`; the last one adds
+         *     `company`, `city` and `website`), a `last_name` and a `phone`, and the
          *     letter goes to the addresses configured for the topic in the channel's
          *     settings (`settings.contact_form.recipients.<topic>`, a list of
          *     addresses; a topic without addresses falls back to the channel's
@@ -8885,6 +9354,43 @@ export interface paths {
          *     channel, a 16 KiB body. No JWT. The answer never carries an address.
          */
         post: operations["sendSiteOrganizerContact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/feeds/{feed_token}/track": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report a visitor's event of a static site
+         * @description Server-side tracking of a static site that sells through a feed token
+         *     (spec 63 section 19). The site's nginx forwards the beacon from
+         *     `/_site/e`. The main event is `outbound_ticket_click`, a click to a
+         *     partner's box office: the platform counts it in the anonymous funnel
+         *     (step `outbound_click`, surface `external_site`) and in the per-box-office
+         *     counter, and queues `InitiateCheckout` for Meta Conversions API and
+         *     `begin_checkout` (with `affiliation`) for GA4 Measurement Protocol, using
+         *     the organization's conversion settings.
+         *
+         *     Tracking is on until the visitor refuses: `tracking_declined=true`
+         *     sends nothing to Meta or GA4. Events reach the ad platforms only when
+         *     the request carries `X-Site-Key`, the channel's secret
+         *     (`settings.site.track_key_hash` holds its SHA-256); then the visitor's
+         *     address comes from `X-Site-Client-IP` and the browser from
+         *     `X-Site-User-Agent`. Without the key only the anonymous funnel counts,
+         *     the address is the connection's. Robots are not counted. Limits: an 8 KiB
+         *     body, a rate per feed token and per address. No JWT. The answer is 202
+         *     and never says what was done with the event.
+         */
+        post: operations["trackSiteEvent"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11533,6 +12039,32 @@ export interface paths {
          *     one) is a 404.
          */
         get: operations["getV1OrganizationsOrgIdEventsEventIdPageStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/outbound-clicks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Clicks from the event's site page to partner box offices
+         * @description The block "Clicks to box offices" of the event: all clicks of the
+         *     window, the share of the site's visitors who clicked, and the clicks per
+         *     day, per box office and per traffic source. The numbers are anonymous
+         *     and count every visitor, whatever they chose about tracking. By default
+         *     the window is the last 30 days ending today in the venue's zone; `from`
+         *     and `to` (`YYYY-MM-DD`, inclusive) set it, at most 366 days. Requires
+         *     `report.read`. An event of another organization is a 404.
+         */
+        get: operations["getV1OrganizationsOrgIdEventsEventIdOutboundClicks"];
         put?: never;
         post?: never;
         delete?: never;
@@ -15279,9 +15811,11 @@ export interface components {
              *     photo report. `shop_product` (migration 0172) is a picture of a
              *     merchandise shop product; `shop_digital` is the file a digital
              *     shop product sells (offered to the buyer only after payment).
+             *     `event_series` (migration 0222) is the poster or the wide photo
+             *     of a tour.
              * @enum {string}
              */
-            owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report" | "shop_product" | "shop_digital";
+            owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report" | "shop_product" | "shop_digital" | "event_series";
             /**
              * Format: uuid
              * @description UUID of the owning row in the table implied by
@@ -23744,6 +24278,19 @@ export interface components {
              */
             promoter_name?: string | null;
             /**
+             * Format: uuid
+             * @description The tour (event series, migration 0222) the event belongs to.
+             *     Null when the event stands alone (the public feed leaves the
+             *     field out then). Set by PATCH
+             *     .../events/{id} `series_id`.
+             */
+            series_id?: string | null;
+            /**
+             * @description Name of the event's tour. Filled by the organizer API only; null
+             *     in the public feed (read the tour by `series_id` there).
+             */
+            series_name?: string | null;
+            /**
              * @description Buyers' page of the event on the hosted sales site:
              *     `<PUBLIC_TICKETS_BASE_URL>/<page slug>/<event slug>`, where the
              *     page slug is the promoter's slug when the event has an active
@@ -23766,10 +24313,13 @@ export interface components {
              *     (future sessions exist but none is selling: the sale has not
              *     opened yet, only a closed category has places, or sales ended
              *     before the start), `draft` (future sessions exist but the event
-             *     is not published, so nobody can buy, whatever its sessions say)
-             *     and `archived` (every session has ended, the event has no
-             *     session, or the event is cancelled/archived). Empty only when
-             *     the lookup failed.
+             *     is not published, so nobody can buy, whatever its sessions
+             *     say), `external` (every future session is sold by a partner box
+             *     office, `sales_mode` `external`, migration 0221; such sessions
+             *     own no places here, so an event with platform sessions as well
+             *     follows the rules above over those) and `archived` (every
+             *     session has ended, the event has no session, or the event is
+             *     cancelled/archived). Empty only when the lookup failed.
              * @example on_sale
              */
             sales_state: string;
@@ -23843,6 +24393,15 @@ export interface components {
              * @example Open-air festival on the Tel Aviv beachfront.
              */
             short_description?: string | null;
+            /**
+             * @description Public feed only. The language of the texts served (`short_description`, `description_html` and `description_text` are translated when a translation was asked for with `?locale=` and exists). Two lowercase letters.
+             * @example en
+             */
+            content_locale?: string;
+            /** @description Public feed only. The original language first, then every language that has a translation of the event. */
+            available_locales?: string[];
+            /** @description Public feed only. True when the translation served was made from an older original than the current one; it is still served. */
+            translation_stale?: boolean;
             /**
              * @description Event genre/category (AB-45c). E.g. "concert", "festival", "theatre".
              *     Tri-state PATCH: absent=keep, null=clear, value=set.
@@ -24080,6 +24639,301 @@ export interface components {
              *     make the organization itself the promoter again.
              */
             promoter_id?: string | null;
+        };
+        /**
+         * @description A tour (event series, migration 0222, spec 63): several events under
+         *     one name, public address and set of page materials. The slug shares
+         *     one address space with the organization's active event slugs.
+         */
+        Series: {
+            /**
+             * Format: uuid
+             * @description UUID of the tour.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUID of the owning organization.
+             */
+            org_id: string;
+            /**
+             * @description Public address of the tour (`<page>/<slug>`): 1-120 characters of
+             *     Latin letters, digits and single hyphens.
+             * @example summer-tour
+             */
+            slug: string;
+            /**
+             * @description Name of the tour, 1-200 characters.
+             * @example Summer tour 2027
+             */
+            name: string;
+            /** @description Description of the tour as filtered HTML (the event description filter). Null when none. */
+            description_html: string | null;
+            /**
+             * Format: uuid
+             * @description Portrait poster 4:5 (a media object of owner type `event_series`). Null when none.
+             */
+            poster_media_id: string | null;
+            /** @description URL of the poster, null when there is none. */
+            poster_url: string | null;
+            /**
+             * Format: uuid
+             * @description Wide photo 16:9 (a media object of owner type `event_series`). Null when none.
+             */
+            hero_media_id: string | null;
+            /** @description URL of the wide photo, null when there is none. */
+            hero_url: string | null;
+            /** @description An https YouTube or Vimeo link shown at the top of the tour page. Null when none. */
+            hero_video_url: string | null;
+            /** @description Text about the partners of the tour as filtered HTML. Null when none. */
+            partners_text_html: string | null;
+            /** @description When true the events of the tour are left out of the page lists, the tour card stands for them. */
+            hide_children_in_lists: boolean;
+            /**
+             * Format: int32
+             * @description Sort position of the tour among the organization's tours (ascending).
+             */
+            position: number;
+            /** @description Number of active events of the tour. */
+            event_count: number;
+            /**
+             * Format: date-time
+             * @description When the tour was archived. Null for an active tour.
+             */
+            archived_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the tour was created.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the tour was last changed.
+             */
+            updated_at: string;
+            /**
+             * @description Reserved for the translated texts of a tour: locale to
+             *     `{description_html, partners_text_html}`. Always an empty object
+             *     for now; ignored on write.
+             */
+            translations: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description Short card of an event inside a tour. */
+        SeriesEventCard: {
+            /**
+             * Format: uuid
+             * @description UUID of the event.
+             */
+            id: string;
+            /** @description Name of the event. */
+            name: string;
+            /** @description Public address of the event. Null while it has none. */
+            slug: string | null;
+            /** @description Status of the event (draft, published, archived, ...). */
+            status: string;
+            /**
+             * Format: date-time
+             * @description Start of the first session of the event. Null while it has no sessions.
+             */
+            first_session_at: string | null;
+        };
+        /** @description A tour with its events. */
+        SeriesDetail: components["schemas"]["Series"] & {
+            /** @description Active events of the tour by first session (events without sessions last). */
+            events: components["schemas"]["SeriesEventCard"][];
+        };
+        /** @description List-tours response. */
+        SeriesListEnvelope: {
+            /** @description The organization's tours ordered by position, then name. */
+            items: components["schemas"]["Series"][];
+        };
+        /** @description Body of POST /v1/organizations/{org_id}/series. */
+        CreateSeriesRequest: {
+            /** @description Name of the tour, 1-200 characters. */
+            name: string;
+            /**
+             * @description Public address. Absent, null or empty: derived from the name
+             *     (with a numeric suffix while taken). A typed one that an event or
+             *     another tour of the organization uses answers 409
+             *     `series.slug_taken`.
+             */
+            slug?: string | null;
+            /** @description Description as HTML, passed through the event description filter. */
+            description_html?: string | null;
+            /**
+             * Format: uuid
+             * @description A media object of the organization (owner type `event_series`).
+             */
+            poster_media_id?: string | null;
+            /**
+             * Format: uuid
+             * @description A media object of the organization (owner type `event_series`).
+             */
+            hero_media_id?: string | null;
+            /** @description An https YouTube or Vimeo link. */
+            hero_video_url?: string | null;
+            /** @description Text about the partners as HTML, passed through the event description filter. */
+            partners_text_html?: string | null;
+            /** @description Leave the events of the tour out of the page lists. Default true. */
+            hide_children_in_lists?: boolean;
+            /**
+             * Format: int32
+             * @description Sort position, ascending. Default 0.
+             */
+            position?: number;
+            /** @description Reserved for translated texts; ignored. */
+            translations?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * @description Body of PATCH /v1/organizations/{org_id}/series/{series_id}. Absent
+         *     keeps a field, null clears a nullable one.
+         */
+        UpdateSeriesRequest: {
+            /** @description Name of the tour, 1-200 characters. Cannot be null. */
+            name?: string;
+            /** @description New public address. Cannot be null. A taken one answers 409 `series.slug_taken`. */
+            slug?: string;
+            /** @description Description as HTML, passed through the event description filter. Null clears. */
+            description_html?: string | null;
+            /**
+             * Format: uuid
+             * @description A media object of the organization. Null clears.
+             */
+            poster_media_id?: string | null;
+            /**
+             * Format: uuid
+             * @description A media object of the organization. Null clears.
+             */
+            hero_media_id?: string | null;
+            /** @description An https YouTube or Vimeo link. Null clears. */
+            hero_video_url?: string | null;
+            /** @description Text about the partners as HTML. Null clears. */
+            partners_text_html?: string | null;
+            /** @description Leave the events of the tour out of the page lists. */
+            hide_children_in_lists?: boolean;
+            /**
+             * Format: int32
+             * @description Sort position, ascending.
+             */
+            position?: number;
+            /** @description Reserved for translated texts; ignored. */
+            translations?: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description The nearest upcoming session of a tour. */
+        FeedSeriesNextSession: {
+            /**
+             * Format: uuid
+             * @description UUID of the event of the session.
+             */
+            event_id: string;
+            /**
+             * Format: uuid
+             * @description UUID of the session.
+             */
+            session_id: string;
+            /**
+             * Format: date-time
+             * @description Start of the session.
+             */
+            starts_at: string;
+            /** @description City of the session's venue. Null when unknown. */
+            city: string | null;
+        };
+        /** @description The lowest open price of a tour in one currency. */
+        FeedSeriesPrice: {
+            /** @description ISO 4217 currency code. */
+            currency: string;
+            /** @description The price in MAJOR units (19.5 for 1950 minor units of EUR). */
+            amount: number;
+        };
+        /** @description The "at a glance" block of a tour, over the events visible in the feed. */
+        FeedSeriesSummary: {
+            /**
+             * Format: date-time
+             * @description Start of the first session of the visible events. Null when there is none.
+             */
+            date_from: string | null;
+            /**
+             * Format: date-time
+             * @description Start of the last session of the visible events. Null when there is none.
+             */
+            date_to: string | null;
+            /** @description Number of distinct cities of the sessions. */
+            cities_count: number;
+            /** @description Number of cities with a session whose sales state is open. */
+            cities_on_sale_count: number;
+            /** @description The nearest upcoming session. Null when there is none. */
+            next_session: components["schemas"]["FeedSeriesNextSession"] | null;
+            /** @description The minimum open category price per currency, sorted by currency. */
+            price_from: components["schemas"]["FeedSeriesPrice"][];
+        };
+        /** @description A tour as the public feed and the hosted page show it. */
+        FeedSeries: {
+            /**
+             * Format: uuid
+             * @description UUID of the tour.
+             */
+            id: string;
+            /** @description Public address of the tour. */
+            slug: string;
+            /** @description Name of the tour. */
+            name: string;
+            /** @description Description as safe HTML. Null when none. */
+            description_html: string | null;
+            /** @description Text about the partners as safe HTML. Null when none. */
+            partners_text_html: string | null;
+            /** @description URL of the poster. Null when none. */
+            poster_url: string | null;
+            /** @description URL of the wide photo. Null when none. */
+            hero_url: string | null;
+            /** @description An https YouTube or Vimeo link. Null when none. */
+            hero_video_url: string | null;
+            /** @description When true the events of the tour are left out of the page lists, the tour card stands for them. */
+            hide_children_in_lists: boolean;
+            /**
+             * Format: int32
+             * @description Sort position among the tours (ascending).
+             */
+            position: number;
+            /** @description UUIDs of the events of the tour visible in this feed, by first session. */
+            event_ids: string[];
+            /** @description The "at a glance" block of the tour. */
+            summary: components["schemas"]["FeedSeriesSummary"];
+            /** @description Reserved for translated texts. Always an empty object for now. */
+            translations: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description List-tours response of a feed. */
+        FeedSeriesListEnvelope: {
+            /** @description Tours with at least one event visible in this feed. */
+            items: components["schemas"]["FeedSeries"][];
+        };
+        /**
+         * @description Response of GET /v1/public/pages/{org_slug}/series/{series_slug}: the
+         *     tour page. `org`, `events`, `seller` and `contact_form` are the same
+         *     as on the organization page (`HostedPromoterPageResponse`); `events`
+         *     are the tour's events visible on the hosted page.
+         */
+        HostedSeriesPageResponse: {
+            /** @description Public-safe organization branding. */
+            org: components["schemas"]["HostedPageOrg"];
+            /** @description Organization default locale, used when no `?lang=` is present. */
+            default_locale: string;
+            /** @description The tour. */
+            series: components["schemas"]["FeedSeries"];
+            /** @description The tour's events visible on the hosted page, upcoming first. */
+            events: components["schemas"]["HostedPageEvent"][];
+            /** @description Legal identity of the seller, omitted as on the organization page. */
+            seller?: components["schemas"]["HostedPageSeller"];
+            /** @description Present when the page offers the "Write to the organizer" form. */
+            contact_form?: components["schemas"]["HostedPageContactForm"];
         };
         /** @description The promoter of an event after PUT .../events/{id}/promoter. */
         EventPromoterResponse: {
@@ -24391,11 +25245,26 @@ export interface components {
         /** @description A message from a static site's contact or private-event form. */
         SiteContactRequest: {
             /**
-             * @description `contact` (default) or `private_event`. It is also the Turnstile
-             *     widget action of the form and picks the recipients.
+             * @description `contact` (default), `private_event` or `partnership`. It is also
+             *     the Turnstile widget action of the form and picks the recipients.
              * @example private_event
              */
             topic?: string;
+            /**
+             * @description Company name, 1-100 characters. Required for the `partnership` topic, ignored for other topics.
+             * @example Hall Productions
+             */
+            company?: string;
+            /**
+             * @description City, up to 100 characters. Used by the `partnership` topic only.
+             * @example Tel Aviv
+             */
+            city?: string;
+            /**
+             * @description Website address, up to 200 characters, an http/https URL or a bare host such as example.com. Used by the `partnership` topic only.
+             * @example https://example.com
+             */
+            website?: string;
             /**
              * @description Sender's first name, 1-100 characters.
              * @example Anna
@@ -24417,7 +25286,7 @@ export interface components {
              */
             phone?: string;
             /**
-             * @description The message, 10-2000 characters. Optional for the `contact` topic, required for `private_event`.
+             * @description The message, 10-2000 characters. Optional for the `contact` topic, required for `private_event` and `partnership`.
              * @example We would like to book the hall for 30 guests.
              */
             message?: string;
@@ -24430,6 +25299,153 @@ export interface components {
              * @example he
              */
             locale?: string;
+        };
+        /** @description What the site knows about the event it reports; every field is optional and bounded. */
+        SiteTrackData: {
+            /**
+             * Format: uuid
+             * @description The platform event the visitor looked at or went from.
+             */
+            event_id?: string;
+            /**
+             * Format: uuid
+             * @description The platform session, when the click is about one date. A wrong value is ignored.
+             */
+            session_id?: string;
+            /**
+             * @description The box office a click leads to, up to 64 characters. Becomes `affiliation` in GA4 and `seller` in Meta.
+             * @example Eventim
+             */
+            seller?: string;
+            /** @description City of the event, up to 100 characters. */
+            city?: string;
+            /** @description The "from" price in major units of `currency`. */
+            value?: number;
+            /**
+             * @description ISO 4217 code, three letters.
+             * @example EUR
+             */
+            currency?: string;
+            /** @description Accepted and ignored; the event name decides between an external and an own checkout. */
+            checkout_type?: string;
+            /** @description The visitor's e-mail, `lead` only, only when they typed it. Sent to Meta as a SHA-256 hash. */
+            email?: string;
+            /** @description The visitor's phone, `lead` only, only when they typed it. Sent to Meta as a SHA-256 hash. */
+            phone?: string;
+        };
+        /** @description One event of a static site's visitor (spec 63 section 19). */
+        SiteTrackRequest: {
+            /**
+             * @description What happened. `outbound_ticket_click` (a click to a partner's box
+             *     office) is the main one: Meta `InitiateCheckout`, GA4
+             *     `begin_checkout`, the `outbound_click` funnel step and the box
+             *     office counter.
+             * @enum {string}
+             */
+            event: "page_view" | "view_event" | "outbound_ticket_click" | "checkout_open" | "lead";
+            /** @description The browser's id of this event, up to 64 characters of letters, digits, `_` and `-`. The browser pixel sends the same id, so Meta and GA4 merge the two. */
+            event_id: string;
+            /** @description The page the visitor was on. An address outside the channel's site origins is not counted. */
+            page_url?: string;
+            /** @description Accepted and ignored. */
+            referrer?: string;
+            /** @description Traffic source, as in the funnel beacon. */
+            utm_source?: string;
+            /** @description Campaign, as in the funnel beacon. */
+            utm_campaign?: string;
+            /** @description Meta click id. */
+            fbclid?: string;
+            /** @description Google click id. */
+            gclid?: string;
+            /** @description Value of the `_fbp` cookie. */
+            fbp?: string;
+            /** @description Value of the `_fbc` cookie. */
+            fbc?: string;
+            /** @description GA4 client id from the `_ga` cookie. Without it nothing goes to GA4. */
+            ga_client_id?: string;
+            /** @description GA4 session number from the `_ga_<id>` cookie. */
+            ga_session_id?: string;
+            /** @description The site's first-party visitor id, up to 64 characters. Meta gets its SHA-256 as `external_id`. */
+            vid?: string;
+            /**
+             * @description True when the visitor refused tracking. Tracking is on until the
+             *     visitor refuses (owner decision 2026-11-22, as on vinoandco.events).
+             *     A refusal sends nothing to Meta or GA4; the anonymous funnel counts
+             *     the step all the same.
+             */
+            tracking_declined?: boolean;
+            /** @description Extra fields of the event, for example the contact of a `lead`. */
+            data?: components["schemas"]["SiteTrackData"];
+        };
+        /** @description The event was taken. The answer never says what was done with it. */
+        SiteTrackAccepted: {
+            /**
+             * @description Always "accepted".
+             * @example accepted
+             */
+            status: string;
+        };
+        /** @description Clicks to partner box offices on one day. */
+        OutboundClicksDay: {
+            /** @description `YYYY-MM-DD` in the venue's zone. */
+            day: string;
+            /**
+             * Format: int64
+             * @description Number of clicks.
+             */
+            clicks: number;
+        };
+        /** @description Clicks to one partner box office. */
+        OutboundClicksSeller: {
+            /** @description Name of the box office; empty when the site sent none. */
+            seller: string;
+            /**
+             * Format: int64
+             * @description Number of clicks.
+             */
+            clicks: number;
+        };
+        /** @description Clicks that came from one traffic source. */
+        OutboundClicksSource: {
+            /** @description The source; empty for direct visits. */
+            utm_source: string;
+            /**
+             * Format: int64
+             * @description Number of clicks.
+             */
+            clicks: number;
+        };
+        /** @description Clicks from the event's page on a static site to partner box offices. */
+        OutboundClicksResponse: {
+            /**
+             * Format: uuid
+             * @description The event.
+             */
+            event_id: string;
+            /** @description First day of the window. */
+            from: string;
+            /** @description Last day of the window. */
+            to: string;
+            /** @description IANA zone of the venue the days are read in. */
+            timezone?: string | null;
+            /**
+             * Format: int64
+             * @description All clicks of the window.
+             */
+            total: number;
+            /**
+             * Format: int64
+             * @description Visits of the event page on the site in the same window.
+             */
+            visits: number;
+            /** @description `total` divided by `visits`; null when there were no visits. */
+            share_of_visitors?: number | null;
+            /** @description Clicks per day, oldest first. */
+            by_day: components["schemas"]["OutboundClicksDay"][];
+            /** @description Clicks per box office, the biggest first, at most 50. */
+            by_seller: components["schemas"]["OutboundClicksSeller"][];
+            /** @description Clicks per traffic source, the biggest first, at most 50. */
+            by_source: components["schemas"]["OutboundClicksSource"][];
         };
         /** @description A subscription to an organization's mailings from a static site's form. */
         SiteMarketingSubscriptionRequest: {
@@ -24875,6 +25891,8 @@ export interface components {
              *     that moves, and stays empty for an event without a live session.
              */
             report_photos: components["schemas"]["PublicMaterialPhoto"][];
+            /** @description The photo-report text as sanitized HTML (translated when `?locale=` names a language that has it), shown after the event ended. Null when there is none or the event is not over yet. */
+            report_text_html?: string | null;
         };
         /**
          * @description Body of POST /v1/t and POST /v1/me/t, the product analytics receivers
@@ -25877,6 +26895,14 @@ export interface components {
              * @example text
              */
             email_note_format?: string;
+            /**
+             * Format: uuid
+             * @description The event's tour (migration 0222). Absent keeps the link, null
+             *     (or an empty string) removes it, a UUID links an ACTIVE tour of
+             *     the organization. An unknown, foreign or archived tour answers
+             *     422 `event.invalid_series`.
+             */
+            series_id?: string | null;
         };
         /**
          * @description Status-transition body for POST
@@ -26213,8 +27239,9 @@ export interface components {
             /**
              * @description The session's sales state, the one every sales channel follows
              *     (migration 0183): `open`, `soon`, `sold_out`, `ended` or
-             *     `cancelled`. Present on the session list and the single read;
-             *     absent on the create and update answers.
+             *     `cancelled`, or `external` when a partner box office sells the
+             *     session (migration 0221). Present on the session list and the
+             *     single read; absent on the create and update answers.
              * @example open
              */
             sales_state?: string;
@@ -26309,6 +27336,76 @@ export interface components {
              * @example false
              */
             has_overlapping_sessions: boolean;
+            /**
+             * @description Who sells the tickets of this session (migration 0221): `platform`
+             *     (default) or `external`. An external session is sold by a partner
+             *     box office at `external.url`; the platform holds and sells nothing
+             *     for it (409 `session.sold_externally`) and the session owns no
+             *     tiers, seats or inventory.
+             * @example platform
+             */
+            sales_mode: string;
+            /**
+             * @description The partner box office of an external session, null for a
+             *     session the platform sells.
+             */
+            external: components["schemas"]["SessionExternalSale"] | null;
+        };
+        /**
+         * @description The partner box office that sells the tickets of an external session
+         *     (migration 0221, spec 63 section 14). The platform shows a button to
+         *     `url` instead of its own ticket picker.
+         */
+        SessionExternalSale: {
+            /**
+             * @description The box office address, https only, at most 2048 characters.
+             * @example https://www.eventim.de/event/12345
+             */
+            url: string;
+            /**
+             * @description The box office name shown to buyers, 1 to 80 characters.
+             * @example Eventim
+             */
+            seller_name: string;
+            /**
+             * @description The lowest price for the storefront in MAJOR units of `currency`
+             *     (39.5 means 39.50), or null when the organizer gave none.
+             * @example 39
+             */
+            price_from: number | null;
+            /**
+             * @description ISO 4217 code of `price_from`, null together with it.
+             * @example EUR
+             */
+            currency: string | null;
+        };
+        /**
+         * @description The partner box office of an external session, as an organizer writes
+         *     it. The address must be https, a host name (no IP address) and not a
+         *     platform host; the name 1 to 80 characters. `price_from` and
+         *     `currency` go together or not at all.
+         */
+        SessionExternalSaleInput: {
+            /**
+             * @description The box office address, https only, at most 2048 characters.
+             * @example https://www.eventim.de/event/12345
+             */
+            url: string;
+            /**
+             * @description The box office name shown to buyers, 1 to 80 characters.
+             * @example Eventim
+             */
+            seller_name: string;
+            /**
+             * @description The lowest price in MAJOR units of `currency` (39.5 means 39.50). Optional.
+             * @example 39
+             */
+            price_from?: number | null;
+            /**
+             * @description ISO 4217 code of `price_from`. Optional, only together with it.
+             * @example EUR
+             */
+            currency?: string | null;
         };
         /**
          * @description Create-time payload for POST
@@ -26423,6 +27520,22 @@ export interface components {
              * @example EUR
              */
             currency?: string | null;
+            /**
+             * @description Who sells the tickets: `platform` or `external` (migration 0221).
+             *     Any other value is 400 `session.invalid_sales_mode`. `external`
+             *     needs the `external` object (422 `session.external_required`).
+             *     A session with a seating plan cannot be external
+             *     (409 `session.sales_mode_locked`).
+             * @example external
+             */
+            sales_mode?: string;
+            /**
+             * @description The partner box office, only with `sales_mode` `external` (422
+             *     `session.external_not_applicable` otherwise). Refused with 422
+             *     `session.invalid_external_url`, `session.invalid_external_seller_name`,
+             *     `session.invalid_external_price` or `session.invalid_external_currency`.
+             */
+            external?: components["schemas"]["SessionExternalSaleInput"] | null;
         };
         /**
          * @description Partial update for PATCH
@@ -26523,6 +27636,25 @@ export interface components {
              *     nothing a buyer can see changes.
              */
             notice?: components["schemas"]["SessionChangeNotice"];
+            /**
+             * @description Change who sells the tickets: `platform` or `external` (migration
+             *     0221). Absent keeps it. `platform` to `external` is allowed only
+             *     while the session has no orders, tickets, holds, seats or tiers;
+             *     `external` back to `platform` only while it has no seats or tiers;
+             *     otherwise 409 `session.sales_mode_locked`. Any other value is 400
+             *     `session.invalid_sales_mode`.
+             * @example external
+             */
+            sales_mode?: string;
+            /**
+             * @description The partner box office. With `sales_mode` `external` (or on a
+             *     session that is already external) it sets or replaces the block;
+             *     null without `sales_mode` puts the session back on `platform`.
+             *     Sending it for a session that stays on the platform is 422
+             *     `session.external_not_applicable`; a missing block for a switch to
+             *     external is 422 `session.external_required`.
+             */
+            external?: components["schemas"]["SessionExternalSaleInput"] | null;
         };
         /**
          * @description What the organizer wants to say to the buyers of a session that is
@@ -27049,6 +28181,100 @@ export interface components {
             url?: string;
             /** @description A new seller name, 1 to 120 characters. Blank keeps the current name (or, when the address changed and the name was derived from the old one, derives it again). */
             seller_name?: string;
+        };
+        /** @description The original texts of an event, the source of its translations. */
+        ContentTranslationOriginal: {
+            /** @description The event name in the content locale. */
+            name: string;
+            /** @description The short description, null when empty. */
+            short_description: string | null;
+            /** @description The description rendered to sanitized HTML whatever its stored format, null when empty. */
+            description_html: string | null;
+            /** @description The photo-report text as sanitized HTML, null when empty. */
+            report_text_html: string | null;
+        };
+        /** @description One translation of an event's texts into one locale. */
+        ContentTranslationItem: {
+            /**
+             * @description The locale of the translation, one of `supported_locales`.
+             * @example cs
+             */
+            locale: string;
+            /** @description The translated name, null when the translation keeps the original name. The machine never fills it. */
+            name: string | null;
+            /** @description The translated short description, null when not set. */
+            short_description: string | null;
+            /** @description The translated description as sanitized HTML, null when not set. */
+            description_html: string | null;
+            /** @description The translated photo-report text as sanitized HTML, null when not set. */
+            report_text_html: string | null;
+            /** @description Who wrote it, `manual` or `machine`. A `manual` translation is never replaced by the machine. */
+            source: string;
+            /** @description True when the original texts changed after this translation was made; it is still served to buyers. */
+            translation_stale: boolean;
+            /**
+             * Format: date-time
+             * @description When the translation was last written.
+             */
+            updated_at: string;
+            /**
+             * Format: uuid
+             * @description The person who wrote it, null for an API key or when the person is gone.
+             */
+            updated_by: string | null;
+        };
+        /** @description The original texts of an event and its translations. */
+        ContentTranslationList: {
+            /**
+             * @description The language of the original texts, two lowercase letters.
+             * @example en
+             */
+            content_locale: string;
+            /** @description The original texts. */
+            original: components["schemas"]["ContentTranslationOriginal"];
+            /** @description Hash of the original texts now; a translation whose hash differs is stale. */
+            source_hash: string;
+            /** @description True when machine translation is switched on (the model key is set), false hides the button. */
+            machine_available: boolean;
+            /** @description Every locale a translation may be made for. */
+            supported_locales: string[];
+            /** @description The distinct union of the languages of the organization's sites (`settings.site.locales` of its sales channels), restricted to the supported locales. */
+            site_locales: string[];
+            /** @description The stored translations, ordered by locale. */
+            translations: components["schemas"]["ContentTranslationItem"][];
+        };
+        /** @description Body of PUT .../translations/{locale}. The row of the locale is replaced as a whole, an absent or blank member clears that text. */
+        PutContentTranslationRequest: {
+            /** @description The translated name, up to 200 characters. Leave empty to keep the original name. */
+            name?: string | null;
+            /** @description The translated short description, up to 500 characters. */
+            short_description?: string | null;
+            /** @description The translated description as HTML, sanitized by the rich-text description profile. */
+            description_html?: string | null;
+            /** @description The translated photo-report text as HTML, sanitized the same way. */
+            report_text_html?: string | null;
+        };
+        /** @description Body of POST .../translations/machine. */
+        MachineTranslateRequest: {
+            /** @description The locales to translate into. Each must be supported and differ from the content locale (422 `translation.invalid_locale`). */
+            locales: string[];
+        };
+        /** @description The queued machine translation. */
+        MachineTranslateAccepted: {
+            /** @description Id of the worker job `content.translate`. */
+            job_id: string;
+            /** @description The normalized, distinct locales that were queued. Locales with a manual translation are skipped by the job, not refused here. */
+            locales: string[];
+        };
+        /** @description Body of PUT .../events/{event_id}/report-text. */
+        SetEventReportTextRequest: {
+            /** @description The photo-report text of the original as HTML, sanitized by the rich-text description profile. Null or blank clears it. */
+            report_text_html?: string | null;
+        };
+        /** @description The stored photo-report text of the original. */
+        EventReportText: {
+            /** @description The sanitized text as stored, null when cleared. */
+            report_text_html: string | null;
         };
         /** @description Body of PUT .../partner-links/order. */
         EventPartnerLinkOrderRequest: {
@@ -30458,6 +31684,197 @@ export interface components {
             ga4_measurement_id?: string | null;
             /** @description Measurement Protocol API secret, 8-512 characters. Write-only. */
             ga4_api_secret?: string | null;
+        };
+        /**
+         * @description What the event center needs to open the Meta login (spec 66 section
+         *     4.1). Open `login_url` in the same tab. Meta sends the person to
+         *     `GET /v1/integrations/meta/callback`, which hands code and state back
+         *     to the event center in the URL fragment; the event center then posts
+         *     them to `POST .../integrations/meta/finish`. The state is valid for
+         *     10 minutes, for this person and this organization only.
+         */
+        MetaConnectStart: {
+            /** @description The Meta app id (public). */
+            app_id: string;
+            /** @description The configuration id of Facebook Login for Business. */
+            config_id: string;
+            /** @description The Graph API version, such as v25.0. */
+            graph_version: string;
+            /**
+             * @description The Meta dialog/oauth address with the signed state and
+             *     redirect_uri = META_OAUTH_REDIRECT_URL.
+             */
+            login_url: string;
+        };
+        /**
+         * @description The code and the state the callback put into the URL fragment of the
+         *     event center, posted once by the signed-in person who started the
+         *     login.
+         */
+        MetaFinishRequest: {
+            /** @description The login code from Meta, at most 4096 characters. */
+            code: string;
+            /** @description The signed state from the same fragment. Opaque. */
+            state: string;
+        };
+        /** @description A dataset (pixel), ad account or page the organizer shared with the platform. */
+        MetaAsset: {
+            /**
+             * @description The kind of the Meta object.
+             * @enum {string}
+             */
+            kind: "dataset" | "ad_account" | "page";
+            /** @description The Meta id (an ad account id starts with act_). */
+            meta_id: string;
+            /** @description The name in Meta, empty when Meta sent none. */
+            name: string;
+            /** @description Currency of an ad account, null for other kinds. */
+            currency: string | null;
+            /** @description Time zone name of an ad account, null for other kinds. */
+            timezone: string | null;
+            /** @description The platform uses this object (at most one per kind). */
+            selected: boolean;
+        };
+        /** @description The stored connection. The access token is never returned. */
+        MetaConnection: {
+            /**
+             * @description active = in use; revoked = disconnected here; error =
+             *     Meta refused the token (Graph error 190), connect again.
+             * @enum {string}
+             */
+            status: "active" | "revoked" | "error";
+            /** @description The client business id from Meta, empty when Meta named none. */
+            meta_business_id: string;
+            /** @description The login configuration the connection was made with. */
+            config_id: string;
+            /** @description The permissions the organizer granted. */
+            scopes: string[];
+            /** @description Short code of the last problem, null when there is none. */
+            last_error: string | null;
+            /**
+             * Format: uuid
+             * @description The person who connected, null when the account was removed.
+             */
+            connected_by: string | null;
+            /**
+             * Format: date-time
+             * @description When the connection was last made.
+             */
+            connected_at: string;
+            /**
+             * Format: date-time
+             * @description When the token was last checked with Meta.
+             */
+            checked_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the token expires, null when Meta gave no expiry.
+             */
+            token_expires_at: string | null;
+            /** @description The meta_id of the selected dataset, null when none is selected. */
+            selected_dataset_id: string | null;
+            /** @description The meta_id of the selected ad account, null when none is selected. */
+            selected_ad_account_id: string | null;
+            /** @description Every shared object. */
+            assets: components["schemas"]["MetaAsset"][];
+        };
+        /** @description The Meta connection of an organization. */
+        MetaIntegration: {
+            /** @description The platform has the Meta connection switched on; false = do not show the Connect button. */
+            enabled: boolean;
+            /** @description The stored connection, null when the organization never connected, the data was deleted or the app was removed at Meta. */
+            connection: components["schemas"]["MetaConnection"] | null;
+        };
+        /** @description At least one key. Each value must be the meta_id of a shared object of that kind (dataset, ad account or page). */
+        UpdateMetaIntegrationRequest: {
+            /** @description The dataset (pixel) the server-side purchases go to. */
+            dataset_id?: string;
+            /** @description The ad account the platform reads spend from. */
+            ad_account_id?: string;
+            /** @description The Facebook Page whose preview the event center shows. */
+            page_id?: string;
+        };
+        /**
+         * @description The selected Facebook Page as Meta shows it now, read live from the
+         *     Graph API with the connection token. Nothing of it is stored.
+         */
+        MetaPagePreview: {
+            /** @description The Meta id of the Page. */
+            meta_id: string;
+            /** @description The name of the Page, empty when Meta sent none. */
+            name: string;
+            /** @description The category of the Page, null when Meta sent none. */
+            category: string | null;
+            /** @description The https address of the Page on Facebook, null when Meta sent none. */
+            link: string | null;
+            /**
+             * Format: int64
+             * @description The number of people who like the Page, null when Meta sent none.
+             */
+            fan_count: number | null;
+            /**
+             * @description The Page picture as a `data:image/...;base64,` URL (at most
+             *     256 KB), so the event center loads no third-party image; null when
+             *     there is no picture or it could not be read.
+             */
+            picture_data_url: string | null;
+        };
+        /** @description The form Meta posts to its callbacks. */
+        MetaSignedRequestForm: {
+            /**
+             * @description `<signature>.<payload>`, both base64url; the signature is
+             *     HMAC-SHA256 of the payload with the app secret. The payload names
+             *     the app-scoped user id.
+             */
+            signed_request: string;
+        };
+        /**
+         * @description The body Meta posts to the app webhook. Only changes with the field
+         *     `business_integration_uninstall` are acted on; every other field is
+         *     ignored.
+         */
+        MetaWebhookPayload: {
+            /** @description The webhook object, `application` for the app webhook. */
+            object?: string;
+            /** @description One entry per object that changed. */
+            entry?: components["schemas"]["MetaWebhookEntry"][];
+        };
+        /** @description One entry of a Meta webhook body. */
+        MetaWebhookEntry: {
+            /** @description The id of the object (the app id for the app webhook). */
+            id?: string;
+            /**
+             * Format: int64
+             * @description When Meta sent the entry, Unix seconds.
+             */
+            time?: number;
+            /** @description The changed fields. */
+            changes?: components["schemas"]["MetaWebhookChange"][];
+        };
+        /** @description One changed field of a Meta webhook entry. */
+        MetaWebhookChange: {
+            /** @description The webhook field, such as `business_integration_uninstall`. */
+            field?: string;
+            /**
+             * @description The field's data. For `business_integration_uninstall` the
+             *     business id is read from `business_manager_id`, or from
+             *     `business_id` when the first is absent (a string or a number).
+             */
+            value?: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description Answer of the deauthorize callback and of the app webhook. */
+        MetaCallbackReceived: {
+            /** @description Always true. */
+            received: boolean;
+        };
+        /** @description The answer Meta requires from a data-deletion callback. */
+        MetaDataDeletionAnswer: {
+            /** @description The status page of the deletion, with the confirmation code. */
+            url: string;
+            /** @description The confirmation code Meta shows the person. */
+            confirmation_code: string;
         };
         /**
          * @description The buyer's answer to the marketing consent tick (spec 51-1). When
@@ -34284,6 +35701,16 @@ export interface components {
              */
             promoterId?: string | null;
             /**
+             * @description Arena event-bundle extension (source=arena only; migration 0222):
+             *     absent keeps the event's tour, null or "" removes the link, a
+             *     UUID links one of the organization's active tours. Anything else
+             *     answers 422 `import.invalid_series` at `/action/arenaSeriesId`.
+             *     The dry run reports the same refusal. Reading an event back
+             *     (GET .../event-bundle) writes "" for an event without a tour and
+             *     leaves the key out for an archived tour.
+             */
+            arenaSeriesId?: string | null;
+            /**
              * @description Arena event-bundle extension (source=arena only; EC-31, migration
              *     0165): the organizer's own text that the ticket and session-change
              *     e-mails print under "About the event". Absent or null keeps the
@@ -34307,6 +35734,32 @@ export interface components {
              * @example text
              */
             emailNoteFormat?: string;
+        };
+        /**
+         * @description The partner box office of actionEvent.externalSale (arena extension,
+         *     source=arena only).
+         */
+        ImportBil24ExternalSale: {
+            /**
+             * @description The box office address, https only, at most 2048 characters.
+             * @example https://www.eventim.de/event/12345
+             */
+            url: string;
+            /**
+             * @description The box office name shown to buyers, 1 to 80 characters.
+             * @example Eventim
+             */
+            sellerName: string;
+            /**
+             * @description The lowest price in MAJOR units of `currency` (39.5 means 39.50). Optional.
+             * @example 39
+             */
+            priceFrom?: number | null;
+            /**
+             * @description ISO 4217 code of `priceFrom`. Optional, only together with it.
+             * @example EUR
+             */
+            currency?: string | null;
         };
         /**
          * @description Bil24 "actionEvent" block — becomes an arena session. This block's
@@ -34341,6 +35794,23 @@ export interface components {
              *     plan or touches places. Omitted when empty.
              */
             arenaSeatingPlanVersionId?: string;
+            /**
+             * @description Arena extension, source=arena only (migration 0221): who sells
+             *     this session's tickets. Absent keeps the session's sales mode;
+             *     null puts it back on sale on the platform; an object hands it to
+             *     a partner box office (`url` https only, a host name, not a
+             *     platform host, at most 2048 characters; `sellerName` 1 to 80
+             *     characters; `priceFrom` in MAJOR units with `currency`, both or
+             *     neither; else 422 import.invalid_external_sale). A partner-sold
+             *     session owns no categories: the bundle then needs no
+             *     `categoryList`, and one that carries it is refused with 409
+             *     session.sold_externally. A session that already has orders,
+             *     holds, seats or categories cannot be handed over, and an
+             *     external one with seats or categories cannot come back (409
+             *     session.sales_mode_locked). The event-bundle read returns the
+             *     object for an external session and leaves the key out otherwise.
+             */
+            externalSale?: components["schemas"]["ImportBil24ExternalSale"] | null;
             /**
              * Format: int64
              * @description Bil24 action-event identifier and the idempotency key of the
@@ -54335,8 +55805,9 @@ export interface operations {
                 };
             };
             /**
-             * @description `event.duplicate_slug`: another active event of the organization
-             *     already uses the typed `slug` (compared case-insensitively).
+             * @description `event.duplicate_slug`: another active event or a tour of the
+             *     organization already uses the typed `slug` (compared
+             *     case-insensitively; events and tours share one address space).
              */
             409: {
                 headers: {
@@ -54352,7 +55823,9 @@ export interface operations {
              *     description or a description stored earlier that must be converted
              *     with it is refused (`event.invalid_description`,
              *     `error.details.reason` names why), or the letter text `email_note`
-             *     is refused (`event.invalid_email_note`, same details).
+             *     is refused (`event.invalid_email_note`, same details), or
+             *     `series_id` is not an active tour of the organization
+             *     (`event.invalid_series`).
              */
             422: {
                 headers: {
@@ -55183,6 +56656,424 @@ export interface operations {
                 };
             };
             /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listEventContentTranslations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The original and its translations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentTranslationList"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`translation.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    requestEventMachineTranslation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MachineTranslateRequest"];
+            };
+        };
+        responses: {
+            /** @description The job is queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MachineTranslateAccepted"];
+                };
+            };
+            /** @description Invalid body (`translation.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description An empty list, an unsupported locale or the content locale (`translation.invalid_locale`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`translation.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Machine translation is switched off (`translation.not_configured`) or the database is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putEventContentTranslation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+                /** @description A supported locale other than the content locale, for example `cs`. */
+                locale: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutContentTranslationRequest"];
+            };
+        };
+        responses: {
+            /** @description The translation as stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentTranslationItem"];
+                };
+            };
+            /** @description Invalid body (`translation.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description An unsupported locale or the content locale (`translation.invalid_locale`), or a refused text (`translation.invalid_field`, with `details.field` and `details.reason`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`translation.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteEventContentTranslation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+                /** @description The locale of the translation to remove, for example `cs`. */
+                locale: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`) or no translation for the locale (`translation.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`translation.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setEventReportText: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetEventReportTextRequest"];
+            };
+        };
+        responses: {
+            /** @description The text as stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventReportText"];
+                };
+            };
+            /** @description Invalid body (`translation.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A refused text (`translation.invalid_field`, with `details.field` and `details.reason`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`translation.failed`). */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -57162,6 +59053,361 @@ export interface operations {
             };
         };
     };
+    listSeries: {
+        parameters: {
+            query?: {
+                /** @description Include archived tours (true/false, default false). */
+                include_archived?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's tours. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeriesListEnvelope"];
+                };
+            };
+            /** @description Invalid include_archived value (`series.invalid_query`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createSeries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSeriesRequest"];
+            };
+        };
+        responses: {
+            /** @description Tour created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Series"];
+                };
+            };
+            /** @description Empty or malformed body (`series.empty_body`, `series.invalid_json`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The slug is used by another tour or an event of the organization (`series.slug_taken`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invalid field (`series.invalid`, `error.details.field` names it). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getSeries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the tour. */
+                series_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tour. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeriesDetail"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such tour in this organization (`series.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    archiveSeries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the tour. */
+                series_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tour archived (also when it already was). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such tour in this organization (`series.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateSeries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the tour. */
+                series_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSeriesRequest"];
+            };
+        };
+        responses: {
+            /** @description The tour after the update. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Series"];
+                };
+            };
+            /** @description Empty or malformed body (`series.empty_body`, `series.invalid_json`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such tour in this organization (`series.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The new slug is used by another tour or an event of the organization (`series.slug_taken`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invalid field (`series.invalid`, `error.details.field` names it). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getConversionSettings: {
         parameters: {
             query?: never;
@@ -57292,6 +59538,691 @@ export interface operations {
                 };
             };
             /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    startMetaConnect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The login parameters. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaConnectStart"];
+                };
+            };
+            /** @description org_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an API key (`meta.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Meta connection is switched off (`meta.disabled`) or the database is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    finishMetaConnect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaFinishRequest"];
+            };
+        };
+        responses: {
+            /** @description Connected; the connection as stored now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaIntegration"];
+                };
+            };
+            /**
+             * @description org_id is not a UUID, the body is invalid (`meta.invalid_body`),
+             *     the code is missing (`meta.no_code`) or the state is invalid or
+             *     expired (`meta.state_invalid`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Caller lacks `org.update` in the organization (`meta.forbidden`
+             *     when it was lost after connect), is an API key
+             *     (`meta.api_key_forbidden`), or the state names another
+             *     organization or person (`meta.state_mismatch`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Meta refused the code (`meta.exchange_failed`) or did not answer (`meta.graph_failed`). */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Meta connection is switched off (`meta.disabled`) or the database is unavailable (`meta.unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getMetaIntegration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The connection, or `connection` null. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaIntegration"];
+                };
+            };
+            /** @description org_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an API key (`meta.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteMetaIntegration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Disconnected; the connection as stored now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaIntegration"];
+                };
+            };
+            /** @description org_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an API key (`meta.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization has no Meta connection (`meta.not_connected`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateMetaIntegration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMetaIntegrationRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved; the connection as stored now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaIntegration"];
+                };
+            };
+            /** @description org_id is not a UUID, or the body is invalid (`meta.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an API key (`meta.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization has no Meta connection (`meta.not_connected`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The meta_id is not a shared object of that kind in this organization (`meta.asset_not_found`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getMetaPagePreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The Page as Meta shows it now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaPagePreview"];
+                };
+            };
+            /** @description org_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an API key (`meta.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization has no Meta connection (`meta.not_connected`) or no page is selected (`meta.no_page`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The connection is not active (error or revoked), connect again (`meta.not_active`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Meta did not answer or refused (`meta.graph_error`); Meta's own message is never passed on. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Meta connection is switched off (`meta.disabled`) or the database is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    metaLoginCallback: {
+        parameters: {
+            query?: {
+                /** @description The login code from Meta. */
+                code?: string;
+                /** @description The signed state from the connect route. */
+                state?: string;
+                /** @description Set by Meta when the person cancelled or refused. */
+                error?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Redirect to
+             *     `EVENT_CENTER_PUBLIC_URL/o/{org_id}/ads/meta?meta=finish#code=<code>&state=<state>`,
+             *     or `?meta=error&reason=<code>` with reason denied or no_code. A
+             *     state that cannot be trusted (`state_invalid`) or a switched-off
+             *     feature (`disabled`) goes to the event center root.
+             */
+            302: {
+                headers: {
+                    /** @description Where the person goes next. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description EVENT_CENTER_PUBLIC_URL is not configured, so there is nowhere to
+             *     send the person (`meta.event_center_unconfigured`). The only answer
+             *     that is not a redirect.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    metaDeauthorizeCallback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["MetaSignedRequestForm"];
+            };
+        };
+        responses: {
+            /** @description Received. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaCallbackReceived"];
+                };
+            };
+            /** @description signed_request missing, wrongly signed, issued more than 24 hours ago or more than 5 minutes ahead (`meta.invalid_signed_request`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Meta connection is switched off (`meta.disabled`) or the database is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    metaDataDeletionCallback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["MetaSignedRequestForm"];
+            };
+        };
+        responses: {
+            /** @description Deleted (also when nothing was stored). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaDataDeletionAnswer"];
+                };
+            };
+            /** @description signed_request missing, wrongly signed, issued more than 24 hours ago or more than 5 minutes ahead (`meta.invalid_signed_request`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Meta connection is switched off (`meta.disabled`) or the database is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    metaWebhookVerify: {
+        parameters: {
+            query?: {
+                /** @description Must be `subscribe`. */
+                "hub.mode"?: string;
+                /** @description The verify token entered in the Meta app. */
+                "hub.verify_token"?: string;
+                /** @description The text Meta expects back (1 to 256 letters, digits, `-` or `_`). */
+                "hub.challenge"?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The verify token matches; the body is `hub.challenge`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /**
+             * @description The mode is not `subscribe`, the verify token does not match,
+             *     `META_WEBHOOK_VERIFY_TOKEN` is not set, or `hub.challenge` is not
+             *     1 to 256 letters, digits, `-` or `_` (`meta.webhook_verify_refused`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Meta connection is switched off (`meta.disabled`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    metaWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description `sha256=` and the hex HMAC-SHA256 of the raw body with the app secret. */
+                "X-Hub-Signature-256": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaWebhookPayload"];
+            };
+        };
+        responses: {
+            /** @description Received (also when nothing matched or the field is ignored). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaCallbackReceived"];
+                };
+            };
+            /** @description The body could not be read (`meta.webhook_unreadable`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description X-Hub-Signature-256 is missing or wrong (`meta.invalid_signature`); nothing changes. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Meta connection is switched off (`meta.disabled`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is larger than 64 KB (`meta.webhook_too_large`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable; Meta sends the change again. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -57796,9 +60727,10 @@ export interface operations {
              *     `session.venue_not_found`, `session.invalid_admission_mode`,
              *     `session.missing_seating_plan_version`,
              *     `session.invalid_seating_plan_version`,
-             *     `session.seating_plan_not_applicable`, plus the seating bind
-             *     errors (`seating.version_not_found`, ...) when a seated
-             *     create fails its inline bind.
+             *     `session.seating_plan_not_applicable`, `session.invalid_sales_mode`
+             *     (`sales_mode` is neither `platform` nor `external`), plus the
+             *     seating bind errors (`seating.version_not_found`, ...) when a
+             *     seated create fails its inline bind.
              *     A `poster_media_id` that is not a UUID is `session.invalid_poster_media_id`.
              */
             400: {
@@ -57827,10 +60759,23 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description `session.sales_mode_locked`: a session with a seating plan cannot be sold by a partner box office. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /**
              * @description Semantically invalid. Possible error codes:
              *     `session.venue_org_mismatch`, `session.invalid_currency`,
-             *     `session.currency_unresolvable`.
+             *     `session.currency_unresolvable`, and for a partner-sold session
+             *     (`sales_mode` `external`) `session.external_required`,
+             *     `session.external_not_applicable`, `session.invalid_external_url`,
+             *     `session.invalid_external_seller_name`,
+             *     `session.invalid_external_price`, `session.invalid_external_currency`.
              *     A `poster_media_id` that is not a media object of this organization is `session.invalid_poster_media_id`.
              */
             422: {
@@ -58092,7 +61037,8 @@ export interface operations {
              *     `error.details.reason = "category_sum"`),
              *     `session.invalid_venue_id`, `session.venue_not_found`,
              *     `session.invalid_message_format` (`notice.message_format` is neither
-             *     `text` nor `art`).
+             *     `text` nor `art`), `session.invalid_sales_mode` (`sales_mode` is
+             *     neither `platform` nor `external`).
              *     A `poster_media_id` that is not a UUID is `session.invalid_poster_media_id`.
              */
             400: {
@@ -58131,6 +61077,20 @@ export interface operations {
                 };
             };
             /**
+             * @description `session.sales_mode_locked`: the session cannot change who sells
+             *     its tickets. `platform` to `external` needs a session with no
+             *     orders, tickets, holds, seats or tiers; `external` back to
+             *     `platform` one with no seats or tiers.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
              * @description Semantically invalid. Possible error codes:
              *     `session.invalid_transition` (status transition not allowed;
              *     `error.details.current_status` /
@@ -58145,7 +61105,11 @@ export interface operations {
              *     through a website), `session.change_message_too_long`
              *     (`notice.message` over 1000 visible characters),
              *     `session.change_message_invalid` (`notice.message` has forbidden
-             *     characters or too many links; `error.details.reason`).
+             *     characters or too many links; `error.details.reason`), and for
+             *     the sales mode (migration 0221) `session.external_required`,
+             *     `session.external_not_applicable`, `session.invalid_external_url`,
+             *     `session.invalid_external_seller_name`,
+             *     `session.invalid_external_price`, `session.invalid_external_currency`.
              *     A `poster_media_id` that is not a media object of this organization is `session.invalid_poster_media_id`.
              */
             422: {
@@ -59101,6 +62065,15 @@ export interface operations {
             };
             /** @description Parent session not found (`session.not_found`). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A partner box office sells the session (`session.sold_externally`); it owns no tiers. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -66738,7 +69711,7 @@ export interface operations {
                     /** Format: binary */
                     file: string;
                     /** @enum {string} */
-                    owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report" | "shop_product" | "shop_digital";
+                    owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report" | "shop_product" | "shop_digital" | "event_series";
                     /** Format: uuid */
                     owner_id?: string;
                     /** Format: uuid */
@@ -67715,6 +70688,8 @@ export interface operations {
                 limit?: number;
                 /** @description Pagination offset. */
                 offset?: number;
+                /** @description Content language of the texts, for example `cs` or `de`. Events that have a translation into it are served translated; an unsupported locale or an event without a translation falls back to the original. */
+                locale?: string;
                 /**
                  * @description With `true` the answer also carries `removed_events`: every event
                  *     that left this feed token's list within the last 30 days, with a
@@ -67826,9 +70801,120 @@ export interface operations {
             };
         };
     };
+    listPublicFeedSeries: {
+        parameters: {
+            query?: {
+                /** @description Reserved for translated texts; accepted and ignored for now. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Opaque feed token (from `agent_feed_tokens.token`). */
+                feed_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tours. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedSeriesListEnvelope"];
+                };
+            };
+            /** @description Unknown feed token (`feed.token_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicFeedSeries: {
+        parameters: {
+            query?: {
+                /** @description Reserved for translated texts; accepted and ignored for now. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Opaque feed token (from `agent_feed_tokens.token`). */
+                feed_token: string;
+                /** @description UUID of the tour. */
+                series_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tour. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedSeries"];
+                };
+            };
+            /** @description No such tour in this feed, or it is archived or has no visible event (`series.not_found`; `feed.token_not_found` for an unknown token). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getPublicFeedEvent: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Content language of the texts, for example `cs` or `de`. A translation into it is served when it exists (also `materials.report_text_html`); an unsupported locale or a missing translation falls back to the original. */
+                locale?: string;
+            };
             header?: never;
             path: {
                 /** @description Opaque feed token (from `agent_feed_tokens.token`). */
@@ -68094,6 +71180,58 @@ export interface operations {
                 };
             };
             /** @description Page not found (see resolution rule above — one indistinguishable outcome for every miss). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicSeriesPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization slug, matched case-insensitively. */
+                org_slug: string;
+                /** @description Slug of the tour, matched case-insensitively. */
+                series_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tour page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostedSeriesPageResponse"];
+                };
+            };
+            /** @description Page not found (one indistinguishable outcome for every miss). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -69719,7 +72857,7 @@ export interface operations {
                     "application/json": components["schemas"]["OrganizerContactAccepted"];
                 };
             };
-            /** @description Invalid topic, name, last name, e-mail, phone, message, missing consent or a malformed body (`contact.invalid_*`, `contact.consent_required`). */
+            /** @description Invalid topic, name, last name, company, city, website, e-mail, phone, message, missing consent or a malformed body (`contact.invalid_*`, `contact.consent_required`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -69774,6 +72912,85 @@ export interface operations {
                 };
             };
             /** @description Database unavailable, the message could not be stored (`contact.send_failed`, retry), or the captcha is not configured or cannot be checked (`contact.captcha_not_configured`, `contact.captcha_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    trackSiteEvent: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The channel's tracking secret, added by the site's nginx. */
+                "X-Site-Key"?: string;
+                /** @description The visitor's address, trusted only together with a valid `X-Site-Key`. */
+                "X-Site-Client-IP"?: string;
+                /** @description The visitor's browser, trusted only together with a valid `X-Site-Key`. */
+                "X-Site-User-Agent"?: string;
+            };
+            path: {
+                /** @description The site channel's feed token. */
+                feed_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SiteTrackRequest"];
+            };
+        };
+        responses: {
+            /** @description Taken. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteTrackAccepted"];
+                };
+            };
+            /** @description The body is not a JSON object of this shape (`track.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The token is unknown or the channel has no site origin (`track.not_available`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is larger than 8 KiB (`track.too_large`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many events (`track.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The service is unavailable (`track.unavailable`, `dependency.database_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -78876,6 +82093,81 @@ export interface operations {
             };
         };
     };
+    getV1OrganizationsOrgIdEventsEventIdOutboundClicks: {
+        parameters: {
+            query?: {
+                /** @description First day, `YYYY-MM-DD`. Default 29 days before `to`. */
+                from?: string;
+                /** @description Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone. */
+                to?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The clicks of the window. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboundClicksResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID or the window is wrong (`outbound_clicks.invalid_date`, `outbound_clicks.invalid_range`, `outbound_clicks.range_too_long`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `report.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found, or not part of this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getV1OrganizationsOrgIdEventsEventIdFunnel: {
         parameters: {
             query?: {
@@ -81056,7 +84348,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A new tier has the name of a live category of the session (`seat_batch.tier_name_taken`). Nothing was written. */
+            /** @description A new tier has the name of a live category of the session (`seat_batch.tier_name_taken`), or a partner box office sells the session and it owns no seats (`session.sold_externally`). Nothing was written. */
             409: {
                 headers: {
                     [name: string]: unknown;

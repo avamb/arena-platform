@@ -18,6 +18,7 @@ import { OrgLayout } from "@/screens/OrgLayout";
 import { EventsScreen } from "@/screens/EventsScreen";
 import { EventScreen } from "@/screens/EventScreen";
 import { EventEditScreen } from "@/screens/EventEditScreen";
+import { TranslationsScreen } from "@/screens/TranslationsScreen";
 import { EventFunnelScreen } from "@/screens/EventFunnelScreen";
 import { SessionScreen } from "@/screens/SessionScreen";
 import { SessionInvitationsScreen } from "@/screens/SessionInvitationsScreen";
@@ -38,11 +39,13 @@ import { VenuesScreen } from "@/screens/VenuesScreen";
 import { VenuePlanIntakeScreen } from "@/screens/VenuePlanIntakeScreen";
 import { parseIntakeSearch } from "@/lib/venuePlan/intakeState";
 import { PromoterScreen } from "@/screens/PromoterScreen";
+import { SeriesScreen } from "@/screens/SeriesScreen";
+import { SeriesDetailScreen } from "@/screens/SeriesDetailScreen";
 import { NotFoundScreen } from "@/screens/NotFoundScreen";
 import { OrgDataScreen } from "@/screens/OrgDataScreen";
 import { EntranceScreen } from "@/screens/EntranceScreen";
 import { HelpScreen } from "@/screens/HelpScreen";
-import { parseEventsSearch, parseLoginSearch, parseOrdersSearch, parsePromotersSearch } from "@/lib/search";
+import { parseEventsSearch, parseLoginSearch, parseOrdersSearch, parsePromotersSearch, parseSeriesSearch } from "@/lib/search";
 import { parseBalanceSearch } from "@/lib/billingPacks";
 import { PromoListScreen } from "@/screens/PromoListScreen";
 import { PromoCreateScreen } from "@/screens/PromoCreateScreen";
@@ -60,6 +63,8 @@ import { ShopProductEditScreen, ShopProductNewScreen } from "@/screens/ShopProdu
 import { ShopOrdersScreen } from "@/screens/ShopOrdersScreen";
 import { ShopOrderScreen } from "@/screens/ShopOrderScreen";
 import { ShopSettingsScreen } from "@/screens/ShopSettingsScreen";
+import { MetaAdsScreen } from "@/screens/MetaAdsScreen";
+import { parseMetaSearch } from "@/lib/metaConnect";
 import { shopGated } from "@/screens/ShopGate";
 import { parseProductCardSearch, parseProductsSearch, parseShopOrdersSearch } from "@/lib/shop";
 
@@ -172,6 +177,13 @@ const eventEditRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/events/$eventId/edit",
   component: EventEditScreen,
+});
+
+// Spec 63 section 16: the translations of the event texts. Reached from the "Translations" item of the "Edit" section.
+const eventTranslationsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/events/$eventId/translations",
+  component: TranslationsScreen,
 });
 
 const sessionRoute = createRoute({
@@ -293,6 +305,20 @@ const promoterRoute = createRoute({
   component: PromoterScreen,
 });
 
+// Spec 63 L-2: tours (event series).
+const seriesRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/series",
+  validateSearch: parseSeriesSearch,
+  component: SeriesScreen,
+});
+
+const seriesDetailRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/series/$seriesId",
+  component: SeriesDetailScreen,
+});
+
 // Spec 64 section 2.1.1: the venue chooser and the venue card.
 const venuesRoute = createRoute({ getParentRoute: () => orgRoute, path: "/venues", component: VenuesScreen });
 const venueRoute = createRoute({ getParentRoute: () => orgRoute, path: "/venues/$venueId", component: VenuesScreen });
@@ -339,6 +365,15 @@ const orgDataRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/org-data",
   component: OrgDataScreen,
+});
+
+// Spec 66: "Advertising -> Meta". The callback comes back to this address with ?meta=finish (code and state were moved to sessionStorage at boot) or
+// ?meta=error&reason=<code>. The screen itself explains it is the owner's.
+const metaAdsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/ads/meta",
+  validateSearch: parseMetaSearch,
+  component: MetaAdsScreen,
 });
 
 // 6-1a: the event wizard. "new" is a static segment, so it wins over "$eventId".
@@ -438,6 +473,7 @@ export const routeTree = rootRoute.addChildren([
     eventRoute,
     eventFunnelRoute,
     eventEditRoute,
+    eventTranslationsRoute,
     sessionRoute,
     sessionSeatsRoute,
     sessionInvitationsRoute,
@@ -455,6 +491,8 @@ export const routeTree = rootRoute.addChildren([
     billingInvoicesRoute,
     promotersRoute,
     promoterRoute,
+    seriesRoute,
+    seriesDetailRoute,
     venuesRoute,
     venueRoute,
     venuePlanIntakeRoute,
@@ -463,6 +501,7 @@ export const routeTree = rootRoute.addChildren([
     promoCodeRoute,
     teamRoute,
     orgDataRoute,
+    metaAdsRoute,
     eventNewRoute,
     linksRoute,
     linkNewRoute,

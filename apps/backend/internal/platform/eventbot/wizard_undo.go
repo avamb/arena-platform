@@ -26,6 +26,9 @@ type DraftLoaded struct {
 type DraftLoadedDate struct {
 	Tickets  DraftTickets `json:"tickets"`
 	Capacity int          `json:"capacity"`
+	// External is the partner box office the date was loaded with (nil: the
+	// platform sells it).
+	External *DraftExternal `json:"external,omitempty"`
 }
 
 // snapshotLoaded records the draft as it stands right after loading.
@@ -35,7 +38,7 @@ func snapshotLoaded(d *Draft) *DraftLoaded {
 		if s.SessionID == "" {
 			continue
 		}
-		l.Dates[s.SessionID] = DraftLoadedDate{Tickets: cloneTickets(*d.ticketsOf(i)), Capacity: s.Capacity}
+		l.Dates[s.SessionID] = DraftLoadedDate{Tickets: cloneTickets(*d.ticketsOf(i)), Capacity: s.Capacity, External: s.External.clone()}
 	}
 	return l
 }
@@ -62,6 +65,9 @@ func (d *Draft) changes() []editChange {
 		if d.fieldChanged(f) {
 			out = append(out, editChange{Key: f, Field: f})
 		}
+	}
+	if d.externalChanged() {
+		out = append(out, editChange{Key: "external", Field: "external"})
 	}
 	for i, s := range d.Sessions {
 		if s.SessionID == "" {
@@ -123,7 +129,7 @@ func (d *Draft) refreshChanged() {
 		if !s.Dirty || s.SessionID == "" || s.Tickets == nil {
 			continue
 		}
-		if l, ok := d.Loaded.Dates[s.SessionID]; ok && ticketsEqual(*s.Tickets, l.Tickets) {
+		if l, ok := d.Loaded.Dates[s.SessionID]; ok && ticketsEqual(*s.Tickets, l.Tickets) && !d.extDiffers(i) {
 			s.Dirty, s.Capacity = false, l.Capacity
 		}
 	}
@@ -223,7 +229,7 @@ func (d *Draft) recordSaved(i int, posterSent bool) {
 	}
 	s := d.Sessions[i]
 	if s.SessionID != "" {
-		l.Dates[s.SessionID] = DraftLoadedDate{Tickets: cloneTickets(*d.ticketsOf(i)), Capacity: s.Capacity}
+		l.Dates[s.SessionID] = DraftLoadedDate{Tickets: cloneTickets(*d.ticketsOf(i)), Capacity: s.Capacity, External: s.External.clone()}
 	}
 	everywhere := true
 	for j := range d.Sessions {
@@ -329,6 +335,8 @@ func (d *Draft) undo(key string) bool {
 		d.Event.PromoterID, d.Event.PromoterName = l.Event.PromoterID, l.Event.PromoterName
 	case "currency":
 		d.Currency = l.Currency
+	case "external":
+		d.undoExternal()
 	case "dates":
 		if !d.canRemoveDate(found.Idx) {
 			return false
@@ -403,11 +411,17 @@ func (w *Wizard) changeLine(loc, orgName string, d *Draft, c editChange) string 
 		return field(Esc(w.promoterLabel(loc, orgName, l.Event)), Esc(w.promoterLabel(loc, orgName, d.Event)))
 	case "currency":
 		return field(l.Currency, d.Currency)
+	case "external":
+		return field(externalLabel(firstLoadedExternal(d)), externalLabel(d.External))
 	case "dates":
 		s := d.Sessions[c.Idx]
-		return t("bot.wz.edit_chg_date", map[string]any{
+		key := "bot.wz.edit_chg_date"
+		if d.extOf(c.Idx) != nil {
+			key = "bot.wz.edit_chg_date_ext"
+		}
+		return t(key, map[string]any{
 			"When": dateLabel(s), "Venue": Esc(s.VenueName), "Capacity": s.Capacity,
-			"List": w.ticketsText(loc, d.currencyOrGuess(), d.ticketsOf(c.Idx)),
+			"List": w.dateSalesText(loc, d, c.Idx),
 		})
 	case "tickets":
 		return t("bot.wz.edit_chg_tickets", map[string]any{

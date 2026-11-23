@@ -69,7 +69,7 @@ describe("ScreenHelp", () => {
     press(q("screen-help-events"));
     expect(q("screen-help-events").getAttribute("aria-expanded")).toBe("true");
     expect(q("screen-help-events").getAttribute("aria-controls")).toBe(q("screen-help-text").id);
-    expect(lineIds()).toEqual(["nav-new-event", "menu-events", "nav-summary"]);
+    expect(lineIds()).toEqual(["nav-new-event", "menu-events", "nav-summary", "nav-series"]);
     expect(q("screen-help-back").textContent).toBe("To come back here: Events.");
     press(q("screen-help-events"));
     expect(has("screen-help-text")).toBe(false);
@@ -96,7 +96,7 @@ describe("ScreenHelp", () => {
     state.denied = ["import.bil24_session"];
     mount();
     press(q("screen-help-events"));
-    expect(lineIds()).toEqual(["menu-events", "nav-summary"]);
+    expect(lineIds()).toEqual(["menu-events", "nav-summary", "nav-series"]);
   });
 
   it("speaks the language of the page", () => {

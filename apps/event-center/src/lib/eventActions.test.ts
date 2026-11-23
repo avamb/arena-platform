@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { eventCardLayout, isPastEvent, sectionForAnchor, sectionOf, type ItemId, type ItemRights } from "./eventActions";
 
 const IDS: ItemId[] = [
-  "edit", "sample", "orders", "csv", "guests", "funnel", "qr", "promo", "invitations", "links",
+  "edit", "translations", "sample", "orders", "csv", "guests", "funnel", "qr", "promo", "invitations", "links",
   "totals", "pageStats", "poster", "sessions", "salesSwitch", "materials", "emailNote", "referral", "status",
 ];
 const ALL = Object.fromEntries(IDS.map((i) => [i, true])) as ItemRights;
@@ -20,7 +20,7 @@ describe("eventCardLayout", () => {
     expect(l.sections.map((s) => s.items)).toEqual([
       ["qr"],
       ["orders", "csv", "guests", "funnel", "totals", "pageStats"],
-      ["edit", "poster", "sessions", "salesSwitch", "materials", "sample", "emailNote"],
+      ["edit", "translations", "poster", "sessions", "salesSwitch", "materials", "sample", "emailNote"],
       ["promo", "invitations", "links", "referral"],
       ["status"],
     ]);

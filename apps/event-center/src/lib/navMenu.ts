@@ -12,7 +12,7 @@ import { wizardGate } from "@/lib/features";
 import type { MessageKey } from "@/lib/i18n/en";
 import { showShopNav, type ShopMode } from "@/lib/shopModule";
 
-export type NavGroupId = "new" | "events" | "orders" | "promotion" | "entrance" | "shop" | "settings" | "help";
+export type NavGroupId = "new" | "events" | "orders" | "promotion" | "entrance" | "shop" | "ads" | "settings" | "help";
 
 export interface NavEntry {
   /** The data-testid of the link. */
@@ -44,6 +44,7 @@ export function navGroups(access: NavPerson, shopMode: ShopMode, orgCount: numbe
       items: [
         { id: "menu-events", labelKey: "nav.events" },
         { id: "nav-summary", labelKey: "nav.summary" },
+        ...(can("event.read") ? [{ id: "nav-series", labelKey: "nav.series" } as NavEntry] : []),
       ],
     },
     {
@@ -67,6 +68,11 @@ export function navGroups(access: NavPerson, shopMode: ShopMode, orgCount: numbe
       id: "shop",
       titleKey: "nav.section.shop",
       items: showShopNav(shopMode, can("shop.read")) ? [{ id: "nav-shop", labelKey: "nav.shop" }] : [],
+    },
+    {
+      id: "ads",
+      titleKey: "nav.section.ads",
+      items: can("org.update") ? [{ id: "nav-ads-meta", labelKey: "nav.adsMeta" }] : [],
     },
     {
       id: "settings",

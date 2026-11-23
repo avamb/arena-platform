@@ -1,0 +1,116 @@
+{{define "subject"}}{{with .Reissue}}Nowe bilety — {{$.EventName}}{{else}}{{if gt (len .Tickets) 1}}Państwa bilety — {{.EventName}}{{else}}Państwa bilet — {{.EventName}}{{end}}{{end}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="pl" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Państwa bilet</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:28px 32px 8px 32px;color:#22333D;font-size:16px;">Dzień dobry{{with .HolderName}} {{.}}{{end}}!</td></tr>
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">{{with .Reissue}}{{if .Typo}}W adresie e-mail podanym przy zakupie była literówka, dlatego pierwsza wiadomość z biletami trafiła na inny adres. Skontaktowali się Państwo z organizatorem i potwierdzili swoje dane. Wystawiliśmy dla Państwa nowe bilety, są w załączniku.<br><br>Bilety z pierwszej wiadomości przestały być ważne. Wejście umożliwiają tylko nowe bilety.{{else}}Na Państwa prośbę wystawiliśmy nowe bilety w miejsce poprzednich. Są w załączniku.<br><br>Poprzednie bilety przestały być ważne. Wejście umożliwiają tylko nowe bilety.{{end}}<br><br>Państwa miejsca i płatność pozostają bez zmian.{{with .OrderNumber}} Numer zamówienia: {{.}}.{{end}}{{else}}{{if gt (len .Tickets) 1}}Dziękujemy za zakup. Bilety na wydarzenie „{{.EventName}}” są w załączniku do tej wiadomości (pliki PDF).{{else}}Dziękujemy za zakup. Bilet na wydarzenie „{{.EventName}}” jest w załączniku do tej wiadomości (PDF).{{end}}{{end}}</td></tr>
+  <tr><td style="padding:8px 32px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-left:4px solid {{.Accent}};background:#f8f9fa;"><tr><td style="padding:12px 16px;color:#22333D;font-size:14px;line-height:1.6;">
+      <strong>{{.EventName}}</strong>{{with .SessionStart}}<br>{{.}}{{end}}{{with .DoorsOpen}}<br>Wejście od {{.}}{{end}}{{with .VenueName}}<br>{{.}}{{end}}{{with .Directions.GoogleURL}}<br>Dojazd: <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a>{{end}}
+    </td></tr></table>
+  </td></tr>
+  <tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">{{if gt (len .Tickets) 1}}Bilety ({{len .Tickets}}){{else}}Bilet{{end}}</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5;border-collapse:collapse;">
+    {{range .Tickets}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">Nr {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .DownloadURL}}<br><a href="{{.}}" style="color:{{$.Accent}};font-size:13px;">Pobierz PDF</a>{{end}}</td>{{with .Price}}<td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td>{{end}}</tr>
+    {{else}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">Nr {{.TicketID}}{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · Sektor {{.}}{{end}}{{with .SeatRow}} · Rząd {{.}}{{end}}{{with .SeatNumber}} · Miejsce {{.}}{{end}}</td></tr>
+    {{end}}</table>
+  </td></tr>
+  {{with .Payment}}<tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">Płatność</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5;border-collapse:collapse;">
+      <tr><td style="padding:4px 0;color:#46555f;">Zamówienie</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">Nr {{.OrderNumber}}</td></tr>
+      {{with .PaidAt}}<tr><td style="padding:4px 0;color:#46555f;">Data płatności</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      {{with .Subtotal}}<tr><td style="padding:4px 0;color:#46555f;">Bilety</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      {{with .Discount}}<tr><td style="padding:4px 0;color:#46555f;">Rabat</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">−{{.}}</td></tr>{{end}}
+      {{with .ServiceFee}}<tr><td style="padding:4px 0;color:#46555f;">Opłata serwisowa</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      <tr><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;">Razem zapłacono</td><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;white-space:nowrap;text-align:right;">{{.Total}}</td></tr>
+    </table>
+  </td></tr>{{end}}
+  {{with .EventNote.HTML}}<tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">O wydarzeniu</div>
+    <div style="color:#46555f;font-size:14px;line-height:1.6;">{{.}}</div>
+  </td></tr>{{end}}
+  {{if .WithdrawalNotice}}<tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Do biletów na wydarzenie w określonym terminie nie stosuje się prawa odstąpienia od umowy. Zamówienie stało się wiążące z chwilą zapłaty.</td></tr>{{end}}
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Wystarczy otworzyć plik w telefonie i pokazać kod kreskowy przy wejściu — nie trzeba drukować.</td></tr>
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+    Wiadomość wysłano na adres: {{.RecipientEmail}}<br><br>
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Kontakt: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Kontakt: <a href="{{.}}" style="color:#666">Napisz do organizatora</a>{{end}}{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Obsługa biletów: arenasoldout.com</a>{{end}}</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Jeśli klikną Państwo „Wypisz się”, wiadomości z biletami oraz ważne wiadomości o zamówieniu przestaną do Państwa docierać. Nie wysyłamy wiadomości marketingowych bez Państwa zgody.</p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+Dzień dobry{{with .HolderName}} {{.}}{{end}}!
+
+{{with .Reissue}}{{if .Typo}}W adresie e-mail podanym przy zakupie była literówka, dlatego pierwsza wiadomość z biletami trafiła na inny adres. Skontaktowali się Państwo z organizatorem i potwierdzili swoje dane. Wystawiliśmy dla Państwa nowe bilety, są w załączniku.
+
+Bilety z pierwszej wiadomości przestały być ważne. Wejście umożliwiają tylko nowe bilety.{{else}}Na Państwa prośbę wystawiliśmy nowe bilety w miejsce poprzednich. Są w załączniku.
+
+Poprzednie bilety przestały być ważne. Wejście umożliwiają tylko nowe bilety.{{end}}
+
+Państwa miejsca i płatność pozostają bez zmian.{{with .OrderNumber}} Numer zamówienia: {{.}}.{{end}}{{else}}{{if gt (len .Tickets) 1}}Dziękujemy za zakup. Bilety na wydarzenie „{{.EventName}}” są w załączniku do tej wiadomości (pliki PDF).{{else}}Dziękujemy za zakup. Bilet na wydarzenie „{{.EventName}}” jest w załączniku do tej wiadomości (PDF).{{end}}{{end}}
+
+{{.EventName}}
+{{with .SessionStart}}{{.}}
+{{end}}{{with .DoorsOpen}}Wejście od {{.}}
+{{end}}{{with .VenueName}}{{.}}
+{{end}}{{with .Directions.GoogleURL}}Dojazd: Google Maps {{.}} · Waze {{$.Directions.WazeURL}}
+{{end}}
+{{if gt (len .Tickets) 1}}Bilety ({{len .Tickets}}){{else}}Bilet{{end}}:
+{{range .Tickets}}- Nr {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .Price}} · {{.}}{{end}}{{with .DownloadURL}}
+  Pobierz PDF: {{.}}{{end}}
+{{else}}- Nr {{.TicketID}}{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · Sektor {{.}}{{end}}{{with .SeatRow}} · Rząd {{.}}{{end}}{{with .SeatNumber}} · Miejsce {{.}}{{end}}
+{{end}}{{with .Payment}}
+Płatność:
+- Zamówienie: Nr {{.OrderNumber}}
+{{with .PaidAt}}- Data płatności: {{.}}
+{{end}}{{with .Subtotal}}- Bilety: {{.}}
+{{end}}{{with .Discount}}- Rabat: −{{.}}
+{{end}}{{with .ServiceFee}}- Opłata serwisowa: {{.}}
+{{end}}- Razem zapłacono: {{.Total}}
+{{end}}
+{{with .EventNote.Plain}}O wydarzeniu:
+{{.}}
+
+{{end}}{{if .WithdrawalNotice}}Do biletów na wydarzenie w określonym terminie nie stosuje się prawa odstąpienia od umowy. Zamówienie stało się wiążące z chwilą zapłaty.
+
+{{end}}Wystarczy otworzyć plik w telefonie i pokazać kod kreskowy przy wejściu — nie trzeba drukować.
+{{template "contact_text" .}}Wiadomość wysłano na adres: {{.RecipientEmail}}
+
+--
+{{.Branding.SellerLabel}} {{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
+{{end}}{{with .Branding.PaymentLine}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}Kontakt: {{.}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Kontakt: {{.}}
+{{end}}{{end}}
+{{if not .WhiteLabel}}Obsługa biletów: arenasoldout.com — https://arenasoldout.com{{end}}
+
+Jeśli klikną Państwo „Wypisz się”, wiadomości z biletami oraz ważne wiadomości o zamówieniu przestaną do Państwa docierać. Nie wysyłamy wiadomości marketingowych bez Państwa zgody.
+{{end}}

@@ -221,6 +221,16 @@ export interface FeedSession {
    * nothing special is shown).
    */
   sales_state?: string;
+  /** Who sells the date: "platform" or "external" (a partner box office). Absent on older backends. */
+  sales_mode?: string;
+  /** The partner's box office of an external date; null or absent otherwise. */
+  external?: {
+    url: string;
+    seller_name: string;
+    /** Major units; null when unknown. */
+    price_from: number | null;
+    currency: string | null;
+  } | null;
   /** Populated only for seated/hybrid sessions. */
   admission_mode?: string;
   /** URL to fetch the session schema (only for seated/hybrid sessions). */

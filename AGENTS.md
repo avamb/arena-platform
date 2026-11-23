@@ -388,6 +388,24 @@ Stripe, Flitt and AllPay hosted checkout, payment modules, webhook state machine
 * A buyer e-mail is checked by emailaddr.Valid befor…
 * The legacy webhook routes bind an event to the organization whose secret verified it
 
+### [Meta integration](docs/agents/meta-integration.md)
+
+Connection of an organizer's Meta business, the encrypted BISU token, CAPI through the connection (spec 66).
+
+* The Meta token is the first secret encrypted at rest (secretbox, META_TOKEN_ENC_KEY)
+* One connection per organization: org_meta_connections + org_meta_assets (migration 0223)
+* The login is the server redirect with config_id; the event center does NOT load the Facebook JS SDK
+* The public callback NEVER exchanges the code (login CSRF): fragment to the event center, then POST .../meta/finish with a state of this person and org
+* A Meta signed_request older than 24 h or more than 5 min ahead is refused
+* A Meta connection that cannot be read never blocks GA4 (Settings.MetaErr)
+* Which Graph edges list ad accounts and pages is not confirmed for BISU: META_ASSET_EDGES decides
+* CAPI takes the connection first, the manual token second; only code 190 breaks the connection
+* META_GRAPH_BASE_URL is a test seam and is refused in production
+* A broken Meta connection tells its owners once, in the transaction of the break (meta_connection_broken, owners = membership role with org.update)
+* Meta's app webhook is GET|POST /v1/integrations/meta/webhook: verify token, X-Hub-Signature-256, only business_integration_uninstall deletes
+* Meta's deauthorize deletes the connection at once, like data deletion; only the owner's disconnect leaves revoked
+* The Page preview GET .../integrations/meta/page is read live and never stored; the picture comes as a data: URL
+
 ### [Refunds](docs/agents/refunds.md)
 
 The refund engine, provider refund events, organizer refund API, refund retry and the bot and web refund screens.
@@ -454,6 +472,7 @@ Delivery jobs, the e-ticket PDF layout, barcodes, buyer letters, tracking, local
 * The organizer-facing contact-form letter (contactf…
 * internal/platform/directions is the ONLY place tha…
 * Every buyer letter outside an order (marketing con…
+* Letters and the e-ticket know 14 languages since spec 63 L-4; the 7 site languages ship only buyer kinds, parity test + glossary (docs/letter_translation_glossary.md)
 * In a letter the brand is ArenaSoldOut.com and nothing else; brand_guard_test.go scans…
 
 ### [Seating, GA inventory and holds](docs/agents/seating-ga-inventory.md)
@@ -509,6 +528,7 @@ Session lifecycle and times, event status and sales state, promoters, sales chan
 * The hold gate refuses a cancelled session, and the…
 * A VERIFIED venue is open to every organization (mi…
 * A city is found before it is created: citymatch.FindInCountry (any name, any language, slug, alias of its own country)
+* A partner session (sales_mode external, migration 0221) is never sold by arena: CheckSessionSellable on every sale path, LockSessionSalesMode before tier/seat/plan writes
 
 ### [Telegram bot: core, wizard and screens](docs/agents/bot-core-wizard.md)
 
@@ -544,6 +564,7 @@ The event-center bot process, dialogs, feed, menu, wizard state machine, edit ca
 * The main menu is nine buttons plus sections (callback prefix mn:), and a "First steps" block from the getting-started route…
 * The event card has FIVE buttons and four group screens (ec:g, ec:lk), a first-button rule, and the word "brand" replaces "promoter" in organizer texts…
 * "❓ What is here?" is the help of ONE screen: one item list builds both the keyboard and the help (screenItems, hp: prefix), /menu forces the "☰ Menu" keyboard, a superadmin keeps Venues and Messages…
+* The bot's «🌐 Translations» (tr: callbacks) edits one language's description, and PUT replaces the WHOLE translation row
 
 ### [Orders, invitations and door scans](docs/agents/orders-invitations-scans.md)
 
@@ -661,6 +682,7 @@ Public page materials, seller block, terms, consent, statistics beacon, widget l
 * Sales page materials (task sales-page-materials, 2…
 * The organizer's terms of sale are a template plus…
 * The hosted page's statistics beacon (task 2-3, HP-…
+* Content translations (migration 0220): one table for events and series, a manual text is never overwritten by the machine
 
 ### [Posters, formatted text and the Telegram mini app](docs/agents/posters-rich-text-miniapp.md)
 
@@ -743,6 +765,7 @@ Behaviour events, rollup, CRM export, UX dashboards, bot analytics, buyer sales 
 * The UX dashboards of the admin console (spec 50 A8…
 * The bot's behaviour events (spec 50 stage A4) go t…
 * The buyer sales funnel is sales_funnel_daily (migr…
+* Server-side tracking of a static site: POST /v1/public/feeds/{token}/track, order-less conversion events, outbound-clicks summary (spec 63 §19)
 
 ### [Growth: reminders, marketing consent, smart price](docs/agents/growth-marketing.md)
 

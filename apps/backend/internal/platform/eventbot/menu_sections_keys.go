@@ -9,6 +9,7 @@ var menuSectionKeys = []string{
 	"bot.mn.orders_title", "bot.mn.promo_title", "bot.mn.door_title", "bot.mn.settings_title",
 	"bot.mn.mail_text", "bot.mn.venues_text", "bot.mn.mail_text_super", "bot.mn.venues_text_super", "bot.mn.guests_text",
 	"bot.mn.pay_ok", "bot.mn.pay_off", "bot.mn.pay_unknown",
+	"bot.mn.meta_ok", "bot.mn.meta_off", "bot.mn.meta_error", "bot.mn.meta_btn",
 	"bot.mn.steps_title",
 	"bot.mn.step_org_data", "bot.mn.step_payments", "bot.mn.step_event", "bot.mn.step_sales_link",
 	"bot.mn.step_org_data_btn", "bot.mn.step_payments_btn", "bot.mn.step_event_btn", "bot.mn.step_sales_link_btn",

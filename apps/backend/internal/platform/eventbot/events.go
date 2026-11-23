@@ -95,11 +95,22 @@ func (b *Bot) statusText(locale string, status string) string {
 // summary is unavailable it still names the date so the card is never empty.
 func (b *Bot) sessionLine(ctx context.Context, jwt, loc string, orgID uuid.UUID, s openapi.SessionItem) string {
 	summary, err := b.arena.SessionSummary(ctx, jwt, orgID, s.Id)
+	partner := ""
+	if s.SalesMode == "external" && s.External != nil {
+		// A partner box office sells this date: the card names it instead of
+		// counting sales the platform does not make.
+		partner = b.texts.T(loc, "bot.wz.session_external", map[string]any{
+			"Name": Esc(s.External.SellerName), "Url": Esc(s.External.Url),
+		})
+	}
 	if err != nil {
 		b.logger.Warn("eventbot: session summary failed", slog.String("session_id", s.Id.String()), slog.String("error", err.Error()))
 		when := FormatWhen(s.StartAt, "")
 		if string(s.Status) == "cancelled" {
 			when += " (" + b.texts.T(loc, "bot.session_cancelled", nil) + ")"
+		}
+		if partner != "" {
+			return "<b>" + Esc(when) + "</b>\n" + partner
 		}
 		return "<b>" + Esc(when) + "</b>"
 	}
@@ -114,6 +125,9 @@ func (b *Bot) sessionLine(ctx context.Context, jwt, loc string, orgID uuid.UUID,
 	venue := ""
 	if summary.Session.VenueName != nil {
 		venue = Esc(*summary.Session.VenueName)
+	}
+	if partner != "" {
+		return "<b>" + Esc(when) + "</b> " + venue + "\n" + partner
 	}
 	places := SummaryPlaces(summary)
 	// Once a ticket has been cancelled or refunded "sold 2" is not the whole

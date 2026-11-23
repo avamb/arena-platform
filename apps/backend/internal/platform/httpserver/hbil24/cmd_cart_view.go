@@ -578,6 +578,14 @@ func (h *Handler) writeCartHoldError(
 			h.localizeDesc(req.Locale, cc.locale, "bil24.category_sold_out",
 				"Category is sold out", cartSoldOutParams(pricing, capErr.TierID)),
 		))
+	case errors.Is(err, hcheckout.ErrSessionSoldExternally):
+		// A partner box office sells this session (migration 0221): 101,
+		// the same answer as for closed sales.
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUserVisible,
+			h.localizeDesc(req.Locale, cc.locale, "bil24.sales_closed",
+				"sales are closed for this event", nil),
+		))
 	case errors.Is(err, hcheckout.ErrSessionSalesSoon),
 		errors.Is(err, hcheckout.ErrSessionSoldOut):
 		// The organizer's sales state of the session (migration 0183).

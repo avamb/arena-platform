@@ -1,0 +1,90 @@
+{{define "subject"}}{{if .Change.Invitation}}Kutsu peruttu{{else}}Tapahtuma peruttu{{end}} — {{.EventName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="fi" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{if .Change.Invitation}}Kutsu peruttu{{else}}Tapahtuma peruttu{{end}}</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">{{if .Change.Invitation}}Kutsunne on peruttu{{else}}Tapahtumanne on peruttu{{end}}</h1>
+  <p style="margin:0 0 12px 0;">Hei{{with .HolderName}} {{.}}{{end}},</p>
+  <p style="margin:0 0 12px 0;">{{if .Change.Invitation}}Järjestäjä on perunut kutsunne tapahtumaan <strong>{{.EventName}}</strong>{{with .SessionStart}} ({{.}}){{end}}. Lippunne ei enää oikeuta sisäänpääsyyn.{{else}}Järjestäjä on perunut tapahtuman <strong>{{.EventName}}</strong> ajankohdan{{with .SessionStart}}, joka oli määrä pitää {{.}}{{end}}. Lippunne tähän ajankohtaan ei enää oikeuta sisäänpääsyyn.{{end}}</p>
+  <table cellpadding="4" style="border-collapse:collapse;font-size:14px">
+    <tr><td><strong>Tapahtuma</strong></td><td>{{.EventName}}</td></tr>
+    {{with .SessionStart}}<tr><td><strong>Ajankohta</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .VenueName}}<tr><td><strong>Paikka</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .TierName}}<tr><td><strong>Kategoria</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatSector}}<tr><td><strong>Sektori</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatRow}}<tr><td><strong>Rivi</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatNumber}}<tr><td><strong>Paikka</strong></td><td>{{.}}</td></tr>{{end}}
+  </table>
+  {{with .Change.MessageHTML}}<div style="margin:16px 0;padding:12px 16px;border-left:3px solid {{$.Accent}};background:#f8f9fa">
+    <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>Viesti järjestäjältä:</strong></p>
+    <div style="margin:0;font-size:14px;line-height:1.6;">{{.}}</div>
+  </div>{{end}}
+  {{if or .Change.ContactEmail .Change.ContactFormURL}}<p style="margin:0 0 12px 0;">Kirjoittakaa järjestäjälle{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}osoitteeseen <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{else if .Change.ContactFormURL}}<a href="{{.Change.ContactFormURL}}" style="color:#1a73e8">myyntisivun lomakkeen</a> kautta{{end}}{{with .Change.ContactPhone}}, puhelin {{.}}{{end}}, ja kysykää jatkotoimista.</p>{{end}}
+  <p style="font-size:12px;color:#666">Lipun tunnus: {{.TicketID}}</p>
+  <p style="font-size:12px;color:#666">Vastaanottaja: {{.RecipientEmail}}</p>
+  </td></tr>
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Yhteystiedot: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Yhteystiedot: <a href="{{.}}" style="color:#666">Kirjoita järjestäjälle</a>{{end}}{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Lippujen käsittely: arenasoldout.com</a>{{end}}</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Jos napsautatte ”Peruuta tilaus”, lippunne sisältävät viestit ja tilaustanne koskevat tärkeät viestit eivät enää saavu teille. Emme lähetä markkinointiviestejä ilman suostumustanne.</p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+{{if .Change.Invitation}}Kutsunne on peruttu{{else}}Tapahtumanne on peruttu{{end}}
+
+Hei{{with .HolderName}} {{.}}{{end}},
+
+{{if .Change.Invitation}}Järjestäjä on perunut kutsunne tapahtumaan {{.EventName}}{{with .SessionStart}} ({{.}}){{end}}. Lippunne ei enää oikeuta sisäänpääsyyn.{{else}}Järjestäjä on perunut tapahtuman {{.EventName}} ajankohdan{{with .SessionStart}}, joka oli määrä pitää {{.}}{{end}}. Lippunne tähän ajankohtaan ei enää oikeuta sisäänpääsyyn.{{end}}
+
+Tapahtuma: {{.EventName}}
+{{with .SessionStart}}Ajankohta: {{.}}
+{{end}}{{with .VenueName}}Paikka: {{.}}
+{{end}}{{with .TierName}}Kategoria: {{.}}
+{{end}}{{with .SeatSector}}Sektori: {{.}}
+{{end}}{{with .SeatRow}}Rivi: {{.}}
+{{end}}{{with .SeatNumber}}Paikka: {{.}}
+{{end}}{{with .Change.Message}}
+Viesti järjestäjältä:
+{{.}}
+{{end}}
+{{if or .Change.ContactEmail .Change.ContactFormURL}}Kirjoittakaa järjestäjälle{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}osoitteeseen {{.Change.ContactEmail}}{{else if .Change.ContactFormURL}}myyntisivun lomakkeen kautta: {{.Change.ContactFormURL}}{{end}}{{with .Change.ContactPhone}}, puhelin {{.}}{{end}}, ja kysykää jatkotoimista.
+
+{{end}}Lipun tunnus: {{.TicketID}}
+{{template "contact_text" .}}Vastaanottaja: {{.RecipientEmail}}
+
+--
+{{.Branding.SellerLabel}} {{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
+{{end}}{{with .Branding.PaymentLine}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}Yhteystiedot: {{.}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Yhteystiedot: {{.}}
+{{end}}{{end}}
+{{if not .WhiteLabel}}Lippujen käsittely: arenasoldout.com — https://arenasoldout.com{{end}}
+
+Jos napsautatte ”Peruuta tilaus”, lippunne sisältävät viestit ja tilaustanne koskevat tärkeät viestit eivät enää saavu teille. Emme lähetä markkinointiviestejä ilman suostumustanne.
+{{end}}

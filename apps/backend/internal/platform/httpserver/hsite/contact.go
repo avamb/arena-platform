@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -44,9 +45,14 @@ type ContactHandler struct {
 
 // ContactRequest is the body of the route. Unknown fields are refused.
 type ContactRequest struct {
-	// Topic is contact (default) or private_event; it is also the Turnstile
-	// widget action of the form.
+	// Topic is contact (default), private_event or partnership; it is also
+	// the Turnstile widget action of the form.
 	Topic string `json:"topic"`
+	// Company (required), City and Website (optional) belong to the
+	// partnership topic only; other topics ignore them.
+	Company string `json:"company"`
+	City    string `json:"city"`
+	Website string `json:"website"`
 	// Name is the first name; LastName the surname.
 	Name           string `json:"name"`
 	LastName       string `json:"last_name"`
@@ -93,6 +99,41 @@ func ValidPhone(s string) bool {
 	return digits >= minPhoneChars
 }
 
+// MaxWebsiteRunes is the longest website address the form takes.
+const MaxWebsiteRunes = 200
+
+// ValidWebsite reports whether s (already trimmed) is an http or https URL
+// with a host, or a bare host such as "example.com" or "www.example.com/x".
+func ValidWebsite(s string) bool {
+	if s == "" || utf8.RuneCountInString(s) > MaxWebsiteRunes {
+		return false
+	}
+	for _, r := range s {
+		if r <= ' ' || r == 0x7f {
+			return false
+		}
+	}
+	raw := s
+	if strings.Contains(s, "://") {
+		low := strings.ToLower(s)
+		if !strings.HasPrefix(low, "http://") && !strings.HasPrefix(low, "https://") {
+			return false
+		}
+	} else {
+		if strings.ContainsAny(s, ":@\\") && !strings.Contains(s, "/") {
+			return false
+		}
+		raw = "https://" + s
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Hostname() == "" || u.User != nil {
+		return false
+	}
+	host := u.Hostname()
+	// A bare word is not a site: a dot (or an IP/localhost-free host) is needed.
+	return strings.Contains(host, ".") && !strings.HasPrefix(host, ".") && !strings.HasSuffix(host, ".")
+}
+
 // HandleSend serves the route. The Idempotency-Key middleware in front of it
 // (scope = feed token) is what makes a retry with the same key and body answer
 // the first 202 instead of storing and mailing the message twice.
@@ -121,8 +162,27 @@ func (h *ContactHandler) HandleSend(w http.ResponseWriter, r *http.Request) {
 		topic = contactform.TopicContact
 	}
 	if !contactform.ValidTopic(topic) {
-		bad(w, r, "contact.invalid_topic", "Choose one of the topics: contact or private_event.", "topic")
+		bad(w, r, "contact.invalid_topic", "Choose one of the topics: contact, private_event or partnership.", "topic")
 		return
+	}
+	partner := topic == contactform.TopicPartnership
+	var company, city, website string
+	if partner {
+		company = strings.Join(strings.Fields(req.Company), " ")
+		if company == "" || utf8.RuneCountInString(company) > MaxNameRunes {
+			bad(w, r, "contact.invalid_company", "Enter your company name, up to 100 characters.", "company")
+			return
+		}
+		city = strings.Join(strings.Fields(req.City), " ")
+		if utf8.RuneCountInString(city) > MaxNameRunes {
+			bad(w, r, "contact.invalid_city", "Enter your city, up to 100 characters.", "city")
+			return
+		}
+		website = strings.TrimSpace(req.Website)
+		if website != "" && !ValidWebsite(website) {
+			bad(w, r, "contact.invalid_website", "Enter the address of your website, for example https://example.com.", "website")
+			return
+		}
 	}
 	name := strings.Join(strings.Fields(req.Name), " ")
 	if name == "" || utf8.RuneCountInString(name) > MaxNameRunes {
@@ -146,7 +206,7 @@ func (h *ContactHandler) HandleSend(w http.ResponseWriter, r *http.Request) {
 	}
 	msg := strings.TrimSpace(strings.ReplaceAll(req.Message, "\r\n", "\n"))
 	n := utf8.RuneCountInString(msg)
-	if n > MaxMessageRunes || (n < MinMessageRunes && (n > 0 || topic == contactform.TopicPrivateEvent)) {
+	if n > MaxMessageRunes || (n < MinMessageRunes && (n > 0 || topic == contactform.TopicPrivateEvent || partner)) {
 		bad(w, r, "contact.invalid_message", "Write a message of 10 to 2000 characters.", "message")
 		return
 	}
@@ -211,9 +271,9 @@ func (h *ContactHandler) HandleSend(w http.ResponseWriter, r *http.Request) {
 	var id uuid.UUID
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO organizer_contact_messages
-		    (org_id, channel_id, page_slug, sender_name, sender_email, message, locale, ip_hash, topic, last_name, phone)
-		VALUES ($1, $2, 'feed-site', $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-		ch.OrgID, ch.ID, name, email, msg, locale, ipHash, topic, lastName, phone).Scan(&id); err != nil {
+		    (org_id, channel_id, page_slug, sender_name, sender_email, message, locale, ip_hash, topic, last_name, phone, company, city, website)
+		VALUES ($1, $2, 'feed-site', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+		ch.OrgID, ch.ID, name, email, msg, locale, ipHash, topic, lastName, phone, company, city, website).Scan(&id); err != nil {
 		h.fail(w, r, "insert", err)
 		return
 	}

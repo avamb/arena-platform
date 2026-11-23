@@ -1,0 +1,88 @@
+{{define "subject"}}{{with .Reissue}}Jūsų naujas kvietimas — {{$.EventName}}{{else}}Esate pakviesti — {{.EventName}}{{end}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="lt" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Esate pakviesti</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">Esate pakviesti!</h1>
+  <p style="margin:0 0 12px 0;">Sveiki{{with .HolderName}} {{.}}{{end}},</p>
+{{with .Reissue}}<p style="margin:0 0 12px 0;">{{if .Typo}}Nurodėte el. pašto adresą su klaida, todėl pirmasis laiškas su Jūsų kvietimu pateko į kitą adresą. Susisiekėte su organizatoriumi ir patvirtinote savo duomenis. Išdavėme Jums naują kvietimą.<br><br>Pirmajame laiške buvęs kvietimas nebegalioja. Į renginį įleis tik naujasis.{{else}}Jūsų prašymu išdavėme naują kvietimą vietoj ankstesnio.<br><br>Ankstesnis kvietimas nebegalioja. Į renginį įleis tik naujasis.{{end}}</p>
+{{end}}  <p style="margin:0 0 12px 0;">Jums išduotas nemokamas kvietimo bilietas į
+     <strong>{{.EventName}}</strong>. PDF failą rasite priede.</p>
+  <p style="margin:0 0 12px 0;">Šis bilietas yra nemokamas kvietimas — mokėti nereikia.</p>
+  {{with .Directions.GoogleURL}}<p style="margin:0 0 12px 0;">{{with $.VenueName}}{{.}}<br>{{end}}Kaip nuvykti: <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a></p>{{end}}
+  {{if gt (len .Tickets) 1}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">{{range .Tickets}}<tr><td>Nr. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}</td></tr>{{end}}</table>{{else if or .SeatSector .SeatRow .SeatNumber}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">
+    {{with .SeatSector}}<tr><td><strong>Sektorius</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatRow}}<tr><td><strong>Eilė</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatNumber}}<tr><td><strong>Vieta</strong></td><td>{{.}}</td></tr>{{end}}
+  </table>{{end}}
+  {{if le (len .Tickets) 1}}<p style="font-size:12px;color:#666">Bilieto ID: {{.TicketID}}</p>{{end}}
+  <p style="font-size:12px;color:#666">Išsiųsta adresu: {{.RecipientEmail}}</p>
+  </td></tr>
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Kontaktai: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Kontaktai: <a href="{{.}}" style="color:#666">Rašyti organizatoriui</a>{{end}}{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Bilietus apdoroja arenasoldout.com</a>{{end}}</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Jei paspausite „Atsisakyti prenumeratos“, laiškai su Jūsų bilietais ir svarbūs laiškai apie Jūsų užsakymą Jūsų nebepasieks. Rinkodaros laiškų be Jūsų sutikimo nesiunčiame.</p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+Esate pakviesti!
+
+Sveiki{{with .HolderName}} {{.}}{{end}},
+
+{{with .Reissue}}{{if .Typo}}Nurodėte el. pašto adresą su klaida, todėl pirmasis laiškas su Jūsų kvietimu pateko į kitą adresą. Susisiekėte su organizatoriumi ir patvirtinote savo duomenis. Išdavėme Jums naują kvietimą.
+
+Pirmajame laiške buvęs kvietimas nebegalioja. Į renginį įleis tik naujasis.{{else}}Jūsų prašymu išdavėme naują kvietimą vietoj ankstesnio.
+
+Ankstesnis kvietimas nebegalioja. Į renginį įleis tik naujasis.{{end}}
+
+{{end}}Jums išduotas nemokamas kvietimo bilietas į {{.EventName}}.
+PDF failą rasite priede.
+
+Šis bilietas yra nemokamas kvietimas — mokėti nereikia.
+
+{{with .Directions.GoogleURL}}{{with $.VenueName}}{{.}}
+{{end}}Kaip nuvykti: Google Maps {{.}} · Waze {{$.Directions.WazeURL}}
+
+{{end}}{{if gt (len .Tickets) 1}}{{range .Tickets}}- Nr. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}
+{{end}}{{else}}{{with .SeatSector}}Sektorius: {{.}}
+{{end}}{{with .SeatRow}}Eilė: {{.}}
+{{end}}{{with .SeatNumber}}Vieta: {{.}}
+{{end}}Bilieto ID: {{.TicketID}}{{end}}
+{{template "contact_text" .}}Išsiųsta adresu: {{.RecipientEmail}}
+
+--
+{{.Branding.SellerLabel}} {{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
+{{end}}{{with .Branding.PaymentLine}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}Kontaktai: {{.}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Kontaktai: {{.}}
+{{end}}{{end}}
+{{if not .WhiteLabel}}Bilietus apdoroja arenasoldout.com — https://arenasoldout.com{{end}}
+
+Jei paspausite „Atsisakyti prenumeratos“, laiškai su Jūsų bilietais ir svarbūs laiškai apie Jūsų užsakymą Jūsų nebepasieks. Rinkodaros laiškų be Jūsų sutikimo nesiunčiame.
+{{end}}

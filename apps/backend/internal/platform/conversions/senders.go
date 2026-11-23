@@ -14,13 +14,26 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/metaconnect"
 )
 
-// Production endpoints. Tests point the senders at a stub server.
+// Production endpoints. Tests point the senders at a stub server. The Graph
+// version is not part of MetaBaseURL: it comes from META_GRAPH_VERSION
+// (MetaSender.Version, DefaultMetaGraphVersion when empty).
 const (
-	MetaBaseURL = "https://graph.facebook.com/v21.0"
+	MetaBaseURL = metaconnect.DefaultGraphBaseURL
 	GA4BaseURL  = "https://www.google-analytics.com"
 )
+
+// DefaultMetaGraphVersion is the Graph version of a MetaSender without one
+// (the config default of META_GRAPH_VERSION).
+const DefaultMetaGraphVersion = config.DefaultMetaGraphVersion
+
+// PartnerAgent is the platform name Meta asks a partner to send with every
+// Conversions API request (spec 66 section 4.4).
+const PartnerAgent = "arenasoldout"
 
 // Purchase is what a sender needs; Email and Phone are filled only when the
 // buyer's tracking consent is true.
@@ -41,9 +54,20 @@ type Purchase struct {
 type SendError struct {
 	Msg       string
 	Permanent bool
+	// Graph holds the codes of a Meta error answer (nil otherwise). It never
+	// carries Meta's message text.
+	Graph *metaconnect.GraphError
 }
 
 func (e *SendError) Error() string { return e.Msg }
+
+// Unwrap lets metaconnect.IsTokenInvalid and IsPermissionError see the codes.
+func (e *SendError) Unwrap() error {
+	if e.Graph == nil {
+		return nil
+	}
+	return e.Graph
+}
 
 // IsPermanent reports a failure no retry fixes (a 4xx other than 408/429).
 func IsPermanent(err error) bool {
@@ -57,6 +81,13 @@ func httpClient() *http.Client { return &http.Client{Timeout: 15 * time.Second} 
 // api_secret), so a transport error is reduced to its cause and the response
 // body is never included in the message.
 func do(ctx context.Context, c *http.Client, u string, body []byte) error {
+	return send(ctx, c, u, body, false)
+}
+
+// send is do; graph reads a non-2xx answer as a Graph error and keeps only
+// its codes (metaconnect.ParseGraphError): the body, Meta's message and the
+// token never reach the error text.
+func send(ctx context.Context, c *http.Client, u string, body []byte, graph bool) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
 	if err != nil {
 		return &SendError{Msg: "build request", Permanent: true}
@@ -71,27 +102,51 @@ func do(ctx context.Context, c *http.Client, u string, body []byte) error {
 		return &SendError{Msg: "transport: " + err.Error()}
 	}
 	defer func() { _ = resp.Body.Close() }()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 	if resp.StatusCode/100 == 2 {
 		return nil
 	}
 	perm := resp.StatusCode/100 == 4 && resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode != http.StatusRequestTimeout
-	return &SendError{Msg: "http " + strconv.Itoa(resp.StatusCode), Permanent: perm}
+	se := &SendError{Msg: "http " + strconv.Itoa(resp.StatusCode), Permanent: perm}
+	if graph {
+		if ge := metaconnect.ParseGraphError(resp.StatusCode, raw); ge.Code != 0 {
+			se.Graph = ge
+			se.Msg += " graph_" + strconv.Itoa(ge.Code)
+			if ge.Subcode != 0 {
+				se.Msg += "/" + strconv.Itoa(ge.Subcode)
+			}
+		}
+	}
+	return se
 }
 
-// MetaSender posts Purchase to the Conversions API.
+// MetaSender posts Purchase to the Conversions API. BaseURL is the Graph host
+// (META_GRAPH_BASE_URL, MetaBaseURL when empty) and Version the Graph version
+// (META_GRAPH_VERSION, DefaultMetaGraphVersion when empty); both token
+// sources, the Meta connection and the manual token, use them.
 type MetaSender struct {
 	BaseURL string
+	Version string
 	Client  *http.Client
 }
 
-// Send posts one Purchase. The access token travels in the JSON body, never in
-// the URL, so no log line or error can carry it.
-func (m MetaSender) Send(ctx context.Context, pixelID, token, testEventCode string, p Purchase) error {
-	base := m.BaseURL
+// endpoint is <base>/<version>/<pixel>/events.
+func (m MetaSender) endpoint(pixelID string) string {
+	base := strings.TrimRight(strings.TrimSpace(m.BaseURL), "/")
 	if base == "" {
 		base = MetaBaseURL
 	}
+	version := strings.Trim(strings.TrimSpace(m.Version), "/")
+	if version == "" {
+		version = DefaultMetaGraphVersion
+	}
+	return base + "/" + version + "/" + url.PathEscape(pixelID) + "/events"
+}
+
+// Send posts one Purchase. The access token travels in the JSON body, never in
+// the URL, so no log line or error can carry it. A Graph error answer is
+// reduced to its codes (SendError.Graph).
+func (m MetaSender) Send(ctx context.Context, pixelID, token, testEventCode string, p Purchase) error {
 	c := m.Client
 	if c == nil {
 		c = httpClient()
@@ -134,7 +189,7 @@ func (m MetaSender) Send(ctx context.Context, pixelID, token, testEventCode stri
 	if p.Context.PageURL != "" {
 		ev["event_source_url"] = p.Context.PageURL
 	}
-	payload := map[string]any{"data": []any{ev}, "access_token": token}
+	payload := map[string]any{"data": []any{ev}, "access_token": token, "partner_agent": PartnerAgent}
 	if testEventCode != "" {
 		payload["test_event_code"] = testEventCode
 	}
@@ -142,7 +197,7 @@ func (m MetaSender) Send(ctx context.Context, pixelID, token, testEventCode stri
 	if err != nil {
 		return &SendError{Msg: "encode", Permanent: true}
 	}
-	return do(ctx, c, strings.TrimRight(base, "/")+"/"+url.PathEscape(pixelID)+"/events", body)
+	return send(ctx, c, m.endpoint(pixelID), body, true)
 }
 
 // GA4Sender posts purchase to the Measurement Protocol.
@@ -186,6 +241,174 @@ func (g GA4Sender) Send(ctx context.Context, measurementID, apiSecret string, p 
 	}
 	q := url.Values{"measurement_id": {measurementID}, "api_secret": {apiSecret}}
 	return do(ctx, c, strings.TrimRight(base, "/")+path+"?"+q.Encode(), body)
+}
+
+var metaEventNames = map[string]string{
+	KindPageView:         "PageView",
+	KindViewContent:      "ViewContent",
+	KindInitiateCheckout: "InitiateCheckout",
+	KindLead:             "Lead",
+	KindSubscribe:        "CompleteRegistration",
+}
+
+var ga4EventNames = map[string]string{
+	KindPageView:         "page_view",
+	KindViewContent:      "view_item",
+	KindInitiateCheckout: "begin_checkout",
+	KindLead:             "generate_lead",
+	KindSubscribe:        "sign_up",
+}
+
+func eventTime(ev SiteEvent) time.Time {
+	if ev.Time.IsZero() {
+		return time.Now().UTC()
+	}
+	return ev.Time
+}
+
+// SendEvent posts one site event to the Conversions API. A non-empty
+// testEventCode makes it a test event.
+func (m MetaSender) SendEvent(ctx context.Context, pixelID, token, testEventCode string, ev SiteEvent) error {
+	name, ok := metaEventNames[ev.Kind]
+	if !ok {
+		return &SendError{Msg: "unknown_kind", Permanent: true}
+	}
+	base := m.BaseURL
+	if base == "" {
+		base = MetaBaseURL
+	}
+	c := m.Client
+	if c == nil {
+		c = httpClient()
+	}
+	t := eventTime(ev)
+	user := map[string]any{}
+	if ev.Email != "" {
+		user["em"] = []string{sha256Hex(strings.ToLower(strings.TrimSpace(ev.Email)))}
+	}
+	if d := digits(ev.Phone); d != "" {
+		user["ph"] = []string{sha256Hex(d)}
+	}
+	if ev.Context.ClientIP != "" {
+		user["client_ip_address"] = ev.Context.ClientIP
+	}
+	if ev.Context.UserAgent != "" {
+		user["client_user_agent"] = ev.Context.UserAgent
+	}
+	if ev.Context.FBP != "" {
+		user["fbp"] = ev.Context.FBP
+	}
+	fbc := ev.Context.FBC
+	if fbc == "" && ev.Context.FBCLID != "" {
+		fbc = "fb.1." + strconv.FormatInt(t.UnixMilli(), 10) + "." + ev.Context.FBCLID
+	}
+	if fbc != "" {
+		user["fbc"] = fbc
+	}
+	if ev.VisitorID != "" {
+		user["external_id"] = []string{sha256Hex(ev.VisitorID)}
+	}
+	custom := map[string]any{}
+	switch ev.Kind {
+	case KindViewContent:
+		if ev.ContentID != "" {
+			custom["content_ids"] = []string{ev.ContentID}
+		}
+		custom["content_type"] = "product"
+	case KindInitiateCheckout:
+		if ev.Seller != "" {
+			custom["seller"] = ev.Seller
+		}
+		if ev.City != "" {
+			custom["city"] = ev.City
+		}
+		if ev.CheckoutType != "" {
+			custom["checkout_type"] = ev.CheckoutType
+		}
+		if ev.ContentID != "" {
+			custom["content_ids"] = []string{ev.ContentID}
+		}
+	}
+	if ev.Value != 0 && ev.Currency != "" {
+		custom["value"] = ev.Value
+		custom["currency"] = strings.ToUpper(ev.Currency)
+	}
+	e := map[string]any{
+		"event_name":    name,
+		"event_time":    t.Unix(),
+		"event_id":      ev.EventID,
+		"action_source": "website",
+		"user_data":     user,
+	}
+	if len(custom) > 0 {
+		e["custom_data"] = custom
+	}
+	if ev.Context.PageURL != "" {
+		e["event_source_url"] = ev.Context.PageURL
+	}
+	payload := map[string]any{"data": []any{e}, "access_token": token}
+	if testEventCode != "" {
+		payload["test_event_code"] = testEventCode
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return &SendError{Msg: "encode", Permanent: true}
+	}
+	return do(ctx, c, strings.TrimRight(base, "/")+"/"+url.PathEscape(pixelID)+"/events", body)
+}
+
+// SendEvent posts one site event to the Measurement Protocol. The GA client id
+// is required: without it the event is a permanent failure ("no_client_id").
+func (g GA4Sender) SendEvent(ctx context.Context, measurementID, apiSecret string, ev SiteEvent) error {
+	name, ok := ga4EventNames[ev.Kind]
+	if !ok {
+		return &SendError{Msg: "unknown_kind", Permanent: true}
+	}
+	if ev.Context.GAClientID == "" {
+		return &SendError{Msg: "no_client_id", Permanent: true}
+	}
+	base := g.BaseURL
+	if base == "" {
+		base = GA4BaseURL
+	}
+	c := g.Client
+	if c == nil {
+		c = httpClient()
+	}
+	params := map[string]any{"engagement_time_msec": 1}
+	if n, err := strconv.ParseInt(ev.GASessionID, 10, 64); err == nil {
+		params["session_id"] = n
+	}
+	if ev.Context.PageURL != "" && ev.Kind == KindPageView {
+		params["page_location"] = ev.Context.PageURL
+	}
+	switch ev.Kind {
+	case KindViewContent, KindInitiateCheckout:
+		if ev.ContentID != "" || ev.ContentName != "" {
+			params["items"] = []any{map[string]any{"item_id": ev.ContentID, "item_name": ev.ContentName}}
+		}
+	}
+	if ev.Kind == KindInitiateCheckout {
+		if ev.Seller != "" {
+			params["affiliation"] = ev.Seller
+		}
+		if ev.CheckoutType != "" {
+			params["checkout_type"] = ev.CheckoutType
+		}
+	}
+	if ev.Value != 0 && ev.Currency != "" {
+		params["value"] = ev.Value
+		params["currency"] = strings.ToUpper(ev.Currency)
+	}
+	body, err := json.Marshal(map[string]any{
+		"client_id": ev.Context.GAClientID,
+		"events":    []any{map[string]any{"name": name, "params": params}},
+	})
+	if err != nil {
+		return &SendError{Msg: "encode", Permanent: true}
+	}
+	q := url.Values{"measurement_id": {measurementID}, "api_secret": {apiSecret}}
+	return do(ctx, c, strings.TrimRight(base, "/")+"/mp/collect?"+q.Encode(), body)
 }
 
 // FallbackClientID is the GA client id of a purchase whose browser sent none:

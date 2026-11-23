@@ -14,6 +14,13 @@ var withdrawalSentences = map[string]string{
 	"es": "Las entradas para un evento en una fecha concreta no están sujetas al derecho de desistimiento. Tu pedido pasa a ser vinculante al realizar el pago.",
 	"fr": "Les billets pour un événement à une date déterminée ne sont pas soumis au droit de rétractation. Votre commande est devenue ferme au moment du paiement.",
 	"he": "על כרטיסים לאירוע במועד קבוע לא חלה זכות הביטול. ההזמנה שלכם הפכה למחייבת עם התשלום.",
+	"et": "Kindlal kuupäeval toimuva ürituse piletitele ei kehti taganemisõigus. Teie tellimus muutus siduvaks makse tegemise hetkel.",
+	"fi": "Tiettynä päivänä järjestettävän tapahtuman lippuihin ei sovelleta peruuttamisoikeutta. Tilauksenne tuli sitovaksi maksun yhteydessä.",
+	"hu": "Az adott időpontra szóló eseményre váltott jegyekre nem vonatkozik az elállási jog. A rendelés a kifizetéssel vált kötelező érvényűvé.",
+	"lt": "Bilietams į renginį tam tikrą dieną atsisakymo teisė netaikoma. Užsakymas tapo privalomas, kai jį apmokėjote.",
+	"lv": "Uz biļetēm uz pasākumu konkrētā datumā atteikuma tiesības neattiecas. Pasūtījums kļuva saistošs brīdī, kad jūs to apmaksājāt.",
+	"pl": "Do biletów na wydarzenie w określonym terminie nie stosuje się prawa odstąpienia od umowy. Zamówienie stało się wiążące z chwilą zapłaty.",
+	"uk": "На квитки на захід у конкретну дату право на відмову від договору не поширюється. Замовлення стало обов’язковим для сторін у момент оплати.",
 	"ru": "На билеты на мероприятие в определённую дату право на отказ от договора не распространяется. Ваш заказ становится окончательным после оплаты.",
 }
 

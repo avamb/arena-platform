@@ -304,6 +304,12 @@ function NavSheet({ mode, orgId, access, shopMode, orgCount, onLogout, onClose }
             {label}
           </Link>
         );
+      case "nav-ads-meta":
+        return (
+          <Link to="/o/$orgId/ads/meta" params={{ orgId }} search={{}} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
       case "nav-org-data":
         return (
           <Link to="/o/$orgId/org-data" params={{ orgId }} activeOptions={{ includeHash: true }} {...item} data-testid={id}>
@@ -319,6 +325,12 @@ function NavSheet({ mode, orgId, access, shopMode, orgCount, onLogout, onClose }
       case "nav-team":
         return (
           <Link to="/o/$orgId/team" params={{ orgId }} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "nav-series":
+        return (
+          <Link to="/o/$orgId/series" params={{ orgId }} {...item} data-testid={id}>
             {label}
           </Link>
         );

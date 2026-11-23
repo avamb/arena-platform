@@ -177,6 +177,38 @@ export interface HostedPromoterPageResponse {
   contact_form?: HostedPageContactForm | null;
 }
 
+/** Summary of a tour (event series), GET /v1/public/pages/{org}/series/{slug}. */
+export interface HostedSeriesSummary {
+  date_from: string | null;
+  date_to: string | null;
+  cities_count: number;
+  cities_on_sale_count: number;
+  next_session?: { event_id: string; session_id: string; starts_at: string; city: string | null } | null;
+  /** The lowest open price per currency, in MAJOR units, sorted by currency. */
+  price_from: { currency: string; amount: number }[];
+}
+
+export interface HostedSeries {
+  id?: string;
+  slug: string;
+  name: string;
+  description_html: string | null;
+  partners_text_html: string | null;
+  poster_url: string | null;
+  hero_url: string | null;
+  hero_video_url: string | null;
+  summary: HostedSeriesSummary;
+}
+
+export interface HostedSeriesPageResponse {
+  org: HostedPageOrg;
+  default_locale: string;
+  series: HostedSeries;
+  events: HostedPageEvent[];
+  seller?: HostedPageSeller | null;
+  contact_form?: HostedPageContactForm | null;
+}
+
 /** ApiError carries the HTTP status so callers can distinguish "not found"
  * (render the branded not-found page) from any other failure (render a
  * retryable error state). */
@@ -207,6 +239,27 @@ export async function fetchHostedPage(
     throw new ApiError(res.status, `request failed with status ${res.status}`);
   }
   return (await res.json()) as HostedPageResponse;
+}
+
+/** GET /v1/public/pages/{org_slug}/series/{series_slug}: the tour page. */
+export async function fetchSeriesPage(
+  apiBase: string,
+  orgSlug: string,
+  seriesSlug: string,
+  signal?: AbortSignal,
+): Promise<HostedSeriesPageResponse> {
+  const base = apiBase.replace(/\/$/, '');
+  const url = `${base}/v1/public/pages/${encodeURIComponent(orgSlug)}/series/${encodeURIComponent(seriesSlug)}`;
+  let res: Response;
+  try {
+    res = await fetch(url, { signal, headers: { Accept: 'application/json' } });
+  } catch (err) {
+    throw new ApiError(0, err instanceof Error ? err.message : 'network error');
+  }
+  if (!res.ok) {
+    throw new ApiError(res.status, `request failed with status ${res.status}`);
+  }
+  return (await res.json()) as HostedSeriesPageResponse;
 }
 
 export async function fetchPromoterPage(

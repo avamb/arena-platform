@@ -59,7 +59,11 @@ const DefaultLocale = "en"
 
 // SupportedLocales lists the locales that this package ships templates for.
 // Order is alphabetical; tests assert this list matches the embedded files.
-var SupportedLocales = []string{"cs", "de", "en", "es", "fr", "he", "ru"}
+//
+// et, fi, hu, lt, lv, pl and uk were added for the Lampyris site (spec 63, L-4).
+// They ship only the kinds a buyer receives (see docs/letter_translation_glossary.md);
+// the other kinds fall back to English per kind.
+var SupportedLocales = []string{"cs", "de", "en", "es", "et", "fi", "fr", "he", "hu", "lt", "lv", "pl", "ru", "uk"}
 
 // TemplateKindTicket is the standard paid/free-checkout ticket delivery email.
 const TemplateKindTicket = "ticket"
@@ -370,6 +374,8 @@ type BuyerContact struct {
 var orderWords = map[string]string{
 	"en": "Order", "ru": "Заказ", "cs": "Objednávka", "de": "Bestellung",
 	"es": "Pedido", "fr": "Commande", "he": "הזמנה",
+	"uk": "Замовлення", "pl": "Zamówienie", "hu": "Rendelés", "et": "Tellimus",
+	"lv": "Pasūtījums", "lt": "Užsakymas", "fi": "Tilaus",
 }
 
 // MailtoLink builds the button's link: mailto:<address>, plus ?subject= with
@@ -762,6 +768,13 @@ var sellerFooterWords = map[string]struct{ seller, payment string }{
 	"es": {"Vendedor:", "Pago procesado por %s"},
 	"fr": {"Vendeur :", "Paiement traité par %s"},
 	"he": {"המוכר:", "התשלום בוצע באמצעות %s"},
+	"uk": {"Продавець:", "Оплата проведена через %s"},
+	"pl": {"Sprzedawca:", "Płatność obsłużył %s"},
+	"hu": {"Eladó:", "A fizetést feldolgozta: %s"},
+	"et": {"Müüja:", "Makse töötles %s"},
+	"lv": {"Pārdevējs:", "Maksājumu apstrādā %s"},
+	"lt": {"Pardavėjas:", "Apmokėjimą apdoroja %s"},
+	"fi": {"Myyjä:", "Maksun käsitteli %s"},
 }
 
 // fillSellerFooter sets the seller label and the payment line in locale.

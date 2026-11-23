@@ -1790,7 +1790,7 @@ other = "Archive · {{.N}}"
 other = "<b>Events: {{.Org}}</b>\n{{.Filter}}. Page {{.Page}} of {{.Pages}}.{{.Search}}\n{{.Legend}}\nTap an event to open its card. To search by name, type some letters of the name."
 
 ["bot.ec.legend"]
-other = "● on sale  ○ sale not open  ✕ sold out  ✓ archive"
+other = "● on sale  ○ sale not open  ✕ sold out  ↗ sold by a partner  ✓ archive"
 
 ["bot.ec.search_line"]
 other = "Search: “{{.Query}}”. Found: {{.N}}."
@@ -7171,6 +7171,18 @@ other = "<b>Promotion</b>\nThese tools help you sell more tickets."
 ["bot.mn.door_title"]
 other = "<b>Entrance to the event</b>\nScan tickets at the entrance and see the guest list."
 
+["bot.mn.meta_ok"]
+other = "Meta: connected"
+
+["bot.mn.meta_off"]
+other = "Meta: not connected"
+
+["bot.mn.meta_error"]
+other = "Meta: connection error"
+
+["bot.mn.meta_btn"]
+other = "Meta ads in the browser"
+
 ["bot.mn.settings_title"]
 other = "<b>Settings</b>\nYour organization, payments, team and your own settings."
 
@@ -7466,3 +7478,207 @@ other = "See the settings of your shop."
 
 ["bot.hp.i.sh.web"]
 other = "Open the shop in the browser."
+
+["bot.tr.btn"]
+other = "🌐 Translations"
+
+["bot.tr.list_title"]
+other = "<b>Translations</b> · {{.Name}}"
+
+["bot.tr.list_about"]
+other = "Pick a language to read its translation of the description or to send your own. A text you send is never replaced by the machine."
+
+["bot.tr.lang_btn"]
+other = "{{.Lang}} · {{.State}}"
+
+["bot.tr.lang_label"]
+other = "Language"
+
+["bot.tr.state_none"]
+other = "none"
+
+["bot.tr.state_manual"]
+other = "written by you"
+
+["bot.tr.state_machine"]
+other = "machine"
+
+["bot.tr.state_manual_stale"]
+other = "yours, outdated"
+
+["bot.tr.state_machine_stale"]
+other = "machine, outdated"
+
+["bot.tr.machine_btn"]
+other = "🤖 Translate by machine"
+
+["bot.tr.machine_queued"]
+other = "Done. The machine translates into: {{.Langs}}. The texts appear in a few minutes. A text you wrote is never replaced."
+
+["bot.tr.machine_none"]
+other = "Every language has a translation already. The machine never replaces a text you wrote."
+
+["bot.tr.machine_off"]
+other = "Machine translation is off now. You can write a translation yourself."
+
+["bot.tr.machine_failed"]
+other = "We could not start the machine translation. Try again in a minute."
+
+["bot.tr.lang_title"]
+other = "<b>{{.Lang}}</b> · {{.Name}}"
+
+["bot.tr.lang_current"]
+other = "Translation now:\n\n{{.Text}}"
+
+["bot.tr.lang_original"]
+other = "There is no translation yet. The original text:\n\n{{.Text}}"
+
+["bot.tr.lang_empty"]
+other = "The event has no description yet, so there is nothing to translate."
+
+["bot.tr.lang_ask"]
+other = "Send your translation of the description as a message. I save it as your own text. The machine never replaces it."
+
+["bot.tr.to_list_btn"]
+other = "Languages"
+
+["bot.tr.saved"]
+other = "Done, the translation into {{.Lang}} is saved."
+
+["bot.tr.save_failed"]
+other = "We could not save the translation. Send the text again."
+
+["bot.tr.expired"]
+other = "The time for this answer is over. Open the language again."
+
+["bot.hp.i.ge.translations"]
+other = "Opens the languages of the event page. You write the translation of the description there."
+
+["bot.hp.i.tr.lang"]
+other = "Shows the translation of this language and takes your own text."
+
+["bot.hp.i.tr.machine"]
+other = "Translates the languages that have no translation. Your own texts stay as they are."
+
+["bot.wz.ask_seller"]
+other = "Who sells the tickets?\n\nIf you sell them yourself, buyers get them on your page and in the widget. If a partner sells them, the event page gets a button to the partner's box office."
+
+["bot.wz.seller_platform_btn"]
+other = "We do, on the site and in the widget"
+
+["bot.wz.seller_partner_btn"]
+other = "A partner"
+
+["bot.wz.err_seller_first"]
+other = "First choose who sells the tickets: press one of the buttons."
+
+["bot.wz.ask_ext_url"]
+other = "Send the link to the partner's box office: the page where buyers get tickets for this event. The address starts with https://.{{if .Value}}\n\nNow: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_url"]
+other = "I need the link to the partner's box office. It starts with https://, leads to the partner's site by its name (not an IP address) and not to our site."
+
+["bot.wz.ask_ext_name"]
+other = "What is the box office called? Buyers see this name on the button, for example “Eventim”.{{if .Value}}\n\nNow: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_name"]
+other = "Give the name of the box office, up to 80 characters."
+
+["bot.wz.ask_ext_price"]
+other = "A “from” price for the event page, for example 25 or 39.90. It is a guide for buyers: the partner sells the tickets. The currency is the event's own, I will ask for it later.\n\nNo price? Press “Skip”.{{if .Value}}\n\nNow: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_price"]
+other = "I could not read the price. Write a number, for example 25 or 39.90, or press “Skip”."
+
+["bot.wz.ack_seller"]
+other = "Sold by"
+
+["bot.wz.ack_seller_us"]
+other = "we do, on the site and in the widget"
+
+["bot.wz.ack_seller_partner"]
+other = "a partner"
+
+["bot.wz.ack_ext_url"]
+other = "Box office link"
+
+["bot.wz.ack_ext_name"]
+other = "Box office"
+
+["bot.wz.ack_ext_price"]
+other = "Price from"
+
+["bot.wz.summary_external"]
+other = "Sold by a partner: {{.Name}}, {{.Url}}{{.Price}}"
+
+["bot.wz.summary_external_price"]
+other = ", from {{.Price}}"
+
+["bot.wz.summary_session_ext"]
+other = "{{.When}} {{.Venue}}"
+
+["bot.wz.session_external"]
+other = "Sold by a partner: {{.Name}}\n{{.Url}}"
+
+["bot.wz.edit_field_external"]
+other = "Partner box office"
+
+["bot.wz.edit_b_external"]
+other = "Partner box office"
+
+["bot.wz.edit_ext_btn"]
+other = "Change the box office"
+
+["bot.wz.edit_chg_date_ext"]
+other = "New date {{.When}} · {{.Venue}}. {{.List}}"
+
+["bot.wz.preview_new_date_ext"]
+other = "New date {{.When}} · {{.Venue}}. {{.List}}"
+
+["bot.ser.wz_ask"]
+other = "Is this event part of a tour? A tour groups events under one name, for example shows in different cities. Choose a tour or skip this step."
+
+["bot.ser.wz_label"]
+other = "Tour"
+
+["bot.ser.warn_not_linked"]
+other = "The event is created, but it could not be added to the tour. Add the tour on the event card."
+
+["bot.ser.event_line"]
+other = "🧭 Tour: <b>{{.Name}}</b>"
+
+["bot.ser.event_btn"]
+other = "🧭 Tour"
+
+["bot.ser.list_now"]
+other = "🧭 Tour of this event: <b>{{.Name}}</b>"
+
+["bot.ser.list_none_now"]
+other = "🧭 This event is not in any tour."
+
+["bot.ser.list_hint"]
+other = "Press a tour to add this event to it."
+
+["bot.ser.empty"]
+other = "There are no tours yet. Create a tour in the web event center and it will appear here."
+
+["bot.ser.unbind_btn"]
+other = "Remove from tour"
+
+["bot.ser.back_btn"]
+other = "‹ To the event"
+
+["bot.ser.saved"]
+other = "The event is added to the tour \"{{.Name}}\"."
+
+["bot.ser.unbound"]
+other = "The event is removed from the tour."
+
+["bot.ser.refused"]
+other = "This tour is not available: it is archived or deleted. Here is the list as it is now."
+
+["bot.ser.gone"]
+other = "This tour is no longer in the list. Here is the list as it is now."
+
+["bot.hp.i.ge.series"]
+other = "Adds the event to a tour or removes it from a tour."
