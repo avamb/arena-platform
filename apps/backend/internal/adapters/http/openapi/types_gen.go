@@ -18389,7 +18389,7 @@ type SalesChat struct {
 	// Id The chat row.
 	Id openapi_types.UUID `json:"id"`
 
-	// Kinds What the chat hears: `tickets` (ticket sales and refunds), `shop_sale` (the fact of a shop sale, no buyer data), `shop_delivery` (the full shop order card with the step buttons, for a delivery group).
+	// Kinds What the chat hears: `tickets` (ticket sales and refunds), `shop_sale` (the fact of a shop sale, no buyer data), `shop_delivery` (the full shop order card with the step buttons, for a delivery group), `ads` (the daily Meta advertising summary).
 	Kinds []string `json:"kinds"`
 
 	// LastError The last delivery error reported by Telegram, null after a success.
@@ -18434,7 +18434,7 @@ type SalesChatConnectCode struct {
 
 // SalesChatConnectCodeRequest The chat a connection code will bind.
 type SalesChatConnectCodeRequest struct {
-	// Kinds What it will hear: one or more of `tickets`, `shop_sale`, `shop_delivery`.
+	// Kinds What it will hear: one or more of `tickets`, `shop_sale`, `shop_delivery`, `ads`.
 	Kinds []string `json:"kinds"`
 
 	// Name The chat's name in the admin screen, 1-200 characters.

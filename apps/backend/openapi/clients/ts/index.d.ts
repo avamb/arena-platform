@@ -41332,7 +41332,7 @@ export interface components {
             chat_id: string;
             /** @description The group's title when it was connected. */
             chat_title: string | null;
-            /** @description What the chat hears: `tickets` (ticket sales and refunds), `shop_sale` (the fact of a shop sale, no buyer data), `shop_delivery` (the full shop order card with the step buttons, for a delivery group). */
+            /** @description What the chat hears: `tickets` (ticket sales and refunds), `shop_sale` (the fact of a shop sale, no buyer data), `shop_delivery` (the full shop order card with the step buttons, for a delivery group), `ads` (the daily Meta advertising summary). */
             kinds: string[];
             /** @description The operator's on/off switch. */
             allowed: boolean;
@@ -41377,7 +41377,7 @@ export interface components {
         SalesChatConnectCodeRequest: {
             /** @description The chat's name in the admin screen, 1-200 characters. */
             name: string;
-            /** @description What it will hear: one or more of `tickets`, `shop_sale`, `shop_delivery`. */
+            /** @description What it will hear: one or more of `tickets`, `shop_sale`, `shop_delivery`, `ads`. */
             kinds: string[];
         };
         /** @description A one-time connection code. Only its hash is stored, so this answer is the only place it appears. */

@@ -182,7 +182,7 @@ func (s *Syncer) Run(ctx context.Context, orgID uuid.UUID, mode string, now time
 	}
 	loc := accountLocation(conn.timezone)
 	effMode, since, until := PlanRange(st, conn.account, mode, now.In(loc))
-	res := Result{Mode: effMode, Since: since.Format("2006-01-02"), Until: until.Format("2006-01-02")}
+	res := Result{Mode: effMode, Since: since.Format("2006-01-02"), Until: until.Format("2006-01-02")} // allow:timeformat: calendar dates
 
 	rec := func(endpoint string, failed bool) {
 		if err := recordCall(ctx, s.pool, orgID, now, endpoint, failed); err != nil {
@@ -303,7 +303,7 @@ func writeRun(ctx context.Context, tx pgx.Tx, orgID uuid.UUID, account string, s
 	tag, err := tx.Exec(ctx, `
 		DELETE FROM ad_spend_daily
 		 WHERE org_id = $1 AND ad_account_id = $2 AND day BETWEEN $3::date AND $4::date AND fetched_at < now()`,
-		orgID, account, since.Format("2006-01-02"), until.Format("2006-01-02"))
+		orgID, account, since.Format("2006-01-02"), until.Format("2006-01-02")) // allow:timeformat: calendar dates
 	if err != nil {
 		return 0, err
 	}

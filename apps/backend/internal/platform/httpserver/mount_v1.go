@@ -35,6 +35,7 @@ func (s *Server) mountV1Routes() {
 		s.mountSellerRoutes(r)
 		s.mountConversionRoutes(r)
 		s.mountMetaConnectRoutes(r)
+		s.mountMetaInsightsRoutes(r)
 		s.mountLegalRoutes(r)
 		s.mountMaterialsExtrasRoutes(r)
 		s.mountTranslationRoutes(r)

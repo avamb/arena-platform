@@ -32,12 +32,12 @@ const (
 
 var madrid = loadMadrid()
 
-// loadMadrid resolves Europe/Madrid from the embedded tzdata; the fixed CET
-// offset is a last resort that never happens with time/tzdata linked in.
+// loadMadrid resolves Europe/Madrid from the embedded tzdata; UTC is a last
+// resort that never happens with time/tzdata linked in.
 func loadMadrid() *time.Location {
 	loc, err := time.LoadLocation("Europe/Madrid")
 	if err != nil {
-		return time.FixedZone("CET", 3600)
+		return time.UTC
 	}
 	return loc
 }

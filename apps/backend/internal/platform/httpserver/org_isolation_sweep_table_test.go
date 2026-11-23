@@ -446,6 +446,11 @@ var orgIsolationAuditedSafe = map[string]string{
 	// GetEventPageStatsHeader(event, org) gate, 404 event.not_found for a
 	// foreign event; every click query is keyed by (event, org).
 	"GET /v1/organizations/{org_id}/events/{event_id}/outbound-clicks": "hsalesfunnel",
+	// hmetainsights (spec 66 M2): metainsights.EventName is keyed by (event,
+	// org) and answers the route's own 404 event.not_found for a foreign event;
+	// every report query filters by the path organization.
+	// TestMetaAdsRoutes_IsolationAndRoles drives a foreign event.
+	"GET /v1/organizations/{org_id}/events/{event_id}/ads/meta": "hmetainsights",
 	// himports.HandleEventBundleRead (task 3-2): GetEventRaw, then the event's
 	// organization must equal the path organization (404 event.not_found).
 	// TestEventBundleRead_OrganizationBoundary drives a foreign, unknown and

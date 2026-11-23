@@ -174,7 +174,7 @@ func CallVolume(ctx context.Context, q Querier, orgID uuid.UUID, since time.Time
 	err = q.QueryRow(ctx, `
 		SELECT COALESCE(sum(calls), 0)::bigint, COALESCE(sum(errors), 0)::bigint
 		  FROM meta_graph_calls WHERE org_id = $1 AND day >= $2::date`,
-		orgID, since.UTC().Format("2006-01-02")).Scan(&calls, &errs)
+		orgID, since.UTC().Format("2006-01-02")).Scan(&calls, &errs) // allow:timeformat: a calendar date
 	return calls, errs, err
 }
 
@@ -206,6 +206,6 @@ func recordCall(ctx context.Context, q Querier, orgID uuid.UUID, at time.Time, e
 		VALUES ($1::date, $2, $3, 1, $4)
 		ON CONFLICT (day, org_id, endpoint) DO UPDATE
 		   SET calls = meta_graph_calls.calls + 1, errors = meta_graph_calls.errors + EXCLUDED.errors`,
-		at.UTC().Format("2006-01-02"), orgID, endpoint, e)
+		at.UTC().Format("2006-01-02"), orgID, endpoint, e) // allow:timeformat: a calendar date
 	return err
 }

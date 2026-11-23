@@ -136,7 +136,7 @@ func (s *Syncer) loadSummary(ctx context.Context, orgID uuid.UUID, account, curr
 // organization's chats that hear salesnotify.KindAds, once per day.
 func (s *Syncer) sendSummary(ctx context.Context, orgID uuid.UUID, account, currency string, loc *time.Location, now time.Time) (bool, error) {
 	local := now.In(loc)
-	day := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, -1).Format("2006-01-02")
+	day := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, -1).Format("2006-01-02") // allow:timeformat: a calendar date
 	sum, ok, err := s.loadSummary(ctx, orgID, account, currency, day, loc.String())
 	if err != nil || !ok {
 		return false, err

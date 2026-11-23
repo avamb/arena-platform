@@ -31202,7 +31202,7 @@ components:
           description: The group's title when it was connected.
         kinds:
           type: array
-          description: "What the chat hears: `tickets` (ticket sales and refunds), `shop_sale` (the fact of a shop sale, no buyer data), `shop_delivery` (the full shop order card with the step buttons, for a delivery group)."
+          description: "What the chat hears: `tickets` (ticket sales and refunds), `shop_sale` (the fact of a shop sale, no buyer data), `shop_delivery` (the full shop order card with the step buttons, for a delivery group), `ads` (the daily Meta advertising summary)."
           items:
             type: string
             description: A kind.
@@ -31260,7 +31260,7 @@ components:
           description: The chat's name in the admin screen, 1-200 characters.
         kinds:
           type: array
-          description: "What it will hear: one or more of `tickets`, `shop_sale`, `shop_delivery`."
+          description: "What it will hear: one or more of `tickets`, `shop_sale`, `shop_delivery`, `ads`."
           items:
             type: string
             description: A kind.
