@@ -253,6 +253,15 @@ type Config struct {
 	// Stripe key and every buyer who followed the returned URL.
 	StripeAPIBaseURL string `env:"STRIPE_API_BASE_URL" required:"false" default:""`
 
+	// StripeElementsEnabled is the deployment switch of the embedded Stripe
+	// checkout (spec 65 §3.5). On (the default), a widget that announces
+	// capabilities ["stripe_elements"] on a channel whose
+	// settings.checkout.stripe_ui is not "hosted" and whose Stripe config
+	// holds a publishable_key pays inside the widget. Off returns every NEW
+	// payment of every channel to the hosted page without a deploy; existing
+	// embedded sessions keep working.
+	StripeElementsEnabled bool `env:"STRIPE_ELEMENTS_ENABLED" required:"false" default:"true"`
+
 	// FlittAPIBaseURL is the same seam for Flitt (default
 	// https://pay.flitt.com/api). TEST AND DEVELOPMENT ONLY: Validate()
 	// refuses a non-empty value under APP_ENV=production, for the reason
@@ -1113,6 +1122,12 @@ func LoadFor(role Role) (*Config, error) {
 
 	// STRIPE_API_BASE_URL — test/dev only, rejected in production by Validate.
 	cfg.StripeAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("STRIPE_API_BASE_URL", "")), "/")
+	// STRIPE_ELEMENTS_ENABLED — the embedded checkout's switch, on by default.
+	if elements, err := getenvBool("STRIPE_ELEMENTS_ENABLED", true); err != nil {
+		parseErrs = append(parseErrs, err)
+	} else {
+		cfg.StripeElementsEnabled = elements
+	}
 	// FLITT_API_BASE_URL — test/dev only, rejected in production by Validate.
 	cfg.FlittAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("FLITT_API_BASE_URL", "")), "/")
 	// ALLPAY_API_BASE_URL — test/dev only, rejected in production by Validate.

@@ -191,8 +191,15 @@ func (h *Handler) precheckOpenPayments(ctx context.Context, cs gen.CheckoutSessi
 		if pi.State == "succeeded" {
 			return precheckPaid
 		}
-		if pi.State == "failed" {
+		if pi.State == "failed" || intentSuperseded(pi) {
+			// A superseded session was expired at the provider before the
+			// hosted page replaced it (payment_hosted_fallback.go).
 			continue
+		}
+		if isEmbeddedIntent(pi) {
+			// An open embedded session is a page the buyer may be paying on
+			// right now, exactly like an open hosted page.
+			return precheckInProgress
 		}
 		readable := false
 		if entry, ok := hostedEntry(pi.Provider); ok && entry.Descriptor.Capabilities.ReferenceIsPaymentID {

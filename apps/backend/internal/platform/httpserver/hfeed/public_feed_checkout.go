@@ -157,6 +157,13 @@ type PublicFeedCheckoutStartRequest struct {
 	// the conversion sender reads it from there at send time. Optional, and
 	// an unreadable one is dropped, never a reason to refuse the purchase.
 	TrackingConsent *trackingconsent.Input `json:"tracking_consent,omitempty"`
+	// Capabilities is what the widget can do with the payment (spec 65
+	// §3.5). "stripe_elements": it can run the embedded Stripe form, and
+	// the answer then carries a `payment` block instead of a redirect when
+	// the deployment, the channel and the payment config allow it. Absent
+	// (an older widget) always gets the hosted page. Unknown values are
+	// ignored.
+	Capabilities []string `json:"capabilities,omitempty"`
 }
 
 // normalizeBuyerLocale validates a caller-supplied locale against the
@@ -978,7 +985,8 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 			seatTierPrices[tid] = l.UnitPrice
 		}
 		h.confirmPublicCheckout(ctx, w, r, checkCtx, res.ID, checkoutToken, bd, promoCodeID, expiresAt,
-			publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, seatTierPrices, req.ReturnURL, buyerLocale, consent, attr, growth)
+			publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, seatTierPrices, req.ReturnURL, buyerLocale, consent, attr, growth,
+			wantsEmbeddedCheckout(req.Capabilities))
 		return
 	}
 
@@ -1135,7 +1143,8 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 	// Pure GA: reservation_ga_items.unit_price is authoritative for every unit,
 	// so no tier price map is needed.
 	h.confirmPublicCheckout(ctx, w, r, checkCtx, reservation.ID, checkoutToken, bd, promoCodeID, expiresAt,
-		publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, nil, req.ReturnURL, buyerLocale, consent, attr, growth)
+		publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, nil, req.ReturnURL, buyerLocale, consent, attr, growth,
+		wantsEmbeddedCheckout(req.Capabilities))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1387,6 +1396,7 @@ func (h *Handler) confirmPublicCheckout(
 	consent *pendingConsent,
 	attr orderAttribution,
 	growth growthCheckout,
+	wantsEmbedded bool,
 ) {
 	// ── 0. A paid cart needs a place to send the buyer BACK to, and a
 	// payment window, before anything is written. Resolving the return URL
@@ -1637,7 +1647,7 @@ func (h *Handler) confirmPublicCheckout(
 	// ── Paid order: take the money. This runs AFTER the commit on purpose —
 	// a provider call can hang for seconds and must never hold a transaction
 	// that has seats locked behind it.
-	redirectURL, ok := h.startHostedPayment(ctx, w, r, hostedPaymentInput{
+	answer, ok := h.startPayment(ctx, w, r, hostedPaymentInput{
 		CheckCtx:      checkCtx,
 		Session:       cs,
 		CheckoutToken: checkoutToken,
@@ -1646,16 +1656,18 @@ func (h *Handler) confirmPublicCheckout(
 		Buyer:         buyer,
 		ReturnBase:    returnBase,
 		ExpiresAt:     expiresAt,
-	})
+	}, wantsEmbedded)
 	if !ok {
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
+	body := map[string]any{
 		"checkout_session": hcheckout.CheckoutSessionFromRow(cs),
-		"redirect_url":     redirectURL,
-		"checkout_token":   checkoutToken,
-		"expires_at":       expiresAt.Format(time.RFC3339),
+		// "" for an embedded payment: the widget shows the form from
+		// `payment` instead of leaving the page (spec 65 §3.4).
+		"redirect_url":   answer.redirectURL,
+		"checkout_token": checkoutToken,
+		"expires_at":     expiresAt.Format(time.RFC3339),
 		// The moment the provider's page stops taking the payment (the
 		// channel's window, П-3): what the site counts down to. expires_at
 		// is the hold, a grace later.
@@ -1663,7 +1675,12 @@ func (h *Handler) confirmPublicCheckout(
 		"pricing":            bd,
 
 		"marketing_discount_applied": growth.rewardWon && bd.Discount > 0,
-	})
+	}
+	if answer.embedded != nil {
+		h.writeEmbeddedStartAnswer(w, r, body, answer.embedded)
+		return
+	}
+	httputil.WriteJSON(w, http.StatusCreated, body)
 }
 
 // bestEffort runs a write set that must never cost a buyer their paid-for

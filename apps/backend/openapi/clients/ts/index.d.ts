@@ -8983,13 +8983,54 @@ export interface paths {
          *       cancelled. A payment the provider confirms later is refunded in
          *       full (`late_payment: refund_requested` on the order status);
          *     * a provider whose payment cannot be read back (Stripe) whose page
-         *       was handed out: 409 `checkout.payment_in_progress`; its page
-         *       expires by itself.
+         *       was handed out, hosted or embedded (spec 65): 409
+         *       `checkout.payment_in_progress`; its page expires by itself.
          *
          *     Idempotent: a repeat answers `cancelled: true` again and writes
          *     nothing. No JWT: the `checkout_token` is the credential.
          */
         post: operations["cancelPublicCheckout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/checkout/{checkout_token}/hosted": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace the embedded payment form with the hosted page
+         * @description Spec 65 §3.5. The widget could not run the embedded Stripe form
+         *     (Stripe.js did not load within 5 seconds, the host's CSP refused it,
+         *     or initialisation failed) and asks for the provider's hosted page on
+         *     the SAME hold.
+         *
+         *     The embedded session is expired first. If the provider refuses
+         *     because it is already paid or a payment on it is being processed,
+         *     nothing is created and the answer is 409
+         *     `checkout.payment_in_progress`; the widget polls the order status.
+         *     Otherwise the hosted page is created with a new payment record, and
+         *     the embedded one is marked superseded: if it is paid after all, that
+         *     payment still pays the order, the hosted page is closed, and a
+         *     second payment of both pages goes to an operator as a double
+         *     charge. A repeated call while the hosted page is open answers the
+         *     same page.
+         *
+         *     The page must not outlive the hold and the provider refuses a page
+         *     that lives less than 30 minutes, so the switch is possible only
+         *     early in the payment window; later it answers 409
+         *     `checkout.hosted_fallback_unavailable` without touching the embedded
+         *     form. No body, no JWT: the `checkout_token` is the credential. Sent
+         *     with `Cache-Control: no-store`.
+         */
+        post: operations["switchPublicCheckoutToHostedPage"];
         delete?: never;
         options?: never;
         head?: never;
@@ -30253,6 +30294,18 @@ export interface components {
              */
             expected_total?: number;
             /**
+             * @description What the widget can do with the payment (spec 65 §3.5), optional.
+             *     `stripe_elements`: it can run the embedded Stripe payment form.
+             *     The answer then carries a `payment` block and an empty
+             *     `redirect_url` when the deployment (`STRIPE_ELEMENTS_ENABLED`),
+             *     the sales channel (`settings.checkout.stripe_ui` is not `hosted`)
+             *     and the organization's Stripe configuration (a `publishable_key`)
+             *     all allow it; otherwise the hosted page as before. Absent (an
+             *     older widget) always gets the hosted page; unknown values are
+             *     ignored.
+             */
+            capabilities?: string[];
+            /**
              * @deprecated
              * @description Deprecated alias of `buyer_context.tracking_consent` +
              *     `tracking_consent_text_version`; both write the same stored
@@ -30856,6 +30909,9 @@ export interface components {
              *     empty string when the deployment has no return URL configured, in
              *     which case the caller should simply show the order status for the
              *     returned `checkout_token`.
+             *
+             *     An empty string also when the payment is embedded (`payment` is
+             *     set, spec 65): the buyer pays on this page and does not leave it.
              */
             redirect_url: string;
             /** @description Opaque high-entropy token for WID-0b anonymous order lookup. */
@@ -30879,8 +30935,59 @@ export interface components {
              *     down to; `expires_at` is a grace later. Present for a paid cart.
              */
             payment_expires_at?: string;
+            /**
+             * @description The embedded payment form (spec 65 §3.4), present only when the
+             *     request announced `capabilities: ["stripe_elements"]` and the
+             *     payment is embedded; `redirect_url` is then empty. Absent for a
+             *     hosted page, a zero-total cart and every provider without an
+             *     embedded mode.
+             */
+            payment?: components["schemas"]["EmbeddedCheckoutPayment"];
             /** @description True when the cart's discount is the reward for the marketing consent tick. */
             marketing_discount_applied?: boolean;
+        };
+        /**
+         * @description What the widget initialises the provider's browser SDK with for an
+         *     embedded payment (spec 65 §3.4, Stripe Checkout Session with
+         *     `ui_mode=elements`, Stripe.js `initCheckoutElementsSdk`). The card
+         *     fields live in the provider's iframe; no card data reaches arena.
+         *     Only the provider's "session completed and paid" webhook pays the
+         *     order: the widget polls the order status after `confirm()`.
+         */
+        EmbeddedCheckoutPayment: {
+            /** @description The payment provider (`stripe`). */
+            provider: string;
+            /** @description Always `elements` (the embedded mode). */
+            mode: string;
+            /**
+             * @description The Checkout Session's client secret. Handed to the buyer's
+             *     browser only; arena never stores or logs it, and reads it back
+             *     from the provider for the order status. Not to be put in a URL.
+             *     Empty in an answer replayed for a repeated `Idempotency-Key`
+             *     (the stored copy never holds it): read it from
+             *     `GET /v1/public/checkout/{checkout_token}`.
+             */
+            client_secret: string;
+            /**
+             * @description The organizer's public Stripe key (`pk_test_…` / `pk_live_…`) of
+             *     the account the session was created on.
+             */
+            publishable_key: string;
+        };
+        /**
+         * @description Response of `POST /v1/public/checkout/{checkout_token}/hosted`: the
+         *     provider-hosted page that replaces the embedded payment form.
+         */
+        CheckoutHostedFallbackResponse: {
+            /** @description The checkout token of the order. */
+            checkout_token: string;
+            /** @description Absolute URL of the provider's hosted payment page; the widget navigates to it. */
+            redirect_url: string;
+            /**
+             * Format: date-time
+             * @description When the hosted page stops taking the payment (RFC 3339 UTC), the same deadline as before.
+             */
+            payment_expires_at: string;
         };
         /**
          * @description The cart to price, in the shape of `PublicFeedCheckoutStartRequest`
@@ -31081,6 +31188,18 @@ export interface components {
              *     passed.
              */
             payment_url?: string;
+            /**
+             * @description The embedded payment form of the order (spec 65 §3.7), present
+             *     only while the order is `pending`, its hold has not expired and
+             *     its newest payment is an open embedded session, and only when the
+             *     request asks for it with `?include=payment` (without it the
+             *     status makes no provider call). The client secret is read back
+             *     from the provider on every such request and never stored; the
+             *     answer is sent with `Cache-Control: no-store`. Omitted after the
+             *     payment, after the hold expired and once the form was replaced
+             *     by a hosted page (`payment_url`).
+             */
+            payment?: components["schemas"]["EmbeddedCheckoutPayment"];
             /**
              * @description What the order is for: event name and slug, the session start
              *     (UTC) and the venue with its IANA time zone, so a static page can
@@ -69458,7 +69577,17 @@ export interface operations {
     };
     getPublicCheckoutStatus: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Comma-separated optional parts of the answer. `payment` asks for
+                 *     the embedded payment form (`payment`, spec 65 §3.7), which costs
+                 *     a call to the payment provider to read the client secret back.
+                 *     Without it the answer carries no `payment` object and no provider
+                 *     is called, so status polling stays cheap. Unknown values are
+                 *     ignored.
+                 */
+                include?: string;
+            };
             header?: never;
             path: {
                 /**
@@ -70020,6 +70149,79 @@ export interface operations {
              * @description Database unavailable (`dependency.database_unavailable`), the
              *     checkout could not be read (`checkout.lookup_failed`) or the
              *     cancel could not be written (`checkout.cancel_failed`); retry.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    switchPublicCheckoutToHostedPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque checkout token from `checkout/start`. */
+                checkout_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The hosted page to send the buyer to. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutHostedFallbackResponse"];
+                };
+            };
+            /** @description No checkout for this token (`checkout.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `checkout.payment_in_progress`: the embedded session is paid or
+             *     being paid, nothing was created; poll the order status.
+             *     `checkout.hosted_fallback_unavailable`: too little of the payment
+             *     window is left for a hosted page; the embedded form stays.
+             *     `checkout.not_payable`: the order is paid, expired or cancelled,
+             *     or has no embedded payment to replace
+             *     (`details.status` is the order status).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded (`checkout.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The provider did not answer or did not create the page
+             *     (`checkout.payment_start_failed`), online payment is not set up
+             *     (`checkout.payment_not_configured`), or the database is
+             *     unavailable (`dependency.database_unavailable`); retry. Never
+             *     502: the route sits behind Cloudflare.
              */
             503: {
                 headers: {

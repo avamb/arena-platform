@@ -5849,6 +5849,19 @@ type CheckoutCancelResponse struct {
 	Status string `json:"status"`
 }
 
+// CheckoutHostedFallbackResponse Response of `POST /v1/public/checkout/{checkout_token}/hosted`: the
+// provider-hosted page that replaces the embedded payment form.
+type CheckoutHostedFallbackResponse struct {
+	// CheckoutToken The checkout token of the order.
+	CheckoutToken string `json:"checkout_token"`
+
+	// PaymentExpiresAt When the hosted page stops taking the payment (RFC 3339 UTC), the same deadline as before.
+	PaymentExpiresAt time.Time `json:"payment_expires_at"`
+
+	// RedirectUrl Absolute URL of the provider's hosted payment page; the widget navigates to it.
+	RedirectUrl string `json:"redirect_url"`
+}
+
 // CheckoutRecoverResponse Response body for `POST /v1/public/checkout/{checkout_token}/recover`
 // (feature #320 WID-0c).  Returned when a fresh reservation was
 // successfully created for the same seats/zones.
@@ -6095,6 +6108,17 @@ type CheckoutStatusResponse struct {
 	// (`orders.system_id`). Present once the order exists for this
 	// checkout (always for a paid one); omitted before that.
 	OrderNumber *int64 `json:"order_number"`
+
+	// Payment The embedded payment form of the order (spec 65 §3.7), present
+	// only while the order is `pending`, its hold has not expired and
+	// its newest payment is an open embedded session, and only when the
+	// request asks for it with `?include=payment` (without it the
+	// status makes no provider call). The client secret is read back
+	// from the provider on every such request and never stored; the
+	// answer is sent with `Cache-Control: no-store`. Omitted after the
+	// payment, after the hold expired and once the form was replaced
+	// by a hosted page (`payment_url`).
+	Payment *EmbeddedCheckoutPayment `json:"payment,omitempty"`
 
 	// PaymentExpiresAt When the provider's page stops taking the payment (the sales
 	// channel's payment window, spec 62 П-3): `expires_at` minus the
@@ -8223,6 +8247,32 @@ type EchoResponse struct {
 
 	// TraceId Distributed trace ID
 	TraceId string `json:"trace_id"`
+}
+
+// EmbeddedCheckoutPayment What the widget initialises the provider's browser SDK with for an
+// embedded payment (spec 65 §3.4, Stripe Checkout Session with
+// `ui_mode=elements`, Stripe.js `initCheckoutElementsSdk`). The card
+// fields live in the provider's iframe; no card data reaches arena.
+// Only the provider's "session completed and paid" webhook pays the
+// order: the widget polls the order status after `confirm()`.
+type EmbeddedCheckoutPayment struct {
+	// ClientSecret The Checkout Session's client secret. Handed to the buyer's
+	// browser only; arena never stores or logs it, and reads it back
+	// from the provider for the order status. Not to be put in a URL.
+	// Empty in an answer replayed for a repeated `Idempotency-Key`
+	// (the stored copy never holds it): read it from
+	// `GET /v1/public/checkout/{checkout_token}`.
+	ClientSecret string `json:"client_secret"`
+
+	// Mode Always `elements` (the embedded mode).
+	Mode string `json:"mode"`
+
+	// Provider The payment provider (`stripe`).
+	Provider string `json:"provider"`
+
+	// PublishableKey The organizer's public Stripe key (`pk_test_…` / `pk_live_…`) of
+	// the account the session was created on.
+	PublishableKey string `json:"publishable_key"`
 }
 
 // EndOrgModuleRequest Sets the last day of a module period.
@@ -16164,6 +16214,17 @@ type PublicFeedCheckoutStartRequest struct {
 	// stored at send time no conversion leaves the platform.
 	BuyerContext *PublicCheckoutBuyerContext `json:"buyer_context,omitempty"`
 
+	// Capabilities What the widget can do with the payment (spec 65 §3.5), optional.
+	// `stripe_elements`: it can run the embedded Stripe payment form.
+	// The answer then carries a `payment` block and an empty
+	// `redirect_url` when the deployment (`STRIPE_ELEMENTS_ENABLED`),
+	// the sales channel (`settings.checkout.stripe_ui` is not `hosted`)
+	// and the organization's Stripe configuration (a `publishable_key`)
+	// all allow it; otherwise the hosted page as before. Absent (an
+	// older widget) always gets the hosted page; unknown values are
+	// ignored.
+	Capabilities *[]string `json:"capabilities,omitempty"`
+
 	// Consent The buyer's tick on "I accept the sale terms (seller: <legal
 	// name>) and the privacy policy" (P2). Required (with
 	// `accepted: true`) when the feed session's `consent.required` is
@@ -16292,6 +16353,13 @@ type PublicFeedCheckoutStartResponse struct {
 	// MarketingDiscountApplied True when the cart's discount is the reward for the marketing consent tick.
 	MarketingDiscountApplied *bool `json:"marketing_discount_applied,omitempty"`
 
+	// Payment The embedded payment form (spec 65 §3.4), present only when the
+	// request announced `capabilities: ["stripe_elements"]` and the
+	// payment is embedded; `redirect_url` is then empty. Absent for a
+	// hosted page, a zero-total cart and every provider without an
+	// embedded mode.
+	Payment *EmbeddedCheckoutPayment `json:"payment,omitempty"`
+
 	// PaymentExpiresAt When the provider's page stops taking the payment (RFC 3339 UTC):
 	// the channel's payment window from now. This is what a site counts
 	// down to; `expires_at` is a grace later. Present for a paid cart.
@@ -16318,6 +16386,9 @@ type PublicFeedCheckoutStartResponse struct {
 	// empty string when the deployment has no return URL configured, in
 	// which case the caller should simply show the order status for the
 	// returned `checkout_token`.
+	//
+	// An empty string also when the payment is embedded (`payment` is
+	// set, spec 65): the buyer pays on this page and does not leave it.
 	RedirectUrl string `json:"redirect_url"`
 }
 
@@ -26270,6 +26341,17 @@ type CreateVenuePlanIntakeParams struct {
 type CreatePaymentIntentParams struct {
 	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
 	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
+}
+
+// GetPublicCheckoutStatusParams defines parameters for GetPublicCheckoutStatus.
+type GetPublicCheckoutStatusParams struct {
+	// Include Comma-separated optional parts of the answer. `payment` asks for
+	// the embedded payment form (`payment`, spec 65 §3.7), which costs
+	// a call to the payment provider to read the client secret back.
+	// Without it the answer carries no `payment` object and no provider
+	// is called, so status polling stays cheap. Unknown values are
+	// ignored.
+	Include *string `form:"include,omitempty" json:"include,omitempty"`
 }
 
 // ResumePublicCheckoutParams defines parameters for ResumePublicCheckout.

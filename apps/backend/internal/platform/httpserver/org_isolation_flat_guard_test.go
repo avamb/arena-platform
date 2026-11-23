@@ -124,6 +124,7 @@ var flatRouteFamilies = []flatFamily{
 	{"GET", "/v1/public/payment-return", flatPublic, "feed token or checkout token in the URL"},
 	{"POST", "/v1/public/checkout/{checkout_token}/recover", flatPublic, "feed token or checkout token in the URL"},
 	{"POST", "/v1/public/checkout/{checkout_token}/cancel", flatPublic, "checkout token in the URL; acts only on that checkout (spec 62 P-2)"},
+	{"POST", "/v1/public/checkout/{checkout_token}/hosted", flatPublic, "checkout token in the URL; replaces only that checkout's embedded payment page, with that checkout's organization's own provider config (spec 65)"},
 	{"PATCH", "/v1/public/checkout/{checkout_token}/consent", flatPublic, "checkout token in the URL; writes only that checkout's consent (spec 62 P-20)"},
 	{"GET", "/v1/public/checkout/{checkout_token}/referral", flatPublic, "feed token or checkout token in the URL"},
 	{"POST", "/v1/public/organizer-contact/{org_slug}", flatPublic, "public page slug; reads only whether the page has a form, never answers the address (hcontact)"},

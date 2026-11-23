@@ -333,6 +333,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `PUBLIC_FEED_TOKEN_RATE_LIMIT`, `PUBLIC_CHECKOUT_TOKEN_RATE_LIMIT`, `PUBLIC_API_IP_RATE_LIMIT`, `PUBLIC_PROMO_FAIL_TOKEN_RATE_LIMIT`, `PUBLIC_PROMO_FAIL_IP_RATE_LIMIT`, `PUBLIC_PAGE_TRACK_EVENT_RATE_LIMIT`, `PUBLIC_PAGE_TRACK_IP_RATE_LIMIT` | ● | — | — | — |
 | `WIDGET_PAYMENT_WINDOW_SECONDS`, `WIDGET_PAYMENT_GRACE_SECONDS` | ● | — | — | — |
 | `STRIPE_WEBHOOK_SECRET` | ✅ | — | — | — |
+| `STRIPE_ELEMENTS_ENABLED` (embedded Stripe checkout, spec 65; default `true`. `false` sends every new payment to the hosted Stripe page without a deploy) | ● | — | — | — |
 | `ALLPAY_WEBHOOK_SECRET` (deprecated, verifies nothing) | ● | — | — | — |
 | `BIL24_COMPAT_ENABLED`, `BIL24_REQUIRE_TOKEN`, `BIL24_TOKEN_CACHE_TTL` | ● | — | — | — |
 | `BREVO_WEBHOOK_TOKEN`, `BREVO_WEBHOOK_TOKEN_PREVIOUS` (≥ 32 random chars) | ● | — | — | — |
