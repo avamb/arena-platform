@@ -185,6 +185,11 @@ var flatRouteFamilies = []flatFamily{
 	{"POST", "/v1/macs/scan-events", flatPublic, "HMAC of the MACS subscriber named in X-MACS-Subscriber-Id; tickets resolved only inside that subscriber's organization, any other ticket rejected per scan as not found"},
 	{"POST", "/v1/webhooks/brevo", flatPublic, "BREVO_WEBHOOK_TOKEN as a bearer header; letters matched by the tracking header or the message id"},
 	{"POST", "/v1/webhooks/brevo/{token}", flatPublic, "BREVO_WEBHOOK_TOKEN in the path; letters matched by the tracking header or the message id"},
+	{"GET", "/v1/integrations/meta/callback", flatPublic, "HMAC-signed state names the organization and the person; metaconnect.UserCanConnect re-checks org.update in that organization (hmetaconnect integration test)"},
+	{"POST", "/v1/integrations/meta/deauthorize", flatPublic, "Meta signed_request (HMAC of META_APP_SECRET); connections found by the signed app-scoped user id only"},
+	{"POST", "/v1/integrations/meta/data-deletion", flatPublic, "Meta signed_request (HMAC of META_APP_SECRET); connections found by the signed app-scoped user id only"},
+	{"GET", "/v1/integrations/meta/webhook", flatPublic, "Meta subscription check: hub.verify_token compared in constant time with META_WEBHOOK_VERIFY_TOKEN; reads and changes nothing"},
+	{"POST", "/v1/integrations/meta/webhook", flatPublic, "X-Hub-Signature-256 (HMAC of the raw body with META_APP_SECRET); business_integration_uninstall revokes only the connections to the signed business id"},
 
 	// ── platform operators, service tokens ──────────────────────────────────
 	{"GET", "/v1/admin/tickets", flatPlatform, "superadmin.read"},

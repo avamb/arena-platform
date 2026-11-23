@@ -1203,6 +1203,14 @@ export const PARITY: readonly ParityRow[] = [
     routes: [`GET ${O}/shop/settings`, `PUT ${O}/shop/settings`, `PUT ${O}/shop/storefront`, `GET ${O}/channels`],
     note: "Валюта, доставка, страна, возраст, объявление, контакт, канал продаж. Домен только для чтения: его задаёт оператор платформы. Список каналов виден тем, у кого есть `channel.read` (владелец). Спека 61: над формой кнопка «Открыть витрину» / «Закрыть витрину» для `shop.manage` (владелец и менеджер). Закрыть можно всегда. Открыть нельзя, пока не сохранены настройки, нет товара в продаже или не подключена проверенная онлайн-оплата: экран перечисляет, чего не хватает (`open_blockers`, при отказе 422 `shop.cannot_open` — `details.blockers`), со ссылкой на товары. Флаг уходит отдельным запросом `PUT .../shop/storefront`, форма настроек его не трогает.",
   },
+  {
+    area: "Реклама",
+    fn: "Подключение Meta (Реклама → Meta)",
+    bot: "— (только веб)",
+    web: "R3",
+    routes: [`GET ${O}/integrations/meta`, `PATCH ${O}/integrations/meta`, `DELETE ${O}/integrations/meta`, `POST ${O}/integrations/meta/connect`, `POST ${O}/integrations/meta/finish`, `GET ${O}/integrations/meta/page`],
+    note: "Спека 66, разделы 4.1 и 4.6. Экран /o/$orgId/ads/meta только для владельца (`org.update`). Владелец подключает бизнес-аккаунт Meta через переход по `login_url` на окно входа Meta, выбирает датасет для покупок, рекламный аккаунт и страницу Facebook (PATCH), видит карточку выбранной страницы (GET .../meta/page: название, категория, ссылка, отметки «Нравится», картинка; читается из Meta при открытии, не хранится), отключает с вопросом (DELETE). Токен в браузер не приходит. Колбэк `/v1/integrations/meta/callback` код не обменивает: возврат с `?meta=finish#code=…&state=…`, страница стирает фрагмент и один раз шлёт код на finish. Ошибка — `?meta=error&reason=…`.",
+  },
 ];
 
 /** Every route of the matrix, without duplicates. */

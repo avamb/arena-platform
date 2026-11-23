@@ -247,7 +247,7 @@ func run() error {
 	outboxDispatcher, fanOutErr := outbox.NewLegFanOut(outbox.NewPGLegStateStore(pool.Pool), logger, outboxLegs(
 		outbox.Leg{Name: legSalesNotify, Dispatcher: salesNotifier},
 		// Server-side ad conversions (spec 62 8.3): queue only, never fails.
-		outbox.Leg{Name: legConversions, Dispatcher: conversions.NewDispatcher(conversions.NewPGStore(pool.Pool), logger)},
+		outbox.Leg{Name: legConversions, Dispatcher: conversions.NewDispatcher(buildConversionsStore(pool.Pool, cfg, logger), logger)},
 		outbox.Leg{Name: legWebhook, Dispatcher: baseOutboxDispatcher},
 		outbox.Leg{Name: legMACS, Dispatcher: macsDispatcher},
 		outbox.Leg{Name: legBil24WP, Dispatcher: bil24WPDispatcher},
@@ -625,7 +625,8 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	// conversions.sweep sends the queued Meta CAPI / GA4 MP purchases with
 	// backoff and self-schedules (spec 62 section 8.3).
 	reg.Register(conversions.JobType, conversions.NewHandler(conversions.HandlerOptions{
-		Store:     conversions.NewPGStore(pool),
+		Store:     buildConversionsStore(pool, cfg, logger),
+		Senders:   conversionsSenders(cfg),
 		Scheduler: conversions.NewPGScheduler(pool),
 		Logger:    logger,
 	}))

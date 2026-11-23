@@ -351,6 +351,13 @@ export const API = {
   seatLayoutSuggest: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/seat-layout/suggest" },
   // The shop (spec 47): settings, products with pictures and variants, orders and their actions.
   // Reads need shop.read, writes shop.manage. Cancel and refund also ask for the password again.
+  // Meta advertising (spec 66): the organization's connection, its asset choice and the connect start.
+  metaIntegration: { method: "GET", path: "/v1/organizations/{org_id}/integrations/meta" },
+  metaIntegrationPatch: { method: "PATCH", path: "/v1/organizations/{org_id}/integrations/meta" },
+  metaIntegrationDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/integrations/meta" },
+  metaConnect: { method: "POST", path: "/v1/organizations/{org_id}/integrations/meta/connect" },
+  metaFinish: { method: "POST", path: "/v1/organizations/{org_id}/integrations/meta/finish" },
+  metaPage: { method: "GET", path: "/v1/organizations/{org_id}/integrations/meta/page" },
   channels: { method: "GET", path: "/v1/organizations/{org_id}/channels" },
   shopSettings: { method: "GET", path: "/v1/organizations/{org_id}/shop/settings" },
   shopSettingsPut: { method: "PUT", path: "/v1/organizations/{org_id}/shop/settings" },

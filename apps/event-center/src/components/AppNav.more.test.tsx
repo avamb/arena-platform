@@ -97,6 +97,7 @@ describe("Menu", () => {
       ["Продвижение", ["nav-promo", "nav-invitations", "nav-links", "nav-growth"]],
       ["Вход на мероприятие", ["nav-scanner", "nav-guest-list"]],
       ["Магазин", ["nav-shop"]],
+      ["Реклама", ["nav-ads-meta"]],
       [
         "Настройки",
         ["nav-org-data", "nav-payments", "nav-team", "nav-promoters", "nav-venues", "nav-notifications", "nav-billing", "nav-switch-org"],

@@ -53,6 +53,30 @@ func (f *fakeStore) MarkFailed(_ context.Context, _ uuid.UUID, r string) error {
 	return nil
 }
 
+// connFake is a fakeStore that also hears about Meta connection errors.
+type connFake struct {
+	*fakeStore
+	invalidCalls int
+	connStatus   string
+	connError    string
+}
+
+func (c *connFake) MarkMetaTokenInvalid(_ context.Context, _ uuid.UUID, reason string) (bool, error) {
+	c.invalidCalls++
+	if c.connStatus != "active" {
+		return false, nil
+	}
+	c.connStatus, c.connError = "error", reason
+	return true, nil
+}
+
+func (c *connFake) RecordMetaError(_ context.Context, _ uuid.UUID, reason string) error {
+	if c.connStatus == "active" {
+		c.connError = reason
+	}
+	return nil
+}
+
 func newFake(provider string, consent bool) (*fakeStore, Delivery) {
 	oid := uuid.New()
 	d := Delivery{ID: uuid.New(), OrderID: &oid, OrgID: uuid.New(), Provider: provider, CreatedAt: time.Unix(1700000000, 0)}
@@ -81,11 +105,14 @@ func TestMetaSender_PayloadHashedAndTokenInBody(t *testing.T) {
 	if err != nil || f.status != "sent" {
 		t.Fatalf("status=%s err=%v reason=%s", f.status, err, f.reason)
 	}
-	if path != "/123/events" || query != "" {
+	if path != "/"+DefaultMetaGraphVersion+"/123/events" || query != "" {
 		t.Fatalf("path=%q query=%q (token must not be in the URL)", path, query)
 	}
 	if got["access_token"] != "tok-secret" {
 		t.Fatalf("token missing from body")
+	}
+	if got["partner_agent"] != "arenasoldout" {
+		t.Fatalf("partner_agent = %v", got["partner_agent"])
 	}
 	ev := got["data"].([]any)[0].(map[string]any)
 	if ev["event_name"] != "Purchase" || ev["event_id"] != d.OrderID.String() {
@@ -132,6 +159,42 @@ func TestGA4Sender_PurchaseMajorUnits(t *testing.T) {
 		t.Fatalf("event: %v", ev)
 	}
 }
+
+// TestMetaConnectionErrorDoesNotBlockGA4: a Meta connection that cannot be
+// read (database or key error) retries the Meta delivery only; GA4 sends.
+func TestMetaConnectionErrorDoesNotBlockGA4(t *testing.T) {
+	hits := map[string]int{}
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hits[r.URL.Path]++
+		mu.Unlock()
+		w.WriteHeader(204)
+	}))
+	defer srv.Close()
+	senders := Senders{Meta: MetaSender{BaseURL: srv.URL}, GA4: GA4Sender{BaseURL: srv.URL}}
+	connErr := Settings{GA4MeasurementID: "G-X", GA4APISecret: "ga-secret", MetaErr: errTest("meta connection: secretbox: cannot open")}
+
+	f, _ := newFake("ga4", true)
+	f.settings = connErr
+	if _, err := RunOnce(context.Background(), f, senders, slog.Default(), time.Now()); err != nil || f.status != "sent" {
+		t.Fatalf("ga4 with a broken Meta connection: status=%s reason=%s err=%v", f.status, f.reason, err)
+	}
+	f, _ = newFake("meta", true)
+	f.settings = connErr
+	if _, err := RunOnce(context.Background(), f, senders, slog.Default(), time.Now()); err != nil || f.status != "retry" || !strings.Contains(f.reason, "meta connection") {
+		t.Fatalf("meta with a broken Meta connection: status=%s reason=%s err=%v", f.status, f.reason, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if hits["/mp/collect"] != 1 || len(hits) != 1 {
+		t.Fatalf("hits = %v, want GA4 only", hits)
+	}
+}
+
+type errTest string
+
+func (e errTest) Error() string { return string(e) }
 
 func TestNoConsentSendsNothing(t *testing.T) {
 	hit := false
@@ -223,6 +286,116 @@ func TestConsentFromBuyerContext(t *testing.T) {
 		if got == nil || got.Granted == nil || *got.Granted != tc.granted || got.Version != tc.version {
 			t.Errorf("%s: got %+v", tc.raw, got)
 		}
+	}
+}
+
+func TestChooseMeta_ConnectionThenManualThenNone(t *testing.T) {
+	manual := Settings{MetaPixelID: "m-pix", MetaCAPIToken: "m-tok", MetaTestEventCode: "TEST1", GA4MeasurementID: "G-1", GA4APISecret: "g"}
+	st, ok := chooseMeta(manual, true, "c-pix", "c-tok", true)
+	if !ok || st.MetaPixelID != "c-pix" || st.MetaCAPIToken != "c-tok" || st.MetaTokenSource != TokenSourceConnection ||
+		st.MetaTestEventCode != "TEST1" || st.GA4MeasurementID != "G-1" {
+		t.Fatalf("connection first: %+v %v", st, ok)
+	}
+	// Connection only, no settings row: still ok.
+	if st, ok := chooseMeta(Settings{}, false, "c-pix", "c-tok", true); !ok || st.MetaTokenSource != TokenSourceConnection || !st.MetaReady() {
+		t.Fatalf("connection only: %+v %v", st, ok)
+	}
+	if st, ok := chooseMeta(manual, true, "", "", false); !ok || st.MetaPixelID != "m-pix" || st.MetaTokenSource != TokenSourceManual {
+		t.Fatalf("manual: %+v %v", st, ok)
+	}
+	if st, ok := chooseMeta(Settings{GA4MeasurementID: "G-1", GA4APISecret: "g"}, true, "", "", false); !ok || st.MetaReady() || st.MetaTokenSource != "" {
+		t.Fatalf("none (GA4 only): %+v %v", st, ok)
+	}
+	if _, ok := chooseMeta(Settings{}, false, "", "", false); ok {
+		t.Fatal("nothing stored must be not ok")
+	}
+}
+
+// graphErrorServer answers every send with a Graph error whose message
+// repeats the token it got, as a careless server might.
+func graphErrorServer(status, code, subcode int) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		var body map[string]any
+		_ = json.Unmarshal(b, &body)
+		tok, _ := body["access_token"].(string)
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{
+			"message": "Bad token " + tok, "type": "OAuthException", "code": code, "error_subcode": subcode,
+		}})
+	}))
+}
+
+func TestConnectionToken190_MarksInvalidOnceAndFails(t *testing.T) {
+	srv := graphErrorServer(400, 190, 460)
+	defer srv.Close()
+	f, _ := newFake("meta", true)
+	f.settings.MetaTokenSource = TokenSourceConnection
+	c := &connFake{fakeStore: f, connStatus: "active"}
+	_, _ = RunOnce(context.Background(), c, Senders{Meta: MetaSender{BaseURL: srv.URL, Version: "v25.0"}}, slog.Default(), time.Now())
+	if f.status != "failed" || c.invalidCalls != 1 || c.connStatus != "error" || c.connError != "graph_190" {
+		t.Fatalf("status=%s calls=%d conn=%s/%s", f.status, c.invalidCalls, c.connStatus, c.connError)
+	}
+	if strings.Contains(f.reason, "tok-secret") || strings.Contains(f.reason, "Bad token") || !strings.Contains(f.reason, "graph_190") {
+		t.Fatalf("reason = %q", f.reason)
+	}
+	// A second delivery of the same organization: the connection is already
+	// in error, nothing changes again.
+	f.status = ""
+	oid2 := uuid.New()
+	f.due = []Delivery{{ID: uuid.New(), OrderID: &oid2, OrgID: uuid.New(), Provider: "meta", CreatedAt: time.Now()}}
+	_, _ = RunOnce(context.Background(), c, Senders{Meta: MetaSender{BaseURL: srv.URL, Version: "v25.0"}}, slog.Default(), time.Now())
+	if f.status != "failed" || c.connStatus != "error" {
+		t.Fatalf("second: status=%s conn=%s", f.status, c.connStatus)
+	}
+}
+
+func TestConnectionToken10_FailsConnectionStaysActive(t *testing.T) {
+	// HTTP 500 on purpose: the code alone makes the failure final.
+	for _, code := range []int{10, 200, 299} {
+		srv := graphErrorServer(500, code, 0)
+		f, _ := newFake("meta", true)
+		f.settings.MetaTokenSource = TokenSourceConnection
+		c := &connFake{fakeStore: f, connStatus: "active"}
+		_, _ = RunOnce(context.Background(), c, Senders{Meta: MetaSender{BaseURL: srv.URL}}, slog.Default(), time.Now())
+		srv.Close()
+		if f.status != "failed" || c.invalidCalls != 0 || c.connStatus != "active" || c.connError == "" {
+			t.Fatalf("code %d: status=%s calls=%d conn=%s/%s", code, f.status, c.invalidCalls, c.connStatus, c.connError)
+		}
+		if strings.Contains(f.reason, "tok-secret") || strings.Contains(c.connError, "tok-secret") {
+			t.Fatalf("code %d leaks: %q %q", code, f.reason, c.connError)
+		}
+	}
+}
+
+func TestManualToken190_KeepsTodaysBehaviour(t *testing.T) {
+	// The manual token never touches the connection; a 5xx still retries.
+	srv := graphErrorServer(500, 190, 0)
+	defer srv.Close()
+	f, _ := newFake("meta", true)
+	f.settings.MetaTokenSource = TokenSourceManual
+	c := &connFake{fakeStore: f, connStatus: "active"}
+	_, _ = RunOnce(context.Background(), c, Senders{Meta: MetaSender{BaseURL: srv.URL}}, slog.Default(), time.Now())
+	if f.status != "retry" || c.invalidCalls != 0 || c.connStatus != "active" || c.connError != "" {
+		t.Fatalf("status=%s calls=%d conn=%s/%s", f.status, c.invalidCalls, c.connStatus, c.connError)
+	}
+	if strings.Contains(f.reason, "tok-secret") {
+		t.Fatalf("reason leaks: %q", f.reason)
+	}
+}
+
+func TestMetaSender_VersionAndBaseFromConfig(t *testing.T) {
+	var path string
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { path = r.URL.Path }))
+	defer srv.Close()
+	if err := (MetaSender{BaseURL: srv.URL + "/", Version: "v26.0"}).Send(context.Background(), "77", "t", "", Purchase{}); err != nil {
+		t.Fatal(err)
+	}
+	if path != "/v26.0/77/events" {
+		t.Fatalf("path = %q", path)
+	}
+	if got := (MetaSender{}).endpoint("1"); got != "https://graph.facebook.com/"+DefaultMetaGraphVersion+"/1/events" {
+		t.Fatalf("default endpoint = %q", got)
 	}
 }
 

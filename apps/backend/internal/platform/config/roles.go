@@ -53,11 +53,17 @@ const (
 	// capVenueGen: VENUE_GEN_URL / VENUE_GEN_TOKEN (only the worker calls the
 	// venue SVG generator).
 	capVenueGen
+	// capMeta: META_* (the api runs the Meta login, the worker calls the Graph
+	// API with the sealed tokens; spec 08_architecture/66 section 4.5).
+	capMeta
+	// capMetaLogin: META_OAUTH_REDIRECT_URL (only the api runs the Meta login
+	// and its code exchange; the worker never needs it).
+	capMetaLogin
 )
 
 var roleCapabilities = map[Role][]capability{
-	RoleAPI:     {capJWT, capEdge, capMedia, capPublicURL},
-	RoleWorker:  {capMail, capOutbox, capMedia, capPublicURL, capVenueGen},
+	RoleAPI:     {capJWT, capEdge, capMedia, capPublicURL, capMeta, capMetaLogin},
+	RoleWorker:  {capMail, capOutbox, capMedia, capPublicURL, capVenueGen, capMeta},
 	RoleBot:     {capJWT, capEventsBot},
 	RoleMigrate: nil,
 }
@@ -149,6 +155,12 @@ var roleSecrets = []roleSecret{
 	// Only arena-worker calls the venue SVG generator (job venue_plan.generate,
 	// spec 64 wave 2); arena-api never does.
 	{"VENUE_GEN_TOKEN", []Role{RoleWorker}, func(c *Config) string { return c.VenueGenToken }},
+	// The Meta app secret and the token key never reach the bot or a frontend
+	// (spec 66 section 4.5).
+	{"META_APP_SECRET", []Role{RoleAPI, RoleWorker}, func(c *Config) string { return c.MetaAppSecret }},
+	{"META_TOKEN_ENC_KEY", []Role{RoleAPI, RoleWorker}, func(c *Config) string { return c.MetaTokenEncKey }},
+	// Only arena-api answers Meta's webhook verification.
+	{"META_WEBHOOK_VERIFY_TOKEN", []Role{RoleAPI}, func(c *Config) string { return c.MetaWebhookVerifyToken }},
 }
 
 // unusedSecretWarnings names every secret that is set although the role

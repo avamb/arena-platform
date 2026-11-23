@@ -19648,6 +19648,268 @@ components:
           type: [string, "null"]
           description: Measurement Protocol API secret, 8-512 characters. Write-only.
 
+    MetaConnectStart:
+      type: object
+      required: [app_id, config_id, graph_version, login_url]
+      description: |
+        What the event center needs to open the Meta login (spec 66 section
+        4.1). Open `login_url` in the same tab. Meta sends the person to
+        `GET /v1/integrations/meta/callback`, which hands code and state back
+        to the event center in the URL fragment; the event center then posts
+        them to `POST .../integrations/meta/finish`. The state is valid for
+        10 minutes, for this person and this organization only.
+      properties:
+        app_id:
+          type: string
+          description: The Meta app id (public).
+        config_id:
+          type: string
+          description: The configuration id of Facebook Login for Business.
+        graph_version:
+          type: string
+          description: The Graph API version, such as v25.0.
+        login_url:
+          type: string
+          description: |
+            The Meta dialog/oauth address with the signed state and
+            redirect_uri = META_OAUTH_REDIRECT_URL.
+
+    MetaFinishRequest:
+      type: object
+      additionalProperties: false
+      required: [code, state]
+      description: |
+        The code and the state the callback put into the URL fragment of the
+        event center, posted once by the signed-in person who started the
+        login.
+      properties:
+        code:
+          type: string
+          description: The login code from Meta, at most 4096 characters.
+        state:
+          type: string
+          description: The signed state from the same fragment. Opaque.
+
+    MetaAsset:
+      type: object
+      required: [kind, meta_id, name, currency, timezone, selected]
+      description: A dataset (pixel), ad account or page the organizer shared with the platform.
+      properties:
+        kind:
+          type: string
+          enum: [dataset, ad_account, page]
+          description: The kind of the Meta object.
+        meta_id:
+          type: string
+          description: The Meta id (an ad account id starts with act_).
+        name:
+          type: string
+          description: The name in Meta, empty when Meta sent none.
+        currency:
+          type: [string, "null"]
+          description: Currency of an ad account, null for other kinds.
+        timezone:
+          type: [string, "null"]
+          description: Time zone name of an ad account, null for other kinds.
+        selected:
+          type: boolean
+          description: The platform uses this object (at most one per kind).
+
+    MetaConnection:
+      type: object
+      required: [status, meta_business_id, config_id, scopes, last_error, connected_by, connected_at, checked_at, token_expires_at, selected_dataset_id, selected_ad_account_id, assets]
+      description: |
+        The stored connection. The access token is never returned.
+      properties:
+        status:
+          type: string
+          enum: [active, revoked, error]
+          description: |
+            active = in use; revoked = disconnected here; error =
+            Meta refused the token (Graph error 190), connect again.
+        meta_business_id:
+          type: string
+          description: The client business id from Meta, empty when Meta named none.
+        config_id:
+          type: string
+          description: The login configuration the connection was made with.
+        scopes:
+          type: array
+          description: The permissions the organizer granted.
+          items:
+            type: string
+            description: A Meta permission name.
+        last_error:
+          type: [string, "null"]
+          description: Short code of the last problem, null when there is none.
+        connected_by:
+          type: [string, "null"]
+          format: uuid
+          description: The person who connected, null when the account was removed.
+        connected_at:
+          type: string
+          format: date-time
+          description: When the connection was last made.
+        checked_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the token was last checked with Meta.
+        token_expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the token expires, null when Meta gave no expiry.
+        selected_dataset_id:
+          type: [string, "null"]
+          description: The meta_id of the selected dataset, null when none is selected.
+        selected_ad_account_id:
+          type: [string, "null"]
+          description: The meta_id of the selected ad account, null when none is selected.
+        assets:
+          type: array
+          description: Every shared object.
+          items:
+            $ref: "#/components/schemas/MetaAsset"
+
+    MetaIntegration:
+      type: object
+      required: [enabled, connection]
+      description: The Meta connection of an organization.
+      properties:
+        enabled:
+          type: boolean
+          description: The platform has the Meta connection switched on; false = do not show the Connect button.
+        connection:
+          description: The stored connection, null when the organization never connected, the data was deleted or the app was removed at Meta.
+          oneOf:
+            - $ref: "#/components/schemas/MetaConnection"
+            - type: "null"
+
+    UpdateMetaIntegrationRequest:
+      type: object
+      additionalProperties: false
+      description: At least one key. Each value must be the meta_id of a shared object of that kind (dataset, ad account or page).
+      properties:
+        dataset_id:
+          type: string
+          description: The dataset (pixel) the server-side purchases go to.
+        ad_account_id:
+          type: string
+          description: The ad account the platform reads spend from.
+        page_id:
+          type: string
+          description: The Facebook Page whose preview the event center shows.
+
+    MetaPagePreview:
+      type: object
+      required: [meta_id, name, category, link, fan_count, picture_data_url]
+      description: |
+        The selected Facebook Page as Meta shows it now, read live from the
+        Graph API with the connection token. Nothing of it is stored.
+      properties:
+        meta_id:
+          type: string
+          description: The Meta id of the Page.
+        name:
+          type: string
+          description: The name of the Page, empty when Meta sent none.
+        category:
+          type: [string, "null"]
+          description: The category of the Page, null when Meta sent none.
+        link:
+          type: [string, "null"]
+          description: The https address of the Page on Facebook, null when Meta sent none.
+        fan_count:
+          type: [integer, "null"]
+          format: int64
+          description: The number of people who like the Page, null when Meta sent none.
+        picture_data_url:
+          type: [string, "null"]
+          description: |
+            The Page picture as a `data:image/...;base64,` URL (at most
+            256 KB), so the event center loads no third-party image; null when
+            there is no picture or it could not be read.
+
+    MetaSignedRequestForm:
+      type: object
+      required: [signed_request]
+      description: The form Meta posts to its callbacks.
+      properties:
+        signed_request:
+          type: string
+          description: |
+            `<signature>.<payload>`, both base64url; the signature is
+            HMAC-SHA256 of the payload with the app secret. The payload names
+            the app-scoped user id.
+
+    MetaWebhookPayload:
+      type: object
+      description: |
+        The body Meta posts to the app webhook. Only changes with the field
+        `business_integration_uninstall` are acted on; every other field is
+        ignored.
+      properties:
+        object:
+          type: string
+          description: The webhook object, `application` for the app webhook.
+        entry:
+          type: array
+          description: One entry per object that changed.
+          items:
+            $ref: "#/components/schemas/MetaWebhookEntry"
+
+    MetaWebhookEntry:
+      type: object
+      description: One entry of a Meta webhook body.
+      properties:
+        id:
+          type: string
+          description: The id of the object (the app id for the app webhook).
+        time:
+          type: integer
+          format: int64
+          description: When Meta sent the entry, Unix seconds.
+        changes:
+          type: array
+          description: The changed fields.
+          items:
+            $ref: "#/components/schemas/MetaWebhookChange"
+
+    MetaWebhookChange:
+      type: object
+      description: One changed field of a Meta webhook entry.
+      properties:
+        field:
+          type: string
+          description: The webhook field, such as `business_integration_uninstall`.
+        value:
+          type: object
+          additionalProperties: true
+          description: |
+            The field's data. For `business_integration_uninstall` the
+            business id is read from `business_manager_id`, or from
+            `business_id` when the first is absent (a string or a number).
+
+    MetaCallbackReceived:
+      type: object
+      required: [received]
+      description: Answer of the deauthorize callback and of the app webhook.
+      properties:
+        received:
+          type: boolean
+          description: Always true.
+
+    MetaDataDeletionAnswer:
+      type: object
+      required: [url, confirmation_code]
+      description: The answer Meta requires from a data-deletion callback.
+      properties:
+        url:
+          type: string
+          description: The status page of the deletion, with the confirmation code.
+        confirmation_code:
+          type: string
+          description: The confirmation code Meta shows the person.
+
     PublicMarketingConsent:
       type: object
       required: [accepted]
@@ -47987,6 +48249,629 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/integrations/meta/connect:
+    post:
+      operationId: startMetaConnect
+      summary: Start connecting the organization's Meta business
+      description: |
+        Signs the login state for the caller and this organization and
+        answers the Meta login parameters (spec 66 section 4.1). Nothing is
+        stored. Requires `org.update` (the owner); an organization API key is
+        refused. The person who starts must still hold `org.update` here
+        through an active membership when they finish the login.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The login parameters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaConnectStart"
+        "400":
+          description: org_id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `org.update` in the organization, or is an API key (`meta.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The Meta connection is switched off (`meta.disabled`) or the database is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/integrations/meta/finish:
+    post:
+      operationId: finishMetaConnect
+      summary: Finish connecting the organization's Meta business
+      description: |
+        The signed-in person posts the code and the state the callback put
+        into the URL fragment (spec 66 section 4.1). The state must be valid
+        and name this organization AND the caller, otherwise 403
+        `meta.state_mismatch`: a login started by someone else cannot be
+        finished in your session. Checks again that the caller holds
+        `org.update` here through an active membership, exchanges the code
+        (redirect_uri = META_OAUTH_REDIRECT_URL), reads `/me`, the granted
+        permissions and the shared objects, stores the connection with the
+        token sealed and audits `v1.org.meta.connect`. Requires `org.update`
+        (the owner); an organization API key is refused.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetaFinishRequest"
+      responses:
+        "200":
+          description: Connected; the connection as stored now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaIntegration"
+        "400":
+          description: |
+            org_id is not a UUID, the body is invalid (`meta.invalid_body`),
+            the code is missing (`meta.no_code`) or the state is invalid or
+            expired (`meta.state_invalid`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: |
+            Caller lacks `org.update` in the organization (`meta.forbidden`
+            when it was lost after connect), is an API key
+            (`meta.api_key_forbidden`), or the state names another
+            organization or person (`meta.state_mismatch`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: Meta refused the code (`meta.exchange_failed`) or did not answer (`meta.graph_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The Meta connection is switched off (`meta.disabled`) or the database is unavailable (`meta.unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/integrations/meta:
+    get:
+      operationId: getMetaIntegration
+      summary: Read the organization's Meta connection
+      description: |
+        Whether the feature is on, the status, the business, the shared
+        datasets, ad accounts and pages and which are selected, and the
+        granted permissions. The token is never returned. Requires
+        `org.update` (the owner); an organization API key is refused.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The connection, or `connection` null.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaIntegration"
+        "400":
+          description: org_id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `org.update` in the organization, or is an API key (`meta.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    patch:
+      operationId: updateMetaIntegration
+      summary: Select the dataset, the ad account and the page the platform uses
+      description: |
+        Marks the given shared objects as selected (one per kind). Audited as
+        `v1.org.meta.select`. Requires `org.update` (the owner); an
+        organization API key is refused.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMetaIntegrationRequest"
+      responses:
+        "200":
+          description: Saved; the connection as stored now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaIntegration"
+        "400":
+          description: org_id is not a UUID, or the body is invalid (`meta.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `org.update` in the organization, or is an API key (`meta.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The organization has no Meta connection (`meta.not_connected`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The meta_id is not a shared object of that kind in this organization (`meta.asset_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    delete:
+      operationId: deleteMetaIntegration
+      summary: Disconnect the organization's Meta business
+      description: |
+        Asks Meta to drop the access (`DELETE /me/permissions`, best effort),
+        then always wipes the stored token, sets the connection to revoked
+        and removes the shared objects. Audited as `v1.org.meta.disconnect`.
+        Requires `org.update` (the owner); an organization API key is refused.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Disconnected; the connection as stored now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaIntegration"
+        "400":
+          description: org_id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `org.update` in the organization, or is an API key (`meta.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The organization has no Meta connection (`meta.not_connected`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/integrations/meta/page:
+    get:
+      operationId: getMetaPagePreview
+      summary: Show the selected Facebook Page as Meta shows it now
+      description: |
+        Reads the selected Page live from the Graph API
+        (`GET /{page_id}?fields=name,category,link,fan_count,picture{url}`)
+        with the connection token (permission `pages_read_engagement`). Nothing
+        of the answer is stored or logged. A Graph error 190 moves the
+        connection to error and tells its owners, like a 190 of the
+        Conversions API. Requires `org.update` (the owner); an organization
+        API key is refused.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The Page as Meta shows it now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaPagePreview"
+        "400":
+          description: org_id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `org.update` in the organization, or is an API key (`meta.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The organization has no Meta connection (`meta.not_connected`) or no page is selected (`meta.no_page`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The connection is not active (error or revoked), connect again (`meta.not_active`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: Meta did not answer or refused (`meta.graph_error`); Meta's own message is never passed on.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The Meta connection is switched off (`meta.disabled`) or the database is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/integrations/meta/callback:
+    get:
+      operationId: metaLoginCallback
+      summary: Send the person back from the Meta login to the event center
+      description: |
+        Public, no login. Checks only the signature and the 10 minutes of
+        the state, and never exchanges the code: a public GET that stored a
+        connection would let anyone finish a login in another person's
+        session (login CSRF). Code and state go to the event center in the
+        URL fragment, never the query; the signed-in person then posts them
+        to `POST /v1/organizations/{org_id}/integrations/meta/finish`. Every
+        outcome is a redirect to the event center, never JSON.
+      tags: [v1]
+      parameters:
+        - name: code
+          in: query
+          required: false
+          description: The login code from Meta.
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          description: The signed state from the connect route.
+          schema:
+            type: string
+        - name: error
+          in: query
+          required: false
+          description: Set by Meta when the person cancelled or refused.
+          schema:
+            type: string
+      responses:
+        "302":
+          description: |
+            Redirect to
+            `EVENT_CENTER_PUBLIC_URL/o/{org_id}/ads/meta?meta=finish#code=<code>&state=<state>`,
+            or `?meta=error&reason=<code>` with reason denied or no_code. A
+            state that cannot be trusted (`state_invalid`) or a switched-off
+            feature (`disabled`) goes to the event center root.
+          headers:
+            Location:
+              description: Where the person goes next.
+              schema:
+                type: string
+        "503":
+          description: |
+            EVENT_CENTER_PUBLIC_URL is not configured, so there is nowhere to
+            send the person (`meta.event_center_unconfigured`). The only answer
+            that is not a redirect.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/integrations/meta/deauthorize:
+    post:
+      operationId: metaDeauthorizeCallback
+      summary: Meta tells the platform a person removed the app
+      description: |
+        Public: Meta's deauthorize callback, signed with the app secret
+        (constant-time compare). Every connection made by the signed
+        app-scoped user id is deleted at once with its shared objects, like
+        a data deletion. Audited as `v1.org.meta.deauthorize` (system actor);
+        the audit row stays.
+      tags: [v1]
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/MetaSignedRequestForm"
+      responses:
+        "200":
+          description: Received.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaCallbackReceived"
+        "400":
+          description: signed_request missing, wrongly signed, issued more than 24 hours ago or more than 5 minutes ahead (`meta.invalid_signed_request`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The Meta connection is switched off (`meta.disabled`) or the database is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/integrations/meta/data-deletion:
+    post:
+      operationId: metaDataDeletionCallback
+      summary: Meta asks the platform to delete a person's data
+      description: |
+        Public: Meta's data-deletion callback, signed with the app secret.
+        Every connection made by the signed app-scoped user id is deleted
+        with its shared objects. Audited as `v1.org.meta.data_deletion`
+        (system actor) with the confirmation code. Answers what Meta requires.
+      tags: [v1]
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/MetaSignedRequestForm"
+      responses:
+        "200":
+          description: Deleted (also when nothing was stored).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaDataDeletionAnswer"
+        "400":
+          description: signed_request missing, wrongly signed, issued more than 24 hours ago or more than 5 minutes ahead (`meta.invalid_signed_request`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The Meta connection is switched off (`meta.disabled`) or the database is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/integrations/meta/webhook:
+    get:
+      operationId: metaWebhookVerify
+      summary: Meta checks the app webhook subscription
+      description: |
+        Public: the subscription check Meta makes when the webhook is set up
+        in the Meta app (Webhooks, object Application). With `hub.mode`
+        `subscribe` and `hub.verify_token` equal to
+        `META_WEBHOOK_VERIFY_TOKEN` (constant-time compare) the answer is
+        `hub.challenge` as plain text. Reads and changes nothing.
+      tags: [v1]
+      parameters:
+        - name: hub.mode
+          in: query
+          required: false
+          description: Must be `subscribe`.
+          schema:
+            type: string
+        - name: hub.verify_token
+          in: query
+          required: false
+          description: The verify token entered in the Meta app.
+          schema:
+            type: string
+        - name: hub.challenge
+          in: query
+          required: false
+          description: The text Meta expects back (1 to 256 letters, digits, `-` or `_`).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The verify token matches; the body is `hub.challenge`.
+          content:
+            text/plain:
+              schema:
+                type: string
+        "403":
+          description: |
+            The mode is not `subscribe`, the verify token does not match,
+            `META_WEBHOOK_VERIFY_TOKEN` is not set, or `hub.challenge` is not
+            1 to 256 letters, digits, `-` or `_` (`meta.webhook_verify_refused`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The Meta connection is switched off (`meta.disabled`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: metaWebhook
+      summary: Meta tells the platform a business removed the app
+      description: |
+        Public: Meta's app webhook. `X-Hub-Signature-256` must be
+        `sha256=<hex>` of the HMAC-SHA256 of the raw body with the app
+        secret (constant-time compare); the body is at most 64 KB. A change
+        with the field `business_integration_uninstall` deletes every
+        connection to that business with its shared objects; audited as
+        `v1.org.meta.uninstall` (system actor), the audit row stays. Other fields are ignored. After a valid signature the answer
+        is 200, so Meta does not send the change again.
+      tags: [v1]
+      parameters:
+        - name: X-Hub-Signature-256
+          in: header
+          required: true
+          description: "`sha256=` and the hex HMAC-SHA256 of the raw body with the app secret."
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetaWebhookPayload"
+      responses:
+        "200":
+          description: Received (also when nothing matched or the field is ignored).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaCallbackReceived"
+        "400":
+          description: The body could not be read (`meta.webhook_unreadable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: X-Hub-Signature-256 is missing or wrong (`meta.invalid_signature`); nothing changes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The Meta connection is switched off (`meta.disabled`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: The body is larger than 64 KB (`meta.webhook_too_large`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable; Meta sends the change again.
           content:
             application/json:
               schema:
