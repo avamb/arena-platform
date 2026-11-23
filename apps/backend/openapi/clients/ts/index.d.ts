@@ -25144,6 +25144,14 @@ export interface components {
              * @example https://api.arenasoldout.com/v1/media-files/01929d0e-0e47-7000-8000-000000000099
              */
             logo_url?: string | null;
+            /**
+             * @description True when the organizer measures ads (Meta, Google): an active Meta
+             *     connection with a selected dataset, or manual Meta or GA4
+             *     conversion credentials. The page then shows a cookie banner and
+             *     sets no cookie before the visitor chooses; false means no banner.
+             * @example false
+             */
+            tracking_enabled?: boolean;
         };
         /**
          * @description Event slice of the hosted sales page resolve response. Reuses the

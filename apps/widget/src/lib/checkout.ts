@@ -213,6 +213,11 @@ export interface CheckoutStartPayload {
    * send it always gets the hosted page (spec 65 §3.5).
    */
   capabilities?: string[];
+  /**
+   * Browser tracking context for server-side Meta CAPI / GA4. Present only
+   * when the host page set `tracking-consent` to granted or denied.
+   */
+  buyer_context?: import('./buyerContext.js').BuyerContextPayload;
 }
 
 /**

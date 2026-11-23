@@ -13,6 +13,9 @@ export interface HostedPageOrg {
   slug: string;
   name: string;
   logo_url: string | null;
+  /** True when the organizer measures ads (Meta, Google): the page then shows
+   * the cookie banner. Absent on an older backend, which means false. */
+  tracking_enabled?: boolean;
 }
 
 export interface HostedPageEvent {
