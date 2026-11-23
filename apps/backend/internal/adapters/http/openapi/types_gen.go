@@ -520,6 +520,14 @@ const (
 	MembershipItemStatusSuspended MembershipItemStatus = "suspended"
 )
 
+// Defines values for MetaAdsSyncStatus.
+const (
+	MetaAdsSyncStatusError        MetaAdsSyncStatus = "error"
+	MetaAdsSyncStatusNoAdAccount  MetaAdsSyncStatus = "no_ad_account"
+	MetaAdsSyncStatusNotConnected MetaAdsSyncStatus = "not_connected"
+	MetaAdsSyncStatusOk           MetaAdsSyncStatus = "ok"
+)
+
 // Defines values for MetaAssetKind.
 const (
 	AdAccount MetaAssetKind = "ad_account"
@@ -966,10 +974,10 @@ const (
 
 // Defines values for GetV1AdminCustomerImportsIdRowsParamsAction.
 const (
-	Created        GetV1AdminCustomerImportsIdRowsParamsAction = "created"
-	Matched        GetV1AdminCustomerImportsIdRowsParamsAction = "matched"
-	MergeCandidate GetV1AdminCustomerImportsIdRowsParamsAction = "merge_candidate"
-	Skipped        GetV1AdminCustomerImportsIdRowsParamsAction = "skipped"
+	GetV1AdminCustomerImportsIdRowsParamsActionCreated        GetV1AdminCustomerImportsIdRowsParamsAction = "created"
+	GetV1AdminCustomerImportsIdRowsParamsActionMatched        GetV1AdminCustomerImportsIdRowsParamsAction = "matched"
+	GetV1AdminCustomerImportsIdRowsParamsActionMergeCandidate GetV1AdminCustomerImportsIdRowsParamsAction = "merge_candidate"
+	GetV1AdminCustomerImportsIdRowsParamsActionSkipped        GetV1AdminCustomerImportsIdRowsParamsAction = "skipped"
 )
 
 // Defines values for ListEventsParamsVisibility.
@@ -12264,6 +12272,253 @@ type MembershipItemRole string
 
 // MembershipItemStatus Lifecycle state of the membership. active = in force, revoked = soft-removed by an admin, suspended = paused.
 type MembershipItemStatus string
+
+// MetaAdsApiVolume How many Meta calls the platform made for the organization in the last 15 days.
+type MetaAdsApiVolume struct {
+	// Calls15d Calls made.
+	Calls15d int64 `json:"calls_15d"`
+
+	// Errors15d Calls that failed.
+	Errors15d int64 `json:"errors_15d"`
+}
+
+// MetaAdsCampaign One campaign with Meta's numbers and ours.
+type MetaAdsCampaign struct {
+	// CampaignId The Meta campaign id, the same value as `utm_campaign` in the link.
+	CampaignId string `json:"campaign_id"`
+
+	// CampaignName Name of the campaign.
+	CampaignName string `json:"campaign_name"`
+
+	// Clicks Number of clicks of any kind.
+	Clicks int64 `json:"clicks"`
+
+	// Currency ISO 4217 currency of the ad account, null when unknown.
+	Currency *string `json:"currency"`
+
+	// EffectiveStatus Meta's effective status of the campaign, null when unknown.
+	EffectiveStatus *string `json:"effective_status"`
+
+	// Events The events the campaign is linked to.
+	Events []MetaAdsEventRef `json:"events"`
+
+	// Impressions Number of impressions.
+	Impressions int64 `json:"impressions"`
+
+	// LinkClicks Number of clicks on the link.
+	LinkClicks int64 `json:"link_clicks"`
+
+	// MetaPurchaseValueMinor Value of the purchases Meta counted, in minor units of `currency`.
+	MetaPurchaseValueMinor int64 `json:"meta_purchase_value_minor"`
+
+	// MetaPurchases Purchases Meta counted.
+	MetaPurchases int64 `json:"meta_purchases"`
+
+	// PaidOrders Our paid orders that carry this campaign id.
+	PaidOrders int64 `json:"paid_orders"`
+
+	// RevenueCurrency ISO 4217 currency of the orders, null when there are none.
+	RevenueCurrency *string `json:"revenue_currency"`
+
+	// RevenueNetMinor Our net revenue from those orders, in minor units of `revenue_currency`.
+	RevenueNetMinor int64 `json:"revenue_net_minor"`
+
+	// Shared The campaign is linked to more than one event; its spend is not split between them.
+	Shared bool `json:"shared"`
+
+	// SpendMinor Spend in minor units of `currency`.
+	SpendMinor int64 `json:"spend_minor"`
+}
+
+// MetaAdsEventRef An event a campaign is linked to.
+type MetaAdsEventRef struct {
+	// EventId UUID of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Name Name of the event.
+	Name string `json:"name"`
+}
+
+// MetaAdsEventReport The Meta ads report of one event.
+type MetaAdsEventReport struct {
+	// Campaigns Campaigns linked to the event.
+	Campaigns []MetaAdsCampaign `json:"campaigns"`
+
+	// Mer Net revenue divided by spend. Null when the currencies differ or spend is zero.
+	Mer *float32 `json:"mer"`
+
+	// Meta Meta's numbers for the campaigns linked to the event.
+	Meta MetaAdsMetaTotals `json:"meta"`
+
+	// Ours Our numbers for the event's orders from those campaigns.
+	Ours MetaAdsOurTotals `json:"ours"`
+
+	// Period The reported period.
+	Period MetaAdsPeriod `json:"period"`
+
+	// SharedSpend At least one linked campaign is also linked to another event, so spend may include other events.
+	SharedSpend bool `json:"shared_spend"`
+
+	// Sync State of the daily read of ad spend.
+	Sync MetaAdsSync `json:"sync"`
+
+	// Untagged Share of the event's paid orders without a campaign id.
+	Untagged MetaAdsUntagged `json:"untagged"`
+
+	// UrlParametersTemplate The URL parameters to set on the ad so orders can be linked to it.
+	UrlParametersTemplate string `json:"url_parameters_template"`
+}
+
+// MetaAdsEventRow One event line of the organization summary.
+type MetaAdsEventRow struct {
+	// Currency ISO 4217 currency of the ad account, null when unknown.
+	Currency *string `json:"currency"`
+
+	// EventId UUID of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Mer Net revenue divided by spend. Null when the currencies differ or spend is zero.
+	Mer *float32 `json:"mer"`
+
+	// Name Name of the event.
+	Name string `json:"name"`
+
+	// PaidOrders Paid orders of the event from Meta campaigns.
+	PaidOrders int64 `json:"paid_orders"`
+
+	// RevenueCurrency ISO 4217 currency of the orders, null when there are none.
+	RevenueCurrency *string `json:"revenue_currency"`
+
+	// RevenueNetMinor Net revenue of those orders in minor units of `revenue_currency`.
+	RevenueNetMinor int64 `json:"revenue_net_minor"`
+
+	// SpendMinor Spend of the linked campaigns in minor units of `currency`.
+	SpendMinor int64 `json:"spend_minor"`
+}
+
+// MetaAdsMetaTotals What Meta reports for the period, summed.
+type MetaAdsMetaTotals struct {
+	// Clicks Number of clicks of any kind.
+	Clicks int64 `json:"clicks"`
+
+	// Currency ISO 4217 currency of the ad account, null when unknown.
+	Currency *string `json:"currency"`
+
+	// Impressions Number of impressions.
+	Impressions int64 `json:"impressions"`
+
+	// LinkClicks Number of clicks on the link.
+	LinkClicks int64 `json:"link_clicks"`
+
+	// PurchaseValueMinor Value of the purchases Meta counted, in minor units of `currency`.
+	PurchaseValueMinor int64 `json:"purchase_value_minor"`
+
+	// Purchases Purchases Meta counted.
+	Purchases int64 `json:"purchases"`
+
+	// SpendMinor Spend in minor units of `currency`.
+	SpendMinor int64 `json:"spend_minor"`
+}
+
+// MetaAdsOrgSummary The Meta ads summary of the whole organization.
+type MetaAdsOrgSummary struct {
+	// ApiVolume Meta call volume of the last 15 days.
+	ApiVolume MetaAdsApiVolume `json:"api_volume"`
+
+	// Campaigns Every campaign with spend in the period.
+	Campaigns []MetaAdsCampaign `json:"campaigns"`
+
+	// Events Events linked to at least one campaign.
+	Events []MetaAdsEventRow `json:"events"`
+
+	// Meta Meta's numbers for all campaigns of the ad account.
+	Meta MetaAdsMetaTotals `json:"meta"`
+
+	// Period The reported period.
+	Period MetaAdsPeriod `json:"period"`
+
+	// Sync State of the daily read of ad spend.
+	Sync MetaAdsSync `json:"sync"`
+
+	// UrlParametersTemplate The URL parameters to set on the ad so orders can be linked to it.
+	UrlParametersTemplate string `json:"url_parameters_template"`
+}
+
+// MetaAdsOurTotals Our own numbers for orders that came from Meta ads in the period.
+type MetaAdsOurTotals struct {
+	// CheckoutsStarted Checkouts started whose link carried a known campaign id.
+	CheckoutsStarted int64 `json:"checkouts_started"`
+
+	// Currency ISO 4217 currency of the orders, null when there are none.
+	Currency *string `json:"currency"`
+
+	// PaidOrders Paid orders from those campaigns, complimentary excluded.
+	PaidOrders int64 `json:"paid_orders"`
+
+	// RevenueNetMinor Order totals minus succeeded refunds, in minor units of `currency`.
+	RevenueNetMinor int64 `json:"revenue_net_minor"`
+}
+
+// MetaAdsPeriod The reported period, both days included, in the ad account's time zone.
+type MetaAdsPeriod struct {
+	// From First day of the period.
+	From openapi_types.Date `json:"from"`
+
+	// To Last day of the period.
+	To openapi_types.Date `json:"to"`
+}
+
+// MetaAdsRefreshResult Answer to a request to read ad spend now.
+type MetaAdsRefreshResult struct {
+	// NotBefore The earliest time the next manual read is accepted, null when not limited.
+	NotBefore *time.Time `json:"not_before"`
+
+	// Queued A read was queued; false when one was asked for less than 10 minutes ago.
+	Queued bool `json:"queued"`
+}
+
+// MetaAdsSync State of the daily read of Meta ad spend for the organization.
+type MetaAdsSync struct {
+	// AdAccountId The meta_id of the selected ad account, null when none is selected.
+	AdAccountId *string `json:"ad_account_id"`
+
+	// AdAccountName Name of the selected ad account, null when none is selected.
+	AdAccountName *string `json:"ad_account_name"`
+
+	// BackfillDone The first read of the past days has finished.
+	BackfillDone bool `json:"backfill_done"`
+
+	// Currency ISO 4217 currency of the ad account, null when unknown.
+	Currency *string `json:"currency"`
+
+	// LastError Short code of the last read problem, null when there is none.
+	LastError *string `json:"last_error"`
+
+	// LastSuccessAt When spend was last read without error, null when never.
+	LastSuccessAt *time.Time `json:"last_success_at"`
+
+	// Status not_connected = no active Meta connection; no_ad_account = connected
+	// but no ad account selected; ok = the last read worked; error = the
+	// last read failed (see `last_error`).
+	Status MetaAdsSyncStatus `json:"status"`
+
+	// Timezone Time zone name of the ad account, null when unknown.
+	Timezone *string `json:"timezone"`
+}
+
+// MetaAdsSyncStatus not_connected = no active Meta connection; no_ad_account = connected
+// but no ad account selected; ok = the last read worked; error = the
+// last read failed (see `last_error`).
+type MetaAdsSyncStatus string
+
+// MetaAdsUntagged How many paid orders carry no campaign id in their link.
+type MetaAdsUntagged struct {
+	// PaidOrders All paid orders in the period.
+	PaidOrders int64 `json:"paid_orders"`
+
+	// UntaggedOrders Paid orders without a campaign id.
+	UntaggedOrders int64 `json:"untagged_orders"`
+}
 
 // MetaAsset A dataset (pixel), ad account or page the organizer shared with the platform.
 type MetaAsset struct {
@@ -26344,6 +26599,15 @@ type ArchiveOperatorNetworkParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// GetOrgMetaAdsSummaryParams defines parameters for GetOrgMetaAdsSummary.
+type GetOrgMetaAdsSummaryParams struct {
+	// From First day of the period, YYYY-MM-DD.
+	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day of the period, YYYY-MM-DD.
+	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
+}
+
 // ListOrganizationApiKeysParams defines parameters for ListOrganizationApiKeys.
 type ListOrganizationApiKeysParams struct {
 	// XAdminReason Human-readable business reason for the admin read (audit trail).
@@ -26555,6 +26819,15 @@ type GetV1OrganizationsOrgIdEventsSalesSummaryParams struct {
 	// 50. Repeating the parameter (`ids=a&ids=b`) is not supported: only
 	// the first value is read.
 	Ids string `form:"ids" json:"ids"`
+}
+
+// GetEventMetaAdsParams defines parameters for GetEventMetaAds.
+type GetEventMetaAdsParams struct {
+	// From First day of the period, YYYY-MM-DD.
+	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day of the period, YYYY-MM-DD.
+	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
 }
 
 // GetV1OrganizationsOrgIdEventsEventIdFunnelParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdFunnel.

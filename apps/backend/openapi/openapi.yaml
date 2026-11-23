@@ -19829,6 +19829,333 @@ components:
             256 KB), so the event center loads no third-party image; null when
             there is no picture or it could not be read.
 
+    MetaAdsSync:
+      type: object
+      required: [status, ad_account_id, ad_account_name, currency, timezone, last_success_at, last_error, backfill_done]
+      description: State of the daily read of Meta ad spend for the organization.
+      properties:
+        status:
+          type: string
+          enum: [not_connected, no_ad_account, ok, error]
+          description: |
+            not_connected = no active Meta connection; no_ad_account = connected
+            but no ad account selected; ok = the last read worked; error = the
+            last read failed (see `last_error`).
+        ad_account_id:
+          type: [string, "null"]
+          description: The meta_id of the selected ad account, null when none is selected.
+        ad_account_name:
+          type: [string, "null"]
+          description: Name of the selected ad account, null when none is selected.
+        currency:
+          type: [string, "null"]
+          description: ISO 4217 currency of the ad account, null when unknown.
+        timezone:
+          type: [string, "null"]
+          description: Time zone name of the ad account, null when unknown.
+        last_success_at:
+          type: [string, "null"]
+          format: date-time
+          description: When spend was last read without error, null when never.
+        last_error:
+          type: [string, "null"]
+          description: Short code of the last read problem, null when there is none.
+        backfill_done:
+          type: boolean
+          description: The first read of the past days has finished.
+
+    MetaAdsPeriod:
+      type: object
+      required: [from, to]
+      description: The reported period, both days included, in the ad account's time zone.
+      properties:
+        from:
+          type: string
+          format: date
+          description: First day of the period.
+        to:
+          type: string
+          format: date
+          description: Last day of the period.
+
+    MetaAdsMetaTotals:
+      type: object
+      required: [spend_minor, currency, impressions, clicks, link_clicks, purchases, purchase_value_minor]
+      description: What Meta reports for the period, summed.
+      properties:
+        spend_minor:
+          type: integer
+          format: int64
+          description: Spend in minor units of `currency`.
+        currency:
+          type: [string, "null"]
+          description: ISO 4217 currency of the ad account, null when unknown.
+        impressions:
+          type: integer
+          format: int64
+          description: Number of impressions.
+        clicks:
+          type: integer
+          format: int64
+          description: Number of clicks of any kind.
+        link_clicks:
+          type: integer
+          format: int64
+          description: Number of clicks on the link.
+        purchases:
+          type: integer
+          format: int64
+          description: Purchases Meta counted.
+        purchase_value_minor:
+          type: integer
+          format: int64
+          description: Value of the purchases Meta counted, in minor units of `currency`.
+
+    MetaAdsOurTotals:
+      type: object
+      required: [checkouts_started, paid_orders, revenue_net_minor, currency]
+      description: Our own numbers for orders that came from Meta ads in the period.
+      properties:
+        checkouts_started:
+          type: integer
+          format: int64
+          description: Checkouts started whose link carried a known campaign id.
+        paid_orders:
+          type: integer
+          format: int64
+          description: Paid orders from those campaigns, complimentary excluded.
+        revenue_net_minor:
+          type: integer
+          format: int64
+          description: Order totals minus succeeded refunds, in minor units of `currency`.
+        currency:
+          type: [string, "null"]
+          description: ISO 4217 currency of the orders, null when there are none.
+
+    MetaAdsUntagged:
+      type: object
+      required: [paid_orders, untagged_orders]
+      description: How many paid orders carry no campaign id in their link.
+      properties:
+        paid_orders:
+          type: integer
+          format: int64
+          description: All paid orders in the period.
+        untagged_orders:
+          type: integer
+          format: int64
+          description: Paid orders without a campaign id.
+
+    MetaAdsEventRef:
+      type: object
+      required: [event_id, name]
+      description: An event a campaign is linked to.
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: UUID of the event.
+        name:
+          type: string
+          description: Name of the event.
+
+    MetaAdsCampaign:
+      type: object
+      required: [campaign_id, campaign_name, effective_status, spend_minor, currency, impressions, clicks, link_clicks, meta_purchases, meta_purchase_value_minor, paid_orders, revenue_net_minor, revenue_currency, shared, events]
+      description: One campaign with Meta's numbers and ours.
+      properties:
+        campaign_id:
+          type: string
+          description: The Meta campaign id, the same value as `utm_campaign` in the link.
+        campaign_name:
+          type: string
+          description: Name of the campaign.
+        effective_status:
+          type: [string, "null"]
+          description: Meta's effective status of the campaign, null when unknown.
+        spend_minor:
+          type: integer
+          format: int64
+          description: Spend in minor units of `currency`.
+        currency:
+          type: [string, "null"]
+          description: ISO 4217 currency of the ad account, null when unknown.
+        impressions:
+          type: integer
+          format: int64
+          description: Number of impressions.
+        clicks:
+          type: integer
+          format: int64
+          description: Number of clicks of any kind.
+        link_clicks:
+          type: integer
+          format: int64
+          description: Number of clicks on the link.
+        meta_purchases:
+          type: integer
+          format: int64
+          description: Purchases Meta counted.
+        meta_purchase_value_minor:
+          type: integer
+          format: int64
+          description: Value of the purchases Meta counted, in minor units of `currency`.
+        paid_orders:
+          type: integer
+          format: int64
+          description: Our paid orders that carry this campaign id.
+        revenue_net_minor:
+          type: integer
+          format: int64
+          description: Our net revenue from those orders, in minor units of `revenue_currency`.
+        revenue_currency:
+          type: [string, "null"]
+          description: ISO 4217 currency of the orders, null when there are none.
+        shared:
+          type: boolean
+          description: The campaign is linked to more than one event; its spend is not split between them.
+        events:
+          type: array
+          description: The events the campaign is linked to.
+          items:
+            $ref: "#/components/schemas/MetaAdsEventRef"
+
+    MetaAdsEventReport:
+      type: object
+      required: [sync, period, meta, ours, mer, untagged, campaigns, url_parameters_template, shared_spend]
+      description: The Meta ads report of one event.
+      properties:
+        sync:
+          allOf:
+            - $ref: "#/components/schemas/MetaAdsSync"
+          description: State of the daily read of ad spend.
+        period:
+          allOf:
+            - $ref: "#/components/schemas/MetaAdsPeriod"
+          description: The reported period.
+        meta:
+          allOf:
+            - $ref: "#/components/schemas/MetaAdsMetaTotals"
+          description: Meta's numbers for the campaigns linked to the event.
+        ours:
+          allOf:
+            - $ref: "#/components/schemas/MetaAdsOurTotals"
+          description: Our numbers for the event's orders from those campaigns.
+        mer:
+          type: [number, "null"]
+          description: Net revenue divided by spend. Null when the currencies differ or spend is zero.
+        untagged:
+          allOf:
+            - $ref: "#/components/schemas/MetaAdsUntagged"
+          description: Share of the event's paid orders without a campaign id.
+        campaigns:
+          type: array
+          description: Campaigns linked to the event.
+          items:
+            $ref: "#/components/schemas/MetaAdsCampaign"
+        url_parameters_template:
+          type: string
+          description: The URL parameters to set on the ad so orders can be linked to it.
+        shared_spend:
+          type: boolean
+          description: At least one linked campaign is also linked to another event, so spend may include other events.
+
+    MetaAdsEventRow:
+      type: object
+      required: [event_id, name, spend_minor, currency, paid_orders, revenue_net_minor, revenue_currency, mer]
+      description: One event line of the organization summary.
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: UUID of the event.
+        name:
+          type: string
+          description: Name of the event.
+        spend_minor:
+          type: integer
+          format: int64
+          description: Spend of the linked campaigns in minor units of `currency`.
+        currency:
+          type: [string, "null"]
+          description: ISO 4217 currency of the ad account, null when unknown.
+        paid_orders:
+          type: integer
+          format: int64
+          description: Paid orders of the event from Meta campaigns.
+        revenue_net_minor:
+          type: integer
+          format: int64
+          description: Net revenue of those orders in minor units of `revenue_currency`.
+        revenue_currency:
+          type: [string, "null"]
+          description: ISO 4217 currency of the orders, null when there are none.
+        mer:
+          type: [number, "null"]
+          description: Net revenue divided by spend. Null when the currencies differ or spend is zero.
+
+    MetaAdsApiVolume:
+      type: object
+      required: [calls_15d, errors_15d]
+      description: How many Meta calls the platform made for the organization in the last 15 days.
+      properties:
+        calls_15d:
+          type: integer
+          format: int64
+          description: Calls made.
+        errors_15d:
+          type: integer
+          format: int64
+          description: Calls that failed.
+
+    MetaAdsOrgSummary:
+      type: object
+      required: [sync, period, meta, campaigns, events, api_volume, url_parameters_template]
+      description: The Meta ads summary of the whole organization.
+      properties:
+        sync:
+          allOf:
+            - $ref: "#/components/schemas/MetaAdsSync"
+          description: State of the daily read of ad spend.
+        period:
+          allOf:
+            - $ref: "#/components/schemas/MetaAdsPeriod"
+          description: The reported period.
+        meta:
+          allOf:
+            - $ref: "#/components/schemas/MetaAdsMetaTotals"
+          description: Meta's numbers for all campaigns of the ad account.
+        campaigns:
+          type: array
+          description: Every campaign with spend in the period.
+          items:
+            $ref: "#/components/schemas/MetaAdsCampaign"
+        events:
+          type: array
+          description: Events linked to at least one campaign.
+          items:
+            $ref: "#/components/schemas/MetaAdsEventRow"
+        api_volume:
+          allOf:
+            - $ref: "#/components/schemas/MetaAdsApiVolume"
+          description: Meta call volume of the last 15 days.
+        url_parameters_template:
+          type: string
+          description: The URL parameters to set on the ad so orders can be linked to it.
+
+    MetaAdsRefreshResult:
+      type: object
+      required: [queued, not_before]
+      description: Answer to a request to read ad spend now.
+      properties:
+        queued:
+          type: boolean
+          description: A read was queued; false when one was asked for less than 10 minutes ago.
+        not_before:
+          type: [string, "null"]
+          format: date-time
+          description: The earliest time the next manual read is accepted, null when not limited.
+
     MetaSignedRequestForm:
       type: object
       required: [signed_request]
@@ -48550,6 +48877,201 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: The organization has no Meta connection (`meta.not_connected`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/ads/meta:
+    get:
+      operationId: getEventMetaAds
+      summary: Meta ads report of one event
+      description: |
+        Meta's spend and clicks for the campaigns linked to the event, our own
+        paid orders and net revenue from those campaigns, MER, the share of
+        orders without a campaign id, and the URL parameters to set on ads.
+        Default period is the last 30 days. Requires `report.read`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: event_id
+          in: path
+          required: true
+          description: UUID of the event.
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: false
+          description: First day of the period, YYYY-MM-DD.
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          description: Last day of the period, YYYY-MM-DD.
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: The report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaAdsEventReport"
+        "400":
+          description: A path id is not a UUID, or `from` or `to` is not a date, or `from` is after `to`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `report.read` in the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The event does not exist in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/ads/meta/summary:
+    get:
+      operationId: getOrgMetaAdsSummary
+      summary: Meta ads summary of the organization
+      description: |
+        Per campaign and per linked event: Meta's numbers and ours, the state
+        of the daily read, and the Meta call volume of the last 15 days.
+        Default period is the last 30 days. Requires `report.read`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: false
+          description: First day of the period, YYYY-MM-DD.
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          description: Last day of the period, YYYY-MM-DD.
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: The summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaAdsOrgSummary"
+        "400":
+          description: org_id is not a UUID, or `from` or `to` is not a date, or `from` is after `to`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `report.read` in the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/ads/meta/refresh:
+    post:
+      operationId: refreshOrgMetaAds
+      summary: Read Meta ad spend now
+      description: |
+        Queues a read of the ad spend. At most one manual read per 10 minutes
+        per organization; `not_before` tells when the next one is accepted.
+        Requires `report.read`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "202":
+          description: Accepted; `queued` tells whether a new read was queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaAdsRefreshResult"
+        "400":
+          description: org_id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `report.read` in the organization.
           content:
             application/json:
               schema:

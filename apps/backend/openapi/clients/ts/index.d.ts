@@ -5296,6 +5296,73 @@ export interface paths {
         patch: operations["updateMetaIntegration"];
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/{event_id}/ads/meta": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Meta ads report of one event
+         * @description Meta's spend and clicks for the campaigns linked to the event, our own
+         *     paid orders and net revenue from those campaigns, MER, the share of
+         *     orders without a campaign id, and the URL parameters to set on ads.
+         *     Default period is the last 30 days. Requires `report.read`.
+         */
+        get: operations["getEventMetaAds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/ads/meta/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Meta ads summary of the organization
+         * @description Per campaign and per linked event: Meta's numbers and ours, the state
+         *     of the daily read, and the Meta call volume of the last 15 days.
+         *     Default period is the last 30 days. Requires `report.read`.
+         */
+        get: operations["getOrgMetaAdsSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/ads/meta/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read Meta ad spend now
+         * @description Queues a read of the ad spend. At most one manual read per 10 minutes
+         *     per organization; `not_before` tells when the next one is accepted.
+         *     Requires `report.read`.
+         */
+        post: operations["refreshOrgMetaAds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/integrations/meta/page": {
         parameters: {
             query?: never;
@@ -31777,6 +31844,273 @@ export interface components {
              *     there is no picture or it could not be read.
              */
             picture_data_url: string | null;
+        };
+        /** @description State of the daily read of Meta ad spend for the organization. */
+        MetaAdsSync: {
+            /**
+             * @description not_connected = no active Meta connection; no_ad_account = connected
+             *     but no ad account selected; ok = the last read worked; error = the
+             *     last read failed (see `last_error`).
+             * @enum {string}
+             */
+            status: "not_connected" | "no_ad_account" | "ok" | "error";
+            /** @description The meta_id of the selected ad account, null when none is selected. */
+            ad_account_id: string | null;
+            /** @description Name of the selected ad account, null when none is selected. */
+            ad_account_name: string | null;
+            /** @description ISO 4217 currency of the ad account, null when unknown. */
+            currency: string | null;
+            /** @description Time zone name of the ad account, null when unknown. */
+            timezone: string | null;
+            /**
+             * Format: date-time
+             * @description When spend was last read without error, null when never.
+             */
+            last_success_at: string | null;
+            /** @description Short code of the last read problem, null when there is none. */
+            last_error: string | null;
+            /** @description The first read of the past days has finished. */
+            backfill_done: boolean;
+        };
+        /** @description The reported period, both days included, in the ad account's time zone. */
+        MetaAdsPeriod: {
+            /**
+             * Format: date
+             * @description First day of the period.
+             */
+            from: string;
+            /**
+             * Format: date
+             * @description Last day of the period.
+             */
+            to: string;
+        };
+        /** @description What Meta reports for the period, summed. */
+        MetaAdsMetaTotals: {
+            /**
+             * Format: int64
+             * @description Spend in minor units of `currency`.
+             */
+            spend_minor: number;
+            /** @description ISO 4217 currency of the ad account, null when unknown. */
+            currency: string | null;
+            /**
+             * Format: int64
+             * @description Number of impressions.
+             */
+            impressions: number;
+            /**
+             * Format: int64
+             * @description Number of clicks of any kind.
+             */
+            clicks: number;
+            /**
+             * Format: int64
+             * @description Number of clicks on the link.
+             */
+            link_clicks: number;
+            /**
+             * Format: int64
+             * @description Purchases Meta counted.
+             */
+            purchases: number;
+            /**
+             * Format: int64
+             * @description Value of the purchases Meta counted, in minor units of `currency`.
+             */
+            purchase_value_minor: number;
+        };
+        /** @description Our own numbers for orders that came from Meta ads in the period. */
+        MetaAdsOurTotals: {
+            /**
+             * Format: int64
+             * @description Checkouts started whose link carried a known campaign id.
+             */
+            checkouts_started: number;
+            /**
+             * Format: int64
+             * @description Paid orders from those campaigns, complimentary excluded.
+             */
+            paid_orders: number;
+            /**
+             * Format: int64
+             * @description Order totals minus succeeded refunds, in minor units of `currency`.
+             */
+            revenue_net_minor: number;
+            /** @description ISO 4217 currency of the orders, null when there are none. */
+            currency: string | null;
+        };
+        /** @description How many paid orders carry no campaign id in their link. */
+        MetaAdsUntagged: {
+            /**
+             * Format: int64
+             * @description All paid orders in the period.
+             */
+            paid_orders: number;
+            /**
+             * Format: int64
+             * @description Paid orders without a campaign id.
+             */
+            untagged_orders: number;
+        };
+        /** @description An event a campaign is linked to. */
+        MetaAdsEventRef: {
+            /**
+             * Format: uuid
+             * @description UUID of the event.
+             */
+            event_id: string;
+            /** @description Name of the event. */
+            name: string;
+        };
+        /** @description One campaign with Meta's numbers and ours. */
+        MetaAdsCampaign: {
+            /** @description The Meta campaign id, the same value as `utm_campaign` in the link. */
+            campaign_id: string;
+            /** @description Name of the campaign. */
+            campaign_name: string;
+            /** @description Meta's effective status of the campaign, null when unknown. */
+            effective_status: string | null;
+            /**
+             * Format: int64
+             * @description Spend in minor units of `currency`.
+             */
+            spend_minor: number;
+            /** @description ISO 4217 currency of the ad account, null when unknown. */
+            currency: string | null;
+            /**
+             * Format: int64
+             * @description Number of impressions.
+             */
+            impressions: number;
+            /**
+             * Format: int64
+             * @description Number of clicks of any kind.
+             */
+            clicks: number;
+            /**
+             * Format: int64
+             * @description Number of clicks on the link.
+             */
+            link_clicks: number;
+            /**
+             * Format: int64
+             * @description Purchases Meta counted.
+             */
+            meta_purchases: number;
+            /**
+             * Format: int64
+             * @description Value of the purchases Meta counted, in minor units of `currency`.
+             */
+            meta_purchase_value_minor: number;
+            /**
+             * Format: int64
+             * @description Our paid orders that carry this campaign id.
+             */
+            paid_orders: number;
+            /**
+             * Format: int64
+             * @description Our net revenue from those orders, in minor units of `revenue_currency`.
+             */
+            revenue_net_minor: number;
+            /** @description ISO 4217 currency of the orders, null when there are none. */
+            revenue_currency: string | null;
+            /** @description The campaign is linked to more than one event; its spend is not split between them. */
+            shared: boolean;
+            /** @description The events the campaign is linked to. */
+            events: components["schemas"]["MetaAdsEventRef"][];
+        };
+        /** @description The Meta ads report of one event. */
+        MetaAdsEventReport: {
+            /** @description State of the daily read of ad spend. */
+            sync: components["schemas"]["MetaAdsSync"];
+            /** @description The reported period. */
+            period: components["schemas"]["MetaAdsPeriod"];
+            /** @description Meta's numbers for the campaigns linked to the event. */
+            meta: components["schemas"]["MetaAdsMetaTotals"];
+            /** @description Our numbers for the event's orders from those campaigns. */
+            ours: components["schemas"]["MetaAdsOurTotals"];
+            /** @description Net revenue divided by spend. Null when the currencies differ or spend is zero. */
+            mer: number | null;
+            /** @description Share of the event's paid orders without a campaign id. */
+            untagged: components["schemas"]["MetaAdsUntagged"];
+            /** @description Campaigns linked to the event. */
+            campaigns: components["schemas"]["MetaAdsCampaign"][];
+            /** @description The URL parameters to set on the ad so orders can be linked to it. */
+            url_parameters_template: string;
+            /** @description At least one linked campaign is also linked to another event, so spend may include other events. */
+            shared_spend: boolean;
+        };
+        /** @description One event line of the organization summary. */
+        MetaAdsEventRow: {
+            /**
+             * Format: uuid
+             * @description UUID of the event.
+             */
+            event_id: string;
+            /** @description Name of the event. */
+            name: string;
+            /**
+             * Format: int64
+             * @description Spend of the linked campaigns in minor units of `currency`.
+             */
+            spend_minor: number;
+            /** @description ISO 4217 currency of the ad account, null when unknown. */
+            currency: string | null;
+            /**
+             * Format: int64
+             * @description Paid orders of the event from Meta campaigns.
+             */
+            paid_orders: number;
+            /**
+             * Format: int64
+             * @description Net revenue of those orders in minor units of `revenue_currency`.
+             */
+            revenue_net_minor: number;
+            /** @description ISO 4217 currency of the orders, null when there are none. */
+            revenue_currency: string | null;
+            /** @description Net revenue divided by spend. Null when the currencies differ or spend is zero. */
+            mer: number | null;
+        };
+        /** @description How many Meta calls the platform made for the organization in the last 15 days. */
+        MetaAdsApiVolume: {
+            /**
+             * Format: int64
+             * @description Calls made.
+             */
+            calls_15d: number;
+            /**
+             * Format: int64
+             * @description Calls that failed.
+             */
+            errors_15d: number;
+        };
+        /** @description The Meta ads summary of the whole organization. */
+        MetaAdsOrgSummary: {
+            /** @description State of the daily read of ad spend. */
+            sync: components["schemas"]["MetaAdsSync"];
+            /** @description The reported period. */
+            period: components["schemas"]["MetaAdsPeriod"];
+            /** @description Meta's numbers for all campaigns of the ad account. */
+            meta: components["schemas"]["MetaAdsMetaTotals"];
+            /** @description Every campaign with spend in the period. */
+            campaigns: components["schemas"]["MetaAdsCampaign"][];
+            /** @description Events linked to at least one campaign. */
+            events: components["schemas"]["MetaAdsEventRow"][];
+            /** @description Meta call volume of the last 15 days. */
+            api_volume: components["schemas"]["MetaAdsApiVolume"];
+            /** @description The URL parameters to set on the ad so orders can be linked to it. */
+            url_parameters_template: string;
+        };
+        /** @description Answer to a request to read ad spend now. */
+        MetaAdsRefreshResult: {
+            /** @description A read was queued; false when one was asked for less than 10 minutes ago. */
+            queued: boolean;
+            /**
+             * Format: date-time
+             * @description The earliest time the next manual read is accepted, null when not limited.
+             */
+            not_before: string | null;
         };
         /** @description The form Meta posts to its callbacks. */
         MetaSignedRequestForm: {
@@ -59837,6 +60171,204 @@ export interface operations {
             };
             /** @description The meta_id is not a shared object of that kind in this organization (`meta.asset_not_found`). */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getEventMetaAds: {
+        parameters: {
+            query?: {
+                /** @description First day of the period, YYYY-MM-DD. */
+                from?: string;
+                /** @description Last day of the period, YYYY-MM-DD. */
+                to?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the event. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsEventReport"];
+                };
+            };
+            /** @description A path id is not a UUID, or `from` or `to` is not a date, or `from` is after `to`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `report.read` in the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The event does not exist in this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getOrgMetaAdsSummary: {
+        parameters: {
+            query?: {
+                /** @description First day of the period, YYYY-MM-DD. */
+                from?: string;
+                /** @description Last day of the period, YYYY-MM-DD. */
+                to?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsOrgSummary"];
+                };
+            };
+            /** @description org_id is not a UUID, or `from` or `to` is not a date, or `from` is after `to`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `report.read` in the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    refreshOrgMetaAds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted; `queued` tells whether a new read was queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsRefreshResult"];
+                };
+            };
+            /** @description org_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `report.read` in the organization. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
