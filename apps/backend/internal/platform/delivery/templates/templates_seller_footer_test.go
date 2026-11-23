@@ -36,6 +36,10 @@ func TestRender_SellerAndPaymentProviderInEveryBuyerLetter(t *testing.T) {
 			if !ok {
 				t.Fatalf("no footer words for %s", loc)
 			}
+			if !translated(r, kind, loc) {
+				// Untranslated kind: the letter is English, so is its footer.
+				words = sellerFooterWords["en"]
+			}
 			withProvider := d
 			withProvider.Branding.LegalName = "Teatro Ejemplo S.L."
 			withProvider.Branding.PaymentProvider = "Stripe"

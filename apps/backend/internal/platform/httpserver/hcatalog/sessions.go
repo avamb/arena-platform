@@ -62,6 +62,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventtext"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/extsale"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
@@ -193,6 +194,11 @@ type SessionResponse struct {
 	CreatedAt              string  `json:"created_at"`
 	UpdatedAt              string  `json:"updated_at"`
 	HasOverlappingSessions bool    `json:"has_overlapping_sessions"`
+	// SalesMode is who sells the tickets ("platform" or "external", migration
+	// 0221). External is the partner's box office block, null for a platform
+	// session.
+	SalesMode string        `json:"sales_mode"`
+	External  *extsale.View `json:"external"`
 }
 
 // SessionFromRow converts a SessionRow to a SessionResponse.
@@ -214,6 +220,11 @@ func SessionFromRow(s gen.SessionRow, hasOverlap bool) SessionResponse {
 		CreatedAt:              s.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:              s.UpdatedAt.UTC().Format(time.RFC3339),
 		HasOverlappingSessions: hasOverlap,
+		SalesMode:              s.SalesMode,
+		External:               extsale.ViewFromRow(s),
+	}
+	if resp.SalesMode == "" {
+		resp.SalesMode = gen.SessionSalesModePlatform
 	}
 	if s.SeatingPlanVersionID != nil {
 		v := s.SeatingPlanVersionID.String()
@@ -357,6 +368,10 @@ type createSessionRequest struct {
 	// start) and optional doors-open time (migration 0128).
 	SalesEndAt  *string         `json:"sales_end_at"`
 	DoorsOpenAt json.RawMessage `json:"doors_open_at"`
+	// SalesMode / External say who sells the tickets (migration 0221):
+	// "platform" (default) or "external" with the partner's box office.
+	SalesMode *string         `json:"sales_mode"`
+	External  json.RawMessage `json:"external"`
 }
 
 // HandleCreateSession serves POST /v1/organizations/{org_id}/events/{event_id}/sessions.
@@ -520,6 +535,34 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Who sells the tickets (migration 0221): a partner-sold session owns no
+	// places, so it cannot carry a seating plan.
+	salesWrite, ok := parseSalesModeWrite(w, r, req.SalesMode, req.External)
+	if !ok {
+		return
+	}
+	if salesWrite.Mode == gen.SessionSalesModeExternal {
+		if !salesWrite.ExternalPresent {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+				extsale.CodeExternalMissing, "sales_mode external needs the external block", r,
+				map[string]any{"field": "external"},
+			))
+			return
+		}
+		if seated || hasPlan {
+			writeSalesModeLocked(w, r, gen.SessionSalesModePlatform, gen.SessionSalesModeExternal,
+				"a session with a seating plan cannot be sold by a partner box office")
+			return
+		}
+	} else if salesWrite.ExternalPresent {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+			extsale.CodeExternalUnused, "external applies only to sales_mode external", r,
+			map[string]any{"field": "external"},
+		))
+		return
+	}
+	isExternal := salesWrite.Mode == gen.SessionSalesModeExternal
+
 	// Explicit currency override, if any (AB-38): validated before any DB
 	// round trip so malformed codes fail fast.
 	currency := ""
@@ -636,6 +679,20 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 		}
 		sess = updated
 	}
+	if isExternal {
+		sale := salesWrite.Sale
+		updated, smErr := h.sessionQueries.SetSessionSalesMode(ctx, sess.ID, eventID, gen.SessionSalesModeExternal,
+			&sale.URL, &sale.SellerName, sale.PriceFromMinor, sale.Currency)
+		if smErr != nil {
+			_, _ = h.sessionQueries.SoftDeleteSession(ctx, sess.ID, eventID)
+			h.logger.Error("session: set sales mode failed", slog.String("error", smErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"session.insert_failed", "failed to create session", r,
+			))
+			return
+		}
+		sess = updated
+	}
 
 	// Plan-bound create (seated OR GA-with-plan, AB-51): run the SEAT-B2
 	// bind inline (auto-creating tiers from the plan categories). On bind
@@ -678,8 +735,9 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Initialize the inventory ledger for the new session (feature #130,
-	// non-fatal) with the final derived capacity.
-	if h.inventoryQueries != nil {
+	// non-fatal) with the final derived capacity. A partner-sold session
+	// has no ledger row.
+	if h.inventoryQueries != nil && !isExternal {
 		capTotal := sess.CapacityTotal
 		if _, err := h.inventoryQueries.InsertInventoryLedger(ctx, sess.ID, nil, &capTotal); err != nil {
 			h.logger.Warn("session: inventory initialization failed (non-fatal)",
@@ -871,6 +929,11 @@ type updateSessionRequest struct {
 	// Notice carries the organizer's own text for the letter the buyers get
 	// when this save moves or cancels the session (sessionchange package).
 	Notice *sessionNoticeRequest `json:"notice"`
+	// SalesMode / External change who sells the tickets (migration 0221):
+	// absent = keep. External without SalesMode edits the partner block of a
+	// session that is already external.
+	SalesMode *string         `json:"sales_mode"`
+	External  json.RawMessage `json:"external"`
 }
 
 // sessionNoticeRequest is the optional "notice" object of a session PATCH.
@@ -1043,6 +1106,13 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 			"session.invalid_capacity_override", "capacity_override must be greater than 0", r,
 			map[string]any{"field": "capacity_override"},
 		))
+		return
+	}
+
+	// Who sells the tickets (migration 0221): the shape is checked here, the
+	// lock rules inside the transaction that holds the session row.
+	salesWrite, ok := parseSalesModeWrite(w, r, req.SalesMode, req.External)
+	if !ok {
 		return
 	}
 
@@ -1272,6 +1342,14 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"session.update_failed", "failed to update session", r,
 			))
+			return
+		}
+	}
+
+	if req.SalesMode != nil || salesWrite.ExternalPresent || salesWrite.ExternalNull {
+		var done bool
+		updated, done = h.applySalesMode(ctx, w, r, tx, updated, salesWrite)
+		if !done {
 			return
 		}
 	}

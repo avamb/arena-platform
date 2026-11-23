@@ -5,7 +5,17 @@
  */
 import { ApiError, PAGE_READ_TIMEOUT_MS, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
-import type { GettingStarted, PageStatsResponse, SalesFunnelResponse } from "@/lib/api/types";
+import type {
+  ContentTranslationItem,
+  ContentTranslationList,
+  EventReportText,
+  GettingStarted,
+  MachineTranslateAccepted,
+  OutboundClicksResponse,
+  PageStatsResponse,
+  PutContentTranslationRequest,
+  SalesFunnelResponse,
+} from "@/lib/api/types";
 import type {
   BillingAccountInvoice,
   BillingAccountInvoiceList,
@@ -80,6 +90,11 @@ import type {
   ReferralWarning,
   SellerProfile,
   PromoterEnvelope,
+  Series,
+  SeriesCreateRequest,
+  SeriesDetail,
+  SeriesListEnvelope,
+  SeriesUpdateRequest,
   PromoterListEnvelope,
   PromoCodeEnvelope,
   PromoCodeListResponse,
@@ -135,6 +150,7 @@ import type {
   StaffInvitationOrgListResponse,
 } from "@/lib/api/types";
 import type { SchemaResponse } from "@seatmap/types";
+import type { SalesModePatch } from "@/lib/externalSale";
 import type { SessionPatchBody } from "@/lib/sessionChange";
 
 export function fetchMe(): Promise<MeResponse> {
@@ -413,6 +429,46 @@ export type PromoterPatch = Partial<{
 
 export function updatePromoter(orgId: string, promoterId: string, body: PromoterPatch): Promise<PromoterEnvelope> {
   return call<PromoterEnvelope>({ route: API.promoterUpdate, params: { org_id: orgId, id: promoterId }, body });
+}
+
+// ── Spec 63 L-2: tours (event series) ──────────────────────────────────
+
+/** Every tour of the organization, archived ones included (the screen filters). */
+export function listSeries(orgId: string): Promise<SeriesListEnvelope> {
+  return call<SeriesListEnvelope>({ route: API.seriesList, params: { org_id: orgId }, query: { include_archived: "true" } });
+}
+
+export function getSeries(orgId: string, seriesId: string): Promise<SeriesDetail> {
+  return call<SeriesDetail>({ route: API.seriesGet, params: { org_id: orgId, series_id: seriesId } });
+}
+
+export function createSeries(orgId: string, body: SeriesCreateRequest): Promise<Series> {
+  return call<Series>({ route: API.seriesCreate, params: { org_id: orgId }, body });
+}
+
+/** Partial like the API: an absent key keeps the value, null clears a nullable one. */
+export function updateSeries(orgId: string, seriesId: string, body: SeriesUpdateRequest): Promise<Series> {
+  return call<Series>({ route: API.seriesUpdate, params: { org_id: orgId, series_id: seriesId }, body });
+}
+
+/** Archives the tour: its events keep the link. There is no way back in the API. */
+export function archiveSeries(orgId: string, seriesId: string): Promise<void> {
+  return call<void>({ route: API.seriesArchive, params: { org_id: orgId, series_id: seriesId } });
+}
+
+/** Uploads a picture of a tour (`owner_type=event_series`, `media.write`): the answer is `{ media_object }`. */
+export function uploadSeriesImage(orgId: string, file: Blob, contentType: string, signal?: AbortSignal): Promise<{ media_object: MediaObject }> {
+  const form = new FormData();
+  form.append("owner_type", "event_series");
+  form.append("org_id", orgId);
+  form.append("content_type", contentType);
+  form.append("file", file, contentType === "image/png" ? "tour.png" : "tour.jpg");
+  return call<{ media_object: MediaObject }>({ route: API.mediaUpload, form, signal, timeoutMs: UPLOAD_TIMEOUT_MS });
+}
+
+/** Links an event to a tour (a UUID) or unlinks it (null): ONE field of the PATCH, `event.update`. */
+export function setEventSeries(orgId: string, eventId: string, seriesId: string | null): Promise<EventEnvelope> {
+  return call<EventEnvelope>({ route: API.eventUpdate, params: { org_id: orgId, id: eventId }, body: { series_id: seriesId } });
 }
 
 // ── 4-3: promo codes ───────────────────────────────────────────────────
@@ -997,6 +1053,20 @@ export function updateSessionSaleTimes(
   });
 }
 
+/** Spec 63, L-3: who sells the date, the platform or a partner box office. One PATCH of the existing session. */
+export function updateSessionSalesMode(
+  orgId: string,
+  eventId: string,
+  sessionId: string,
+  body: SalesModePatch,
+): Promise<SessionEnvelope> {
+  return call<SessionEnvelope>({
+    route: API.sessionUpdate,
+    params: { org_id: orgId, event_id: eventId, id: sessionId },
+    body,
+  });
+}
+
 // ─── 5-4: a date's categories ────────────────────────────────────────────────
 
 export interface TierRef {
@@ -1460,6 +1530,22 @@ export function fetchEventFunnel(
   });
 }
 
+// Clicks from the organizer's site to outside box offices, same window as the funnel.
+export function fetchEventOutboundClicks(
+  orgId: string,
+  eventId: string,
+  window: { from?: string; to?: string } = {},
+): Promise<OutboundClicksResponse> {
+  return call<OutboundClicksResponse>({
+    route: API.eventOutboundClicks,
+    params: { org_id: orgId, event_id: eventId },
+    query: {
+      from: window.from === "" ? undefined : window.from,
+      to: window.to === "" ? undefined : window.to,
+    },
+  });
+}
+
 export function downloadPageStatsCsv(orgId: string, eventId: string, locale: string): Promise<DownloadedFile> {
   return download({
     route: API.eventPageStatsCsv,
@@ -1793,4 +1879,35 @@ export function fetchReferralRewards(
     params: referralParams(orgId, target),
     query: { state: query.state, cursor: query.cursor, limit: query.limit },
   });
+}
+
+// ─── Translations of an event's texts (spec 63 section 16) ───────────────────
+
+/** The original texts of an event and every stored translation. Needs event.read. */
+export function listEventTranslations(orgId: string, eventId: string): Promise<ContentTranslationList> {
+  return call<ContentTranslationList>({ route: API.eventTranslations, params: { org_id: orgId, event_id: eventId } });
+}
+
+/** Replaces the translation of one locale; the server marks it `manual`. Needs event.update. */
+export function putEventTranslation(
+  orgId: string,
+  eventId: string,
+  locale: string,
+  body: PutContentTranslationRequest,
+): Promise<ContentTranslationItem> {
+  return call<ContentTranslationItem>({ route: API.eventTranslationPut, params: { org_id: orgId, event_id: eventId, locale }, body });
+}
+
+export function deleteEventTranslation(orgId: string, eventId: string, locale: string): Promise<unknown> {
+  return call<unknown>({ route: API.eventTranslationDelete, params: { org_id: orgId, event_id: eventId, locale } });
+}
+
+/** Queues machine translation; a manual translation is skipped by the job. */
+export function queueMachineTranslation(orgId: string, eventId: string, locales: string[]): Promise<MachineTranslateAccepted> {
+  return call<MachineTranslateAccepted>({ route: API.eventTranslationsMachine, params: { org_id: orgId, event_id: eventId }, body: { locales } });
+}
+
+/** The photo-report text of the ORIGINAL. Null or blank clears it. */
+export function saveEventReportText(orgId: string, eventId: string, reportTextHtml: string | null): Promise<EventReportText> {
+  return call<EventReportText>({ route: API.eventReportText, params: { org_id: orgId, event_id: eventId }, body: { report_text_html: reportTextHtml } });
 }

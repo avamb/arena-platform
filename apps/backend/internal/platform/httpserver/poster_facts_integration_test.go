@@ -298,7 +298,8 @@ func TestBotE2E_PosterHintsComeFromTheAPI(t *testing.T) {
 		tg.waitSince(t, m, expect)
 	}
 
-	press("wz:new", "Как называется")
+	press("wz:new", "Кто продаёт билеты?")
+	press("wz:seller:platform", "Как называется")
 	m := tg.mark()
 	tg.push(msg("Hints event"))
 	tg.waitSince(t, m, "Возраст")

@@ -2,6 +2,7 @@ package conversions
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -88,6 +89,12 @@ type ContextPurger interface {
 	PurgeContexts(ctx context.Context, olderThan time.Time) (int64, error)
 }
 
+// EventPurger is the optional part of a Store that deletes old final site
+// events (PGStore.PurgeEvents).
+type EventPurger interface {
+	PurgeEvents(ctx context.Context, olderThan time.Time) (int64, error)
+}
+
 // RunOnce sends one batch of due conversions and returns how many it handled.
 // It also empties the buyer contexts older than ContextRetention when the
 // store can: a context is never kept indefinitely, consent or not.
@@ -102,6 +109,11 @@ func RunOnce(ctx context.Context, store Store, senders Senders, logger *slog.Log
 	if p, ok := store.(ContextPurger); ok {
 		if _, err := p.PurgeContexts(ctx, now.Add(-ContextRetention)); err != nil {
 			logger.Warn("conversions: could not purge old buyer contexts", "error", scrub(err.Error()))
+		}
+	}
+	if p, ok := store.(EventPurger); ok {
+		if _, err := p.PurgeEvents(ctx, now.Add(-EventRetention)); err != nil {
+			logger.Warn("conversions: could not purge old site events", "error", scrub(err.Error()))
 		}
 	}
 	return len(due), nil
@@ -135,7 +147,20 @@ func handle(ctx context.Context, store Store, senders Senders, logger *slog.Logg
 		skip("not_configured")
 		return
 	}
-	granted, err := store.ConsentForOrder(ctx, d.OrderID)
+	if d.OrderID == nil {
+		connErr := func(err error) bool {
+			return d.Provider == "meta" && st.MetaTokenSource == TokenSourceConnection &&
+				reportConnectionError(ctx, store, logger, d, err)
+		}
+		handleSiteEvent(ctx, senders, d, st, skip, retry, connErr, func() {
+			if err := store.MarkSent(ctx, d.ID); err != nil {
+				logger.Warn("conversions: sent but could not record it", "delivery_id", d.ID.String(), "error", scrub(err.Error()))
+			}
+		})
+		return
+	}
+	orderID := *d.OrderID
+	granted, err := store.ConsentForOrder(ctx, orderID)
 	if err != nil {
 		retry("consent: "+err.Error(), false)
 		return
@@ -144,13 +169,13 @@ func handle(ctx context.Context, store Store, senders Senders, logger *slog.Logg
 		skip("no_consent") // spec 62 section 8.1: no consent, no server conversion
 		return
 	}
-	od, err := store.Order(ctx, d.OrderID)
+	od, err := store.Order(ctx, orderID)
 	if err != nil {
 		retry("order: "+err.Error(), false)
 		return
 	}
 	p := Purchase{
-		OrderID:     d.OrderID.String(),
+		OrderID:     orderID.String(),
 		OrderNumber: od.Number,
 		Value:       money.MajorScale(od.Total, money.ScaleFor(od.Currency)),
 		Currency:    od.Currency,
@@ -241,6 +266,50 @@ func reportConnectionError(ctx context.Context, store Store, logger *slog.Logger
 		logger.Warn("conversions: could not record the Meta connection error", "org_id", d.OrgID.String(), "error", scrub(rErr.Error()))
 	}
 	return true
+}
+
+// handleSiteEvent sends one order-less site event. No consent is read here: the
+// decision was taken when the event was queued. Credentials are already loaded.
+// While a Meta test event code is set in the settings, every site event goes
+// out as a test event (it shows in Test Events and does not count).
+func handleSiteEvent(ctx context.Context, senders Senders, d Delivery, st Settings,
+	skip func(string), retry func(string, bool), connErr func(error) bool, sent func()) {
+	var ev SiteEvent
+	if err := json.Unmarshal(d.Payload, &ev); err != nil || ev.Kind == "" {
+		retry("bad_payload", true)
+		return
+	}
+	if ev.EventID == "" {
+		ev.EventID = d.EventID
+	}
+	var sendErr error
+	switch d.Provider {
+	case "meta":
+		if st.MetaErr != nil {
+			retry("settings: "+st.MetaErr.Error(), false)
+			return
+		}
+		if !st.MetaReady() {
+			skip("not_configured")
+			return
+		}
+		sendErr = senders.Meta.SendEvent(ctx, st.MetaPixelID, st.MetaCAPIToken, st.MetaTestEventCode, ev)
+	case "ga4":
+		if !st.GA4Ready() {
+			skip("not_configured")
+			return
+		}
+		sendErr = senders.GA4.SendEvent(ctx, st.GA4MeasurementID, st.GA4APISecret, ev)
+	default:
+		skip("unknown_provider")
+		return
+	}
+	if sendErr != nil {
+		permanent := connErr(sendErr) || IsPermanent(sendErr)
+		retry(sendErr.Error(), permanent)
+		return
+	}
+	sent()
 }
 
 // scrub bounds an error text. Sender errors carry no secret by construction;

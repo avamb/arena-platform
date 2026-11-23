@@ -44,6 +44,7 @@ export function navGroups(access: NavPerson, shopMode: ShopMode, orgCount: numbe
       items: [
         { id: "menu-events", labelKey: "nav.events" },
         { id: "nav-summary", labelKey: "nav.summary" },
+        ...(can("event.read") ? [{ id: "nav-series", labelKey: "nav.series" } as NavEntry] : []),
       ],
     },
     {

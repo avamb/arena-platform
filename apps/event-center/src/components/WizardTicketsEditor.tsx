@@ -13,7 +13,7 @@ import { TextField } from "@/components/FormField";
 import { WizardDayPick } from "@/components/WizardDayPick";
 import { useI18n } from "@/lib/i18n";
 import { catSuffix, dateFieldKey, stepSuffix, type DateErrorView } from "@/lib/wizard/dateErrors";
-import { MAX_CATEGORIES, MAX_PRICE_STEPS, TICKET_MODES, type DateEntry, type TicketMode } from "@/lib/wizard/datesDraft";
+import { MAX_CATEGORIES, MAX_PRICE_STEPS, TICKET_MODES, sameTicketsAllowed, type DateEntry, type TicketMode } from "@/lib/wizard/datesDraft";
 import type { DraftAction, WizardDraft } from "@/lib/wizard/draft";
 import { makeId } from "@/lib/wizard/ids";
 
@@ -42,6 +42,8 @@ export function WizardTicketsEditor({ draft, index, dispatch, errors, timezone }
             type="radio"
             name={`${ids}-source`}
             checked={date.sameTickets === isSame}
+            // A partner box office has no tickets to copy (spec 63, L-3).
+            disabled={isSame && !sameTicketsAllowed(draft.dates, index)}
             onChange={() => dispatch({ type: "dateSame", key, same: isSame })}
             data-testid={`wizard-tickets-${index}-${isSame ? "same" : "own"}`}
           />

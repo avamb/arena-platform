@@ -78,7 +78,8 @@ func (c *connFake) RecordMetaError(_ context.Context, _ uuid.UUID, reason string
 }
 
 func newFake(provider string, consent bool) (*fakeStore, Delivery) {
-	d := Delivery{ID: uuid.New(), OrderID: uuid.New(), OrgID: uuid.New(), Provider: provider, CreatedAt: time.Unix(1700000000, 0)}
+	oid := uuid.New()
+	d := Delivery{ID: uuid.New(), OrderID: &oid, OrgID: uuid.New(), Provider: provider, CreatedAt: time.Unix(1700000000, 0)}
 	f := &fakeStore{
 		settings: Settings{MetaPixelID: "123", MetaCAPIToken: "tok-secret", GA4MeasurementID: "G-X", GA4APISecret: "ga-secret"},
 		consent:  consent,
@@ -341,7 +342,8 @@ func TestConnectionToken190_MarksInvalidOnceAndFails(t *testing.T) {
 	// A second delivery of the same organization: the connection is already
 	// in error, nothing changes again.
 	f.status = ""
-	f.due = []Delivery{{ID: uuid.New(), OrderID: uuid.New(), OrgID: uuid.New(), Provider: "meta", CreatedAt: time.Now()}}
+	oid2 := uuid.New()
+	f.due = []Delivery{{ID: uuid.New(), OrderID: &oid2, OrgID: uuid.New(), Provider: "meta", CreatedAt: time.Now()}}
 	_, _ = RunOnce(context.Background(), c, Senders{Meta: MetaSender{BaseURL: srv.URL, Version: "v25.0"}}, slog.Default(), time.Now())
 	if f.status != "failed" || c.connStatus != "error" {
 		t.Fatalf("second: status=%s conn=%s", f.status, c.connStatus)

@@ -80,9 +80,15 @@ func (w *Wizard) previewBody(loc, orgName string, d *Draft) string {
 		}
 		switch {
 		case s.SessionID == "":
-			lines = append(lines, "• "+t("bot.wz.preview_new_date", map[string]any{
-				"When": label, "Venue": Esc(s.VenueName), "Capacity": s.Capacity, "List": w.ticketsText(loc, cur, tk),
+			key := "bot.wz.preview_new_date"
+			if d.extOf(i) != nil {
+				key = "bot.wz.preview_new_date_ext"
+			}
+			lines = append(lines, "• "+t(key, map[string]any{
+				"When": label, "Venue": Esc(s.VenueName), "Capacity": s.Capacity, "List": w.dateSalesText(loc, d, i),
 			}))
+		case s.External != nil && s.Dirty:
+			// The partner block of this date is listed with the other changes.
 		case s.Dirty:
 			lines = append(lines, "• "+t("bot.wz.preview_date_tickets", map[string]any{"When": label, "List": w.ticketsText(loc, cur, tk)}))
 			warns = append(warns, w.closedCategories(loc, d, i)...)

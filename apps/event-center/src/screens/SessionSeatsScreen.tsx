@@ -2,6 +2,8 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useI18n } from "@/lib/i18n";
 import { useEmbedded, useSeatsTab } from "@/lib/seatManager/embed";
 import { SeatManager } from "@/components/seatManager/SeatManager";
+import { ExternalLine } from "@/components/ExternalSaleFields";
+import { useIsExternalSession } from "@/lib/useExternalSession";
 import { useOrg } from "@/screens/OrgLayout";
 
 /**
@@ -16,6 +18,8 @@ export function SessionSeatsScreen() {
   const { eventId, sessionId } = useParams({ from: "/o/$orgId/events/$eventId/sessions/$sessionId/seats" });
   const embed = useEmbedded();
   const tab = useSeatsTab();
+  // Spec 63, L-3: a date a partner box office sells has no seats here.
+  const external = useIsExternalSession(orgId, eventId, sessionId, access.can("session.read"));
 
   if (!access.can("session.seats.manage")) {
     return (
@@ -23,6 +27,20 @@ export function SessionSeatsScreen() {
         <p className="notice" role="status" data-testid="seats-no-access">
           {t("seats.noAccess")}
         </p>
+        {!embed && (
+          <p>
+            <Link to="/o/$orgId/events/$eventId/sessions/$sessionId" params={{ orgId, eventId, sessionId }}>
+              {t("common.back")}
+            </Link>
+          </p>
+        )}
+      </article>
+    );
+  }
+  if (external) {
+    return (
+      <article>
+        <ExternalLine />
         {!embed && (
           <p>
             <Link to="/o/$orgId/events/$eventId/sessions/$sessionId" params={{ orgId, eventId, sessionId }}>

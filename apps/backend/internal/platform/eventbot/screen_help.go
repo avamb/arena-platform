@@ -40,6 +40,7 @@ const (
 	hpDoor     = "door" // section: Entrance to the event
 	hpSettings = "set"  // section: Settings
 	hpShop     = "sh"   // the shop home
+	hpTrans    = "tr"   // the languages of the event's translations
 )
 
 // screenItem is one control of a screen. Rows are its buttons (several rows for
@@ -109,7 +110,8 @@ var helpItemIDs = []string{
 	"el.filters", "el.search", "el.event", "el.paging", "el.clear",
 	"ec.publish", "ec.link", "ec.s", "ec.e", "ec.p", "ec.m",
 	"gs.summary", "gs.orders", "gs.guests", "gs.csv", "gs.dates",
-	"ge.edit", "ge.sessions", "ge.cat", "ge.materials", "ge.sample", "ge.text", "ge.promoter",
+	"ge.edit", "ge.sessions", "ge.cat", "ge.materials", "ge.sample", "ge.text", "ge.translations", "ge.promoter", "ge.series",
+	"tr.lang", "tr.machine",
 	"gp.promo", "gp.invite", "gp.links", "gp.referral",
 	"gm.copy", "gm.publish", "gm.off", "gm.archive", "gm.delete",
 	"so.orders", "so.refunds", "so.disputes",
@@ -265,6 +267,29 @@ func (b *Bot) helpCallback(ctx context.Context, chatID int64, msgID int, from *m
 		url := b.eventLink(ctx, jwt, id.Current.OrgID, *event)
 		items = b.cardItems(loc, id, eventID, cardFactsOf(*event, url, b.cardSummary(ctx, id, jwt, eventID)))
 		name, path, back = event.Name, []string{menu, events, pick}, "ec:o:"+eventID.String()
+	case hpTrans:
+		eventID, err := uuid.Parse(arg)
+		if err != nil {
+			return
+		}
+		if !canViewSales(id) {
+			b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ec.no_rights", nil), b.backKeyboard(loc, "home"))
+			return
+		}
+		event, err := b.cardEvent(ctx, jwt, id.Current.OrgID, eventID)
+		if err != nil {
+			b.ecError(ctx, chatID, &msgID, id, err, "el:b")
+			return
+		}
+		list, err := b.arena.ListTranslations(ctx, jwt, id.Current.OrgID, eventID)
+		if err != nil {
+			b.ecError(ctx, chatID, &msgID, id, err, trBack(eventID))
+			return
+		}
+		items = b.trItems(loc, eventID, list)
+		name = b.texts.T(loc, "bot.tr.btn", nil)
+		path = []string{menu, events, b.texts.T(loc, "bot.hp.p_event", nil), event.Name, b.texts.T(loc, cardGroupTitleKey(cardGroupEdit), nil), name}
+		back = trData("l", eventID)
 	case hpOrders, hpPromoSec, hpDoor, hpSettings:
 		if b.sectionHelpRefused(loc, id, screen) {
 			b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ec.no_rights", nil), b.backKeyboard(loc, "home"))

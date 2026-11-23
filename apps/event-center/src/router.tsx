@@ -18,6 +18,7 @@ import { OrgLayout } from "@/screens/OrgLayout";
 import { EventsScreen } from "@/screens/EventsScreen";
 import { EventScreen } from "@/screens/EventScreen";
 import { EventEditScreen } from "@/screens/EventEditScreen";
+import { TranslationsScreen } from "@/screens/TranslationsScreen";
 import { EventFunnelScreen } from "@/screens/EventFunnelScreen";
 import { SessionScreen } from "@/screens/SessionScreen";
 import { SessionInvitationsScreen } from "@/screens/SessionInvitationsScreen";
@@ -38,11 +39,13 @@ import { VenuesScreen } from "@/screens/VenuesScreen";
 import { VenuePlanIntakeScreen } from "@/screens/VenuePlanIntakeScreen";
 import { parseIntakeSearch } from "@/lib/venuePlan/intakeState";
 import { PromoterScreen } from "@/screens/PromoterScreen";
+import { SeriesScreen } from "@/screens/SeriesScreen";
+import { SeriesDetailScreen } from "@/screens/SeriesDetailScreen";
 import { NotFoundScreen } from "@/screens/NotFoundScreen";
 import { OrgDataScreen } from "@/screens/OrgDataScreen";
 import { EntranceScreen } from "@/screens/EntranceScreen";
 import { HelpScreen } from "@/screens/HelpScreen";
-import { parseEventsSearch, parseLoginSearch, parseOrdersSearch, parsePromotersSearch } from "@/lib/search";
+import { parseEventsSearch, parseLoginSearch, parseOrdersSearch, parsePromotersSearch, parseSeriesSearch } from "@/lib/search";
 import { parseBalanceSearch } from "@/lib/billingPacks";
 import { PromoListScreen } from "@/screens/PromoListScreen";
 import { PromoCreateScreen } from "@/screens/PromoCreateScreen";
@@ -176,6 +179,13 @@ const eventEditRoute = createRoute({
   component: EventEditScreen,
 });
 
+// Spec 63 section 16: the translations of the event texts. Reached from the "Translations" item of the "Edit" section.
+const eventTranslationsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/events/$eventId/translations",
+  component: TranslationsScreen,
+});
+
 const sessionRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/events/$eventId/sessions/$sessionId",
@@ -293,6 +303,20 @@ const promoterRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/promoters/$promoterId",
   component: PromoterScreen,
+});
+
+// Spec 63 L-2: tours (event series).
+const seriesRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/series",
+  validateSearch: parseSeriesSearch,
+  component: SeriesScreen,
+});
+
+const seriesDetailRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/series/$seriesId",
+  component: SeriesDetailScreen,
 });
 
 // Spec 64 section 2.1.1: the venue chooser and the venue card.
@@ -449,6 +473,7 @@ export const routeTree = rootRoute.addChildren([
     eventRoute,
     eventFunnelRoute,
     eventEditRoute,
+    eventTranslationsRoute,
     sessionRoute,
     sessionSeatsRoute,
     sessionInvitationsRoute,
@@ -466,6 +491,8 @@ export const routeTree = rootRoute.addChildren([
     billingInvoicesRoute,
     promotersRoute,
     promoterRoute,
+    seriesRoute,
+    seriesDetailRoute,
     venuesRoute,
     venueRoute,
     venuePlanIntakeRoute,

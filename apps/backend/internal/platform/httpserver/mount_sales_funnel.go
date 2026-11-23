@@ -22,5 +22,6 @@ func (s *Server) mountSalesFunnelRoutes(r chi.Router) {
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "report.read", "reports")
 		pr.Get("/organizations/{org_id}/events/{event_id}/funnel", s.orgGated(h.HandleGet))
+		pr.Get("/organizations/{org_id}/events/{event_id}/outbound-clicks", s.orgGated(h.HandleOutboundClicks))
 	})
 }

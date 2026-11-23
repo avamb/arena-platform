@@ -79,25 +79,49 @@ func (q *Queries) GetSessionSalesEnd(ctx context.Context, id uuid.UUID) (time.Ti
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getSessionSalesState = `-- name: GetSessionSalesState :one
-SELECT s.sales_end_at, s.status, COALESCE(st.state, '')
+SELECT s.sales_end_at, s.status, COALESCE(st.state, ''), s.sales_mode
 FROM   sessions s
 LEFT   JOIN session_sales_states st ON st.session_id = s.id
 WHERE  s.id = $1
   AND  s.deleted_at IS NULL`
 
 // GetSessionSalesState returns when ticket sales for the session close, the
-// session's own status AND the organizer's sales state (migration 0183:
-// "soon" / "sold_out", "" when none is set). The hold gate
-// (hcheckout.CheckSessionSalesOpen) refuses every NEW hold once the sales end
-// has passed, for a 'cancelled' session (a cancelled date keeps its row and
-// its tiers) and while a sales state is set.
+// session's own status, the organizer's sales state (migration 0183:
+// "soon" / "sold_out", "" when none is set) AND who sells the tickets
+// (sessions.sales_mode, migration 0221: "platform" / "external"). The hold
+// gate (hcheckout.CheckSessionSalesOpen) refuses every NEW hold on an
+// external session, once the sales end has passed, for a 'cancelled'
+// session (a cancelled date keeps its row and its tiers) and while a sales
+// state is set.
 // Returns pgx.ErrNoRows for an unknown or deleted session.
-func (q *Queries) GetSessionSalesState(ctx context.Context, id uuid.UUID) (time.Time, string, string, error) {
-	var (
-		t      time.Time
-		status string
-		manual string
-	)
-	err := q.db.QueryRow(ctx, getSessionSalesState, id).Scan(&t, &status, &manual)
-	return t, status, manual, err
+func (q *Queries) GetSessionSalesState(ctx context.Context, id uuid.UUID) (salesEnd time.Time, status, manual, salesMode string, err error) {
+	err = q.db.QueryRow(ctx, getSessionSalesState, id).Scan(&salesEnd, &status, &manual, &salesMode)
+	return salesEnd, status, manual, salesMode, err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LockSessionSalesMode
+// ─────────────────────────────────────────────────────────────────────────────
+
+// FOR NO KEY UPDATE, not FOR UPDATE: it conflicts with the row lock the
+// PATCH of a session takes (its UPDATE, which may switch sales_mode), but a
+// hold inserting a reservation that references the session takes FOR KEY
+// SHARE on it and must not wait.
+const lockSessionSalesMode = `-- name: LockSessionSalesMode :one
+SELECT sales_mode
+FROM   sessions
+WHERE  id = $1
+  AND  deleted_at IS NULL
+FOR NO KEY UPDATE`
+
+// LockSessionSalesMode locks the session row and returns who sells its
+// tickets (sessions.sales_mode, migration 0221). A transaction that creates
+// tiers or seats calls it FIRST (lock order: sessions first), so a
+// concurrent switch to 'external' cannot slip between its check and its
+// INSERT. MUST be called inside a transaction. pgx.ErrNoRows for an unknown
+// or deleted session.
+func (q *Queries) LockSessionSalesMode(ctx context.Context, id uuid.UUID) (string, error) {
+	var mode string
+	err := q.db.QueryRow(ctx, lockSessionSalesMode, id).Scan(&mode)
+	return mode, err
 }

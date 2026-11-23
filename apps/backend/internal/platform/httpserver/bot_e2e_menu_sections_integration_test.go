@@ -246,5 +246,6 @@ func TestBotE2E_MenuSectionsAndFirstSteps(t *testing.T) {
 	}
 
 	// ── a wizard press from the first steps still works
-	owner.press("wz:new", "Как называется мероприятие?")
+	owner.press("wz:new", "Кто продаёт билеты?")
+	owner.press("wz:seller:platform", "Как называется мероприятие?")
 }

@@ -14,6 +14,7 @@
 import type { MessageKey } from "@/lib/i18n/en";
 import { isIsoDay } from "@/lib/dates";
 import { wallToInstant } from "@/lib/saleTimes";
+import { externalProblems, type ExternalField } from "@/lib/externalSale";
 import { effectiveTickets, type DateEntry, type TicketsPart } from "@/lib/wizard/datesDraft";
 import type { WizardDraft } from "@/lib/wizard/draft";
 import { venueCapacity, venueTimezone } from "@/lib/wizard/draft";
@@ -26,6 +27,8 @@ export function dateFieldKey(dateKey: string, suffix: string): string {
 }
 
 export const catSuffix = (catKey: string, field: string): string => `c:${catKey}.${field}`;
+/** A field of the partner box office of a date: `<date key>.ext:<field>`. */
+export const extSuffix = (field: ExternalField): string => `ext:${field}`;
 export const stepSuffix = (stepKey: string, field: string): string => `s:${stepKey}.${field}`;
 
 export interface DateErrors {
@@ -74,6 +77,19 @@ export function mapDateErrors(
         continue;
       case "/actionEvent/doorsOpenTime":
         put("doors", err);
+        continue;
+      case "/actionEvent/externalSale":
+      case "/actionEvent/externalSale/url":
+        put(extSuffix("url"), err);
+        continue;
+      case "/actionEvent/externalSale/sellerName":
+        put(extSuffix("seller"), err);
+        continue;
+      case "/actionEvent/externalSale/priceFrom":
+        put(extSuffix("price"), err);
+        continue;
+      case "/actionEvent/externalSale/currency":
+        put(extSuffix("currency"), err);
         continue;
       case "/categoryList":
       case "/actionEvent/sellStartTime":
@@ -167,6 +183,12 @@ export function dateClientErrors(draft: WizardDraft): ClientDateErrors {
     if (nonEmpty(date.doors)) {
       const typed = parseTime(date.doors);
       if (typed === null || (time !== null && doorsOffset(time, typed) === null)) set("doors", "wizard.err.doorsShape");
+    }
+    // A date a partner box office sells has no places and no tickets: only the box office is judged.
+    if (date.sales === "external") {
+      const problems = externalProblems(date.external, draft.currency);
+      for (const [field, key] of Object.entries(problems)) set(extSuffix(field as ExternalField), key);
+      return;
     }
     // A date sold by a hall plan has the plan's places and categories: the
     // "Hall plan" section checks those (seatingClientErrors).

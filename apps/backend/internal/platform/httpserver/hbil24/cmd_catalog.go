@@ -178,8 +178,14 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 	// an empty actionEventList rather than leaking another org's sessions.
 	var byEvent map[uuid.UUID]catalogAction
 	if authed {
-		var aerr error
-		byEvent, aerr = h.loadActionEvents(ctx, channel.OrgID, cartFeePercent(channel), hiddenIDs)
+		var (
+			aerr         error
+			externalOnly map[uuid.UUID]bool
+		)
+		byEvent, externalOnly, aerr = h.loadActionEvents(ctx, channel.OrgID, cartFeePercent(channel), hiddenIDs)
+		// An event sold only by a partner box office (migration 0221) is
+		// not in the catalog at all: the site cannot sell it.
+		events = withoutExternalOnlyEvents(events, externalOnly)
 		if aerr != nil {
 			h.logger.Error("bil24_compat: GET_ALL_ACTIONS: list action events failed",
 				slog.String("org_id", channel.OrgID.String()),

@@ -148,6 +148,9 @@ var roleSecrets = []roleSecret{
 	// TEXT_FORMAT_LLM_MODEL and TEXT_FORMATS_PER_*_PER_DAY are plain settings of
 	// the api, not secrets): the model key stays on arena-api only.
 	{"POSTER_LLM_API_KEY", []Role{RoleAPI}, func(c *Config) string { return c.PosterLLMAPIKey }},
+	// Machine translation of event texts (spec 63 section 16.4): arena-api only
+	// checks that it is set, arena-worker translates with it.
+	{"TRANSLATE_LLM_API_KEY", []Role{RoleAPI, RoleWorker}, func(c *Config) string { return c.TranslateLLMAPIKey }},
 	{"GEMINI_API_KEY", []Role{RoleAPI}, func(c *Config) string { return c.GeminiAPIKey }},
 	// Only arena-worker calls the venue SVG generator (job venue_plan.generate,
 	// spec 64 wave 2); arena-api never does.

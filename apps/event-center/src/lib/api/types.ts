@@ -81,6 +81,12 @@ export type PaymentProviderConfigItem = S["PaymentProviderConfigItem"];
 export type Promoter = S["Promoter"];
 export type PromoterListEnvelope = S["PromoterListEnvelope"];
 export type PromoterEnvelope = S["PromoterEnvelope"];
+export type Series = S["Series"];
+export type SeriesDetail = S["SeriesDetail"];
+export type SeriesEventCard = S["SeriesEventCard"];
+export type SeriesListEnvelope = S["SeriesListEnvelope"];
+export type SeriesCreateRequest = S["CreateSeriesRequest"];
+export type SeriesUpdateRequest = S["UpdateSeriesRequest"];
 // 4-3: promo codes.
 export type PromoCodeItem = S["PromoCodeItem"];
 // Spec 51-1: cart reminder, marketing tick and its subscribers.
@@ -199,7 +205,21 @@ export type SalesFunnelMoney = S["SalesFunnelMoney"];
 export type SalesFunnelSource = S["SalesFunnelSource"];
 export type SalesFunnelSalesLink = S["SalesFunnelSalesLink"];
 export type SalesFunnelGateway = S["SalesFunnelGateway"];
-export type PageStatsCounts = S["PageStatsCounts"];
+// Clicks from the organizer's site to outside box offices. Written by hand until
+// the OpenAPI schema of the route is generated.
+export type OutboundClicksResponse = {
+  event_id: string;
+  from: string;
+  to: string;
+  timezone: string | null;
+  total: number;
+  visits: number;
+  share_of_visitors: number | null;
+  by_day: { day: string; clicks: number }[];
+  by_seller: { seller: string; clicks: number }[];
+  by_source: { utm_source: string; clicks: number }[];
+};
+export type PageStatsCounts =S["PageStatsCounts"];
 // M2: door scans on the order card, the session's ticket list.
 export type TicketScan = S["TicketScan"];
 export type SessionTicketItem = S["SessionTicketItem"];
@@ -304,3 +324,11 @@ export type InvitationBatchReport = S["InvitationBatchReport"];
 export type InvitationBatchRowIssue = S["InvitationBatchRowIssue"];
 export type InvitationBatchPreviewGuest = S["InvitationBatchPreviewGuest"];
 export type InvitationChargePreview = S["InvitationChargePreview"];
+
+// ─── Translations of an event's texts (spec 63 section 16) ───────────────────
+export type ContentTranslationList = S["ContentTranslationList"];
+export type ContentTranslationItem = S["ContentTranslationItem"];
+export type ContentTranslationOriginal = S["ContentTranslationOriginal"];
+export type PutContentTranslationRequest = S["PutContentTranslationRequest"];
+export type MachineTranslateAccepted = S["MachineTranslateAccepted"];
+export type EventReportText = S["EventReportText"];

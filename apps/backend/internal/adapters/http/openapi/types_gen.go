@@ -488,6 +488,7 @@ const (
 	MediaObjectOwnerTypeEventGallery   MediaObjectOwnerType = "event_gallery"
 	MediaObjectOwnerTypeEventPoster    MediaObjectOwnerType = "event_poster"
 	MediaObjectOwnerTypeEventReport    MediaObjectOwnerType = "event_report"
+	MediaObjectOwnerTypeEventSeries    MediaObjectOwnerType = "event_series"
 	MediaObjectOwnerTypeOrgLogo        MediaObjectOwnerType = "org_logo"
 	MediaObjectOwnerTypeSeatingPlanSvg MediaObjectOwnerType = "seating_plan_svg"
 	MediaObjectOwnerTypeSessionPoster  MediaObjectOwnerType = "session_poster"
@@ -794,6 +795,15 @@ const (
 	Soon    SetSessionSalesStateRequestState = "soon"
 )
 
+// Defines values for SiteTrackRequestEvent.
+const (
+	CheckoutOpen        SiteTrackRequestEvent = "checkout_open"
+	Lead                SiteTrackRequestEvent = "lead"
+	OutboundTicketClick SiteTrackRequestEvent = "outbound_ticket_click"
+	PageView            SiteTrackRequestEvent = "page_view"
+	ViewEvent           SiteTrackRequestEvent = "view_event"
+)
+
 // Defines values for TextFormatKind.
 const (
 	Description    TextFormatKind = "description"
@@ -976,6 +986,7 @@ const (
 	PostV1MediaMultipartBodyOwnerTypeEventGallery   PostV1MediaMultipartBodyOwnerType = "event_gallery"
 	PostV1MediaMultipartBodyOwnerTypeEventPoster    PostV1MediaMultipartBodyOwnerType = "event_poster"
 	PostV1MediaMultipartBodyOwnerTypeEventReport    PostV1MediaMultipartBodyOwnerType = "event_report"
+	PostV1MediaMultipartBodyOwnerTypeEventSeries    PostV1MediaMultipartBodyOwnerType = "event_series"
 	PostV1MediaMultipartBodyOwnerTypeOrgLogo        PostV1MediaMultipartBodyOwnerType = "org_logo"
 	PostV1MediaMultipartBodyOwnerTypeSeatingPlanSvg PostV1MediaMultipartBodyOwnerType = "seating_plan_svg"
 	PostV1MediaMultipartBodyOwnerTypeSessionPoster  PostV1MediaMultipartBodyOwnerType = "session_poster"
@@ -6518,6 +6529,75 @@ type ConnectShopModuleRequest struct {
 	StartsOn *openapi_types.Date `json:"starts_on"`
 }
 
+// ContentTranslationItem One translation of an event's texts into one locale.
+type ContentTranslationItem struct {
+	// DescriptionHtml The translated description as sanitized HTML, null when not set.
+	DescriptionHtml *string `json:"description_html"`
+
+	// Locale The locale of the translation, one of `supported_locales`.
+	Locale string `json:"locale"`
+
+	// Name The translated name, null when the translation keeps the original name. The machine never fills it.
+	Name *string `json:"name"`
+
+	// ReportTextHtml The translated photo-report text as sanitized HTML, null when not set.
+	ReportTextHtml *string `json:"report_text_html"`
+
+	// ShortDescription The translated short description, null when not set.
+	ShortDescription *string `json:"short_description"`
+
+	// Source Who wrote it, `manual` or `machine`. A `manual` translation is never replaced by the machine.
+	Source string `json:"source"`
+
+	// TranslationStale True when the original texts changed after this translation was made; it is still served to buyers.
+	TranslationStale bool `json:"translation_stale"`
+
+	// UpdatedAt When the translation was last written.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// UpdatedBy The person who wrote it, null for an API key or when the person is gone.
+	UpdatedBy *openapi_types.UUID `json:"updated_by"`
+}
+
+// ContentTranslationList The original texts of an event and its translations.
+type ContentTranslationList struct {
+	// ContentLocale The language of the original texts, two lowercase letters.
+	ContentLocale string `json:"content_locale"`
+
+	// MachineAvailable True when machine translation is switched on (the model key is set), false hides the button.
+	MachineAvailable bool `json:"machine_available"`
+
+	// Original The original texts.
+	Original ContentTranslationOriginal `json:"original"`
+
+	// SiteLocales The distinct union of the languages of the organization's sites (`settings.site.locales` of its sales channels), restricted to the supported locales.
+	SiteLocales []string `json:"site_locales"`
+
+	// SourceHash Hash of the original texts now; a translation whose hash differs is stale.
+	SourceHash string `json:"source_hash"`
+
+	// SupportedLocales Every locale a translation may be made for.
+	SupportedLocales []string `json:"supported_locales"`
+
+	// Translations The stored translations, ordered by locale.
+	Translations []ContentTranslationItem `json:"translations"`
+}
+
+// ContentTranslationOriginal The original texts of an event, the source of its translations.
+type ContentTranslationOriginal struct {
+	// DescriptionHtml The description rendered to sanitized HTML whatever its stored format, null when empty.
+	DescriptionHtml *string `json:"description_html"`
+
+	// Name The event name in the content locale.
+	Name string `json:"name"`
+
+	// ReportTextHtml The photo-report text as sanitized HTML, null when empty.
+	ReportTextHtml *string `json:"report_text_html"`
+
+	// ShortDescription The short description, null when empty.
+	ShortDescription *string `json:"short_description"`
+}
+
 // ConversionSettings An organization's server-side conversion credentials. The two secrets
 // are write-only: only whether one is set is reported.
 type ConversionSettings struct {
@@ -7293,6 +7373,42 @@ type CreateSeatingPlanVersionRequest struct {
 	SvgAssetMediaId *openapi_types.UUID `json:"svg_asset_media_id,omitempty"`
 }
 
+// CreateSeriesRequest Body of POST /v1/organizations/{org_id}/series.
+type CreateSeriesRequest struct {
+	// DescriptionHtml Description as HTML, passed through the event description filter.
+	DescriptionHtml *string `json:"description_html"`
+
+	// HeroMediaId A media object of the organization (owner type `event_series`).
+	HeroMediaId *openapi_types.UUID `json:"hero_media_id"`
+
+	// HeroVideoUrl An https YouTube or Vimeo link.
+	HeroVideoUrl *string `json:"hero_video_url"`
+
+	// HideChildrenInLists Leave the events of the tour out of the page lists. Default true.
+	HideChildrenInLists *bool `json:"hide_children_in_lists,omitempty"`
+
+	// Name Name of the tour, 1-200 characters.
+	Name string `json:"name"`
+
+	// PartnersTextHtml Text about the partners as HTML, passed through the event description filter.
+	PartnersTextHtml *string `json:"partners_text_html"`
+
+	// Position Sort position, ascending. Default 0.
+	Position *int32 `json:"position,omitempty"`
+
+	// PosterMediaId A media object of the organization (owner type `event_series`).
+	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
+
+	// Slug Public address. Absent, null or empty: derived from the name
+	// (with a numeric suffix while taken). A typed one that an event or
+	// another tour of the organization uses answers 409
+	// `series.slug_taken`.
+	Slug *string `json:"slug"`
+
+	// Translations Reserved for translated texts; ignored.
+	Translations *map[string]interface{} `json:"translations,omitempty"`
+}
+
 // CreateSessionRequest Create-time payload for POST
 // /v1/organizations/{org_id}/events/{event_id}/sessions. The owning
 // org_id and event_id are taken from the path; the body MUST NOT
@@ -7349,6 +7465,12 @@ type CreateSessionRequest struct {
 	// EndAt Session end time (RFC 3339, UTC). Must be strictly after `start_at`.
 	EndAt time.Time `json:"end_at"`
 
+	// External The partner box office, only with `sales_mode` `external` (422
+	// `session.external_not_applicable` otherwise). Refused with 422
+	// `session.invalid_external_url`, `session.invalid_external_seller_name`,
+	// `session.invalid_external_price` or `session.invalid_external_currency`.
+	External *SessionExternalSaleInput `json:"external"`
+
 	// PosterMediaId Optional session-level poster artwork (AB-47). When set, this
 	// overrides the event-level `poster_media_id` for this session.
 	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
@@ -7357,6 +7479,13 @@ type CreateSessionRequest struct {
 	// the session start. Every surface stops selling new tickets after
 	// it; a category's own sale_window_end can only close sooner.
 	SalesEndAt *time.Time `json:"sales_end_at"`
+
+	// SalesMode Who sells the tickets: `platform` or `external` (migration 0221).
+	// Any other value is 400 `session.invalid_sales_mode`. `external`
+	// needs the `external` object (422 `session.external_required`).
+	// A session with a seating plan cannot be external
+	// (409 `session.sales_mode_locked`).
+	SalesMode *string `json:"sales_mode,omitempty"`
 
 	// SeatingPlanVersionId Seating plan version to bind. Required when admission_mode is
 	// `assigned_seats`/`hybrid` (400
@@ -8643,6 +8772,12 @@ type EventItem struct {
 	// Tri-state PATCH: absent=keep, null=clear, value=set.
 	AgeRating *string `json:"age_rating"`
 
+	// AvailableLocales Public feed only. The original language first, then every language that has a translation of the event.
+	AvailableLocales *[]string `json:"available_locales,omitempty"`
+
+	// ContentLocale Public feed only. The language of the texts served (`short_description`, `description_html` and `description_text` are translated when a translation was asked for with `?locale=` and exists). Two lowercase letters.
+	ContentLocale *string `json:"content_locale,omitempty"`
+
 	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
 	CreatedAt time.Time `json:"created_at"`
 
@@ -8789,11 +8924,24 @@ type EventItem struct {
 	// (future sessions exist but none is selling: the sale has not
 	// opened yet, only a closed category has places, or sales ended
 	// before the start), `draft` (future sessions exist but the event
-	// is not published, so nobody can buy, whatever its sessions say)
-	// and `archived` (every session has ended, the event has no
-	// session, or the event is cancelled/archived). Empty only when
-	// the lookup failed.
+	// is not published, so nobody can buy, whatever its sessions
+	// say), `external` (every future session is sold by a partner box
+	// office, `sales_mode` `external`, migration 0221; such sessions
+	// own no places here, so an event with platform sessions as well
+	// follows the rules above over those) and `archived` (every
+	// session has ended, the event has no session, or the event is
+	// cancelled/archived). Empty only when the lookup failed.
 	SalesState string `json:"sales_state"`
+
+	// SeriesId The tour (event series, migration 0222) the event belongs to.
+	// Null when the event stands alone (the public feed leaves the
+	// field out then). Set by PATCH
+	// .../events/{id} `series_id`.
+	SeriesId *openapi_types.UUID `json:"series_id"`
+
+	// SeriesName Name of the event's tour. Filled by the organizer API only; null
+	// in the public feed (read the tour by `series_id` there).
+	SeriesName *string `json:"series_name"`
 
 	// SessionCount Number of active, non-cancelled sessions of the event, past ones
 	// included — the same count the hosted page reports.
@@ -8824,6 +8972,9 @@ type EventItem struct {
 	// TrailerUrl URL to the full event trailer (AB-45c).
 	// Tri-state PATCH: absent=keep, null=clear, value=set.
 	TrailerUrl *string `json:"trailer_url"`
+
+	// TranslationStale Public feed only. True when the translation served was made from an older original than the current one; it is still served.
+	TranslationStale *bool `json:"translation_stale,omitempty"`
 
 	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update.
 	UpdatedAt time.Time `json:"updated_at"`
@@ -9152,6 +9303,12 @@ type EventReportPhotoList struct {
 type EventReportPhotoOrderRequest struct {
 	// PhotoIds Every photo id of the report exactly once, in the new display order.
 	PhotoIds []openapi_types.UUID `json:"photo_ids"`
+}
+
+// EventReportText The stored photo-report text of the original.
+type EventReportText struct {
+	// ReportTextHtml The sanitized text as stored, null when cleared.
+	ReportTextHtml *string `json:"report_text_html"`
 }
 
 // EventSalesSummary The top level of EventSummary for one event, without the per-category
@@ -9542,6 +9699,99 @@ type ExternalRefundResultItem struct {
 
 	// TicketId UUID of the cancelled ticket.
 	TicketId openapi_types.UUID `json:"ticket_id"`
+}
+
+// FeedSeries A tour as the public feed and the hosted page show it.
+type FeedSeries struct {
+	// DescriptionHtml Description as safe HTML. Null when none.
+	DescriptionHtml *string `json:"description_html"`
+
+	// EventIds UUIDs of the events of the tour visible in this feed, by first session.
+	EventIds []openapi_types.UUID `json:"event_ids"`
+
+	// HeroUrl URL of the wide photo. Null when none.
+	HeroUrl *string `json:"hero_url"`
+
+	// HeroVideoUrl An https YouTube or Vimeo link. Null when none.
+	HeroVideoUrl *string `json:"hero_video_url"`
+
+	// HideChildrenInLists When true the events of the tour are left out of the page lists, the tour card stands for them.
+	HideChildrenInLists bool `json:"hide_children_in_lists"`
+
+	// Id UUID of the tour.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name of the tour.
+	Name string `json:"name"`
+
+	// PartnersTextHtml Text about the partners as safe HTML. Null when none.
+	PartnersTextHtml *string `json:"partners_text_html"`
+
+	// Position Sort position among the tours (ascending).
+	Position int32 `json:"position"`
+
+	// PosterUrl URL of the poster. Null when none.
+	PosterUrl *string `json:"poster_url"`
+
+	// Slug Public address of the tour.
+	Slug string `json:"slug"`
+
+	// Summary The "at a glance" block of the tour.
+	Summary FeedSeriesSummary `json:"summary"`
+
+	// Translations Reserved for translated texts. Always an empty object for now.
+	Translations map[string]interface{} `json:"translations"`
+}
+
+// FeedSeriesListEnvelope List-tours response of a feed.
+type FeedSeriesListEnvelope struct {
+	// Items Tours with at least one event visible in this feed.
+	Items []FeedSeries `json:"items"`
+}
+
+// FeedSeriesNextSession The nearest upcoming session of a tour.
+type FeedSeriesNextSession struct {
+	// City City of the session's venue. Null when unknown.
+	City *string `json:"city"`
+
+	// EventId UUID of the event of the session.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// SessionId UUID of the session.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// StartsAt Start of the session.
+	StartsAt time.Time `json:"starts_at"`
+}
+
+// FeedSeriesPrice The lowest open price of a tour in one currency.
+type FeedSeriesPrice struct {
+	// Amount The price in MAJOR units (19.5 for 1950 minor units of EUR).
+	Amount float32 `json:"amount"`
+
+	// Currency ISO 4217 currency code.
+	Currency string `json:"currency"`
+}
+
+// FeedSeriesSummary The "at a glance" block of a tour, over the events visible in the feed.
+type FeedSeriesSummary struct {
+	// CitiesCount Number of distinct cities of the sessions.
+	CitiesCount int `json:"cities_count"`
+
+	// CitiesOnSaleCount Number of cities with a session whose sales state is open.
+	CitiesOnSaleCount int `json:"cities_on_sale_count"`
+
+	// DateFrom Start of the first session of the visible events. Null when there is none.
+	DateFrom *time.Time `json:"date_from"`
+
+	// DateTo Start of the last session of the visible events. Null when there is none.
+	DateTo *time.Time `json:"date_to"`
+
+	// NextSession The nearest upcoming session. Null when there is none.
+	NextSession *FeedSeriesNextSession `json:"next_session"`
+
+	// PriceFrom The minimum open category price per currency, sorted by currency.
+	PriceFrom []FeedSeriesPrice `json:"price_from"`
 }
 
 // FeedToken A long-lived bearer token that grants a scanner device read access to the
@@ -10243,6 +10493,30 @@ type HostedPromoterPageResponse struct {
 	Seller *HostedPageSeller `json:"seller,omitempty"`
 }
 
+// HostedSeriesPageResponse Response of GET /v1/public/pages/{org_slug}/series/{series_slug}: the
+// tour page. `org`, `events`, `seller` and `contact_form` are the same
+// as on the organization page (`HostedPromoterPageResponse`); `events`
+// are the tour's events visible on the hosted page.
+type HostedSeriesPageResponse struct {
+	// ContactForm Present when the page offers the "Write to the organizer" form.
+	ContactForm *HostedPageContactForm `json:"contact_form,omitempty"`
+
+	// DefaultLocale Organization default locale, used when no `?lang=` is present.
+	DefaultLocale string `json:"default_locale"`
+
+	// Events The tour's events visible on the hosted page, upcoming first.
+	Events []HostedPageEvent `json:"events"`
+
+	// Org Public-safe organization branding.
+	Org HostedPageOrg `json:"org"`
+
+	// Seller Legal identity of the seller, omitted as on the organization page.
+	Seller *HostedPageSeller `json:"seller,omitempty"`
+
+	// Series The tour.
+	Series FeedSeries `json:"series"`
+}
+
 // ImpersonateRequest defines model for ImpersonateRequest.
 type ImpersonateRequest struct {
 	// DurationSeconds Token lifetime in seconds. Capped at 1800 (30 minutes).
@@ -10274,6 +10548,22 @@ type ImpersonateResponse struct {
 	Token *string `json:"token,omitempty"`
 }
 
+// ImportBil24ExternalSale The partner box office of actionEvent.externalSale (arena extension,
+// source=arena only).
+type ImportBil24ExternalSale struct {
+	// Currency ISO 4217 code of `priceFrom`. Optional, only together with it.
+	Currency *string `json:"currency"`
+
+	// PriceFrom The lowest price in MAJOR units of `currency` (39.5 means 39.50). Optional.
+	PriceFrom *float32 `json:"priceFrom"`
+
+	// SellerName The box office name shown to buyers, 1 to 80 characters.
+	SellerName string `json:"sellerName"`
+
+	// Url The box office address, https only, at most 2048 characters.
+	Url string `json:"url"`
+}
+
 // ImportBil24SessionAction Bil24 "action" block — becomes an arena event. Property names keep the
 // legacy Bil24 camelCase spelling because the payload is forwarded
 // verbatim from a Bil24 GET_ALL_ACTIONS response by the site-side import
@@ -10301,6 +10591,15 @@ type ImportBil24SessionAction struct {
 	// actionEvent.arenaSessionId that belongs to another event answers
 	// 409 import.action_mismatch.
 	ArenaEventId *openapi_types.UUID `json:"arenaEventId,omitempty"`
+
+	// ArenaSeriesId Arena event-bundle extension (source=arena only; migration 0222):
+	// absent keeps the event's tour, null or "" removes the link, a
+	// UUID links one of the organization's active tours. Anything else
+	// answers 422 `import.invalid_series` at `/action/arenaSeriesId`.
+	// The dry run reports the same refusal. Reading an event back
+	// (GET .../event-bundle) writes "" for an event without a tour and
+	// leaves the key out for an archived tour.
+	ArenaSeriesId *string `json:"arenaSeriesId"`
 
 	// BigPosterUrl Absolute URL of the Bil24 poster image. Side-loaded into arena media
 	// storage outside the import transaction; a fetch failure is reported
@@ -10420,6 +10719,22 @@ type ImportBil24SessionActionEvent struct {
 	// means the session ends the NEXT calendar day. Omitted — the import
 	// keeps its default session duration (currently 3 hours).
 	EndTime *string `json:"endTime,omitempty"`
+
+	// ExternalSale Arena extension, source=arena only (migration 0221): who sells
+	// this session's tickets. Absent keeps the session's sales mode;
+	// null puts it back on sale on the platform; an object hands it to
+	// a partner box office (`url` https only, a host name, not a
+	// platform host, at most 2048 characters; `sellerName` 1 to 80
+	// characters; `priceFrom` in MAJOR units with `currency`, both or
+	// neither; else 422 import.invalid_external_sale). A partner-sold
+	// session owns no categories: the bundle then needs no
+	// `categoryList`, and one that carries it is refused with 409
+	// session.sold_externally. A session that already has orders,
+	// holds, seats or categories cannot be handed over, and an
+	// external one with seats or categories cannot come back (409
+	// session.sales_mode_locked). The event-bundle read returns the
+	// object for an external session and leaves the key out otherwise.
+	ExternalSale *ImportBil24ExternalSale `json:"externalSale"`
 
 	// SeatingPlanId Bil24 seating-plan identifier. Accepted and range-checked but not
 	// yet materialised by this endpoint. Ignored entirely (with
@@ -11630,6 +11945,21 @@ type MACSWebhookSubscriber struct {
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
 }
 
+// MachineTranslateAccepted The queued machine translation.
+type MachineTranslateAccepted struct {
+	// JobId Id of the worker job `content.translate`.
+	JobId string `json:"job_id"`
+
+	// Locales The normalized, distinct locales that were queued. Locales with a manual translation are skipped by the job, not refused here.
+	Locales []string `json:"locales"`
+}
+
+// MachineTranslateRequest Body of POST .../translations/machine.
+type MachineTranslateRequest struct {
+	// Locales The locales to translate into. Each must be supported and differ from the content locale (422 `translation.invalid_locale`).
+	Locales []string `json:"locales"`
+}
+
 // MapPointCheck Advisory verdict on a map point against the cities of the event's venues.
 type MapPointCheck struct {
 	// Checked False when none of the venue cities is in the geo data (or the event has no venue city), so nothing could be said.
@@ -11862,6 +12192,8 @@ type MediaObject struct {
 	// photo report. `shop_product` (migration 0172) is a picture of a
 	// merchandise shop product; `shop_digital` is the file a digital
 	// shop product sells (offered to the buyer only after payment).
+	// `event_series` (migration 0222) is the poster or the wide photo
+	// of a tour.
 	OwnerType MediaObjectOwnerType `json:"owner_type"`
 
 	// SignedUrl Short-lived download URL. Present on `GET /v1/media/{id}`
@@ -11896,6 +12228,8 @@ type MediaObject struct {
 // photo report. `shop_product` (migration 0172) is a picture of a
 // merchandise shop product; `shop_digital` is the file a digital
 // shop product sells (offered to the buyer only after payment).
+// `event_series` (migration 0222) is the poster or the wide photo
+// of a tour.
 type MediaObjectOwnerType string
 
 // MediaObjectStorageBackend Which storage adapter holds the bytes. `s3` covers any
@@ -14873,6 +15207,66 @@ type OrganizerContactRequest struct {
 	TurnstileToken *string `json:"turnstile_token,omitempty"`
 }
 
+// OutboundClicksDay Clicks to partner box offices on one day.
+type OutboundClicksDay struct {
+	// Clicks Number of clicks.
+	Clicks int64 `json:"clicks"`
+
+	// Day `YYYY-MM-DD` in the venue's zone.
+	Day string `json:"day"`
+}
+
+// OutboundClicksResponse Clicks from the event's page on a static site to partner box offices.
+type OutboundClicksResponse struct {
+	// ByDay Clicks per day, oldest first.
+	ByDay []OutboundClicksDay `json:"by_day"`
+
+	// BySeller Clicks per box office, the biggest first, at most 50.
+	BySeller []OutboundClicksSeller `json:"by_seller"`
+
+	// BySource Clicks per traffic source, the biggest first, at most 50.
+	BySource []OutboundClicksSource `json:"by_source"`
+
+	// EventId The event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// From First day of the window.
+	From string `json:"from"`
+
+	// ShareOfVisitors `total` divided by `visits`; null when there were no visits.
+	ShareOfVisitors *float32 `json:"share_of_visitors"`
+
+	// Timezone IANA zone of the venue the days are read in.
+	Timezone *string `json:"timezone"`
+
+	// To Last day of the window.
+	To string `json:"to"`
+
+	// Total All clicks of the window.
+	Total int64 `json:"total"`
+
+	// Visits Visits of the event page on the site in the same window.
+	Visits int64 `json:"visits"`
+}
+
+// OutboundClicksSeller Clicks to one partner box office.
+type OutboundClicksSeller struct {
+	// Clicks Number of clicks.
+	Clicks int64 `json:"clicks"`
+
+	// Seller Name of the box office; empty when the site sent none.
+	Seller string `json:"seller"`
+}
+
+// OutboundClicksSource Clicks that came from one traffic source.
+type OutboundClicksSource struct {
+	// Clicks Number of clicks.
+	Clicks int64 `json:"clicks"`
+
+	// UtmSource The source; empty for direct visits.
+	UtmSource string `json:"utm_source"`
+}
+
 // PageStatsCounts A pair of counters of one kind.
 type PageStatsCounts struct {
 	// Hits Hits that looked like a person with a browser.
@@ -16264,6 +16658,9 @@ type PublicEventMaterials struct {
 	// that moves, and stays empty for an event without a live session.
 	ReportPhotos []PublicMaterialPhoto `json:"report_photos"`
 
+	// ReportTextHtml The photo-report text as sanitized HTML (translated when `?locale=` names a language that has it), shown after the event ended. Null when there is none or the event is not over yet.
+	ReportTextHtml *string `json:"report_text_html"`
+
 	// Videos Video links in display order (at most 4).
 	Videos []PublicMaterialVideo `json:"videos"`
 }
@@ -16729,6 +17126,21 @@ type PublishEventRequest struct {
 	// FeedTokenId UUIDv7 of the agent feed token to publish the event to.
 	// Must reference an existing row in `agent_feed_tokens`.
 	FeedTokenId openapi_types.UUID `json:"feed_token_id"`
+}
+
+// PutContentTranslationRequest Body of PUT .../translations/{locale}. The row of the locale is replaced as a whole, an absent or blank member clears that text.
+type PutContentTranslationRequest struct {
+	// DescriptionHtml The translated description as HTML, sanitized by the rich-text description profile.
+	DescriptionHtml *string `json:"description_html"`
+
+	// Name The translated name, up to 200 characters. Leave empty to keep the original name.
+	Name *string `json:"name"`
+
+	// ReportTextHtml The translated photo-report text as HTML, sanitized the same way.
+	ReportTextHtml *string `json:"report_text_html"`
+
+	// ShortDescription The translated short description, up to 500 characters.
+	ShortDescription *string `json:"short_description"`
 }
 
 // PutTierPriceScheduleRequest Replace-all body for PUT .../price-schedule. Overlapping windows
@@ -19506,6 +19918,155 @@ type SellerProviderReceipt struct {
 	Forced bool `json:"forced"`
 }
 
+// Series A tour (event series, migration 0222, spec 63): several events under
+// one name, public address and set of page materials. The slug shares
+// one address space with the organization's active event slugs.
+type Series struct {
+	// ArchivedAt When the tour was archived. Null for an active tour.
+	ArchivedAt *time.Time `json:"archived_at"`
+
+	// CreatedAt When the tour was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// DescriptionHtml Description of the tour as filtered HTML (the event description filter). Null when none.
+	DescriptionHtml *string `json:"description_html"`
+
+	// EventCount Number of active events of the tour.
+	EventCount int `json:"event_count"`
+
+	// HeroMediaId Wide photo 16:9 (a media object of owner type `event_series`). Null when none.
+	HeroMediaId *openapi_types.UUID `json:"hero_media_id"`
+
+	// HeroUrl URL of the wide photo, null when there is none.
+	HeroUrl *string `json:"hero_url"`
+
+	// HeroVideoUrl An https YouTube or Vimeo link shown at the top of the tour page. Null when none.
+	HeroVideoUrl *string `json:"hero_video_url"`
+
+	// HideChildrenInLists When true the events of the tour are left out of the page lists, the tour card stands for them.
+	HideChildrenInLists bool `json:"hide_children_in_lists"`
+
+	// Id UUID of the tour.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name of the tour, 1-200 characters.
+	Name string `json:"name"`
+
+	// OrgId UUID of the owning organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PartnersTextHtml Text about the partners of the tour as filtered HTML. Null when none.
+	PartnersTextHtml *string `json:"partners_text_html"`
+
+	// Position Sort position of the tour among the organization's tours (ascending).
+	Position int32 `json:"position"`
+
+	// PosterMediaId Portrait poster 4:5 (a media object of owner type `event_series`). Null when none.
+	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
+
+	// PosterUrl URL of the poster, null when there is none.
+	PosterUrl *string `json:"poster_url"`
+
+	// Slug Public address of the tour (`<page>/<slug>`): 1-120 characters of
+	// Latin letters, digits and single hyphens.
+	Slug string `json:"slug"`
+
+	// Translations Reserved for the translated texts of a tour: locale to
+	// `{description_html, partners_text_html}`. Always an empty object
+	// for now; ignored on write.
+	Translations map[string]interface{} `json:"translations"`
+
+	// UpdatedAt When the tour was last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// SeriesDetail defines model for SeriesDetail.
+type SeriesDetail struct {
+	// ArchivedAt When the tour was archived. Null for an active tour.
+	ArchivedAt *time.Time `json:"archived_at"`
+
+	// CreatedAt When the tour was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// DescriptionHtml Description of the tour as filtered HTML (the event description filter). Null when none.
+	DescriptionHtml *string `json:"description_html"`
+
+	// EventCount Number of active events of the tour.
+	EventCount int `json:"event_count"`
+
+	// Events Active events of the tour by first session (events without sessions last).
+	Events []SeriesEventCard `json:"events"`
+
+	// HeroMediaId Wide photo 16:9 (a media object of owner type `event_series`). Null when none.
+	HeroMediaId *openapi_types.UUID `json:"hero_media_id"`
+
+	// HeroUrl URL of the wide photo, null when there is none.
+	HeroUrl *string `json:"hero_url"`
+
+	// HeroVideoUrl An https YouTube or Vimeo link shown at the top of the tour page. Null when none.
+	HeroVideoUrl *string `json:"hero_video_url"`
+
+	// HideChildrenInLists When true the events of the tour are left out of the page lists, the tour card stands for them.
+	HideChildrenInLists bool `json:"hide_children_in_lists"`
+
+	// Id UUID of the tour.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name of the tour, 1-200 characters.
+	Name string `json:"name"`
+
+	// OrgId UUID of the owning organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PartnersTextHtml Text about the partners of the tour as filtered HTML. Null when none.
+	PartnersTextHtml *string `json:"partners_text_html"`
+
+	// Position Sort position of the tour among the organization's tours (ascending).
+	Position int32 `json:"position"`
+
+	// PosterMediaId Portrait poster 4:5 (a media object of owner type `event_series`). Null when none.
+	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
+
+	// PosterUrl URL of the poster, null when there is none.
+	PosterUrl *string `json:"poster_url"`
+
+	// Slug Public address of the tour (`<page>/<slug>`): 1-120 characters of
+	// Latin letters, digits and single hyphens.
+	Slug string `json:"slug"`
+
+	// Translations Reserved for the translated texts of a tour: locale to
+	// `{description_html, partners_text_html}`. Always an empty object
+	// for now; ignored on write.
+	Translations map[string]interface{} `json:"translations"`
+
+	// UpdatedAt When the tour was last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// SeriesEventCard Short card of an event inside a tour.
+type SeriesEventCard struct {
+	// FirstSessionAt Start of the first session of the event. Null while it has no sessions.
+	FirstSessionAt *time.Time `json:"first_session_at"`
+
+	// Id UUID of the event.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name of the event.
+	Name string `json:"name"`
+
+	// Slug Public address of the event. Null while it has none.
+	Slug *string `json:"slug"`
+
+	// Status Status of the event (draft, published, archived, ...).
+	Status string `json:"status"`
+}
+
+// SeriesListEnvelope List-tours response.
+type SeriesListEnvelope struct {
+	// Items The organization's tours ordered by position, then name.
+	Items []Series `json:"items"`
+}
+
 // ServerInfoResponse defines model for ServerInfoResponse.
 type ServerInfoResponse struct {
 	// BuildSha Git commit SHA embedded at build time via runtime/debug.ReadBuildInfo
@@ -19677,6 +20238,42 @@ type SessionEnvelope struct {
 	Warnings *[]SessionWarning `json:"warnings,omitempty"`
 }
 
+// SessionExternalSale The partner box office that sells the tickets of an external session
+// (migration 0221, spec 63 section 14). The platform shows a button to
+// `url` instead of its own ticket picker.
+type SessionExternalSale struct {
+	// Currency ISO 4217 code of `price_from`, null together with it.
+	Currency *string `json:"currency"`
+
+	// PriceFrom The lowest price for the storefront in MAJOR units of `currency`
+	// (39.5 means 39.50), or null when the organizer gave none.
+	PriceFrom *float32 `json:"price_from"`
+
+	// SellerName The box office name shown to buyers, 1 to 80 characters.
+	SellerName string `json:"seller_name"`
+
+	// Url The box office address, https only, at most 2048 characters.
+	Url string `json:"url"`
+}
+
+// SessionExternalSaleInput The partner box office of an external session, as an organizer writes
+// it. The address must be https, a host name (no IP address) and not a
+// platform host; the name 1 to 80 characters. `price_from` and
+// `currency` go together or not at all.
+type SessionExternalSaleInput struct {
+	// Currency ISO 4217 code of `price_from`. Optional, only together with it.
+	Currency *string `json:"currency"`
+
+	// PriceFrom The lowest price in MAJOR units of `currency` (39.5 means 39.50). Optional.
+	PriceFrom *float32 `json:"price_from"`
+
+	// SellerName The box office name shown to buyers, 1 to 80 characters.
+	SellerName string `json:"seller_name"`
+
+	// Url The box office address, https only, at most 2048 characters.
+	Url string `json:"url"`
+}
+
 // SessionItem A single dated session (time slot) of an event at a venue. Since
 // Wave 4 (AB-36/AB-38) the session — not the event — owns the venue,
 // the seating bind and the currency, matching the Bil24 ActionEvent
@@ -19730,6 +20327,10 @@ type SessionItem struct {
 	// owner-org check is enforced via the parent event row.
 	EventId openapi_types.UUID `json:"event_id"`
 
+	// External The partner box office of an external session, null for a
+	// session the platform sells.
+	External *SessionExternalSale `json:"external"`
+
 	// HasOverlappingSessions True when this session overlaps with at least one other active
 	// session for the same event. Computed at the application layer
 	// from CountOverlappingSessions for single-session responses, or
@@ -19755,10 +20356,18 @@ type SessionItem struct {
 	// own sale_window_end can only close that category sooner.
 	SalesEndAt time.Time `json:"sales_end_at"`
 
+	// SalesMode Who sells the tickets of this session (migration 0221): `platform`
+	// (default) or `external`. An external session is sold by a partner
+	// box office at `external.url`; the platform holds and sells nothing
+	// for it (409 `session.sold_externally`) and the session owns no
+	// tiers, seats or inventory.
+	SalesMode string `json:"sales_mode"`
+
 	// SalesState The session's sales state, the one every sales channel follows
 	// (migration 0183): `open`, `soon`, `sold_out`, `ended` or
-	// `cancelled`. Present on the session list and the single read;
-	// absent on the create and update answers.
+	// `cancelled`, or `external` when a partner box office sells the
+	// session (migration 0221). Present on the session list and the
+	// single read; absent on the create and update answers.
 	SalesState *string `json:"sales_state,omitempty"`
 
 	// SeatingPlanVersionId The bound seating plan version. Null for pure
@@ -20394,6 +21003,12 @@ type SetEventPromoterRequest struct {
 	// PromoterId An active promoter of the organization, or null (or absent) to
 	// make the organization itself the promoter again.
 	PromoterId *openapi_types.UUID `json:"promoter_id"`
+}
+
+// SetEventReportTextRequest Body of PUT .../events/{event_id}/report-text.
+type SetEventReportTextRequest struct {
+	// ReportTextHtml The photo-report text of the original as HTML, sanitized by the rich-text description profile. Null or blank clears it.
+	ReportTextHtml *string `json:"report_text_html"`
 }
 
 // SetSessionSalesStateRequest The state to set.
@@ -21553,6 +22168,12 @@ type ShopVariantsReplaceRequest struct {
 
 // SiteContactRequest A message from a static site's contact or private-event form.
 type SiteContactRequest struct {
+	// City City, up to 100 characters. Used by the `partnership` topic only.
+	City *string `json:"city,omitempty"`
+
+	// Company Company name, 1-100 characters. Required for the `partnership` topic, ignored for other topics.
+	Company *string `json:"company,omitempty"`
+
 	// Consent Must be true; the sender agrees that the message is passed to the organizer.
 	Consent bool `json:"consent"`
 
@@ -21565,7 +22186,7 @@ type SiteContactRequest struct {
 	// Locale Page language of the sender.
 	Locale *string `json:"locale,omitempty"`
 
-	// Message The message, 10-2000 characters. Optional for the `contact` topic, required for `private_event`.
+	// Message The message, 10-2000 characters. Optional for the `contact` topic, required for `private_event` and `partnership`.
 	Message *string `json:"message,omitempty"`
 
 	// Name Sender's first name, 1-100 characters.
@@ -21574,12 +22195,15 @@ type SiteContactRequest struct {
 	// Phone Sender's phone, 5-30 characters of digits, spaces and + ( ) - . ; optional.
 	Phone *string `json:"phone,omitempty"`
 
-	// Topic `contact` (default) or `private_event`. It is also the Turnstile
-	// widget action of the form and picks the recipients.
+	// Topic `contact` (default), `private_event` or `partnership`. It is also
+	// the Turnstile widget action of the form and picks the recipients.
 	Topic *string `json:"topic,omitempty"`
 
 	// TurnstileToken Cloudflare Turnstile response token, solved with the action equal to `topic`.
 	TurnstileToken *string `json:"turnstile_token,omitempty"`
+
+	// Website Website address, up to 200 characters, an http/https URL or a bare host such as example.com. Used by the `partnership` topic only.
+	Website *string `json:"website,omitempty"`
 }
 
 // SiteMarketingSubscriptionAccepted The subscription was accepted.
@@ -21616,6 +22240,102 @@ type SiteMarketingSubscriptionRequest struct {
 	// TurnstileToken Cloudflare Turnstile response token, solved with the action `club`.
 	TurnstileToken *string `json:"turnstile_token,omitempty"`
 }
+
+// SiteTrackAccepted The event was taken. The answer never says what was done with it.
+type SiteTrackAccepted struct {
+	// Status Always "accepted".
+	Status string `json:"status"`
+}
+
+// SiteTrackData What the site knows about the event it reports; every field is optional and bounded.
+type SiteTrackData struct {
+	// CheckoutType Accepted and ignored; the event name decides between an external and an own checkout.
+	CheckoutType *string `json:"checkout_type,omitempty"`
+
+	// City City of the event, up to 100 characters.
+	City *string `json:"city,omitempty"`
+
+	// Currency ISO 4217 code, three letters.
+	Currency *string `json:"currency,omitempty"`
+
+	// Email The visitor's e-mail, `lead` only, only when they typed it. Sent to Meta as a SHA-256 hash.
+	Email *string `json:"email,omitempty"`
+
+	// EventId The platform event the visitor looked at or went from.
+	EventId *openapi_types.UUID `json:"event_id,omitempty"`
+
+	// Phone The visitor's phone, `lead` only, only when they typed it. Sent to Meta as a SHA-256 hash.
+	Phone *string `json:"phone,omitempty"`
+
+	// Seller The box office a click leads to, up to 64 characters. Becomes `affiliation` in GA4 and `seller` in Meta.
+	Seller *string `json:"seller,omitempty"`
+
+	// SessionId The platform session, when the click is about one date. A wrong value is ignored.
+	SessionId *openapi_types.UUID `json:"session_id,omitempty"`
+
+	// Value The "from" price in major units of `currency`.
+	Value *float32 `json:"value,omitempty"`
+}
+
+// SiteTrackRequest One event of a static site's visitor (spec 63 section 19).
+type SiteTrackRequest struct {
+	// Data Extra fields of the event, for example the contact of a `lead`.
+	Data *SiteTrackData `json:"data,omitempty"`
+
+	// Event What happened. `outbound_ticket_click` (a click to a partner's box
+	// office) is the main one: Meta `InitiateCheckout`, GA4
+	// `begin_checkout`, the `outbound_click` funnel step and the box
+	// office counter.
+	Event SiteTrackRequestEvent `json:"event"`
+
+	// EventId The browser's id of this event, up to 64 characters of letters, digits, `_` and `-`. The browser pixel sends the same id, so Meta and GA4 merge the two.
+	EventId string `json:"event_id"`
+
+	// Fbc Value of the `_fbc` cookie.
+	Fbc *string `json:"fbc,omitempty"`
+
+	// Fbclid Meta click id.
+	Fbclid *string `json:"fbclid,omitempty"`
+
+	// Fbp Value of the `_fbp` cookie.
+	Fbp *string `json:"fbp,omitempty"`
+
+	// GaClientId GA4 client id from the `_ga` cookie. Without it nothing goes to GA4.
+	GaClientId *string `json:"ga_client_id,omitempty"`
+
+	// GaSessionId GA4 session number from the `_ga_<id>` cookie.
+	GaSessionId *string `json:"ga_session_id,omitempty"`
+
+	// Gclid Google click id.
+	Gclid *string `json:"gclid,omitempty"`
+
+	// PageUrl The page the visitor was on. An address outside the channel's site origins is not counted.
+	PageUrl *string `json:"page_url,omitempty"`
+
+	// Referrer Accepted and ignored.
+	Referrer *string `json:"referrer,omitempty"`
+
+	// TrackingDeclined True when the visitor refused tracking. Tracking is on until the
+	// visitor refuses (owner decision 2026-11-22, as on vinoandco.events).
+	// A refusal sends nothing to Meta or GA4; the anonymous funnel counts
+	// the step all the same.
+	TrackingDeclined *bool `json:"tracking_declined,omitempty"`
+
+	// UtmCampaign Campaign, as in the funnel beacon.
+	UtmCampaign *string `json:"utm_campaign,omitempty"`
+
+	// UtmSource Traffic source, as in the funnel beacon.
+	UtmSource *string `json:"utm_source,omitempty"`
+
+	// Vid The site's first-party visitor id, up to 64 characters. Meta gets its SHA-256 as `external_id`.
+	Vid *string `json:"vid,omitempty"`
+}
+
+// SiteTrackRequestEvent What happened. `outbound_ticket_click` (a click to a partner's box
+// office) is the main one: Meta `InitiateCheckout`, GA4
+// `begin_checkout`, the `outbound_click` funnel step and the box
+// office counter.
+type SiteTrackRequestEvent string
 
 // SmartPriceNow Where an active preset stands at the moment of the read.
 type SmartPriceNow struct {
@@ -23167,6 +23887,12 @@ type UpdateEventRequest struct {
 	// override. Nil leaves unchanged.
 	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
 
+	// SeriesId The event's tour (migration 0222). Absent keeps the link, null
+	// (or an empty string) removes it, a UUID links an ACTIVE tour of
+	// the organization. An unknown, foreign or archived tour answers
+	// 422 `event.invalid_series`.
+	SeriesId *openapi_types.UUID `json:"series_id"`
+
 	// ShortDescription Tri-state (absent=keep, null=clear, value=set).
 	// Short marketing description shown in cards and previews (AB-45c).
 	ShortDescription *string `json:"short_description"`
@@ -23528,6 +24254,40 @@ type UpdateSellerProfileRequest struct {
 	ProviderReceiptForced *bool `json:"provider_receipt_forced,omitempty"`
 }
 
+// UpdateSeriesRequest Body of PATCH /v1/organizations/{org_id}/series/{series_id}. Absent
+// keeps a field, null clears a nullable one.
+type UpdateSeriesRequest struct {
+	// DescriptionHtml Description as HTML, passed through the event description filter. Null clears.
+	DescriptionHtml *string `json:"description_html"`
+
+	// HeroMediaId A media object of the organization. Null clears.
+	HeroMediaId *openapi_types.UUID `json:"hero_media_id"`
+
+	// HeroVideoUrl An https YouTube or Vimeo link. Null clears.
+	HeroVideoUrl *string `json:"hero_video_url"`
+
+	// HideChildrenInLists Leave the events of the tour out of the page lists.
+	HideChildrenInLists *bool `json:"hide_children_in_lists,omitempty"`
+
+	// Name Name of the tour, 1-200 characters. Cannot be null.
+	Name *string `json:"name,omitempty"`
+
+	// PartnersTextHtml Text about the partners as HTML. Null clears.
+	PartnersTextHtml *string `json:"partners_text_html"`
+
+	// Position Sort position, ascending.
+	Position *int32 `json:"position,omitempty"`
+
+	// PosterMediaId A media object of the organization. Null clears.
+	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
+
+	// Slug New public address. Cannot be null. A taken one answers 409 `series.slug_taken`.
+	Slug *string `json:"slug,omitempty"`
+
+	// Translations Reserved for translated texts; ignored.
+	Translations *map[string]interface{} `json:"translations,omitempty"`
+}
+
 // UpdateSessionRequest Partial update for PATCH
 // /v1/organizations/{org_id}/events/{event_id}/sessions/{id}. All
 // fields are optional; nil / empty fields leave the existing value
@@ -23571,6 +24331,14 @@ type UpdateSessionRequest struct {
 	// start_at.
 	EndAt *time.Time `json:"end_at"`
 
+	// External The partner box office. With `sales_mode` `external` (or on a
+	// session that is already external) it sets or replaces the block;
+	// null without `sales_mode` puts the session back on `platform`.
+	// Sending it for a session that stays on the platform is 422
+	// `session.external_not_applicable`; a missing block for a switch to
+	// external is 422 `session.external_required`.
+	External *SessionExternalSaleInput `json:"external"`
+
 	// Notice What the organizer wants to say to the buyers of a session that is
 	// being moved or cancelled. Shown under the standard, localized wording
 	// of the letter.
@@ -23585,6 +24353,14 @@ type UpdateSessionRequest struct {
 	// end along by the same amount. Some events sell after the start,
 	// for those who come late — the organizer decides.
 	SalesEndAt *time.Time `json:"sales_end_at"`
+
+	// SalesMode Change who sells the tickets: `platform` or `external` (migration
+	// 0221). Absent keeps it. `platform` to `external` is allowed only
+	// while the session has no orders, tickets, holds, seats or tiers;
+	// `external` back to `platform` only while it has no seats or tiers;
+	// otherwise 409 `session.sales_mode_locked`. Any other value is 400
+	// `session.invalid_sales_mode`.
+	SalesMode *string `json:"sales_mode,omitempty"`
 
 	// StartAt New session start time (RFC 3339, UTC). Empty leaves unchanged.
 	StartAt *time.Time `json:"start_at"`
@@ -25808,6 +26584,15 @@ type CheckEventMapPointParams struct {
 	Longitude float64 `form:"longitude" json:"longitude"`
 }
 
+// GetV1OrganizationsOrgIdEventsEventIdOutboundClicksParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdOutboundClicks.
+type GetV1OrganizationsOrgIdEventsEventIdOutboundClicksParams struct {
+	// From First day, `YYYY-MM-DD`. Default 29 days before `to`.
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone.
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+}
+
 // GetV1OrganizationsOrgIdEventsEventIdPageStatsParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdPageStats.
 type GetV1OrganizationsOrgIdEventsEventIdPageStatsParams struct {
 	// From First day, `YYYY-MM-DD`. Default 29 days before `to`.
@@ -26272,6 +27057,12 @@ type GetSalesLinkStatsParams struct {
 	To *string `form:"to,omitempty" json:"to,omitempty"`
 }
 
+// ListSeriesParams defines parameters for ListSeries.
+type ListSeriesParams struct {
+	// IncludeArchived Include archived tours (true/false, default false).
+	IncludeArchived *bool `form:"include_archived,omitempty" json:"include_archived,omitempty"`
+}
+
 // GetV1OrganizationsOrgIdSessionsSessionIdChangeImpactParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdChangeImpact.
 type GetV1OrganizationsOrgIdSessionsSessionIdChangeImpactParams struct {
 	// StartAt Proposed start (RFC 3339).
@@ -26558,12 +27349,21 @@ type ListPublicFeedEventsParams struct {
 	// Offset Pagination offset.
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 
+	// Locale Content language of the texts, for example `cs` or `de`. Events that have a translation into it are served translated; an unsupported locale or an event without a translation falls back to the original.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+
 	// IncludeRemoved With `true` the answer also carries `removed_events`: every event
 	// that left this feed token's list within the last 30 days, with a
 	// terminal status and the removal time. It is how a site builder
 	// tells "removed" from "the answer is incomplete". The `events`
 	// list and its pagination are not affected.
 	IncludeRemoved *bool `form:"include_removed,omitempty" json:"include_removed,omitempty"`
+}
+
+// GetPublicFeedEventParams defines parameters for GetPublicFeedEvent.
+type GetPublicFeedEventParams struct {
+	// Locale Content language of the texts, for example `cs` or `de`. A translation into it is served when it exists (also `materials.report_text_html`); an unsupported locale or a missing translation falls back to the original.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
 // CreateSiteMarketingSubscriptionParams defines parameters for CreateSiteMarketingSubscription.
@@ -26584,6 +27384,30 @@ type SendSiteOrganizerContactParams struct {
 	// retry is not verified a second time); the same key with another
 	// body is 409. Scoped to the route and the feed token, kept 24 hours.
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
+}
+
+// ListPublicFeedSeriesParams defines parameters for ListPublicFeedSeries.
+type ListPublicFeedSeriesParams struct {
+	// Locale Reserved for translated texts; accepted and ignored for now.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// GetPublicFeedSeriesParams defines parameters for GetPublicFeedSeries.
+type GetPublicFeedSeriesParams struct {
+	// Locale Reserved for translated texts; accepted and ignored for now.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// TrackSiteEventParams defines parameters for TrackSiteEvent.
+type TrackSiteEventParams struct {
+	// XSiteKey The channel's tracking secret, added by the site's nginx.
+	XSiteKey *string `json:"X-Site-Key,omitempty"`
+
+	// XSiteClientIP The visitor's address, trusted only together with a valid `X-Site-Key`.
+	XSiteClientIP *string `json:"X-Site-Client-IP,omitempty"`
+
+	// XSiteUserAgent The visitor's browser, trusted only together with a valid `X-Site-Key`.
+	XSiteUserAgent *string `json:"X-Site-User-Agent,omitempty"`
 }
 
 // GetPublicMarketingConfirmPageParams defines parameters for GetPublicMarketingConfirmPage.
@@ -27248,6 +28072,9 @@ type UpdateEventReportPhotoJSONRequestBody = UpdateEventReportPhotoRequest
 // PutV1OrganizationsOrgIdEventsEventIdReferralProgramJSONRequestBody defines body for PutV1OrganizationsOrgIdEventsEventIdReferralProgram for application/json ContentType.
 type PutV1OrganizationsOrgIdEventsEventIdReferralProgramJSONRequestBody = ReferralProgramRequest
 
+// SetEventReportTextJSONRequestBody defines body for SetEventReportText for application/json ContentType.
+type SetEventReportTextJSONRequestBody = SetEventReportTextRequest
+
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = CreateSessionRequest
 
@@ -27286,6 +28113,12 @@ type UpdateTicketTierJSONRequestBody = UpdateTicketTierRequest
 
 // PutTierPriceScheduleJSONRequestBody defines body for PutTierPriceSchedule for application/json ContentType.
 type PutTierPriceScheduleJSONRequestBody = PutTierPriceScheduleRequest
+
+// RequestEventMachineTranslationJSONRequestBody defines body for RequestEventMachineTranslation for application/json ContentType.
+type RequestEventMachineTranslationJSONRequestBody = MachineTranslateRequest
+
+// PutEventContentTranslationJSONRequestBody defines body for PutEventContentTranslation for application/json ContentType.
+type PutEventContentTranslationJSONRequestBody = PutContentTranslationRequest
 
 // AddEventVideoJSONRequestBody defines body for AddEventVideo for application/json ContentType.
 type AddEventVideoJSONRequestBody = EventVideoAddRequest
@@ -27419,6 +28252,12 @@ type PatchV1OrganizationsOrgIdSeatingPlansPlanIdLayoutsLayoutIdJSONRequestBody =
 // UpdateSellerProfileJSONRequestBody defines body for UpdateSellerProfile for application/json ContentType.
 type UpdateSellerProfileJSONRequestBody = UpdateSellerProfileRequest
 
+// CreateSeriesJSONRequestBody defines body for CreateSeries for application/json ContentType.
+type CreateSeriesJSONRequestBody = CreateSeriesRequest
+
+// UpdateSeriesJSONRequestBody defines body for UpdateSeries for application/json ContentType.
+type UpdateSeriesJSONRequestBody = UpdateSeriesRequest
+
 // CreateInvitationBatchMultipartRequestBody defines body for CreateInvitationBatch for multipart/form-data ContentType.
 type CreateInvitationBatchMultipartRequestBody = InvitationBatchUploadRequest
 
@@ -27544,6 +28383,9 @@ type SendSiteOrganizerContactJSONRequestBody = SiteContactRequest
 
 // CreatePublicSaleSubscriptionJSONRequestBody defines body for CreatePublicSaleSubscription for application/json ContentType.
 type CreatePublicSaleSubscriptionJSONRequestBody = PublicSaleSubscriptionRequest
+
+// TrackSiteEventJSONRequestBody defines body for TrackSiteEvent for application/json ContentType.
+type TrackSiteEventJSONRequestBody = SiteTrackRequest
 
 // PostPublicFunnelJSONRequestBody defines body for PostPublicFunnel for application/json ContentType.
 type PostPublicFunnelJSONRequestBody = SalesFunnelRequest

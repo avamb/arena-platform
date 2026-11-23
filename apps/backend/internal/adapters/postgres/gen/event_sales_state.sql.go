@@ -41,7 +41,9 @@ SELECT s.event_id,
                WHERE  ss.session_id = s.id
                  AND  ss.status     = 'available'
                  AND  tt.deleted_at IS NULL)
-       ), false)                                          AS places_left
+       ), false)                                          AS places_left,
+       count(*) FILTER (WHERE s.end_at > now()
+                          AND s.sales_mode = 'external')::bigint AS future_external_sessions
 FROM   sessions s
 WHERE  s.event_id = ANY($1::uuid[])
   AND  s.deleted_at IS NULL
@@ -58,6 +60,10 @@ type EventSalesFacts struct {
 	NextSessionAt  *time.Time `json:"next_session_at"`
 	Selling        bool       `json:"selling"`
 	PlacesLeft     bool       `json:"places_left"`
+	// FutureExternalSessions counts the future sessions a partner box office
+	// sells (sessions.sales_mode = 'external', migration 0221). They own no
+	// seats, so they never count as selling nor as having places left.
+	FutureExternalSessions int64 `json:"future_external_sessions"`
 }
 
 // ListEventSalesFacts returns the sales facts of the given events keyed by
@@ -71,7 +77,7 @@ func (q *Queries) ListEventSalesFacts(ctx context.Context, eventIDs []uuid.UUID)
 	out := make(map[uuid.UUID]EventSalesFacts, len(eventIDs))
 	for rows.Next() {
 		var f EventSalesFacts
-		if err := rows.Scan(&f.EventID, &f.SessionCount, &f.FutureSessions, &f.NextSessionAt, &f.Selling, &f.PlacesLeft); err != nil {
+		if err := rows.Scan(&f.EventID, &f.SessionCount, &f.FutureSessions, &f.NextSessionAt, &f.Selling, &f.PlacesLeft, &f.FutureExternalSessions); err != nil {
 			return nil, err
 		}
 		out[f.EventID] = f

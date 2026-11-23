@@ -80,6 +80,12 @@ export const API = {
   promoters: { method: "GET", path: "/v1/organizations/{org_id}/promoters" },
   promoterCreate: { method: "POST", path: "/v1/organizations/{org_id}/promoters" },
   promoterUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/promoters/{id}" },
+  // Spec 63 L-2: tours (event series).
+  seriesList: { method: "GET", path: "/v1/organizations/{org_id}/series" },
+  seriesCreate: { method: "POST", path: "/v1/organizations/{org_id}/series" },
+  seriesGet: { method: "GET", path: "/v1/organizations/{org_id}/series/{series_id}" },
+  seriesUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/series/{series_id}" },
+  seriesArchive: { method: "DELETE", path: "/v1/organizations/{org_id}/series/{series_id}" },
   // Spec 51-1: cart reminder and marketing consent.
   growthSettings: { method: "GET", path: "/v1/organizations/{org_id}/growth-settings" },
   growthSettingsUpdate: { method: "PUT", path: "/v1/organizations/{org_id}/growth-settings" },
@@ -203,6 +209,12 @@ export const API = {
   // the test letter of the organizer's own text. The text itself is saved with eventUpdate.
   textsFormat: { method: "POST", path: "/v1/organizations/{org_id}/texts/format" },
   emailNoteTest: { method: "POST", path: "/v1/organizations/{org_id}/events/{event_id}/email-note/test" },
+  // Spec 63 section 16: translations of the event texts, and the photo-report text of the original.
+  eventTranslations: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/translations" },
+  eventTranslationPut: { method: "PUT", path: "/v1/organizations/{org_id}/events/{event_id}/translations/{locale}" },
+  eventTranslationDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/events/{event_id}/translations/{locale}" },
+  eventTranslationsMachine: { method: "POST", path: "/v1/organizations/{org_id}/events/{event_id}/translations/machine" },
+  eventReportText: { method: "PUT", path: "/v1/organizations/{org_id}/events/{event_id}/report-text" },
   // 5-3: the sales end and doors-open time of a session
   sessionUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{event_id}/sessions/{id}" },
   // The sales state of a session, for every channel at once (migration 0183).
@@ -308,6 +320,7 @@ export const API = {
   eventPageStatsCsv: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/page-stats.csv" },
   // A7: the buyer sales funnel of the event (spec 50).
   eventFunnel: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/funnel" },
+  eventOutboundClicks: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/outbound-clicks" },
   // M2: the tickets of a session with their entry at the door.
   sessionTickets: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/tickets" },
   // QL-12: tracked sales links and their QR codes (spec 43). A PATCH sends the

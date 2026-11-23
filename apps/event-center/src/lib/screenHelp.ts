@@ -34,6 +34,7 @@ export const ITEM_HELP: Record<string, MessageKey> = {
   "nav-org-data": "screenHelp.item.orgData",
   "nav-payments": "screenHelp.item.payments",
   "nav-team": "screenHelp.item.team",
+  "nav-series": "screenHelp.item.series",
   "nav-promoters": "screenHelp.item.promoters",
   "nav-venues": "screenHelp.item.venues",
   "nav-notifications": "screenHelp.item.notifications",
@@ -50,6 +51,7 @@ export const CARD_HELP: Record<Exclude<ItemId, "status">, { label: MessageKey; t
   guests: { label: "guestList.downloadEvent", text: "screenHelp.action.guests" },
   funnel: { label: "funnel.button", text: "screenHelp.action.funnel" },
   edit: { label: "event.edit", text: "screenHelp.action.edit" },
+  translations: { label: "tr.title", text: "screenHelp.action.translations" },
   sample: { label: "event.sample", text: "screenHelp.action.sample" },
   promo: { label: "nav.promo", text: "screenHelp.action.promo" },
   invitations: { label: "nav.invitations", text: "screenHelp.action.invitations" },
@@ -96,6 +98,7 @@ export type ScreenId =
   | "orgData"
   | "team"
   | "promoters"
+  | "series"
   | "venues"
   | "notifications"
   | "billing";
@@ -108,7 +111,7 @@ interface ScreenDef {
 }
 
 const SCREENS: Record<Exclude<ScreenId, "event">, ScreenDef> = {
-  events: { primary: "menu-events", items: ["nav-new-event", "menu-events", "nav-summary"] },
+  events: { primary: "menu-events", items: ["nav-new-event", "menu-events", "nav-summary", "nav-series"] },
   orders: { primary: "menu-orders", items: ["menu-orders", "menu-refunds"] },
   refunds: { primary: "menu-refunds", items: ["menu-refunds"] },
   promo: { primary: "nav-promo", items: "promotion" },
@@ -121,6 +124,7 @@ const SCREENS: Record<Exclude<ScreenId, "event">, ScreenDef> = {
   orgData: { primary: "nav-org-data", items: ["nav-org-data", "nav-payments"] },
   team: { primary: "nav-team", items: ["nav-team"] },
   promoters: { primary: "nav-promoters", items: ["nav-promoters"] },
+  series: { primary: "nav-series", items: ["nav-series"] },
   venues: { primary: "nav-venues", items: ["nav-venues"] },
   notifications: { primary: "nav-notifications", items: ["nav-notifications"] },
   billing: { primary: "nav-billing", items: ["nav-billing"] },

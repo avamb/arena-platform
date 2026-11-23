@@ -233,6 +233,76 @@ func TestSiteContact_RefusalsAndIdempotency(t *testing.T) {
 	}
 }
 
+func sitePartnershipBody(company, website string) string {
+	b, _ := json.Marshal(map[string]any{
+		"topic": "partnership", "name": "Dana", "email": "dana@example.com", "company": company,
+		"city": "Haifa", "website": website, "message": "We run a theatre and want to sell with you.",
+		"consent": true, "locale": "en",
+	})
+	return string(b)
+}
+
+func TestSiteContact_PartnershipTopic(t *testing.T) {
+	pool := onboardingIntegrationPool(t)
+	srv := buildBotIntegrationServer(t, pool)
+	sf := newSiteFixture(t, true)
+	ctx := context.Background()
+	path := "/v1/public/feeds/" + sf.token + "/organizer-contact"
+
+	// Company is required, a website must be a URL or a host.
+	for name, b := range map[string]string{
+		"no company":  sitePartnershipBody("", "https://theatre.example"),
+		"bad website": sitePartnershipBody("Theatre", "ftp://theatre.example"),
+		"word":        sitePartnershipBody("Theatre", "theatre"),
+	} {
+		if code, body := sitePost(t, srv.router, path, b, "198.51.100.71", ""); code != http.StatusBadRequest {
+			t.Errorf("%s: %d %s", name, code, body)
+		}
+	}
+
+	// No partnership recipients: the usual chain (the organization's owner).
+	if code, body := sitePost(t, srv.router, path, sitePartnershipBody("Theatre Ltd", "theatre.example"), "198.51.100.72", ""); code != http.StatusAccepted {
+		t.Fatalf("partnership fallback: %d %s", code, body)
+	}
+	var id uuid.UUID
+	var company, city, website string
+	if err := pool.QueryRow(ctx, `SELECT id, company, city, website FROM organizer_contact_messages WHERE org_id = $1 AND topic = 'partnership'`, sf.f.orgID).
+		Scan(&id, &company, &city, &website); err != nil {
+		t.Fatal(err)
+	}
+	if company != "Theatre Ltd" || city != "Haifa" || website != "theatre.example" {
+		t.Fatalf("stored: %q %q %q", company, city, website)
+	}
+	payload, _ := json.Marshal(contactform.Payload{MessageID: id.String()})
+	mail := &scriptedMail{}
+	if err := contactform.New(contactform.Options{Pool: pool, Sender: mail}).Handle(ctx, payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(mail.sent) != 1 || mail.sent[0].To == siteMailA || mail.sent[0].To == siteMailB ||
+		!strings.Contains(mail.sent[0].TextBody, "Company: Theatre Ltd") || !strings.Contains(mail.sent[0].TextBody, "Website: theatre.example") {
+		t.Fatalf("fallback letter = %+v", mail.sent)
+	}
+
+	// With partnership recipients the letter goes to exactly those.
+	if _, err := pool.Exec(ctx, `UPDATE sales_channels SET settings = jsonb_set(settings, '{contact_form,recipients,partnership}', to_jsonb($2::text)) WHERE id = $1`, sf.channel, siteMailA); err != nil {
+		t.Fatal(err)
+	}
+	if code, body := sitePost(t, srv.router, path, sitePartnershipBody("Second Ltd", ""), "198.51.100.73", ""); code != http.StatusAccepted {
+		t.Fatalf("partnership with recipients: %d %s", code, body)
+	}
+	if err := pool.QueryRow(ctx, `SELECT id FROM organizer_contact_messages WHERE org_id = $1 AND company = 'Second Ltd'`, sf.f.orgID).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	payload, _ = json.Marshal(contactform.Payload{MessageID: id.String()})
+	mail = &scriptedMail{}
+	if err := contactform.New(contactform.Options{Pool: pool, Sender: mail}).Handle(ctx, payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(mail.sent) != 1 || mail.sent[0].To != siteMailA {
+		t.Fatalf("recipients letter = %+v", mail.sent)
+	}
+}
+
 // expectCapture is a scoped verifier that records what the handler demands.
 type expectCapture struct {
 	got honboarding.Expect

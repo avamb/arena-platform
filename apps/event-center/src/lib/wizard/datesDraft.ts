@@ -9,6 +9,7 @@
  * (the bot's U-5 per-date categories). Numbers and times stay as typed;
  * `parse.ts` reads them and `bundle.ts` builds the bundle.
  */
+import { emptyExternal, isBlankExternal, type ExternalField, type ExternalForm, type SalesMode } from "@/lib/externalSale";
 import type { WizardDraft } from "@/lib/wizard/draft";
 
 /**
@@ -71,6 +72,13 @@ export interface DateEntry {
   /** From the second date on: sell what the date before sells (its `tickets` is then unused). */
   sameTickets: boolean;
   tickets: TicketsPart;
+  /**
+   * Who sells this date (spec 63, L-3): "platform" (the default: the tickets below) or "external" (a partner
+   * box office: `external`, no tickets). A stored draft without it reads as "platform", so no version bump.
+   */
+  sales: SalesMode;
+  /** The partner box office, used only while `sales` is "external"; kept when the person switches back. */
+  external: ExternalForm;
 }
 
 /** The most dates one event can have in the wizard (a guard for the browser, not a platform rule). */
@@ -99,10 +107,14 @@ export function emptyDate(key: string, defaultName: string): DateEntry {
     capacity: "",
     sameTickets: false,
     tickets: emptyTickets(`${key}-c1`, defaultName),
+    sales: "platform",
+    external: emptyExternal(),
   };
 }
 
 export type DateAction =
+  | { type: "dateSales"; key: string; sales: SalesMode }
+  | { type: "dateExternal"; key: string; field: ExternalField; value: string }
   | { type: "dateAdd"; key: string; defaultName: string }
   | { type: "dateRemove"; key: string }
   | { type: "dateDay"; key: string; value: string }
@@ -117,6 +129,8 @@ export type DateAction =
   | { type: "stepField"; key: string; stepKey: string; field: "from" | "price"; value: string };
 
 export const DATE_ACTION_TYPES: ReadonlySet<string> = new Set([
+  "dateSales",
+  "dateExternal",
   "dateAdd",
   "dateRemove",
   "dateDay",
@@ -157,6 +171,26 @@ export function effectiveTickets(dates: readonly DateEntry[], index: number): Ti
   return dates[i].tickets;
 }
 
+/** True when date `index` is sold by a partner box office. */
+export function isExternalDate(dates: readonly DateEntry[], index: number): boolean {
+  return dates[index]?.sales === "external";
+}
+
+/** The index of the date whose tickets date `index` really sells (itself, or the date before, followed back). */
+function ticketsSource(dates: readonly DateEntry[], index: number): number {
+  let i = index;
+  while (i > 0 && dates[i].sameTickets) i -= 1;
+  return i;
+}
+
+/**
+ * True when date `index` may sell "the same as the date before": there is a date before, and what it sells
+ * is tickets of the platform (a partner box office has none to copy).
+ */
+export function sameTicketsAllowed(dates: readonly DateEntry[], index: number): boolean {
+  return index > 0 && !isExternalDate(dates, ticketsSource(dates, index - 1));
+}
+
 /** A mode change keeps what fits: one category for "single", at least two for the others. */
 function switchMode(t: TicketsPart, mode: TicketMode, catKey: string): TicketsPart {
   if (mode === "single") return { mode, categories: t.categories.slice(0, 1).map((c) => ({ ...c })), schedule: t.schedule.map((s) => ({ ...s })) };
@@ -180,10 +214,35 @@ export function applyDateAction(d: WizardDraft, a: DateAction): WizardDraft {
         ...emptyDate(a.key, a.defaultName),
         time: prev?.time ?? "",
         capacity: prev?.capacity ?? "",
-        sameTickets: d.dates.length > 0,
+        // A partner box office has no tickets to copy.
+        sameTickets: d.dates.length > 0 && prev.sales === "platform",
       };
+      // A tour sold by a partner: the next city starts with the same box office name and currency, never its link.
+      if (prev?.sales === "external") {
+        next.sales = "external";
+        next.external = { ...emptyExternal(), seller: prev.external.seller, currency: prev.external.currency };
+      }
       return { ...d, dates: [...d.dates, next] };
     }
+    case "dateSales": {
+      const i = d.dates.findIndex((x) => x.key === a.key);
+      if (i < 0 || d.dates[i].sales === a.sales) return d;
+      const e = d.dates[i];
+      const dates = d.dates.slice();
+      if (a.sales === "external") {
+        const before = cloneTickets(effectiveTickets(d.dates, i));
+        // The next date that copied this one keeps selling what it sold: it gets its own copy.
+        const next = d.dates[i + 1];
+        if (next !== undefined && next.sameTickets) dates[i + 1] = { ...next, sameTickets: false, tickets: before };
+        // The date keeps tickets of its own to come back to; it has nothing to copy any more.
+        dates[i] = { ...e, sales: "external", sameTickets: false, tickets: e.sameTickets ? cloneTickets(before) : e.tickets };
+      } else {
+        dates[i] = { ...e, sales: "platform" };
+      }
+      return { ...d, dates };
+    }
+    case "dateExternal":
+      return mapDate(d, a.key, (e) => (e.external[a.field] === a.value ? e : { ...e, external: { ...e.external, [a.field]: a.value } }));
     case "dateRemove":
       if (d.dates.length <= 1) return d;
       return { ...d, dates: d.dates.filter((x) => x.key !== a.key) };
@@ -194,6 +253,7 @@ export function applyDateAction(d: WizardDraft, a: DateAction): WizardDraft {
     case "dateSame":
       return mapDate(d, a.key, (e, i) => {
         if (i === 0 || e.sameTickets === a.same) return e;
+        if (a.same && !sameTicketsAllowed(d.dates, i)) return e;
         // Leaving "same as before" starts from what the date before sells.
         return a.same ? { ...e, sameTickets: true } : { ...e, sameTickets: false, tickets: cloneTickets(effectiveTickets(d.dates, i - 1)) };
       });
@@ -237,6 +297,8 @@ export function isBlankDate(e: DateEntry): boolean {
   const t = e.tickets;
   const c = t.categories[0];
   return (
+    e.sales === "platform" &&
+    isBlankExternal(e.external) &&
     e.day === "" &&
     e.time === "" &&
     e.endTime === "" &&
@@ -289,6 +351,15 @@ function parseTickets(raw: unknown): TicketsPart | null {
   return { mode: o.mode, categories: categories as CategoryEntry[], schedule: schedule as PriceStepEntry[] };
 }
 
+/** The partner box office of a stored date; an older draft has none, and a half-written one reads as empty. */
+function parseExternal(raw: unknown): ExternalForm {
+  const o = obj(raw);
+  if (o === null) return emptyExternal();
+  const [url, seller, price, currency] = [o.url, o.seller, o.price, o.currency].map(str);
+  if (url === null || seller === null || price === null || currency === null) return emptyExternal();
+  return { url, seller, price, currency };
+}
+
 /** Checks the dates of a stored draft field by field; null when anything is off. */
 export function parseDates(raw: unknown): DateEntry[] | null {
   if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_DATES) return null;
@@ -300,7 +371,8 @@ export function parseDates(raw: unknown): DateEntry[] | null {
     const tickets = parseTickets(o.tickets);
     if (key === null || day === null || time === null || endTime === null || salesEnd === null || doors === null || capacity === null) return null;
     if (typeof o.sameTickets !== "boolean" || tickets === null) return null;
-    out.push({ key, day, time, endTime, salesEnd, doors, capacity, sameTickets: o.sameTickets, tickets });
+    const ext = parseExternal(o.external);
+    out.push({ key, day, time, endTime, salesEnd, doors, capacity, sameTickets: o.sameTickets, tickets, sales: o.sales === "external" ? "external" : "platform", external: ext });
   }
   if (out[0].sameTickets) return null; // the first date has nothing before it
   return out;

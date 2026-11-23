@@ -174,7 +174,14 @@ func newWizardRun(t *testing.T, refs RefIO) *wizardRun {
 	}
 	w := NewWizard(NewTexts(bundle), refs)
 	w.now = func() time.Time { return time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC) } // the tests' "today"
-	return &wizardRun{t: t, w: w, ws: WizSession{JWT: "jwt", OrgID: uuid.New(), Locale: "ru"}, d: NewDraft()}
+	r := &wizardRun{t: t, w: w, ws: WizSession{JWT: "jwt", OrgID: uuid.New(), Locale: "ru"}, d: NewDraft()}
+	// The first question of a new event is "Who sells the tickets?" (spec 63
+	// L-3); the walks below are about an event the platform sells, so they
+	// start by answering it. wizard_external_test.go walks the partner way.
+	if _, err := w.Apply(context.Background(), r.ws, r.d, WizInput{Data: "seller:platform"}); err != nil || r.d.Step != stEvName {
+		t.Fatalf("seller:platform: step=%s err=%v", r.d.Step, err)
+	}
+	return r
 }
 
 // step feeds one answer and asserts the step the draft lands on.

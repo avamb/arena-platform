@@ -166,6 +166,67 @@ var ticketStringsByLocale = map[string]ticketStrings{
 		Directions: "Як дістатися",
 		Invitation: "Запрошення",
 	},
+	// hu, et, lv, lt, fi: added for the Lampyris site (spec 63, L-4).
+	"hu": {
+		Category: "Kategória", Seat: "Ülőhely", Price: "Ár",
+		RowWord: "sor", SeatWord: "ülőhely",
+		TicketNo: "Jegy sz.", Order: "Rendelés", Organizer: "Szervező",
+		KeepNote:   "A bejáratnál mutassa meg a QR-kódot. Ne tegye közzé a jegyét nyilvánosan.",
+		Holder:     "Birtokos",
+		Contact:    "Kapcsolat",
+		NotFiscal:  "Ez a dokumentum nem adóügyi bizonylat.",
+		Doors:      "Beengedés",
+		Directions: "Útvonal",
+		Invitation: "Meghívó",
+	},
+	"et": {
+		Category: "Kategooria", Seat: "Koht", Price: "Hind",
+		RowWord: "rida", SeatWord: "koht",
+		TicketNo: "Pilet nr", Order: "Tellimus", Organizer: "Korraldaja",
+		KeepNote:   "Näidake sissepääsu juures QR-koodi. Ärge avaldage oma piletit avalikult.",
+		Holder:     "Omanik",
+		Contact:    "Kontakt",
+		NotFiscal:  "See dokument ei ole fiskaalkviitung.",
+		Doors:      "Uksed avatakse",
+		Directions: "Teekond",
+		Invitation: "Kutse",
+	},
+	"lv": {
+		Category: "Kategorija", Seat: "Vieta", Price: "Cena",
+		RowWord: "rinda", SeatWord: "vieta",
+		TicketNo: "Biļete nr.", Order: "Pasūtījums", Organizer: "Organizators",
+		KeepNote:   "Ieejā uzrādiet QR kodu. Nepublicējiet biļeti publiski.",
+		Holder:     "Īpašnieks",
+		Contact:    "Kontakti",
+		NotFiscal:  "Šis dokuments nav fiskālais čeks.",
+		Doors:      "Durvis atver",
+		Directions: "Norādes",
+		Invitation: "Ielūgums",
+	},
+	"lt": {
+		Category: "Kategorija", Seat: "Vieta", Price: "Kaina",
+		RowWord: "eilė", SeatWord: "vieta",
+		TicketNo: "Bilieto nr.", Order: "Užsakymas", Organizer: "Organizatorius",
+		KeepNote:   "Prie įėjimo parodykite QR kodą. Neskelbkite bilieto viešai.",
+		Holder:     "Savininkas",
+		Contact:    "Kontaktai",
+		NotFiscal:  "Šis dokumentas nėra fiskalinis čekis.",
+		Doors:      "Durys atidaromos",
+		Directions: "Kaip nuvykti",
+		Invitation: "Kvietimas",
+	},
+	"fi": {
+		Category: "Kategoria", Seat: "Paikka", Price: "Hinta",
+		RowWord: "rivi", SeatWord: "paikka",
+		TicketNo: "Lippu nro", Order: "Tilaus", Organizer: "Järjestäjä",
+		KeepNote:   "Näytä QR-koodi sisäänkäynnillä. Älä julkaise lippua avoimesti.",
+		Holder:     "Haltija",
+		Contact:    "Yhteystiedot",
+		NotFiscal:  "Tämä asiakirja ei ole kuitti.",
+		Doors:      "Ovet aukeavat",
+		Directions: "Reittiohjeet",
+		Invitation: "Kutsu",
+	},
 }
 
 // DefaultLocale is the label language used when Ticket.Locale is empty or
@@ -181,7 +242,7 @@ const DefaultLocale = "en"
 // package localizes the e-mail BODY and supports a different list with
 // different fallback rules. A locale valid for one is not automatically
 // valid for the other, and pretending otherwise has bitten this code before.
-var SupportedLocales = []string{"en", "ru", "cs", "es", "de", "fr", "it", "pl", "uk"}
+var SupportedLocales = []string{"en", "ru", "cs", "es", "de", "fr", "it", "pl", "uk", "hu", "et", "lv", "lt", "fi"}
 
 // normalizeLocale lowercases, trims, and strips any region/script subtag
 // ("ru-RU" -> "ru"). BCP-47 hyphen form only, which is what
@@ -232,6 +293,12 @@ var monthNames = map[string][12]string{
 	"it": {"gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"},
 	"pl": {"stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca", "lipca", "sierpnia", "września", "października", "listopada", "grudnia"},
 	"uk": {"січня", "лютого", "березня", "квітня", "травня", "червня", "липня", "серпня", "вересня", "жовтня", "листопада", "грудня"},
+	"hu": {"január", "február", "március", "április", "május", "június", "július", "augusztus", "szeptember", "október", "november", "december"},
+	"et": {"jaanuar", "veebruar", "märts", "aprill", "mai", "juuni", "juuli", "august", "september", "oktoober", "november", "detsember"},
+	// Latvian dates take the nominative month ("2026. gada 5. decembris").
+	"lv": {"janvāris", "februāris", "marts", "aprīlis", "maijs", "jūnijs", "jūlijs", "augusts", "septembris", "oktobris", "novembris", "decembris"},
+	"lt": {"sausio", "vasario", "kovo", "balandžio", "gegužės", "birželio", "liepos", "rugpjūčio", "rugsėjo", "spalio", "lapkričio", "gruodžio"},
+	"fi": {"tammikuuta", "helmikuuta", "maaliskuuta", "huhtikuuta", "toukokuuta", "kesäkuuta", "heinäkuuta", "elokuuta", "syyskuuta", "lokakuuta", "marraskuuta", "joulukuuta"},
 }
 
 // weekdayNames is indexed by time.Weekday (Sunday == 0), matching both the
@@ -246,6 +313,11 @@ var weekdayNames = map[string][7]string{
 	"it": {"domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"},
 	"pl": {"niedziela", "poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota"},
 	"uk": {"неділя", "понеділок", "вівторок", "середа", "четвер", "п’ятниця", "субота"},
+	"hu": {"vasárnap", "hétfő", "kedd", "szerda", "csütörtök", "péntek", "szombat"},
+	"et": {"pühapäev", "esmaspäev", "teisipäev", "kolmapäev", "neljapäev", "reede", "laupäev"},
+	"lv": {"svētdiena", "pirmdiena", "otrdiena", "trešdiena", "ceturtdiena", "piektdiena", "sestdiena"},
+	"lt": {"sekmadienis", "pirmadienis", "antradienis", "trečiadienis", "ketvirtadienis", "penktadienis", "šeštadienis"},
+	"fi": {"sunnuntai", "maanantai", "tiistai", "keskiviikko", "torstai", "perjantai", "lauantai"},
 }
 
 // dateJoinPatterns overrides how day / month / year join for the locales
@@ -258,6 +330,12 @@ var dateJoinPatterns = map[string]string{
 	"cs": "%d. %s %d",
 	"de": "%d. %s %d",
 	"es": "%d de %s de %d",
+	// Indexed verbs: the arguments always arrive as (day, month, year).
+	"hu": "%[3]d. %[2]s %[1]d.",
+	"et": "%[1]d. %[2]s %[3]d",
+	"fi": "%[1]d. %[2]s %[3]d",
+	"lv": "%[3]d. gada %[1]d. %[2]s",
+	"lt": "%[3]d m. %[2]s %[1]d d.",
 }
 
 const defaultDateJoinPattern = "%d %s %d"
