@@ -9,6 +9,7 @@
  *   POST /v1/public/feeds/{token}/checkout/quote   (price + promo code, no hold)
  *   GET  /v1/public/checkout/{token}               (WID-D)
  *   POST /v1/public/checkout/{token}/recover       (WID-D, wraps WID-0c)
+ *   POST /v1/public/checkout/{token}/hosted        (embedded payment fallback, spec 65)
  *   POST /v1/public/feeds/{token}/sessions/{id}/sale-subscriptions  ("notify me when sales open")
  *   GET  /v1/public/checkout/{token}/referral      ("Refer a friend" code of a paid order)
  *
@@ -299,9 +300,14 @@ export async function postCheckoutQuote(
 export async function getCheckoutStatus(
   checkoutToken: string,
   apiBase = '',
+  opts: { includePayment?: boolean } = {},
 ): Promise<CheckoutStatusResponse> {
-  const url = `${apiBase}/v1/public/checkout/${encodeURIComponent(checkoutToken)}`;
-  const res = await fetch(url);
+  // `include=payment` asks the platform to re-supply the embedded-payment
+  // block while the order is pending (spec 65 §3.7). The answer carries a
+  // client secret, so it is never cached.
+  const query = opts.includePayment ? '?include=payment' : '';
+  const url = `${apiBase}/v1/public/checkout/${encodeURIComponent(checkoutToken)}${query}`;
+  const res = opts.includePayment ? await fetch(url, { cache: 'no-store' }) : await fetch(url);
   if (!res.ok) {
     let detail = '';
     let code: string | undefined;
@@ -346,6 +352,29 @@ export async function getCheckoutStatus(
   if (raw === 'needs_help') body.status = 'pending';
   else if (raw === 'refunded') body.status = 'failed';
   return body;
+}
+
+/**
+ * POST /v1/public/checkout/{checkoutToken}/hosted
+ *
+ * The way out when the embedded payment form cannot be used (Stripe.js did
+ * not load, the host's CSP forbids it, init failed): the platform expires the
+ * Elements session and creates a hosted one on the same hold (spec 65 §3.5).
+ *
+ * @returns the hosted page address to send the buyer to.
+ * @throws ApiError. 409 `checkout.hosted_fallback_unavailable` or
+ *         `checkout.not_payable` means the order cannot be paid any more:
+ *         start it again. Anything else is a transient failure.
+ */
+export async function postCheckoutHosted(
+  checkoutToken: string,
+  apiBase = '',
+): Promise<{ redirect_url: string }> {
+  const url = `${apiBase}/v1/public/checkout/${encodeURIComponent(checkoutToken)}/hosted`;
+  const res = await fetch(url, { method: 'POST' });
+  if (!res.ok) throw await apiErrorFromResponse(res, 'postCheckoutHosted');
+  const body = (await res.json()) as { redirect_url?: string };
+  return { redirect_url: body.redirect_url ?? '' };
 }
 
 /**

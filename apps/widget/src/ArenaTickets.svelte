@@ -87,6 +87,9 @@
   import SeatedTierCard from './components/SeatedTierCard.svelte';
   import GaAreaPopover from './components/GaAreaPopover.svelte';
   import OrderStatus from './components/OrderStatus.svelte';
+  import PaymentScreen from './components/PaymentScreen.svelte';
+  import { createPaymentStepsRegistry } from './lib/paymentSteps.js';
+  import type { PaymentBlock } from './lib/checkout.js';
   import Materials from './components/Materials.svelte';
   import { PLATFORM_BADGE_URL, getPlatformBadgeStrings, showPlatformBadge } from './lib/platformBadge.js';
 
@@ -351,6 +354,28 @@
    */
   let conflictKeys = $state<ReadonlySet<string>>(new Set());
   let orderStatus = $state<CheckoutStatusResponse | null>(null);
+
+  // Spec 65 E4: the on-page payment screen. The block carries the Stripe
+  // client secret, so it lives in memory only (never in a storage or a URL)
+  // and is dropped the moment the screen is left.
+  let paymentBlock = $state<PaymentBlock | null>(null);
+  let paymentExpiresAt = $state<string | null>(null);
+  let paymentTotal = $state<number | null>(null);
+  let paymentCurrency = $state('');
+  // True when the buyer came back from a bank's own page (the URL carries the
+  // token): the platform is asked first, the form shows only if still unpaid.
+  let paymentAwaitReturn = $state(false);
+  // Spec 65 E6a: the screen reports its steps here; the only listener turns
+  // them into the `arena:checkout` CustomEvent for the host page. Nothing is
+  // sent to any analytics system from the widget.
+  // One bus per checkout token, so a second purchase in this tab reports again.
+  const paymentSteps = createPaymentStepsRegistry(({ step, ...rest }) => {
+    dispatchWidgetEvent(host, ARENA_EVENTS.CHECKOUT, { step, ...rest });
+  });
+  function clearPaymentBlock(): void {
+    paymentBlock = null;
+    paymentAwaitReturn = false;
+  }
   let orderActionLoading = $state(false);
   let orderActionError = $state<string | null>(null);
 
@@ -517,7 +542,7 @@
       // Restore order status view.
       checkoutToken = resumeToken;
       stage = 'order-status';
-      loadOrderStatus(resumeToken);
+      void loadOrderStatus(resumeToken, true, urlToken !== null);
       return;
     }
 
@@ -805,6 +830,9 @@
       // string or hash we sent along would be dropped or would collide.
       const returnUrl = buildReturnUrl();
       if (returnUrl) payload.return_url = returnUrl;
+      // Spec 65: say the widget can pay on its own page. A platform that does
+      // not know the word answers with the hosted page as before.
+      payload.capabilities = ['stripe_elements'];
       // Spec 43: the sales link / utm touch, when there is one. The platform
       // cleans it and never refuses a purchase over it.
       if (attribution) payload.attribution = attribution;
@@ -836,6 +864,24 @@
         checkoutToken: response.checkout_token,
         sessionId: selectedSession.id,
       });
+      // An embedded payment: pay on this page. No `payment` key means the
+      // classic hosted redirect below.
+      const embedded = response.payment;
+      if (
+        embedded &&
+        embedded.mode === 'elements' &&
+        embedded.client_secret &&
+        embedded.publishable_key
+      ) {
+        paymentBlock = embedded;
+        paymentAwaitReturn = false;
+        paymentExpiresAt = response.payment_expires_at ?? response.expires_at ?? null;
+        paymentTotal = response.pricing?.total ?? null;
+        paymentCurrency = response.pricing?.currency ?? '';
+        cartSheetOpen = false;
+        stage = 'paying';
+        return;
+      }
       const redirectUrl = (response.redirect_url ?? '').trim();
       if (!redirectUrl) {
         // No hosted payment page to send the buyer to (e.g. no return URL is
@@ -899,11 +945,42 @@
 
   // ── Order status ───────────────────────────────────────────────────────────
 
-  async function loadOrderStatus(token: string): Promise<void> {
+  /**
+   * @param resume  The page was (re)opened on an unfinished checkout: ask the
+   *                platform to re-supply the embedded payment block, and if it
+   *                does, show the payment screen instead of a bare "pending".
+   * @param fromBank The address carried the token, i.e. the buyer returned from
+   *                 a bank's own page.
+   */
+  async function loadOrderStatus(token: string, resume = false, fromBank = false): Promise<void> {
     try {
-      orderStatus = await getCheckoutStatus(token, resolvedApiBase);
+      orderStatus = resume
+        ? await getCheckoutStatus(token, resolvedApiBase, { includePayment: true })
+        : await getCheckoutStatus(token, resolvedApiBase);
       // WID-T3: use server-side expires_at from order-status to drive countdown.
       holdExpiresAt = orderStatus.expires_at ?? null;
+      const resumed = orderStatus.payment;
+      if (
+        resume &&
+        orderStatus.status === 'pending' &&
+        resumed &&
+        resumed.mode === 'elements' &&
+        resumed.client_secret &&
+        resumed.publishable_key
+      ) {
+        paymentBlock = resumed;
+        // The secret now lives in paymentBlock only: take it off the status
+        // object that other views read.
+        orderStatus.payment = null;
+        paymentAwaitReturn = fromBank;
+        // The clock counts to the end of the payment window, not to the hold
+        // (which ends a grace later).
+        paymentExpiresAt = orderStatus.payment_expires_at ?? orderStatus.expires_at ?? null;
+        paymentTotal = orderStatus.total ?? null;
+        paymentCurrency = orderStatus.currency ?? '';
+        stage = 'paying';
+        return;
+      }
       // WID-S5: notify host page about terminal order outcomes.
       const status = orderStatus.status;
       // A finished order must not follow the buyer around. The stored token
@@ -944,7 +1021,7 @@
             expiresAt: recovered.expires_at,
           });
           // Reload status with the refreshed token.
-          await loadOrderStatus(newToken);
+          await loadOrderStatus(newToken, resume, fromBank);
           return;
         } catch (recoveryErr) {
           // Recovery also failed — clear token, set visible error, fall back
@@ -1022,7 +1099,38 @@
     checkoutError = null;
   }
 
+  /**
+   * The payment screen is done: the order is paid or reached a final state.
+   * The status is read once more through the ordinary path so the host-page
+   * events (order paid / failed) and the token clean-up stay in ONE place.
+   */
+  async function finishPayment(): Promise<void> {
+    clearPaymentBlock();
+    stage = 'order-status';
+    if (checkoutToken) await loadOrderStatus(checkoutToken);
+  }
+
+  /**
+   * "Back" from the payment screen to the contacts screen. The cart (seats and
+   * tickets) stays as it is and the hold keeps running on the server; pressing
+   * "continue" there starts the checkout again, which replaces the open order.
+   * The Stripe secret is dropped.
+   */
+  function backToContacts(): void {
+    clearPaymentBlock();
+    checkoutError = null;
+    stage = 'selecting';
+    cartSheetOpen = true;
+  }
+
+  /** "Start again" on the payment screen: the order cannot be paid here any more. */
+  function restartPayment(): void {
+    handleRetry();
+  }
+
   function handleRetry(): void {
+    // The Stripe client secret never outlives the screen that used it.
+    clearPaymentBlock();
     // Clear token and return to selecting stage.
     forgetCheckoutToken();
     checkoutToken = null;
@@ -1048,6 +1156,7 @@
    * the seats just sold are not offered again.
    */
   function handleDone(): void {
+    clearPaymentBlock();
     checkoutToken = null;
     orderStatus = null;
     selectedSeatKeys = new Set();
@@ -1092,6 +1201,27 @@
         {checkoutToken}
         actionLoading={orderActionLoading}
         actionError={orderActionError}
+      />
+    </div>
+
+  {:else if stage === 'paying' && paymentBlock && checkoutToken}
+    <!-- ── Pay on this page (Stripe Checkout Elements, spec 65 E4) ─────────── -->
+    <div class="arena-tickets-frame">
+      <PaymentScreen
+        payment={paymentBlock}
+        {checkoutToken}
+        apiBase={resolvedApiBase}
+        locale={normLocale}
+        expiresAt={paymentExpiresAt}
+        total={paymentTotal}
+        currency={paymentCurrency}
+        organizerName={selectedSession?.consent?.seller_legal_name ?? ''}
+        awaitReturn={paymentAwaitReturn}
+        steps={paymentSteps.forToken(checkoutToken)}
+        onPaid={finishPayment}
+        onTerminal={finishPayment}
+        onRestart={restartPayment}
+        onBack={cart.lines.length > 0 ? backToContacts : undefined}
       />
     </div>
 

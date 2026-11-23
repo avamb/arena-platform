@@ -206,6 +206,25 @@ export interface CheckoutStartPayload {
    * checkout/recover.
    */
   attribution?: import('./attribution.js').AttributionPayload;
+  /**
+   * What this widget can do beyond the redirect. `stripe_elements` says it can
+   * pay inside its own page; a server that knows it may then answer with a
+   * `payment` block instead of a hosted `redirect_url`. A widget that does not
+   * send it always gets the hosted page (spec 65 §3.5).
+   */
+  capabilities?: string[];
+}
+
+/**
+ * The block that lets the widget pay on its own page (spec 65 §3.4). Held in
+ * memory only: `client_secret` is never logged, never put in storage and never
+ * in a URL (§3.7).
+ */
+export interface PaymentBlock {
+  provider: 'stripe';
+  mode: 'elements';
+  client_secret: string;
+  publishable_key: string;
 }
 
 /**
@@ -255,6 +274,21 @@ export interface CheckoutStartResponse {
   redirect_url: string;
   checkout_token: string;
   expires_at: string;
+  /**
+   * Present when the platform wants the widget to pay on its own page. Absent
+   * means "redirect_url" is the way, as before.
+   */
+  payment?: PaymentBlock;
+  /** The moment the payment form stops taking money (the hold ends a grace later). */
+  payment_expires_at?: string;
+  /** What the order costs, in minor units, as the payment screen's summary shows it. */
+  pricing?: {
+    subtotal?: number;
+    discount?: number;
+    platform_fee?: number;
+    total: number;
+    currency: string;
+  };
 }
 
 /** A single cart item in the anonymous order-status response. */
@@ -297,6 +331,11 @@ export interface CheckoutStatusResponse {
    */
   order_number?: number | null;
   expires_at?: string | null;
+  /**
+   * When the payment form stops taking money. `expires_at` is the HOLD, a grace
+   * later: the payment screen's clock counts down to this one.
+   */
+  payment_expires_at?: string | null;
   subtotal?: number | null;
   discount?: number | null;
   platform_fee?: number | null;
@@ -310,6 +349,11 @@ export interface CheckoutStatusResponse {
    * order is paid, expired or failed.
    */
   payment_url?: string | null;
+  /**
+   * The embedded-payment block, re-supplied by `?include=payment` while the
+   * order is pending and its hold is alive; absent otherwise (spec 65 §3.7).
+   */
+  payment?: PaymentBlock | null;
   items: CheckoutStatusItem[];
   tickets: CheckoutStatusTicketItem[];
 }
