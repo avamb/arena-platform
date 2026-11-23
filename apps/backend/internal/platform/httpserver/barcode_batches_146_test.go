@@ -62,10 +62,17 @@ func buildBarcodeBatchServer(t *testing.T) *Server {
 	})
 }
 
+// mintBarcodeBatchToken mints a platform superadmin token: every batch route
+// is for a platform superadmin only.
 func mintBarcodeBatchToken(t *testing.T, s *Server) string {
 	t.Helper()
+	return mintBarcodeBatchTokenWithRole(t, s, "platform_superadmin")
+}
+
+func mintBarcodeBatchTokenWithRole(t *testing.T, s *Server, role string) string {
+	t.Helper()
 	w := httptest.NewRecorder()
-	body := `{"actor_id":"` + barcodeBatchTestActorID + `","roles":["admin"]}`
+	body := `{"actor_id":"` + barcodeBatchTestActorID + `","roles":["` + role + `"]}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/dev/token",
 		strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")

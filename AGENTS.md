@@ -393,7 +393,7 @@ Stripe, Flitt and AllPay hosted checkout, payment modules, webhook state machine
 Connection of an organizer's Meta business, the encrypted BISU token, CAPI through the connection (spec 66).
 
 * The Meta token is the first secret encrypted at rest (secretbox, META_TOKEN_ENC_KEY)
-* One connection per organization: org_meta_connections + org_meta_assets (migration 0218)
+* One connection per organization: org_meta_connections + org_meta_assets (migration 0219)
 * The login is the server redirect with config_id; the event center does NOT load the Facebook JS SDK
 * The public callback NEVER exchanges the code (login CSRF): fragment to the event center, then POST .../meta/finish with a state of this person and org
 * A Meta signed_request older than 24 h or more than 5 min ahead is refused
@@ -583,6 +583,7 @@ Order lists and cards, resend, invitations (bot and web), MACS and door scan eve
 * POST /v1/scanner/scan-events (feed-token scan uploa…
 * The guest list's reason for a replaced ticket follows ticket_reissues.reason
 * The flat barcode and scanner routes (/v1/scan, /v1/scanner/snapshot|validate, /v1/barcodes, /v1/barcodes/{id}) are retired (2026-11-21)
+* Barcode authorities and batches are for a platform superadmin only (403 barcode.superadmin_only), one authority per type (0218); a scan upload resolves only tickets of the token's organization
 
 ### [Web event center: foundations](docs/agents/web-event-center-core.md)
 
