@@ -150,6 +150,8 @@ describe("screen help: lines follow what the person sees", () => {
   it("shop home needs a shop, and entrance hides the guest list from a role without order.read", () => {
     expect(screenHelp("shop", { ...owner, shopMode: "none" })).toBeNull();
     expect(helpLineIds(screenHelp("shop", owner)!)).toEqual(["nav-shop"]);
+    expect(helpLineIds(screenHelp("adsMeta", owner)!)).toEqual(["nav-ads-meta"]);
+    expect(screenHelp("adsMeta", manager)).toBeNull();
     expect(helpLineIds(screenHelp("entrance", noOrders)!)).toEqual(["nav-scanner"]);
     expect(helpLineIds(screenHelp("entrance", owner)!)).toEqual(["nav-scanner", "nav-guest-list"]);
   });

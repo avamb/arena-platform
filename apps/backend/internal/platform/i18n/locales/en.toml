@@ -7171,6 +7171,18 @@ other = "<b>Promotion</b>\nThese tools help you sell more tickets."
 ["bot.mn.door_title"]
 other = "<b>Entrance to the event</b>\nScan tickets at the entrance and see the guest list."
 
+["bot.mn.meta_ok"]
+other = "Meta: connected"
+
+["bot.mn.meta_off"]
+other = "Meta: not connected"
+
+["bot.mn.meta_error"]
+other = "Meta: connection error"
+
+["bot.mn.meta_btn"]
+other = "Meta ads in the browser"
+
 ["bot.mn.settings_title"]
 other = "<b>Settings</b>\nYour organization, payments, team and your own settings."
 

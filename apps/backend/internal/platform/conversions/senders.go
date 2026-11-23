@@ -14,13 +14,26 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/metaconnect"
 )
 
-// Production endpoints. Tests point the senders at a stub server.
+// Production endpoints. Tests point the senders at a stub server. The Graph
+// version is not part of MetaBaseURL: it comes from META_GRAPH_VERSION
+// (MetaSender.Version, DefaultMetaGraphVersion when empty).
 const (
-	MetaBaseURL = "https://graph.facebook.com/v21.0"
+	MetaBaseURL = metaconnect.DefaultGraphBaseURL
 	GA4BaseURL  = "https://www.google-analytics.com"
 )
+
+// DefaultMetaGraphVersion is the Graph version of a MetaSender without one
+// (the config default of META_GRAPH_VERSION).
+const DefaultMetaGraphVersion = config.DefaultMetaGraphVersion
+
+// PartnerAgent is the platform name Meta asks a partner to send with every
+// Conversions API request (spec 66 section 4.4).
+const PartnerAgent = "arenasoldout"
 
 // Purchase is what a sender needs; Email and Phone are filled only when the
 // buyer's tracking consent is true.
@@ -41,9 +54,20 @@ type Purchase struct {
 type SendError struct {
 	Msg       string
 	Permanent bool
+	// Graph holds the codes of a Meta error answer (nil otherwise). It never
+	// carries Meta's message text.
+	Graph *metaconnect.GraphError
 }
 
 func (e *SendError) Error() string { return e.Msg }
+
+// Unwrap lets metaconnect.IsTokenInvalid and IsPermissionError see the codes.
+func (e *SendError) Unwrap() error {
+	if e.Graph == nil {
+		return nil
+	}
+	return e.Graph
+}
 
 // IsPermanent reports a failure no retry fixes (a 4xx other than 408/429).
 func IsPermanent(err error) bool {
@@ -57,6 +81,13 @@ func httpClient() *http.Client { return &http.Client{Timeout: 15 * time.Second} 
 // api_secret), so a transport error is reduced to its cause and the response
 // body is never included in the message.
 func do(ctx context.Context, c *http.Client, u string, body []byte) error {
+	return send(ctx, c, u, body, false)
+}
+
+// send is do; graph reads a non-2xx answer as a Graph error and keeps only
+// its codes (metaconnect.ParseGraphError): the body, Meta's message and the
+// token never reach the error text.
+func send(ctx context.Context, c *http.Client, u string, body []byte, graph bool) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
 	if err != nil {
 		return &SendError{Msg: "build request", Permanent: true}
@@ -71,27 +102,51 @@ func do(ctx context.Context, c *http.Client, u string, body []byte) error {
 		return &SendError{Msg: "transport: " + err.Error()}
 	}
 	defer func() { _ = resp.Body.Close() }()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 	if resp.StatusCode/100 == 2 {
 		return nil
 	}
 	perm := resp.StatusCode/100 == 4 && resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode != http.StatusRequestTimeout
-	return &SendError{Msg: "http " + strconv.Itoa(resp.StatusCode), Permanent: perm}
+	se := &SendError{Msg: "http " + strconv.Itoa(resp.StatusCode), Permanent: perm}
+	if graph {
+		if ge := metaconnect.ParseGraphError(resp.StatusCode, raw); ge.Code != 0 {
+			se.Graph = ge
+			se.Msg += " graph_" + strconv.Itoa(ge.Code)
+			if ge.Subcode != 0 {
+				se.Msg += "/" + strconv.Itoa(ge.Subcode)
+			}
+		}
+	}
+	return se
 }
 
-// MetaSender posts Purchase to the Conversions API.
+// MetaSender posts Purchase to the Conversions API. BaseURL is the Graph host
+// (META_GRAPH_BASE_URL, MetaBaseURL when empty) and Version the Graph version
+// (META_GRAPH_VERSION, DefaultMetaGraphVersion when empty); both token
+// sources, the Meta connection and the manual token, use them.
 type MetaSender struct {
 	BaseURL string
+	Version string
 	Client  *http.Client
 }
 
-// Send posts one Purchase. The access token travels in the JSON body, never in
-// the URL, so no log line or error can carry it.
-func (m MetaSender) Send(ctx context.Context, pixelID, token, testEventCode string, p Purchase) error {
-	base := m.BaseURL
+// endpoint is <base>/<version>/<pixel>/events.
+func (m MetaSender) endpoint(pixelID string) string {
+	base := strings.TrimRight(strings.TrimSpace(m.BaseURL), "/")
 	if base == "" {
 		base = MetaBaseURL
 	}
+	version := strings.Trim(strings.TrimSpace(m.Version), "/")
+	if version == "" {
+		version = DefaultMetaGraphVersion
+	}
+	return base + "/" + version + "/" + url.PathEscape(pixelID) + "/events"
+}
+
+// Send posts one Purchase. The access token travels in the JSON body, never in
+// the URL, so no log line or error can carry it. A Graph error answer is
+// reduced to its codes (SendError.Graph).
+func (m MetaSender) Send(ctx context.Context, pixelID, token, testEventCode string, p Purchase) error {
 	c := m.Client
 	if c == nil {
 		c = httpClient()
@@ -134,7 +189,7 @@ func (m MetaSender) Send(ctx context.Context, pixelID, token, testEventCode stri
 	if p.Context.PageURL != "" {
 		ev["event_source_url"] = p.Context.PageURL
 	}
-	payload := map[string]any{"data": []any{ev}, "access_token": token}
+	payload := map[string]any{"data": []any{ev}, "access_token": token, "partner_agent": PartnerAgent}
 	if testEventCode != "" {
 		payload["test_event_code"] = testEventCode
 	}
@@ -142,7 +197,7 @@ func (m MetaSender) Send(ctx context.Context, pixelID, token, testEventCode stri
 	if err != nil {
 		return &SendError{Msg: "encode", Permanent: true}
 	}
-	return do(ctx, c, strings.TrimRight(base, "/")+"/"+url.PathEscape(pixelID)+"/events", body)
+	return send(ctx, c, m.endpoint(pixelID), body, true)
 }
 
 // GA4Sender posts purchase to the Measurement Protocol.

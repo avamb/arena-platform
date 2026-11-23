@@ -33,6 +33,7 @@ const (
 	jobAttempts = 5
 
 	defaultButton = "Открыть"
+	defaultIcon   = "🆕"
 )
 
 // Recipient is one platform superadmin with the live Telegram chats.
@@ -45,6 +46,11 @@ type Recipient struct {
 // Message is what an administrator is told. WhatToDo is a full sentence
 // ("Что делать: ..."); it may be empty.
 type Message struct {
+	// Kind names the notice in the e-mail job (such as
+	// KindMetaConnectionBroken); empty for the platform-admin notices.
+	Kind string
+	// Icon starts the Telegram message; empty means the default.
+	Icon        string
 	Title       string
 	Details     []string
 	Link        string
@@ -67,6 +73,7 @@ type TelegramPayload struct {
 
 // EmailPayload is the payload of an admin_notify.email job.
 type EmailPayload struct {
+	Kind        string   `json:"kind,omitempty"`
 	Email       string   `json:"email"`
 	UserID      string   `json:"user_id,omitempty"`
 	Title       string   `json:"title"`
@@ -107,7 +114,11 @@ ORDER BY u.email`)
 // TelegramText renders the Telegram (HTML) message.
 func TelegramText(m Message) string {
 	e := opsalert.EscapeHTML
-	lines := []string{"🆕 <b>" + e(m.Title) + "</b>"}
+	icon := m.Icon
+	if icon == "" {
+		icon = defaultIcon
+	}
+	lines := []string{icon + " <b>" + e(m.Title) + "</b>"}
 	for _, d := range m.Details {
 		lines = append(lines, e(d))
 	}
@@ -127,22 +138,31 @@ func Fanout(ctx context.Context, tx interface {
 	Query(context.Context, string, ...any) (pgx.Rows, error)
 	QueryRow(context.Context, string, ...any) pgx.Row
 }, msg Message, opts Options) (int, error) {
-	logger := opts.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
 	admins, err := Recipients(ctx, tx)
 	if err != nil {
 		return 0, err
 	}
-	if len(admins) == 0 {
+	return FanoutTo(ctx, tx, admins, msg, opts)
+}
+
+// FanoutTo queues one e-mail job per recipient and one Telegram job per live
+// chat in the caller's transaction, and answers how many recipients there
+// are. Without opts.Telegram only e-mails go, with a warning.
+func FanoutTo(ctx context.Context, tx interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}, recipients []Recipient, msg Message, opts Options) (int, error) {
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	if len(recipients) == 0 {
 		return 0, nil
 	}
 	text := TelegramText(msg)
 	skipped := false
-	for _, a := range admins {
+	for _, a := range recipients {
 		if _, err := worker.EnqueueInTx(ctx, tx, JobTypeEmail, EmailPayload{
-			Email: a.Email, UserID: a.UserID.String(), Title: msg.Title, Details: msg.Details,
+			Kind: msg.Kind, Email: a.Email, UserID: a.UserID.String(), Title: msg.Title, Details: msg.Details,
 			Link: msg.Link, ButtonLabel: msg.ButtonLabel, WhatToDo: msg.WhatToDo,
 		}, jobAttempts); err != nil {
 			return 0, fmt.Errorf("adminnotify: queue e-mail: %w", err)
@@ -158,9 +178,9 @@ func Fanout(ctx context.Context, tx interface {
 		}
 	}
 	if skipped {
-		logger.Warn("adminnotify: EVENTS_TELEGRAM_BOT_TOKEN is not set on the worker, platform admins get the message by e-mail only")
+		logger.Warn("adminnotify: EVENTS_TELEGRAM_BOT_TOKEN is not set on the worker, the message goes by e-mail only", "kind", msg.Kind)
 	}
-	return len(admins), nil
+	return len(recipients), nil
 }
 
 // TelegramSender is the part of the Telegram client the handler needs.
@@ -225,15 +245,21 @@ func NewEmailHandler(sender emailadapter.Sender, logger *slog.Logger) func(conte
 }
 
 // RenderEmail renders the staff letter (Russian, the look of the onboarding
-// letter to administrators).
+// letter to administrators). A letter with a Kind goes to an organizer and
+// signs with the brand ArenaSoldOut.com (owner decision 2026-11-12); the
+// staff letters keep their old signature.
 func RenderEmail(p EmailPayload) (subject, htmlBody, textBody string) {
 	title := strings.TrimSpace(p.Title)
 	button := strings.TrimSpace(p.ButtonLabel)
 	if button == "" {
 		button = defaultButton
 	}
+	brand, signature := "Arena", "Arena Platform"
+	if p.Kind != "" {
+		brand, signature = "ArenaSoldOut.com", "ArenaSoldOut.com"
+	}
 	var b strings.Builder
-	b.WriteString(`<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><title>Arena</title></head>`)
+	b.WriteString(`<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><title>` + brand + `</title></head>`)
 	b.WriteString(`<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">`)
 	b.WriteString(`<h1 style="color:#1a1a2e;font-size:20px">` + html.EscapeString(title) + `</h1>`)
 	if len(p.Details) > 0 {
@@ -253,7 +279,7 @@ func RenderEmail(p EmailPayload) (subject, htmlBody, textBody string) {
 		b.WriteString(`<p style="margin:24px 0"><a href="` + html.EscapeString(p.Link) + `" style="background:#4f46e5;color:#fff;padding:12px 24px;border-radius:4px;text-decoration:none;font-weight:bold;display:inline-block">` + html.EscapeString(button) + `</a></p>`)
 		b.WriteString(`<p style="font-size:12px;color:#666;word-break:break-all">` + html.EscapeString(p.Link) + `</p>`)
 	}
-	b.WriteString(`<hr><p style="font-size:11px;color:#999">Arena Platform</p></body></html>`)
+	b.WriteString(`<hr><p style="font-size:11px;color:#999">` + signature + `</p></body></html>`)
 
 	text := []string{title, ""}
 	text = append(text, p.Details...)
@@ -263,6 +289,6 @@ func RenderEmail(p EmailPayload) (subject, htmlBody, textBody string) {
 	if p.Link != "" {
 		text = append(text, "", button+": "+p.Link)
 	}
-	text = append(text, "", "Arena Platform")
+	text = append(text, "", signature)
 	return title, b.String(), strings.Join(text, "\n")
 }

@@ -389,6 +389,24 @@ Stripe, Flitt and AllPay hosted checkout, payment modules, webhook state machine
 * The legacy webhook routes bind an event to the organization whose secret verified it
 * Wallet domains are registered in EACH organizer's Stripe account by arena (platform hosts + channel site domains, never CORS_ALLOWED_ORIGINS)
 
+### [Meta integration](docs/agents/meta-integration.md)
+
+Connection of an organizer's Meta business, the encrypted BISU token, CAPI through the connection (spec 66).
+
+* The Meta token is the first secret encrypted at rest (secretbox, META_TOKEN_ENC_KEY)
+* One connection per organization: org_meta_connections + org_meta_assets (migration 0223)
+* The login is the server redirect with config_id; the event center does NOT load the Facebook JS SDK
+* The public callback NEVER exchanges the code (login CSRF): fragment to the event center, then POST .../meta/finish with a state of this person and org
+* A Meta signed_request older than 24 h or more than 5 min ahead is refused
+* A Meta connection that cannot be read never blocks GA4 (Settings.MetaErr)
+* Which Graph edges list ad accounts and pages is not confirmed for BISU: META_ASSET_EDGES decides
+* CAPI takes the connection first, the manual token second; only code 190 breaks the connection
+* META_GRAPH_BASE_URL is a test seam and is refused in production
+* A broken Meta connection tells its owners once, in the transaction of the break (meta_connection_broken, owners = membership role with org.update)
+* Meta's app webhook is GET|POST /v1/integrations/meta/webhook: verify token, X-Hub-Signature-256, only business_integration_uninstall deletes
+* Meta's deauthorize deletes the connection at once, like data deletion; only the owner's disconnect leaves revoked
+* The Page preview GET .../integrations/meta/page is read live and never stored; the picture comes as a data: URL
+
 ### [Refunds](docs/agents/refunds.md)
 
 The refund engine, provider refund events, organizer refund API, refund retry and the bot and web refund screens.

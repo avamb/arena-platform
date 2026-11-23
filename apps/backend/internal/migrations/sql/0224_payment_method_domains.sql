@@ -1,4 +1,4 @@
--- 0223_payment_method_domains.sql — wallet domains for embedded Stripe checkout
+-- 0224_payment_method_domains.sql — wallet domains for embedded Stripe checkout
 -- (spec 65 section 5, task E3).
 --
 -- Apple Pay and Google Pay work on a page only when its domain is registered

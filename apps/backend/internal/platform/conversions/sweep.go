@@ -3,6 +3,7 @@ package conversions
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/metaconnect"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 )
 
@@ -146,7 +148,11 @@ func handle(ctx context.Context, store Store, senders Senders, logger *slog.Logg
 		return
 	}
 	if d.OrderID == nil {
-		handleSiteEvent(ctx, senders, d, st, skip, retry, func() {
+		connErr := func(err error) bool {
+			return d.Provider == "meta" && st.MetaTokenSource == TokenSourceConnection &&
+				reportConnectionError(ctx, store, logger, d, err)
+		}
+		handleSiteEvent(ctx, senders, d, st, skip, retry, connErr, func() {
 			if err := store.MarkSent(ctx, d.ID); err != nil {
 				logger.Warn("conversions: sent but could not record it", "delivery_id", d.ID.String(), "error", scrub(err.Error()))
 			}
@@ -182,6 +188,10 @@ func handle(ctx context.Context, store Store, senders Senders, logger *slog.Logg
 	var sendErr error
 	switch d.Provider {
 	case "meta":
+		if st.MetaErr != nil {
+			retry("settings: "+st.MetaErr.Error(), false)
+			return
+		}
 		if !st.MetaReady() {
 			skip("not_configured")
 			return
@@ -206,7 +216,11 @@ func handle(ctx context.Context, store Store, senders Senders, logger *slog.Logg
 		return
 	}
 	if sendErr != nil {
-		retry(sendErr.Error(), IsPermanent(sendErr))
+		permanent := IsPermanent(sendErr)
+		if d.Provider == "meta" && st.MetaTokenSource == TokenSourceConnection {
+			permanent = reportConnectionError(ctx, store, logger, d, sendErr) || permanent
+		}
+		retry(sendErr.Error(), permanent)
 		return
 	}
 	if err := store.MarkSent(ctx, d.ID); err != nil {
@@ -214,12 +228,52 @@ func handle(ctx context.Context, store Store, senders Senders, logger *slog.Logg
 	}
 }
 
+// ConnectionReporter is the optional part of a Store that tells the
+// organization's Meta connection about a failed send made with its token
+// (PGStore: metaconnect.MarkTokenInvalid and metaconnect.RecordError).
+type ConnectionReporter interface {
+	MarkMetaTokenInvalid(ctx context.Context, orgID uuid.UUID, reason string) (bool, error)
+	RecordMetaError(ctx context.Context, orgID uuid.UUID, reason string) error
+}
+
+// reportConnectionError handles a Graph error of a send made with the Meta
+// connection's token (spec 66 section 4.4) and reports whether the delivery
+// must fail now: 190 moves the connection to error (once); 10 and 200-299
+// leave it active with the reason in its last_error. The reason is a short
+// code, never a token or Meta's message.
+func reportConnectionError(ctx context.Context, store Store, logger *slog.Logger, d Delivery, err error) bool {
+	tokenInvalid := metaconnect.IsTokenInvalid(err)
+	var ge *metaconnect.GraphError
+	noAccess := errors.As(err, &ge) && (ge.Code == 10 || (ge.Code >= 200 && ge.Code <= 299))
+	if !tokenInvalid && !noAccess {
+		return false
+	}
+	reason := metaconnect.ErrorCode(err)
+	rep, ok := store.(ConnectionReporter)
+	if !ok {
+		return true
+	}
+	if tokenInvalid {
+		changed, mErr := rep.MarkMetaTokenInvalid(ctx, d.OrgID, reason)
+		if mErr != nil {
+			logger.Warn("conversions: could not mark the Meta connection invalid", "org_id", d.OrgID.String(), "error", scrub(mErr.Error()))
+		} else if changed {
+			logger.Warn("conversions: the Meta connection token is invalid, the connection is now in error", "org_id", d.OrgID.String(), "reason", reason)
+		}
+		return true
+	}
+	if rErr := rep.RecordMetaError(ctx, d.OrgID, reason); rErr != nil {
+		logger.Warn("conversions: could not record the Meta connection error", "org_id", d.OrgID.String(), "error", scrub(rErr.Error()))
+	}
+	return true
+}
+
 // handleSiteEvent sends one order-less site event. No consent is read here: the
 // decision was taken when the event was queued. Credentials are already loaded.
 // While a Meta test event code is set in the settings, every site event goes
 // out as a test event (it shows in Test Events and does not count).
 func handleSiteEvent(ctx context.Context, senders Senders, d Delivery, st Settings,
-	skip func(string), retry func(string, bool), sent func()) {
+	skip func(string), retry func(string, bool), connErr func(error) bool, sent func()) {
 	var ev SiteEvent
 	if err := json.Unmarshal(d.Payload, &ev); err != nil || ev.Kind == "" {
 		retry("bad_payload", true)
@@ -231,6 +285,10 @@ func handleSiteEvent(ctx context.Context, senders Senders, d Delivery, st Settin
 	var sendErr error
 	switch d.Provider {
 	case "meta":
+		if st.MetaErr != nil {
+			retry("settings: "+st.MetaErr.Error(), false)
+			return
+		}
 		if !st.MetaReady() {
 			skip("not_configured")
 			return
@@ -247,7 +305,8 @@ func handleSiteEvent(ctx context.Context, senders Senders, d Delivery, st Settin
 		return
 	}
 	if sendErr != nil {
-		retry(sendErr.Error(), IsPermanent(sendErr))
+		permanent := connErr(sendErr) || IsPermanent(sendErr)
+		retry(sendErr.Error(), permanent)
 		return
 	}
 	sent()
