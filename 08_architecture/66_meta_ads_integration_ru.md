@@ -110,9 +110,10 @@
 - `POST /v1/organizations/{org_id}/integrations/meta/finish` `{code, state}` — под `org.update` и членством, ключ API отклоняется. `state.org` = организация пути и `state.user` = вошедший человек, иначе 403 `meta.state_mismatch`. Обмен кода, `/me`, объекты, сохранение, аудит. Ответ `{enabled, connection}`
 - Неверный `org_id` в пути любого маршрута организации — 400
 - `GET  /v1/organizations/{org_id}/integrations/meta` → статус, бизнес, объекты, выбранные пиксель и кабинет, `scopes`
-- `PATCH /v1/organizations/{org_id}/integrations/meta` → выбор пикселя и кабинета
+- `PATCH /v1/organizations/{org_id}/integrations/meta` → выбор пикселя, кабинета и страницы Facebook (`dataset_id`, `ad_account_id`, `page_id`)
+- `GET  /v1/organizations/{org_id}/integrations/meta/page` → карточка выбранной страницы: название, категория, ссылка, `fan_count`, картинка. Читается из Graph токеном подключения при каждом запросе и нигде не хранится; так экран показывает Meta работу разрешения `pages_read_engagement` при App Review (23.11). 404 `meta.no_page`, если страница не выбрана; сбой Graph — 502 `meta.graph_error` без текста Meta; 190 — как в CAPI (§4.4)
 - `DELETE /v1/organizations/{org_id}/integrations/meta` → отключить
-- `POST /v1/integrations/meta/deauthorize` и `POST /v1/integrations/meta/data-deletion` — callbacks Meta по `signed_request` (HTTPS; подпись HMAC-SHA256 секретом приложения, сравнение за постоянное время; `issued_at` не старше 24 ч и не больше чем на 5 мин в будущем). В `signed_request` есть только app-scoped `user_id`, подключение ищем по `meta_user_id`. Data-deletion удаляет подключение и объекты и отвечает `{url, confirmation_code}`, как требует Meta; `url` ведёт на страницу статуса удаления
+- `POST /v1/integrations/meta/deauthorize` и `POST /v1/integrations/meta/data-deletion` — callbacks Meta по `signed_request` (HTTPS; подпись HMAC-SHA256 секретом приложения, сравнение за постоянное время; `issued_at` не старше 24 ч и не больше чем на 5 мин в будущем). В `signed_request` есть только app-scoped `user_id`, подключение ищем по `meta_user_id`. Data-deletion удаляет подключение и объекты и отвечает `{url, confirmation_code}`, как требует Meta; `url` ведёт на страницу статуса удаления. Deauthorize и вебхук `business_integration_uninstall` с 23.11 тоже сразу удаляют подключение и объекты, как data-deletion; остаются только записи аудита. Состояние «отключено» остаётся только после отключения самим владельцем
 
 Все изменения — в аудит (`v1.org.meta.connect/disconnect/select`), без токена.
 

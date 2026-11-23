@@ -402,7 +402,9 @@ Connection of an organizer's Meta business, the encrypted BISU token, CAPI throu
 * CAPI takes the connection first, the manual token second; only code 190 breaks the connection
 * META_GRAPH_BASE_URL is a test seam and is refused in production
 * A broken Meta connection tells its owners once, in the transaction of the break (meta_connection_broken, owners = membership role with org.update)
-* Meta's app webhook is GET|POST /v1/integrations/meta/webhook: verify token, X-Hub-Signature-256, only business_integration_uninstall revokes
+* Meta's app webhook is GET|POST /v1/integrations/meta/webhook: verify token, X-Hub-Signature-256, only business_integration_uninstall deletes
+* Meta's deauthorize deletes the connection at once, like data deletion; only the owner's disconnect leaves revoked
+* The Page preview GET .../integrations/meta/page is read live and never stored; the picture comes as a data: URL
 
 ### [Refunds](docs/agents/refunds.md)
 

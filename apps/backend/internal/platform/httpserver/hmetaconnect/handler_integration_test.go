@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -41,9 +42,20 @@ type itGraph struct {
 	mu      sync.Mutex
 	revoked int
 	codes   map[string]string // code -> redirect_uri expected
+	// base is the stub's own URL (the Page picture points at it); pageFail,
+	// when not 0, is the Graph error code GET /3001 answers; pageReads counts
+	// the reads of the Page.
+	base      string
+	pageFail  int
+	pageReads int
 }
 
 func (g *itGraph) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/pic.png" {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("PNGDATA"))
+		return
+	}
 	path := strings.TrimPrefix(r.URL.Path, "/v25.0/")
 	if path == "oauth/access_token" {
 		// Meta documents the exchange as GET with query parameters.
@@ -79,6 +91,20 @@ func (g *itGraph) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == "900/client_pixels":
 		w.WriteHeader(403)
 		_, _ = w.Write([]byte(`{"error":{"code":10}}`))
+	case path == "me/accounts":
+		_, _ = w.Write([]byte(`{"data":[{"id":"3001","name":"Club page"}]}`))
+	case path == "3001":
+		g.mu.Lock()
+		g.pageReads++
+		fail := g.pageFail
+		g.mu.Unlock()
+		if fail != 0 {
+			w.WriteHeader(400)
+			_, _ = w.Write([]byte(`{"error":{"code":` + strconv.Itoa(fail) + `,"message":"Meta secret words"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":"3001","name":"Club page live","category":"Concert venue","link":"https://www.facebook.com/club",` +
+			`"fan_count":4321,"picture":{"data":{"url":"` + g.base + `/pic.png"}}}`))
 	default:
 		_, _ = w.Write([]byte(`{"data":[]}`))
 	}
@@ -135,6 +161,7 @@ func newEnv(t *testing.T) *itEnv {
 	e.graph = &itGraph{codes: map[string]string{"code-1": itRedirect, "code-2": itRedirect, "code-js": ""}}
 	srv := httptest.NewServer(e.graph)
 	t.Cleanup(srv.Close)
+	e.graph.base = srv.URL
 	box, err := secretbox.ParseKeys("v1:" + base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")))
 	if err != nil {
 		t.Fatal(err)
@@ -493,23 +520,49 @@ func TestMetaConnect_MetaCallbacks_LiveDB(t *testing.T) {
 	if w := e.call(http.MethodPost, "/", "signed_request=", uuid.Nil, uuid.Nil, e.h.HandleDataDeletion); w.Code != 400 {
 		t.Fatalf("empty data deletion: %d", w.Code)
 	}
-	// Deauthorize revokes both organizations of that Meta user.
+	// B was connected by another Meta person.
+	if _, err := e.pool.Exec(ctx, `UPDATE org_meta_connections SET meta_user_id = 'other-meta-user' WHERE org_id = $1`, e.orgB); err != nil {
+		t.Fatal(err)
+	}
+	rowsOf := func(org uuid.UUID) (conns, assets int) {
+		t.Helper()
+		if err := e.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM org_meta_connections WHERE org_id = $1),
+		        (SELECT count(*) FROM org_meta_assets WHERE org_id = $1)`, org).Scan(&conns, &assets); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	if c, a := rowsOf(e.orgA); c != 1 || a == 0 {
+		t.Fatalf("A before deauthorize: %d connections, %d assets", c, a)
+	}
+	// Deauthorize deletes every connection of that Meta person at once, with
+	// its assets, like a data deletion; the other person's organization stays.
 	if w := e.call(http.MethodPost, "/", signedRequest(itSecret, itMetaUser), uuid.Nil, uuid.Nil, e.h.HandleDeauthorize); w.Code != 200 {
 		t.Fatalf("deauthorize: %d %s", w.Code, w.Body.String())
 	}
-	var revoked int
-	_ = e.pool.QueryRow(ctx, `SELECT count(*) FROM org_meta_connections WHERE org_id = ANY($1) AND status = 'revoked' AND access_token_enc IS NULL`,
-		[]uuid.UUID{e.orgA, e.orgB}).Scan(&revoked)
-	if revoked != 2 {
-		t.Fatalf("revoked rows = %d", revoked)
+	if c, a := rowsOf(e.orgA); c != 0 || a != 0 {
+		t.Fatalf("A after deauthorize: %d connections, %d assets", c, a)
+	}
+	var bStatus string
+	var bToken bool
+	if err := e.pool.QueryRow(ctx, `SELECT status, access_token_enc IS NOT NULL FROM org_meta_connections WHERE org_id = $1`, e.orgB).Scan(&bStatus, &bToken); err != nil ||
+		bStatus != "active" || !bToken {
+		t.Fatalf("B touched by A's deauthorize: %s token=%v %v", bStatus, bToken, err)
+	}
+	if _, a := rowsOf(e.orgB); a == 0 {
+		t.Fatal("B lost its assets")
 	}
 	var sysRows int
 	_ = e.pool.QueryRow(ctx, `SELECT count(*) FROM audit_events WHERE resource_id = $1 AND action = 'v1.org.meta.deauthorize' AND actor_type = 'system'`, e.orgA.String()).Scan(&sysRows)
 	if sysRows != 1 {
 		t.Fatalf("deauthorize audit rows = %d", sysRows)
 	}
+	// With no row the screen says «not connected».
+	if w := e.call(http.MethodGet, "/", "", e.ownerA, e.orgA, e.h.HandleGet); w.Code != 200 || !strings.Contains(w.Body.String(), `"connection":null`) {
+		t.Fatalf("get after deauthorize: %d %s", w.Code, w.Body.String())
+	}
 	// Data deletion removes connections and assets and answers {url, confirmation_code}.
-	w := e.call(http.MethodPost, "/", signedRequest(itSecret, itMetaUser), uuid.Nil, uuid.Nil, e.h.HandleDataDeletion)
+	w := e.call(http.MethodPost, "/", signedRequest(itSecret, "other-meta-user"), uuid.Nil, uuid.Nil, e.h.HandleDataDeletion)
 	var ans struct {
 		URL  string `json:"url"`
 		Code string `json:"confirmation_code"`

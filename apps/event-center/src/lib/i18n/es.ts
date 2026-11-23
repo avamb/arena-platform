@@ -4087,4 +4087,11 @@ export const es: Record<MessageKey, string> = {
   "meta.finishing": "Terminando la conexión con Meta…",
   "meta.notConfigured": "La conexión con Meta no está configurada en el servidor",
   "meta.connectedByYou": "tú",
+  "meta.pick.page": "Página de Facebook",
+  "meta.page.title": "Tu página de Facebook",
+  "meta.page.loading": "Cargando la página desde Meta…",
+  "meta.page.unavailable": "Meta no mostró la página ahora. Inténtalo más tarde.",
+  "meta.page.category": "Categoría",
+  "meta.page.fans": "Me gusta",
+  "meta.page.open": "Abrir en Facebook",
 };

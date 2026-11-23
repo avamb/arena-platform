@@ -18848,7 +18848,7 @@ components:
           type: string
           enum: [active, revoked, error]
           description: |
-            active = in use; revoked = disconnected here or at Meta; error =
+            active = in use; revoked = disconnected here; error =
             Meta refused the token (Graph error 190), connect again.
         meta_business_id:
           type: string
@@ -18902,7 +18902,7 @@ components:
           type: boolean
           description: The platform has the Meta connection switched on; false = do not show the Connect button.
         connection:
-          description: The stored connection, null when the organization never connected or the data was deleted.
+          description: The stored connection, null when the organization never connected, the data was deleted or the app was removed at Meta.
           oneOf:
             - $ref: "#/components/schemas/MetaConnection"
             - type: "null"
@@ -18910,7 +18910,7 @@ components:
     UpdateMetaIntegrationRequest:
       type: object
       additionalProperties: false
-      description: At least one key. Each value must be the meta_id of a shared object of that kind.
+      description: At least one key. Each value must be the meta_id of a shared object of that kind (dataset, ad account or page).
       properties:
         dataset_id:
           type: string
@@ -18918,6 +18918,39 @@ components:
         ad_account_id:
           type: string
           description: The ad account the platform reads spend from.
+        page_id:
+          type: string
+          description: The Facebook Page whose preview the event center shows.
+
+    MetaPagePreview:
+      type: object
+      required: [meta_id, name, category, link, fan_count, picture_data_url]
+      description: |
+        The selected Facebook Page as Meta shows it now, read live from the
+        Graph API with the connection token. Nothing of it is stored.
+      properties:
+        meta_id:
+          type: string
+          description: The Meta id of the Page.
+        name:
+          type: string
+          description: The name of the Page, empty when Meta sent none.
+        category:
+          type: [string, "null"]
+          description: The category of the Page, null when Meta sent none.
+        link:
+          type: [string, "null"]
+          description: The https address of the Page on Facebook, null when Meta sent none.
+        fan_count:
+          type: [integer, "null"]
+          format: int64
+          description: The number of people who like the Page, null when Meta sent none.
+        picture_data_url:
+          type: [string, "null"]
+          description: |
+            The Page picture as a `data:image/...;base64,` URL (at most
+            256 KB), so the event center loads no third-party image; null when
+            there is no picture or it could not be read.
 
     MetaSignedRequestForm:
       type: object
@@ -46790,7 +46823,7 @@ paths:
 
     patch:
       operationId: updateMetaIntegration
-      summary: Select the dataset and the ad account the platform uses
+      summary: Select the dataset, the ad account and the page the platform uses
       description: |
         Marks the given shared objects as selected (one per kind). Audited as
         `v1.org.meta.select`. Requires `org.update` (the owner); an
@@ -46913,6 +46946,79 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/integrations/meta/page:
+    get:
+      operationId: getMetaPagePreview
+      summary: Show the selected Facebook Page as Meta shows it now
+      description: |
+        Reads the selected Page live from the Graph API
+        (`GET /{page_id}?fields=name,category,link,fan_count,picture{url}`)
+        with the connection token (permission `pages_read_engagement`). Nothing
+        of the answer is stored or logged. A Graph error 190 moves the
+        connection to error and tells its owners, like a 190 of the
+        Conversions API. Requires `org.update` (the owner); an organization
+        API key is refused.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The Page as Meta shows it now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaPagePreview"
+        "400":
+          description: org_id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `org.update` in the organization, or is an API key (`meta.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The organization has no Meta connection (`meta.not_connected`) or no page is selected (`meta.no_page`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The connection is not active (error or revoked), connect again (`meta.not_active`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: Meta did not answer or refused (`meta.graph_error`); Meta's own message is never passed on.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The Meta connection is switched off (`meta.disabled`) or the database is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/integrations/meta/callback:
     get:
       operationId: metaLoginCallback
@@ -46975,8 +47081,9 @@ paths:
       description: |
         Public: Meta's deauthorize callback, signed with the app secret
         (constant-time compare). Every connection made by the signed
-        app-scoped user id is set to revoked and its token wiped. Audited as
-        `v1.org.meta.deauthorize` (system actor).
+        app-scoped user id is deleted at once with its shared objects, like
+        a data deletion. Audited as `v1.org.meta.deauthorize` (system actor);
+        the audit row stays.
       tags: [v1]
       requestBody:
         required: true
@@ -47099,10 +47206,9 @@ paths:
         Public: Meta's app webhook. `X-Hub-Signature-256` must be
         `sha256=<hex>` of the HMAC-SHA256 of the raw body with the app
         secret (constant-time compare); the body is at most 64 KB. A change
-        with the field `business_integration_uninstall` sets every
-        connection to that business to revoked, wipes its token and removes
-        its shared objects; audited as `v1.org.meta.uninstall` (system
-        actor). Other fields are ignored. After a valid signature the answer
+        with the field `business_integration_uninstall` deletes every
+        connection to that business with its shared objects; audited as
+        `v1.org.meta.uninstall` (system actor), the audit row stays. Other fields are ignored. After a valid signature the answer
         is 200, so Meta does not send the change again.
       tags: [v1]
       parameters:

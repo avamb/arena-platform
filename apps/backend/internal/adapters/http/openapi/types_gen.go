@@ -12014,7 +12014,7 @@ type MetaConnection struct {
 	// SelectedDatasetId The meta_id of the selected dataset, null when none is selected.
 	SelectedDatasetId *string `json:"selected_dataset_id"`
 
-	// Status active = in use; revoked = disconnected here or at Meta; error =
+	// Status active = in use; revoked = disconnected here; error =
 	// Meta refused the token (Graph error 190), connect again.
 	Status MetaConnectionStatus `json:"status"`
 
@@ -12022,7 +12022,7 @@ type MetaConnection struct {
 	TokenExpiresAt *time.Time `json:"token_expires_at"`
 }
 
-// MetaConnectionStatus active = in use; revoked = disconnected here or at Meta; error =
+// MetaConnectionStatus active = in use; revoked = disconnected here; error =
 // Meta refused the token (Graph error 190), connect again.
 type MetaConnectionStatus string
 
@@ -12048,11 +12048,35 @@ type MetaFinishRequest struct {
 
 // MetaIntegration The Meta connection of an organization.
 type MetaIntegration struct {
-	// Connection The stored connection, null when the organization never connected or the data was deleted.
+	// Connection The stored connection, null when the organization never connected, the data was deleted or the app was removed at Meta.
 	Connection *MetaConnection `json:"connection"`
 
 	// Enabled The platform has the Meta connection switched on; false = do not show the Connect button.
 	Enabled bool `json:"enabled"`
+}
+
+// MetaPagePreview The selected Facebook Page as Meta shows it now, read live from the
+// Graph API with the connection token. Nothing of it is stored.
+type MetaPagePreview struct {
+	// Category The category of the Page, null when Meta sent none.
+	Category *string `json:"category"`
+
+	// FanCount The number of people who like the Page, null when Meta sent none.
+	FanCount *int64 `json:"fan_count"`
+
+	// Link The https address of the Page on Facebook, null when Meta sent none.
+	Link *string `json:"link"`
+
+	// MetaId The Meta id of the Page.
+	MetaId string `json:"meta_id"`
+
+	// Name The name of the Page, empty when Meta sent none.
+	Name string `json:"name"`
+
+	// PictureDataUrl The Page picture as a `data:image/...;base64,` URL (at most
+	// 256 KB), so the event center loads no third-party image; null when
+	// there is no picture or it could not be read.
+	PictureDataUrl *string `json:"picture_data_url"`
 }
 
 // MetaSignedRequestForm The form Meta posts to its callbacks.
@@ -23199,13 +23223,16 @@ type UpdateEventStatusRequest struct {
 // `error.code = "event.invalid_transition"`.
 type UpdateEventStatusRequestStatus string
 
-// UpdateMetaIntegrationRequest At least one key. Each value must be the meta_id of a shared object of that kind.
+// UpdateMetaIntegrationRequest At least one key. Each value must be the meta_id of a shared object of that kind (dataset, ad account or page).
 type UpdateMetaIntegrationRequest struct {
 	// AdAccountId The ad account the platform reads spend from.
 	AdAccountId *string `json:"ad_account_id,omitempty"`
 
 	// DatasetId The dataset (pixel) the server-side purchases go to.
 	DatasetId *string `json:"dataset_id,omitempty"`
+
+	// PageId The Facebook Page whose preview the event center shows.
+	PageId *string `json:"page_id,omitempty"`
 }
 
 // UpdateOperatorNetworkRequest At least one of `name` or `slug` must be supplied. Empty strings are

@@ -106,8 +106,9 @@
 - Не проверено живым входом (только заглушкой Graph): обмен `code` на токен BISU, рёбра кабинетов и страниц (`META_ASSET_EDGES`), отзыв `DELETE /me/permissions` для BISU, совпадает ли `user_id` из `signed_request` с `id` из `/me` токена BISU. Если не совпадает, deauthorize и data-deletion не найдут подключение.
 - Callbacks deauthorize и data-deletion вписываются в панель Meta только после выката М1. Странице `arenasoldout.com/legal/data-deletion` нужно понимать параметр `?code=` (задача в arena-site).
 - Вебхук приложения вписывается в панель Meta после выката: «Вебхуки → Application», адрес `https://<api>/v1/integrations/meta/webhook`, проверочный токен = `META_WEBHOOK_VERIFY_TOKEN` (секрет arena-api), подписка на поле `business_integration_uninstall`. Без токена Meta не подтвердит подписку.
-- Поля тела `business_integration_uninstall` взяты из документации без живой пробы: id бизнеса читается из `value.business_manager_id`, иначе из `value.business_id`. Проверить на первом удалении приложения клиентом; если Meta присылает id в другом поле, подключение не отзовётся (узнается по ошибке 190).
-- Для М4/М5 в конфигурацию входа надо добавить `ads_management`, и организаторам придётся подключиться заново.
+- Поля тела `business_integration_uninstall` взяты из документации без живой пробы: id бизнеса читается из `value.business_manager_id`, иначе из `value.business_id`. Проверить на первом удалении приложения клиентом; если Meta присылает id в другом поле, подключение не удалится (узнается по ошибке 190).
+- `ads_management` добавлен в конфигурацию входа 23.11, до появления организаторов, переподключаться никому не нужно.
+- Карточка страницы Facebook (`GET .../integrations/meta/page`) читает поля страницы из Meta при каждом открытии экрана и ничего не хранит. Не проверено живым входом: отдаёт ли Graph `fan_count` и `picture` токену BISU с `pages_read_engagement` без токена страницы. Картинка приходит на экран как `data:` URL, потому что CSP ивент-центра не пускает картинки с чужих адресов.
 
 ### Риски без реализации
 

@@ -33,8 +33,8 @@ func itHubSign(secret, body string) string {
 }
 
 // TestMetaWebhook_Uninstall_LiveDB: a business_integration_uninstall with a
-// valid X-Hub-Signature-256 revokes only the connection to that business
-// (token wiped, assets removed, system audit); another organization's
+// valid X-Hub-Signature-256 deletes only the connection to that business
+// with its assets (the system audit row stays); another organization's
 // connection to another business is untouched, and a bad signature changes
 // nothing.
 func TestMetaWebhook_Uninstall_LiveDB(t *testing.T) {
@@ -49,11 +49,13 @@ func TestMetaWebhook_Uninstall_LiveDB(t *testing.T) {
 	if _, err := e.pool.Exec(ctx, `UPDATE org_meta_connections SET meta_business_id = '901' WHERE org_id = $1`, e.orgB); err != nil {
 		t.Fatal(err)
 	}
+	// state answers status "deleted" when the organization has no connection
+	// row; assets counts its asset rows either way.
 	state := func(org uuid.UUID) (status string, hasToken bool, assets int) {
 		t.Helper()
-		if err := e.pool.QueryRow(ctx, `SELECT status, access_token_enc IS NOT NULL,
-		        (SELECT count(*) FROM org_meta_assets WHERE org_id = $1)
-		   FROM org_meta_connections WHERE org_id = $1`, org).Scan(&status, &hasToken, &assets); err != nil {
+		if err := e.pool.QueryRow(ctx, `SELECT COALESCE((SELECT status FROM org_meta_connections WHERE org_id = $1), 'deleted'),
+		        COALESCE((SELECT access_token_enc IS NOT NULL FROM org_meta_connections WHERE org_id = $1), false),
+		        (SELECT count(*) FROM org_meta_assets WHERE org_id = $1)`, org).Scan(&status, &hasToken, &assets); err != nil {
 			t.Fatal(err)
 		}
 		return
@@ -77,7 +79,7 @@ func TestMetaWebhook_Uninstall_LiveDB(t *testing.T) {
 	if w := e.webhook(body, itHubSign(itSecret, body)); w.Code != 200 || !strings.Contains(w.Body.String(), `"received":true`) {
 		t.Fatalf("uninstall: %d %s", w.Code, w.Body.String())
 	}
-	if st, tok, n := state(e.orgA); st != "revoked" || tok || n != 0 {
+	if st, tok, n := state(e.orgA); st != "deleted" || tok || n != 0 {
 		t.Fatalf("A after uninstall: %s token=%v assets=%d", st, tok, n)
 	}
 	if st, tok, n := state(e.orgB); st != "active" || !tok || n == 0 {
@@ -97,7 +99,7 @@ func TestMetaWebhook_Uninstall_LiveDB(t *testing.T) {
 	}
 
 	// A repeat, an ignored field and business_id as a number: 200 each; the
-	// number form revokes B.
+	// number form deletes B.
 	if w := e.webhook(body, itHubSign(itSecret, body)); w.Code != 200 {
 		t.Fatalf("repeat: %d", w.Code)
 	}
@@ -106,13 +108,13 @@ func TestMetaWebhook_Uninstall_LiveDB(t *testing.T) {
 		t.Fatalf("ignored field: %d", w.Code)
 	}
 	if st, _, _ := state(e.orgB); st != "active" {
-		t.Fatalf("an ignored field revoked B: %s", st)
+		t.Fatalf("an ignored field changed B: %s", st)
 	}
 	byID := `{"object":"application","entry":[{"changes":[{"field":"business_integration_uninstall","value":{"business_id":901}}]}]}`
 	if w := e.webhook(byID, itHubSign(itSecret, byID)); w.Code != 200 {
 		t.Fatalf("business_id: %d", w.Code)
 	}
-	if st, tok, n := state(e.orgB); st != "revoked" || tok || n != 0 {
+	if st, tok, n := state(e.orgB); st != "deleted" || tok || n != 0 {
 		t.Fatalf("B after business_id uninstall: %s token=%v assets=%d", st, tok, n)
 	}
 }

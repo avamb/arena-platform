@@ -276,6 +276,31 @@ func SealedToken(ctx context.Context, q Querier, orgID uuid.UUID) (sealed, statu
 	return sealed, status, nil
 }
 
+// SelectedPage reads the selected page id (""), the sealed token ("" when
+// wiped) and the status of the organization's connection (ErrNotConnected).
+// It only reads.
+func SelectedPage(ctx context.Context, q Querier, orgID uuid.UUID) (pageID, sealed, status string, err error) {
+	var p, s *string
+	err = q.QueryRow(ctx, `
+		SELECT a.meta_id, c.access_token_enc, c.status
+		  FROM org_meta_connections c
+		  LEFT JOIN org_meta_assets a ON a.org_id = c.org_id AND a.kind = 'page' AND a.selected
+		 WHERE c.org_id = $1`, orgID).Scan(&p, &s, &status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", "", "", ErrNotConnected
+	}
+	if err != nil {
+		return "", "", "", err
+	}
+	if p != nil {
+		pageID = *p
+	}
+	if s != nil {
+		sealed = *s
+	}
+	return pageID, sealed, status, nil
+}
+
 // Revoke sets the connection to revoked and wipes its token; deleteAssets
 // also removes its assets. It reports whether a row was found.
 func Revoke(ctx context.Context, q Querier, orgID uuid.UUID, reason string, deleteAssets bool) (bool, error) {
@@ -294,7 +319,9 @@ func Revoke(ctx context.Context, q Querier, orgID uuid.UUID, reason string, dele
 	return tag.RowsAffected() > 0, nil
 }
 
-// Delete removes the organization's connection and assets (data deletion).
+// Delete removes the organization's connection and assets at once: Meta's
+// data deletion, its deauthorize callback and a business_integration_uninstall
+// of the app webhook. The audit rows of the organization stay.
 func Delete(ctx context.Context, q Querier, orgID uuid.UUID) error {
 	if _, err := q.Exec(ctx, `DELETE FROM org_meta_assets WHERE org_id = $1`, orgID); err != nil {
 		return err

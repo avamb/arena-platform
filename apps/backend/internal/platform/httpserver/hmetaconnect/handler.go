@@ -6,7 +6,8 @@
 //	GET    /v1/organizations/{org_id}/integrations/meta
 //	PATCH  /v1/organizations/{org_id}/integrations/meta
 //	DELETE /v1/organizations/{org_id}/integrations/meta
-//	GET    /v1/integrations/meta/callback          (public, signed state, no exchange)
+//	GET    /v1/organizations/{org_id}/integrations/meta/page   (live Page preview, not stored)
+//	GET    /v1/integrations/meta/callback         (public, signed state, no exchange)
 //	POST   /v1/integrations/meta/deauthorize       (public, Meta signed_request)
 //	POST   /v1/integrations/meta/data-deletion     (public, Meta signed_request)
 //	GET    /v1/integrations/meta/webhook           (public, verify token)
@@ -36,6 +37,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/adminnotify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
@@ -67,7 +69,10 @@ type Settings struct {
 	// WebhookVerifyToken is META_WEBHOOK_VERIFY_TOKEN, the verify token of
 	// the GET subscription check of the app webhook. Empty refuses it.
 	WebhookVerifyToken string
-	Edges              []metaconnect.Edge
+	// OwnerTelegram is EVENTS_TELEGRAM_BOT_TOKEN != "": the owners' notice of
+	// a connection broken by a page preview also goes to Telegram.
+	OwnerTelegram bool
+	Edges         []metaconnect.Edge
 }
 
 // Handler serves the routes. The organization routes run after the
@@ -467,7 +472,8 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, v)
 }
 
-// HandlePatch selects the dataset and/or the ad account the platform uses.
+// HandlePatch selects the dataset, the ad account and/or the page the
+// platform uses.
 func (h *Handler) HandlePatch(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := h.guard(w, r)
 	if !ok {
@@ -478,7 +484,7 @@ func (h *Handler) HandlePatch(w http.ResponseWriter, r *http.Request) {
 	var req map[string]json.RawMessage
 	dec := json.NewDecoder(bytes.NewReader(body))
 	if err != nil || dec.Decode(&req) != nil || dec.More() || len(req) == 0 {
-		writeErr(w, r, http.StatusBadRequest, "meta.invalid_body", "send dataset_id, ad_account_id or both")
+		writeErr(w, r, http.StatusBadRequest, "meta.invalid_body", "send dataset_id, ad_account_id, page_id or several of them")
 		return
 	}
 	picks := map[string]string{}
@@ -489,6 +495,8 @@ func (h *Handler) HandlePatch(w http.ResponseWriter, r *http.Request) {
 			kind = metaconnect.KindDataset
 		case "ad_account_id":
 			kind = metaconnect.KindAdAccount
+		case "page_id":
+			kind = metaconnect.KindPage
 		default:
 			writeErr(w, r, http.StatusBadRequest, "meta.invalid_body", "unknown field "+k)
 			return
@@ -506,7 +514,7 @@ func (h *Handler) HandlePatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	for _, kind := range []string{metaconnect.KindDataset, metaconnect.KindAdAccount} {
+	for _, kind := range []string{metaconnect.KindDataset, metaconnect.KindAdAccount, metaconnect.KindPage} {
 		id, ok := picks[kind]
 		if !ok {
 			continue
@@ -531,6 +539,9 @@ func (h *Handler) HandlePatch(w http.ResponseWriter, r *http.Request) {
 		}
 		if v, ok := picks[metaconnect.KindAdAccount]; ok {
 			md["ad_account_id"] = v
+		}
+		if v, ok := picks[metaconnect.KindPage]; ok {
+			md["page_id"] = v
 		}
 		if err := h.audit.WriteTx(ctx, tx, audit.Event{
 			OccurredAt: time.Now().UTC(), ActorType: "user", ActorID: actor.ID,
@@ -613,6 +624,110 @@ func (h *Handler) HandleDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 // ---------------------------------------------------------------------------
+// GET .../integrations/meta/page
+// ---------------------------------------------------------------------------
+
+// PageView is the live preview of the selected Page. Nothing of it is stored
+// or logged.
+type PageView struct {
+	MetaID   string  `json:"meta_id"`
+	Name     string  `json:"name"`
+	Category *string `json:"category"`
+	Link     *string `json:"link"`
+	FanCount *int64  `json:"fan_count"`
+	// PictureDataURL is the Page picture as a data: URL (the event center
+	// loads no third-party image), null when there is none.
+	PictureDataURL *string `json:"picture_data_url"`
+}
+
+// HandlePage reads the selected Page from Graph with the connection token and
+// answers its name, category, link, fan count and picture. It writes nothing
+// except when Meta answers 190: then the connection moves to error and its
+// owners are told, like a 190 of the Conversions API.
+func (h *Handler) HandlePage(w http.ResponseWriter, r *http.Request) {
+	orgID, ok := h.guard(w, r)
+	if !ok {
+		return
+	}
+	if !h.cfg.Enabled {
+		writeErr(w, r, http.StatusServiceUnavailable, "meta.disabled", "the Meta connection is not switched on for this platform")
+		return
+	}
+	ctx := r.Context()
+	pageID, sealed, status, err := metaconnect.SelectedPage(ctx, h.pool, orgID)
+	if errors.Is(err, metaconnect.ErrNotConnected) {
+		writeErr(w, r, http.StatusNotFound, "meta.not_connected", "the organization has no Meta connection")
+		return
+	}
+	if err != nil {
+		h.unavailable(w, r)
+		return
+	}
+	if status != metaconnect.StatusActive || sealed == "" {
+		writeErr(w, r, http.StatusConflict, "meta.not_active", "the Meta connection is not active, connect again")
+		return
+	}
+	if pageID == "" {
+		writeErr(w, r, http.StatusNotFound, "meta.no_page", "no Meta page is selected")
+		return
+	}
+	tok, err := metaconnect.OpenToken(h.box, orgID, sealed)
+	if err != nil {
+		h.logger.Error("metaconnect: stored token does not open for the page preview", "org_id", orgID.String())
+		h.unavailable(w, r)
+		return
+	}
+	gctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	page, err := h.graph.Page(gctx, tok, pageID)
+	if err != nil {
+		reason := metaconnect.ErrorCode(err)
+		h.logger.Warn("metaconnect: page preview failed", "org_id", orgID.String(), "reason", reason)
+		if metaconnect.IsTokenInvalid(err) {
+			h.markTokenInvalid(context.WithoutCancel(ctx), orgID, reason)
+		}
+		writeErr(w, r, http.StatusBadGateway, "meta.graph_error", "Meta did not show the page, try again later")
+		return
+	}
+	v := PageView{MetaID: page.ID, Name: page.Name, Category: strPtr(page.Category), Link: strPtr(page.Link), FanCount: page.FanCount}
+	if page.PictureURL != "" {
+		if data, err := h.graph.PictureDataURL(gctx, page.PictureURL); err == nil {
+			v.PictureDataURL = &data
+		}
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	httputil.WriteJSON(w, http.StatusOK, v)
+}
+
+// markTokenInvalid moves the active connection to error and, in the same
+// transaction, queues the owners' notice (the path of
+// conversions.PGStore.MarkMetaTokenInvalid). A failure is logged only: the
+// next 190 tries again.
+func (h *Handler) markTokenInvalid(ctx context.Context, orgID uuid.UUID, reason string) {
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		h.logger.Error("metaconnect: cannot mark the token invalid", "org_id", orgID.String())
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	changed, err := metaconnect.MarkTokenInvalid(ctx, tx, orgID, reason)
+	if err != nil || !changed {
+		if err != nil {
+			h.logger.Error("metaconnect: cannot mark the token invalid", "org_id", orgID.String())
+		}
+		return
+	}
+	if _, err := adminnotify.NotifyMetaConnectionBroken(ctx, tx, orgID, h.cfg.EventCenterURL,
+		adminnotify.Options{Telegram: h.cfg.OwnerTelegram, Logger: h.logger}); err != nil {
+		h.logger.Error("metaconnect: cannot queue the owners' notice, the connection stays active", "org_id", orgID.String())
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		h.logger.Error("metaconnect: cannot mark the token invalid", "org_id", orgID.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
 // POST /v1/integrations/meta/deauthorize and /data-deletion
 // ---------------------------------------------------------------------------
 
@@ -652,7 +767,8 @@ func (h *Handler) systemAudit(ctx context.Context, r *http.Request, tx pgx.Tx, a
 }
 
 // HandleDeauthorize is Meta's deauthorize callback: every connection made by
-// the signed user id is set to revoked and its token wiped.
+// the signed user id is deleted at once with its assets, like a data
+// deletion; the audit row v1.org.meta.deauthorize stays.
 func (h *Handler) HandleDeauthorize(w http.ResponseWriter, r *http.Request) {
 	sr, ok := h.signedRequest(w, r)
 	if !ok {
@@ -671,7 +787,7 @@ func (h *Handler) HandleDeauthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, org := range orgs {
-		if _, err := metaconnect.Revoke(ctx, tx, org, "deauthorized_at_meta", false); err != nil {
+		if err := metaconnect.Delete(ctx, tx, org); err != nil {
 			h.unavailable(w, r)
 			return
 		}
@@ -785,8 +901,8 @@ func plainChallenge(s string) bool {
 // HandleWebhook is Meta's app webhook. The X-Hub-Signature-256 of the raw
 // body (HMAC-SHA256 with the app secret) is checked first: a missing or
 // wrong one gets 401 and changes nothing. A business_integration_uninstall
-// change revokes every connection to that business (token wiped, assets
-// removed, audit v1.org.meta.uninstall by the system); other fields and a
+// change deletes every connection to that business with its assets (audit
+// v1.org.meta.uninstall by the system stays); other fields and a
 // body that does not parse are ignored. After a valid signature the answer
 // is 200, so Meta does not retry, unless the database fails (503).
 func (h *Handler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
@@ -826,7 +942,8 @@ func (h *Handler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"received": true})
 }
 
-// uninstall revokes the connections to the businesses in one transaction.
+// uninstall deletes the connections to the businesses and their assets in
+// one transaction.
 func (h *Handler) uninstall(w http.ResponseWriter, r *http.Request, businesses []string) bool {
 	ctx := r.Context()
 	tx, err := h.pool.Begin(ctx)
@@ -842,7 +959,7 @@ func (h *Handler) uninstall(w http.ResponseWriter, r *http.Request, businesses [
 			return false
 		}
 		for _, org := range orgs {
-			if _, err := metaconnect.Revoke(ctx, tx, org, "uninstalled_at_meta", true); err != nil {
+			if err := metaconnect.Delete(ctx, tx, org); err != nil {
 				h.unavailable(w, r)
 				return false
 			}

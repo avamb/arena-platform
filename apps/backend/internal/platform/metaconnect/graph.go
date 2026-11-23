@@ -2,6 +2,7 @@ package metaconnect
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -409,6 +410,119 @@ func clip(s string, n int) string {
 		return strings.ToValidUTF8(s[:n], "")
 	}
 	return s
+}
+
+// PagePreview is the live preview of a Page (GET /{page_id}). It is read on
+// request and never stored or logged.
+type PagePreview struct {
+	ID         string
+	Name       string
+	Category   string
+	Link       string
+	FanCount   *int64
+	PictureURL string
+}
+
+var pageIDRe = regexp.MustCompile(`^[0-9]{1,32}$`)
+
+// ErrBadPageID means the page id is not a Meta numeric id; nothing was sent.
+var ErrBadPageID = errors.New("metaconnect: the page id is not a Meta id")
+
+// Page reads GET /{page_id}?fields=name,category,link,fan_count,picture{url}
+// with the connection token (pages_read_engagement).
+func (c *Client) Page(ctx context.Context, token, pageID string) (PagePreview, error) {
+	if !pageIDRe.MatchString(pageID) {
+		return PagePreview{}, ErrBadPageID
+	}
+	var out struct {
+		ID       json.RawMessage `json:"id"`
+		Name     string          `json:"name"`
+		Category string          `json:"category"`
+		Link     string          `json:"link"`
+		FanCount *int64          `json:"fan_count"`
+		Picture  struct {
+			Data struct {
+				URL string `json:"url"`
+			} `json:"data"`
+		} `json:"picture"`
+	}
+	q := url.Values{"fields": {"name,category,link,fan_count,picture{url}"}}
+	if err := c.do(ctx, http.MethodGet, pageID, q, nil, token, &out); err != nil {
+		return PagePreview{}, err
+	}
+	p := PagePreview{ID: jsonID(out.ID), Name: clip(out.Name, 256), Category: clip(out.Category, 128), FanCount: out.FanCount}
+	if p.ID == "" {
+		p.ID = pageID
+	}
+	if u, err := url.Parse(strings.TrimSpace(out.Link)); err == nil && u.Scheme == "https" && u.Host != "" && len(out.Link) <= 512 {
+		p.Link = u.String()
+	}
+	if raw := strings.TrimSpace(out.Picture.Data.URL); len(raw) <= 2048 {
+		if u, err := url.Parse(raw); err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != "" {
+			p.PictureURL = u.String()
+		}
+	}
+	return p, nil
+}
+
+// maxPictureBytes is the largest Page picture PictureDataURL reads.
+const maxPictureBytes = 256 << 10
+
+// pictureHostAllowed reports whether a picture URL points at Meta's CDN
+// (https, *.fbcdn.net or *.facebook.com) or, with the test seam, at the
+// Graph host itself.
+func (c *Client) pictureHostAllowed(u *url.URL) bool {
+	host := strings.ToLower(u.Hostname())
+	if u.Scheme == "https" && (strings.HasSuffix(host, ".fbcdn.net") || strings.HasSuffix(host, ".facebook.com")) {
+		return true
+	}
+	if c.baseURL == DefaultGraphBaseURL {
+		return false
+	}
+	b, err := url.Parse(c.baseURL)
+	return err == nil && b.Scheme == u.Scheme && strings.EqualFold(b.Host, u.Host)
+}
+
+// PictureDataURL downloads a Page picture and answers it as a data: URL, so
+// the event center shows it without loading a third-party host (its CSP
+// allows images from itself and data: only). Only Meta's CDN is fetched,
+// redirects stay on it, at most 256 KB of image/jpeg, png, gif or webp.
+// Any failure answers "" and an error without the URL.
+func (c *Client) PictureDataURL(ctx context.Context, raw string) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil || !c.pictureHostAllowed(u) {
+		return "", errors.New("metaconnect: the picture is not on Meta's CDN")
+	}
+	hc := *c.http
+	hc.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 3 || !c.pictureHostAllowed(req.URL) {
+			return errors.New("metaconnect: picture redirect refused")
+		}
+		return nil
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return "", errors.New("metaconnect: cannot build the picture request")
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return "", errors.New("metaconnect: picture request failed")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", errors.New("metaconnect: picture not available")
+	}
+	ct := strings.ToLower(strings.TrimSpace(strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0]))
+	switch ct {
+	case "image/jpeg", "image/png", "image/gif", "image/webp":
+	default:
+		return "", errors.New("metaconnect: the picture is not an image")
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxPictureBytes+1))
+	if err != nil || len(body) == 0 || len(body) > maxPictureBytes {
+		return "", errors.New("metaconnect: the picture is empty or too large")
+	}
+	return "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(body), nil
 }
 
 // RevokePermissions asks Meta to drop the app's access (DELETE

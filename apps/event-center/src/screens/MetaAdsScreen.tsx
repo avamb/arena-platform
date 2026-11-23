@@ -1,6 +1,7 @@
 /**
  * "Advertising → Meta" (spec 66, sections 4.1 and 4.6): the owner connects the organization's Meta business account,
- * chooses the dataset for the server-side purchases and the ad account, and disconnects.
+ * chooses the dataset for the server-side purchases, the ad account and the Facebook Page, sees a live card of the
+ * selected Page (read from Meta on each visit, nothing stored), and disconnects.
  *
  * States: the platform switch is off (nothing to connect), not connected, connected, error (Meta refused the token),
  * revoked. Connect is the server redirect to Meta's login (`login_url`, no SDK, no popup); the person comes back with
@@ -8,7 +9,7 @@
  * the server checks that the state names this person and this organization). The access token never reaches the page.
  * The view is a pure component (`MetaAdsView`); the screen owns the queries and the actions.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
 import { ConfirmPressDialog } from "@/components/ConfirmPressDialog";
@@ -19,6 +20,7 @@ import { ErrorBox, Loading } from "@/components/ui";
 import {
   disconnectMeta,
   fetchMetaIntegration,
+  fetchMetaPage,
   finishMetaConnect,
   selectMetaAssets,
   startMetaConnect,
@@ -27,7 +29,7 @@ import {
   type MetaIntegration,
 } from "@/lib/api/metaApi";
 import { useMe } from "@/lib/auth";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatNumber } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { REASON_KEY, finishReason, metaReturn, startRedirect, takeMetaFinish, type MetaReturn } from "@/lib/metaConnect";
 import { browserZone } from "@/lib/shop";
@@ -40,6 +42,8 @@ const KINDS: readonly { kind: MetaAsset["kind"]; title: "meta.datasets" | "meta.
 ];
 
 export type MetaNotice = "notConfigured" | "saved" | null;
+
+export type MetaSelectChange = { dataset_id?: string; ad_account_id?: string; page_id?: string };
 
 export interface MetaAdsViewProps {
   data: MetaIntegration;
@@ -55,7 +59,9 @@ export interface MetaAdsViewProps {
   failure: unknown;
   confirming: boolean;
   onConnect: () => void;
-  onSelect: (change: { dataset_id?: string; ad_account_id?: string }) => void;
+  onSelect: (change: MetaSelectChange) => void;
+  /** The preview of the selected Page (read live from Meta); shown only for an active connection with a page. */
+  renderPage?: (pageId: string) => ReactNode;
   onAskDisconnect: () => void;
   onDisconnect: () => Promise<void>;
   onCancelDisconnect: () => void;
@@ -123,17 +129,24 @@ export function MetaAdsView(p: MetaAdsViewProps) {
   const name = (a: MetaAsset) => (a.name !== "" ? a.name : t("meta.assetUnnamed"));
   const usable = conn.status === "active";
   const zone = browserZone();
-  const picker = (kind: "dataset" | "ad_account") => {
+  const selectedPageId = conn.assets.find((a) => a.kind === "page" && a.selected)?.meta_id ?? "";
+  const PICKERS = {
+    dataset: { label: "meta.pick.dataset", testId: "meta-pick-dataset", selected: conn.selected_dataset_id ?? "", change: (v: string) => ({ dataset_id: v }) },
+    ad_account: { label: "meta.pick.adAccount", testId: "meta-pick-ad-account", selected: conn.selected_ad_account_id ?? "", change: (v: string) => ({ ad_account_id: v }) },
+    page: { label: "meta.pick.page", testId: "meta-pick-page", selected: selectedPageId, change: (v: string) => ({ page_id: v }) },
+  } as const;
+  const picker = (kind: MetaAsset["kind"]) => {
     const list = assetsOf(kind);
-    const selected = (kind === "dataset" ? conn.selected_dataset_id : conn.selected_ad_account_id) ?? "";
+    const cfg = PICKERS[kind];
+    const selected = cfg.selected;
     return (
       <SelectField
-        label={t(kind === "dataset" ? "meta.pick.dataset" : "meta.pick.adAccount")}
+        label={t(cfg.label)}
         value={selected}
-        testId={kind === "dataset" ? "meta-pick-dataset" : "meta-pick-ad-account"}
+        testId={cfg.testId}
         onChange={(v) => {
           if (v === "" || v === selected) return;
-          p.onSelect(kind === "dataset" ? { dataset_id: v } : { ad_account_id: v });
+          p.onSelect(cfg.change(v));
         }}
       >
         <option value="" disabled>
@@ -189,6 +202,7 @@ export function MetaAdsView(p: MetaAdsViewProps) {
           <fieldset disabled={p.saving}>
             {picker("dataset")}
             {picker("ad_account")}
+            {picker("page")}
           </fieldset>
           {p.saving && <p role="status">{t("meta.saving")}</p>}
           {p.notice === "saved" && !p.saving && (
@@ -198,6 +212,7 @@ export function MetaAdsView(p: MetaAdsViewProps) {
           )}
         </div>
       )}
+      {usable && selectedPageId !== "" && p.renderPage?.(selectedPageId)}
       {KINDS.map(({ kind, title }) => {
         const list = assetsOf(kind);
         return (
@@ -235,6 +250,58 @@ export function MetaAdsView(p: MetaAdsViewProps) {
         />
       )}
     </>
+  );
+}
+
+/**
+ * The card of the selected Facebook Page: name, category, link, likes and picture, read live from Meta by the server
+ * (nothing is stored). The picture comes as a data: URL, so the page loads no third-party image. On any error one
+ * neutral line, never Meta's text.
+ */
+export function MetaPageCard({ orgId, pageId }: { orgId: string; pageId: string }) {
+  const { t, locale } = useI18n();
+  const query = useQuery({ queryKey: ["metaPage", orgId, pageId], queryFn: () => fetchMetaPage(orgId), retry: false, staleTime: 60_000 });
+  return (
+    <section aria-labelledby="meta-page-title" data-testid="meta-page-card">
+      <h2 id="meta-page-title">{t("meta.page.title")}</h2>
+      {query.isLoading && <p role="status">{t("meta.page.loading")}</p>}
+      {query.isError && (
+        <p className="notice" role="status" data-testid="meta-page-error">
+          {t("meta.page.unavailable")}
+        </p>
+      )}
+      {query.data !== undefined && (
+        <div className="card" data-testid="meta-page-preview">
+          {query.data.picture_data_url !== null && query.data.picture_data_url.startsWith("data:image/") && (
+            <img src={query.data.picture_data_url} alt="" width={50} height={50} data-testid="meta-page-picture" />
+          )}
+          <p className="card-title" data-testid="meta-page-name">
+            {query.data.name !== "" ? query.data.name : t("meta.assetUnnamed")}
+          </p>
+          <dl className="kv">
+            {query.data.category !== null && (
+              <>
+                <dt>{t("meta.page.category")}</dt>
+                <dd data-testid="meta-page-category">{query.data.category}</dd>
+              </>
+            )}
+            {query.data.fan_count !== null && (
+              <>
+                <dt>{t("meta.page.fans")}</dt>
+                <dd data-testid="meta-page-fans">{formatNumber(query.data.fan_count, locale)}</dd>
+              </>
+            )}
+          </dl>
+          {query.data.link !== null && query.data.link.startsWith("https://") && (
+            <p>
+              <a href={query.data.link} target="_blank" rel="noopener noreferrer" data-testid="meta-page-link">
+                {t("meta.page.open")}
+              </a>
+            </p>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -310,7 +377,7 @@ export function MetaAdsBody({ orgId, returned, meId, navigate }: MetaAdsBodyProp
     }
   };
 
-  const select = async (change: { dataset_id?: string; ad_account_id?: string }) => {
+  const select = async (change: MetaSelectChange) => {
     setSaving(true);
     setNotice(null);
     setFailure(null);
@@ -360,6 +427,7 @@ export function MetaAdsBody({ orgId, returned, meId, navigate }: MetaAdsBodyProp
           confirming={confirming}
           onConnect={() => void connect()}
           onSelect={(c) => void select(c)}
+          renderPage={(pageId) => <MetaPageCard orgId={orgId} pageId={pageId} />}
           onAskDisconnect={() => setConfirming(true)}
           onDisconnect={disconnect}
           onCancelDisconnect={() => setConfirming(false)}

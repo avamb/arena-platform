@@ -13,6 +13,7 @@ export type MetaAsset = S["MetaAsset"];
 export type MetaConnectStart = S["MetaConnectStart"];
 export type MetaSelection = S["UpdateMetaIntegrationRequest"];
 export type MetaFinish = S["MetaFinishRequest"];
+export type MetaPagePreview = S["MetaPagePreview"];
 
 const org = (orgId: string) => ({ org_id: orgId });
 
@@ -20,7 +21,12 @@ export function fetchMetaIntegration(orgId: string): Promise<MetaIntegration> {
   return call<MetaIntegration>({ route: API.metaIntegration, params: org(orgId) });
 }
 
-/** Chooses the dataset and/or the ad account (each value is the meta_id of a shared object). */
+/** The selected Facebook Page as Meta shows it now (read live, nothing stored). */
+export function fetchMetaPage(orgId: string): Promise<MetaPagePreview> {
+  return call<MetaPagePreview>({ route: API.metaPage, params: org(orgId) });
+}
+
+/** Chooses the dataset, the ad account and/or the page (each value is the meta_id of a shared object). */
 export function selectMetaAssets(orgId: string, body: MetaSelection): Promise<MetaIntegration> {
   return call<MetaIntegration>({ route: API.metaIntegrationPatch, params: org(orgId), body });
 }

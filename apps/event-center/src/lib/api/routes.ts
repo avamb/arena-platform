@@ -344,6 +344,7 @@ export const API = {
   metaIntegrationDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/integrations/meta" },
   metaConnect: { method: "POST", path: "/v1/organizations/{org_id}/integrations/meta/connect" },
   metaFinish: { method: "POST", path: "/v1/organizations/{org_id}/integrations/meta/finish" },
+  metaPage: { method: "GET", path: "/v1/organizations/{org_id}/integrations/meta/page" },
   channels: { method: "GET", path: "/v1/organizations/{org_id}/channels" },
   shopSettings: { method: "GET", path: "/v1/organizations/{org_id}/shop/settings" },
   shopSettingsPut: { method: "PUT", path: "/v1/organizations/{org_id}/shop/settings" },

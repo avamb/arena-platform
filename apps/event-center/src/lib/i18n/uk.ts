@@ -4029,4 +4029,11 @@ export const uk: Record<MessageKey, string> = {
   "meta.finishing": "Завершуємо підключення до Meta…",
   "meta.notConfigured": "Підключення Meta не налаштовано на сервері",
   "meta.connectedByYou": "ви",
+  "meta.pick.page": "Сторінка Facebook",
+  "meta.page.title": "Ваша сторінка Facebook",
+  "meta.page.loading": "Завантажуємо сторінку з Meta…",
+  "meta.page.unavailable": "Meta зараз не показала сторінку. Спробуйте пізніше.",
+  "meta.page.category": "Категорія",
+  "meta.page.fans": "Вподобання",
+  "meta.page.open": "Відкрити у Facebook",
 };

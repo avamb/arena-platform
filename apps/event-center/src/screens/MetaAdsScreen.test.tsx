@@ -19,12 +19,14 @@ vi.mock("@/lib/api/metaApi", () => ({
   disconnectMeta: vi.fn(),
   startMetaConnect: vi.fn(),
   finishMetaConnect: vi.fn(),
+  fetchMetaPage: vi.fn(),
 }));
 
 import {
   disconnectMeta,
   fetchMetaIntegration,
   finishMetaConnect,
+  fetchMetaPage,
   selectMetaAssets,
   startMetaConnect,
   type MetaConnection,
@@ -99,7 +101,7 @@ async function click(node: HTMLElement | null) {
 }
 
 beforeEach(() => {
-  for (const fn of [fetchMetaIntegration, selectMetaAssets, disconnectMeta, startMetaConnect, finishMetaConnect]) vi.mocked(fn).mockReset();
+  for (const fn of [fetchMetaIntegration, selectMetaAssets, disconnectMeta, startMetaConnect, finishMetaConnect, fetchMetaPage]) vi.mocked(fn).mockReset();
 });
 afterEach(() => {
   sessionStorage.clear();
@@ -292,6 +294,77 @@ describe("the return from the callback", () => {
       const box = id(el, "meta-returned-error");
       expect(box?.textContent, reason).toBe(en[REASON_KEY[reason === "other" ? "unknown" : (reason as (typeof META_REASONS)[number])]]);
     }
+  });
+});
+
+describe("the Facebook Page card", () => {
+  const withPage = (over: Partial<MetaConnection> = {}) =>
+    conn({
+      assets: [
+        { kind: "dataset", meta_id: "D1", name: "Main pixel", currency: null, timezone: null, selected: true },
+        { kind: "page", meta_id: "P1", name: "My page", currency: null, timezone: null, selected: true },
+        { kind: "page", meta_id: "P2", name: "Other page", currency: null, timezone: null, selected: false },
+      ],
+      ...over,
+    });
+  const preview = {
+    meta_id: "P1",
+    name: "Live name",
+    category: "Concert venue",
+    link: "https://www.facebook.com/livepage",
+    fan_count: 12345,
+    picture_data_url: "data:image/png;base64,iVBORw0KGgo=",
+  };
+
+  it("shows name, category, likes, link and picture of the selected page", async () => {
+    vi.mocked(fetchMetaIntegration).mockResolvedValue(integration(true, withPage()));
+    vi.mocked(fetchMetaPage).mockResolvedValue(preview);
+    const el = await mount();
+    for (let i = 0; i < 20 && id(el, "meta-page-name") === null; i++) await act(async () => void (await sleep(25)));
+    expect(fetchMetaPage).toHaveBeenCalledWith("org1");
+    expect(id(el, "meta-page-name")?.textContent).toBe("Live name");
+    expect(id(el, "meta-page-category")?.textContent).toBe("Concert venue");
+    expect(id(el, "meta-page-fans")?.textContent).toBe("12,345");
+    expect(id(el, "meta-page-link")?.getAttribute("href")).toBe("https://www.facebook.com/livepage");
+    expect(id(el, "meta-page-picture")?.getAttribute("src")).toBe(preview.picture_data_url);
+    expect(id(el, "meta-page-error")).toBeNull();
+    expect((id(el, "meta-pick-page") as HTMLSelectElement).value).toBe("P1");
+  });
+
+  it("no card and no request without a selected page", async () => {
+    vi.mocked(fetchMetaIntegration).mockResolvedValue(integration(true, conn()));
+    const el = await mount();
+    expect(id(el, "meta-page-card")).toBeNull();
+    expect(fetchMetaPage).not.toHaveBeenCalled();
+  });
+
+  it("no card for a connection in error", async () => {
+    vi.mocked(fetchMetaIntegration).mockResolvedValue(integration(true, withPage({ status: "error" })));
+    const el = await mount();
+    expect(id(el, "meta-page-card")).toBeNull();
+    expect(fetchMetaPage).not.toHaveBeenCalled();
+  });
+
+  it("on an error shows one neutral line and nothing of Meta's answer", async () => {
+    vi.mocked(fetchMetaIntegration).mockResolvedValue(integration(true, withPage()));
+    vi.mocked(fetchMetaPage).mockRejectedValue(new ApiError(502, "meta.graph_error", "Meta did not show the page"));
+    const el = await mount();
+    for (let i = 0; i < 20 && id(el, "meta-page-error") === null; i++) await act(async () => void (await sleep(25)));
+    expect(id(el, "meta-page-error")?.textContent).toBe(en["meta.page.unavailable"]);
+    expect(id(el, "meta-page-preview")).toBeNull();
+  });
+
+  it("sends a PATCH with the chosen page", async () => {
+    vi.mocked(fetchMetaIntegration).mockResolvedValue(integration(true, conn()));
+    vi.mocked(selectMetaAssets).mockResolvedValue(integration(true, conn()));
+    const el = await mount();
+    const select = id(el, "meta-pick-page") as HTMLSelectElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(select), "value")?.set?.call(select, "P1");
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      await sleep(30);
+    });
+    expect(selectMetaAssets).toHaveBeenCalledWith("org1", { page_id: "P1" });
   });
 });
 

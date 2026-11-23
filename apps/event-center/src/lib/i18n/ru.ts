@@ -4087,4 +4087,11 @@ export const ru: Record<MessageKey, string> = {
   "meta.finishing": "Завершаем подключение к Meta…",
   "meta.notConfigured": "Подключение Meta не настроено на сервере",
   "meta.connectedByYou": "вы",
+  "meta.pick.page": "Страница Facebook",
+  "meta.page.title": "Ваша страница Facebook",
+  "meta.page.loading": "Загружаем страницу из Meta…",
+  "meta.page.unavailable": "Meta сейчас не показала страницу. Попробуйте позже.",
+  "meta.page.category": "Категория",
+  "meta.page.fans": "Отметки «Нравится»",
+  "meta.page.open": "Открыть в Facebook",
 };

@@ -4087,6 +4087,13 @@ export const en = {
   "meta.finishing": "Finishing the connection with Meta…",
   "meta.notConfigured": "Meta connection is not set up on the server.",
   "meta.connectedByYou": "You",
+  "meta.pick.page": "Facebook Page",
+  "meta.page.title": "Your Facebook Page",
+  "meta.page.loading": "Loading the page from Meta…",
+  "meta.page.unavailable": "Meta did not show the page now. Try again later.",
+  "meta.page.category": "Category",
+  "meta.page.fans": "Likes",
+  "meta.page.open": "Open on Facebook",
 } as const;
 
 export type MessageKey = keyof typeof en;

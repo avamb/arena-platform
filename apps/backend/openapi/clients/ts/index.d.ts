@@ -5124,12 +5124,38 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Select the dataset and the ad account the platform uses
+         * Select the dataset, the ad account and the page the platform uses
          * @description Marks the given shared objects as selected (one per kind). Audited as
          *     `v1.org.meta.select`. Requires `org.update` (the owner); an
          *     organization API key is refused.
          */
         patch: operations["updateMetaIntegration"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/integrations/meta/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show the selected Facebook Page as Meta shows it now
+         * @description Reads the selected Page live from the Graph API
+         *     (`GET /{page_id}?fields=name,category,link,fan_count,picture{url}`)
+         *     with the connection token (permission `pages_read_engagement`). Nothing
+         *     of the answer is stored or logged. A Graph error 190 moves the
+         *     connection to error and tells its owners, like a 190 of the
+         *     Conversions API. Requires `org.update` (the owner); an organization
+         *     API key is refused.
+         */
+        get: operations["getMetaPagePreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/integrations/meta/callback": {
@@ -5171,8 +5197,9 @@ export interface paths {
          * Meta tells the platform a person removed the app
          * @description Public: Meta's deauthorize callback, signed with the app secret
          *     (constant-time compare). Every connection made by the signed
-         *     app-scoped user id is set to revoked and its token wiped. Audited as
-         *     `v1.org.meta.deauthorize` (system actor).
+         *     app-scoped user id is deleted at once with its shared objects, like
+         *     a data deletion. Audited as `v1.org.meta.deauthorize` (system actor);
+         *     the audit row stays.
          */
         post: operations["metaDeauthorizeCallback"];
         delete?: never;
@@ -5226,10 +5253,9 @@ export interface paths {
          * @description Public: Meta's app webhook. `X-Hub-Signature-256` must be
          *     `sha256=<hex>` of the HMAC-SHA256 of the raw body with the app
          *     secret (constant-time compare); the body is at most 64 KB. A change
-         *     with the field `business_integration_uninstall` sets every
-         *     connection to that business to revoked, wipes its token and removes
-         *     its shared objects; audited as `v1.org.meta.uninstall` (system
-         *     actor). Other fields are ignored. After a valid signature the answer
+         *     with the field `business_integration_uninstall` deletes every
+         *     connection to that business with its shared objects; audited as
+         *     `v1.org.meta.uninstall` (system actor), the audit row stays. Other fields are ignored. After a valid signature the answer
          *     is 200, so Meta does not send the change again.
          */
         post: operations["metaWebhook"];
@@ -30667,7 +30693,7 @@ export interface components {
         /** @description The stored connection. The access token is never returned. */
         MetaConnection: {
             /**
-             * @description active = in use; revoked = disconnected here or at Meta; error =
+             * @description active = in use; revoked = disconnected here; error =
              *     Meta refused the token (Graph error 190), connect again.
              * @enum {string}
              */
@@ -30711,15 +30737,42 @@ export interface components {
         MetaIntegration: {
             /** @description The platform has the Meta connection switched on; false = do not show the Connect button. */
             enabled: boolean;
-            /** @description The stored connection, null when the organization never connected or the data was deleted. */
+            /** @description The stored connection, null when the organization never connected, the data was deleted or the app was removed at Meta. */
             connection: components["schemas"]["MetaConnection"] | null;
         };
-        /** @description At least one key. Each value must be the meta_id of a shared object of that kind. */
+        /** @description At least one key. Each value must be the meta_id of a shared object of that kind (dataset, ad account or page). */
         UpdateMetaIntegrationRequest: {
             /** @description The dataset (pixel) the server-side purchases go to. */
             dataset_id?: string;
             /** @description The ad account the platform reads spend from. */
             ad_account_id?: string;
+            /** @description The Facebook Page whose preview the event center shows. */
+            page_id?: string;
+        };
+        /**
+         * @description The selected Facebook Page as Meta shows it now, read live from the
+         *     Graph API with the connection token. Nothing of it is stored.
+         */
+        MetaPagePreview: {
+            /** @description The Meta id of the Page. */
+            meta_id: string;
+            /** @description The name of the Page, empty when Meta sent none. */
+            name: string;
+            /** @description The category of the Page, null when Meta sent none. */
+            category: string | null;
+            /** @description The https address of the Page on Facebook, null when Meta sent none. */
+            link: string | null;
+            /**
+             * Format: int64
+             * @description The number of people who like the Page, null when Meta sent none.
+             */
+            fan_count: number | null;
+            /**
+             * @description The Page picture as a `data:image/...;base64,` URL (at most
+             *     256 KB), so the event center loads no third-party image; null when
+             *     there is no picture or it could not be read.
+             */
+            picture_data_url: string | null;
         };
         /** @description The form Meta posts to its callbacks. */
         MetaSignedRequestForm: {
@@ -57959,6 +58012,92 @@ export interface operations {
                 };
             };
             /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getMetaPagePreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The Page as Meta shows it now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaPagePreview"];
+                };
+            };
+            /** @description org_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an API key (`meta.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization has no Meta connection (`meta.not_connected`) or no page is selected (`meta.no_page`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The connection is not active (error or revoked), connect again (`meta.not_active`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Meta did not answer or refused (`meta.graph_error`); Meta's own message is never passed on. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Meta connection is switched off (`meta.disabled`) or the database is unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

@@ -128,6 +128,7 @@ func TestMetaRoutes_IsolationAndRoles(t *testing.T) {
 		{http.MethodDelete, base, ""},
 		{http.MethodPost, base + "/connect", ""},
 		{http.MethodPost, base + "/finish", finishB},
+		{http.MethodGet, base + "/page", ""},
 	}
 	for _, who := range []struct{ name, bearer string }{{"owner of A", tokA}, {"manager of B", tokMgr}, {"API key of B", keyB}} {
 		for _, r := range routes {
@@ -144,6 +145,10 @@ func TestMetaRoutes_IsolationAndRoles(t *testing.T) {
 		t.Fatalf("owner GET: %s", out)
 	}
 	e.expect(t, http.StatusBadRequest, http.MethodGet, "/v1/organizations/not-a-uuid/integrations/meta", tokB, "", "")
+	// The page preview of an organization without a connection.
+	if st, out := e.do(t, http.MethodGet, base+"/page", tokB, "", ""); st != http.StatusNotFound || sec1Code(out) != "meta.not_connected" {
+		t.Fatalf("owner page without a connection: %d %s", st, out)
+	}
 	// The connect answer has no state field any more.
 	out := e.expect(t, http.StatusOK, http.MethodPost, base+"/connect", tokB, "", "")
 	var ans map[string]any
