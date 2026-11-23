@@ -5,6 +5,8 @@ import {
   clickIdsKey,
   cookieValue,
   gaClientId,
+  isTrackingGranted,
+  persistClickIds,
   CLICK_IDS_WINDOW_MS,
 } from './buyerContext.js';
 
@@ -113,6 +115,48 @@ describe('captureClickIds', () => {
     const s = memStore();
     captureClickIds('tok', '?gclid=BB', { storage: s, now });
     expect(captureClickIds('tok', '', { storage: s, now: now + CLICK_IDS_WINDOW_MS + 1 })).toEqual({});
+  });
+
+  it('keeps ids in memory only when persist is false', () => {
+    const s = memStore();
+    const ids = captureClickIds('tok', '?fbclid=AA&gclid=BB', { storage: s, now, persist: false });
+    expect(ids).toMatchObject({ fbclid: 'AA', gclid: 'BB', fbclid_at: now });
+    expect(s.m.size).toBe(0);
+  });
+
+  it('writes nothing to storage when consent is denied or absent', () => {
+    for (const consent of ['denied', '', undefined, null, 'yes']) {
+      const s = memStore();
+      const ids = captureClickIds('tok', '?fbclid=AA', { storage: s, now, persist: isTrackingGranted(consent) });
+      expect(ids.fbclid).toBe('AA');
+      expect(s.m.size).toBe(0);
+    }
+  });
+
+  it('writes to storage once consent is granted', () => {
+    const s = memStore();
+    captureClickIds('tok', '?fbclid=AA', { storage: s, now, persist: isTrackingGranted('granted') });
+    expect(s.m.has(clickIdsKey('tok'))).toBe(true);
+  });
+
+  it('persists in-memory ids later, keeping the first capture time', () => {
+    const s = memStore();
+    const mem = captureClickIds('tok', '?fbclid=AA', { storage: null, now, persist: false });
+    persistClickIds('tok', mem, { storage: s, now: now + 5000 });
+    expect(captureClickIds('tok', '', { storage: s, now: now + 6000 })).toMatchObject({ fbclid: 'AA', fbclid_at: now });
+  });
+
+  it('persistClickIds writes nothing without fbclid or gclid', () => {
+    const s = memStore();
+    persistClickIds('tok', {}, { storage: s, now });
+    expect(s.m.size).toBe(0);
+  });
+
+  it('isTrackingGranted accepts only granted', () => {
+    expect(isTrackingGranted('granted')).toBe(true);
+    expect(isTrackingGranted(' Granted ')).toBe(true);
+    expect(isTrackingGranted('denied')).toBe(false);
+    expect(isTrackingGranted(undefined)).toBe(false);
   });
 
   it('survives broken or throwing storage', () => {

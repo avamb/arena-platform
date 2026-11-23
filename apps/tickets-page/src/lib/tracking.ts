@@ -103,6 +103,20 @@ export function setTrackingCookies(
   }
 }
 
+/** Meta cookies this page may have set. A declined choice expires them. */
+export const TRACKING_COOKIE_NAMES = ['_fbp', '_fbc'] as const;
+
+/** Expires `_fbp` and `_fbc` (path /, max-age 0). */
+export function clearTrackingCookies(
+  doc: Document = document,
+  loc: Pick<Location, 'protocol'> = window.location,
+): void {
+  const secure = loc.protocol === 'https:';
+  for (const name of TRACKING_COOKIE_NAMES) {
+    doc.cookie = `${name}=; max-age=0; path=/; SameSite=Lax${secure ? '; Secure' : ''}`;
+  }
+}
+
 /** Puts the choice on one <arena-tickets> element. */
 export function applyConsentAttributes(el: Element, granted: boolean): void {
   el.setAttribute('tracking-consent', granted ? 'granted' : 'denied');
@@ -138,6 +152,8 @@ function safeLocalStorage(): Storage | null {
 function decide(granted: boolean): void {
   storeConsent(safeLocalStorage(), granted);
   if (granted) setTrackingCookies();
+  // The page keeps no click-id storage of its own; only the cookies go.
+  else clearTrackingCookies();
   current = granted;
   applyConsentToAll(document, granted);
   removeBanner();

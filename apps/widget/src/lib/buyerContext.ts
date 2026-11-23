@@ -11,8 +11,10 @@
  *   - consent attribute absent or any other value: no buyer_context at all;
  *   - "denied": only { tracking_consent: false, tracking_consent_text_version };
  *   - "granted": click ids, _fbp / _fbc, GA client id and page_url as well;
- *   - fbclid / gclid of the address are kept 7 days in localStorage, keyed per
- *     feed token (like attribution.ts). Storage errors are swallowed.
+ *   - fbclid / gclid of the address are read into memory on mount; they are
+ *     written to localStorage (7 days, keyed per feed token, like
+ *     attribution.ts) only after "granted". Denied or absent: no storage write.
+ *     Storage errors are swallowed.
  */
 
 export const CLICK_IDS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -87,14 +89,42 @@ export function readClickIds(storage: StorageLike | undefined, feedToken: string
   }
 }
 
+/** True only for the host's exact "granted" answer (trimmed, case-insensitive). */
+export function isTrackingGranted(consent: string | null | undefined): boolean {
+  return (consent ?? '').trim().toLowerCase() === 'granted';
+}
+
 /**
- * Capture fbclid / gclid from the address query and keep them for 7 days.
- * An address without them keeps what is stored. Returns the ids now in force.
+ * Writes click ids to storage for 7 days. Called only once the host has
+ * granted tracking consent; ids with neither fbclid nor gclid are not written.
+ * Storage errors are swallowed.
+ */
+export function persistClickIds(
+  feedToken: string,
+  ids: ClickIds,
+  options: { storage?: StorageLike | null; now?: number } = {},
+): void {
+  if (!ids.fbclid && !ids.gclid) return;
+  const now = options.now ?? Date.now();
+  const storage = options.storage === undefined ? defaultStorage() : (options.storage ?? undefined);
+  if (!storage) return;
+  try {
+    storage.setItem(clickIdsKey(feedToken), JSON.stringify({ ...ids, expires_at: now + CLICK_IDS_WINDOW_MS }));
+  } catch {
+    // Storage refused the write: the ids of this page view still go along.
+  }
+}
+
+/**
+ * Capture fbclid / gclid from the address query into memory. With
+ * `persist` (default true) they are also kept 7 days in storage; with
+ * `persist: false` nothing is written. An address without them keeps what
+ * is stored. Returns the ids now in force.
  */
 export function captureClickIds(
   feedToken: string,
   search: string,
-  options: { storage?: StorageLike | null; now?: number } = {},
+  options: { storage?: StorageLike | null; now?: number; persist?: boolean } = {},
 ): ClickIds {
   const now = options.now ?? Date.now();
   const storage = options.storage === undefined ? defaultStorage() : (options.storage ?? undefined);
@@ -114,13 +144,7 @@ export function captureClickIds(
   }
   if (gclid) next.gclid = gclid;
   if (!fbclid && !gclid) return next;
-  if (storage) {
-    try {
-      storage.setItem(clickIdsKey(feedToken), JSON.stringify({ ...next, expires_at: now + CLICK_IDS_WINDOW_MS }));
-    } catch {
-      // Storage refused the write: the ids of this page view still go along.
-    }
-  }
+  if (options.persist !== false) persistClickIds(feedToken, next, { storage: storage ?? null, now });
   return next;
 }
 

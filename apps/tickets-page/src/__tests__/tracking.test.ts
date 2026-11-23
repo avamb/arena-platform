@@ -109,6 +109,23 @@ describe('initTracking', () => {
     expect(document.getElementById('asa-cookie-banner')).not.toBeNull();
   });
 
+  it('declining after accepting expires _fbp and _fbc', () => {
+    document.cookie = '_fbp=fb.1.1.1111111111; path=/';
+    document.cookie = '_fbc=fb.1.1.AbC; path=/';
+    expect(document.cookie).toContain('_fbp=');
+    expect(document.cookie).toContain('_fbc=');
+
+    initTracking({ enabled: true, locale: 'en' });
+    (document.querySelector('.asa-cookie__btn--accept') as HTMLButtonElement).click();
+    expect(readConsent(localStorage)?.granted).toBe(true);
+
+    (document.querySelector('#asa-footer-cookies button') as HTMLButtonElement).click();
+    (document.querySelector('.asa-cookie__btn--decline') as HTMLButtonElement).click();
+    expect(readConsent(localStorage)?.granted).toBe(false);
+    expect(document.cookie).not.toContain('_fbp=');
+    expect(document.cookie).not.toContain('_fbc=');
+  });
+
   it('marks an element created later', async () => {
     storeConsent(localStorage, true);
     initTracking({ enabled: true, locale: 'en' });

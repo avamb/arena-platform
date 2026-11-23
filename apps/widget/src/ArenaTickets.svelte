@@ -53,7 +53,7 @@
   import { consentErrorMessage, consentPayload, forceConsent } from './lib/consent.js';
   import { isMarketingRewardRefusal, marketingErrorMessage, marketingPayload } from './lib/marketing.js';
   import { captureAttribution, type AttributionPayload } from './lib/attribution.js';
-  import { buildBuyerContext, captureClickIds, type ClickIds } from './lib/buyerContext.js';
+  import { buildBuyerContext, captureClickIds, isTrackingGranted, persistClickIds, type ClickIds } from './lib/buyerContext.js';
   import { createFunnel, parseFunnelHost, type Funnel, type FunnelStep } from './lib/funnel.js';
   import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
   import { dispatchWidgetEvent, ARENA_EVENTS } from './lib/events.js';
@@ -521,7 +521,13 @@
     // Spec 43: remember which sales link or utm label brought the buyer. The
     // address is only read, never changed (its query also carries checkout_token).
     attribution = captureAttribution(normFeedToken, window.location.search);
-    clickIds = captureClickIds(normFeedToken, window.location.search);
+    // Storage is read and written only after the host granted tracking; the
+    // ids of this page view are kept in memory either way.
+    const consentGranted = isTrackingGranted(trackingConsent);
+    clickIds = captureClickIds(normFeedToken, window.location.search, {
+      storage: consentGranted ? undefined : null,
+      persist: consentGranted,
+    });
     wantedPromo = resolveWantedPromo(normFeedToken, promoAttribute, window.location.search);
 
     // Check for checkout_token in URL or sessionStorage first.
@@ -829,6 +835,8 @@
       } catch {
         cookies = '';
       }
+      // Consent given after mount: the ids seen on this page are kept now.
+      if (isTrackingGranted(trackingConsent)) persistClickIds(normFeedToken, clickIds);
       const buyerCtx = buildBuyerContext({
         consent: trackingConsent,
         consentVersion: trackingConsentVersion,
