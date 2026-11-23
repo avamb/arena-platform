@@ -158,6 +158,7 @@ export function EventScreen() {
     csv: canCsv,
     guests: canCsv,
     funnel: access.can("report.read"),
+    ads: access.can("report.read"),
     qr: access.can("sales_link.manage"),
     promo: access.can("promo.read"),
     invitations: access.can("complimentary.read"),
@@ -223,6 +224,12 @@ export function EventScreen() {
     funnel: (
       <Link to="/o/$orgId/events/$eventId/funnel" params={{ orgId, eventId }} className={btn("funnel")} data-testid="event-funnel-link">
         {t("funnel.button")}
+      </Link>
+    ),
+    // Spec 66, M2: what the Meta ads of this event cost and sold.
+    ads: (
+      <Link to="/o/$orgId/events/$eventId/ads" params={{ orgId, eventId }} className={btn("ads")} data-testid="event-ads-link">
+        {t("ads.button")}
       </Link>
     ),
     // QL-12: a short link and QR code that lead to this event.

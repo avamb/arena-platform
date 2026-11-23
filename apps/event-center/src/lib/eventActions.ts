@@ -6,7 +6,7 @@
  * The card has five sections, the same names and the same order as the Telegram bot's event card:
  *
  * - "link": the link and the QR code for buyers;
- * - "sales": orders, sales CSV, guest list, funnel, the totals and the page statistics;
+ * - "sales": orders, sales CSV, guest list, funnel, ads (Meta spend and payback), the totals and the page statistics;
  * - "edit": edit, translations, poster, sessions (with the sales state), the sales page materials, the sample ticket and the
  *   text in the e-mail;
  * - "promo": promo codes, free tickets, the links of this event and "Refer a friend";
@@ -21,7 +21,7 @@
 export type SectionId = "link" | "sales" | "edit" | "promo" | "more";
 
 /** A button or a link: it has its own line in the help. */
-export type ActionId = "edit" | "translations" | "sample" | "orders" | "csv" | "guests" | "funnel" | "qr" | "promo" | "invitations" | "links";
+export type ActionId = "edit" | "translations" | "sample" | "orders" | "csv" | "guests" | "funnel" | "ads" | "qr" | "promo" | "invitations" | "links";
 
 /** A block of the page that is not a button. "status" is the status block: its lines come from `eventStatus.ts`. */
 export type BlockId = "totals" | "pageStats" | "poster" | "sessions" | "salesSwitch" | "materials" | "emailNote" | "referral" | "status";
@@ -49,13 +49,13 @@ export const SECTION_IDS: readonly SectionId[] = ["link", "sales", "edit", "prom
 
 const SECTION_ITEMS: Record<SectionId, readonly ItemId[]> = {
   link: ["qr"],
-  sales: ["orders", "csv", "guests", "funnel", "totals", "pageStats"],
+  sales: ["orders", "csv", "guests", "funnel", "ads", "totals", "pageStats"],
   edit: ["edit", "translations", "poster", "sessions", "salesSwitch", "materials", "sample", "emailNote"],
   promo: ["promo", "invitations", "links", "referral"],
   more: ["status"],
 };
 
-const ACTIONS: ReadonlySet<ItemId> = new Set<ItemId>(["edit", "translations", "sample", "orders", "csv", "guests", "funnel", "qr", "promo", "invitations", "links"]);
+const ACTIONS: ReadonlySet<ItemId> = new Set<ItemId>(["edit", "translations", "sample", "orders", "csv", "guests", "funnel", "ads", "qr", "promo", "invitations", "links"]);
 
 export function isAction(id: ItemId): id is ActionId {
   return ACTIONS.has(id);

@@ -273,7 +273,7 @@ test.describe("the sectioned menu on the three roles (live)", () => {
       await expect(page.getByRole("heading", { level: 1, name: env.event_name })).toBeVisible();
       // Every item of the card (a button or a block) carries data-item-id, in the order of the page. The status
       // block is told by its own buttons. All sections are open (signInAs), so every item is in the page.
-      const ACTIONS = ["edit", "translations", "sample", "orders", "csv", "guests", "funnel", "qr", "promo", "invitations", "links"];
+      const ACTIONS = ["edit", "translations", "sample", "orders", "csv", "guests", "funnel", "ads", "qr", "promo", "invitations", "links"];
       // The card settles first: the sample ticket button is drawn only after the sessions (the summary) loaded, and
       // the page and the help read the same fact, so compare them only when that fact is known.
       await expect(page.locator("[data-item-id='sample']"), "the card settled (sessions loaded)").toHaveCount(perms.includes("session.read") ? 1 : 0);

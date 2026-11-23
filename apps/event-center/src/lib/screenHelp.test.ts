@@ -7,7 +7,7 @@ import { navGroups } from "@/lib/navMenu";
 import { CARD_HELP, ITEM_HELP, STATUS_HELP, helpLineId, helpLineIds, screenHelp, type NavContext } from "@/lib/screenHelp";
 
 const ACTIONS: Exclude<ItemId, "status">[] = [
-  "edit", "translations", "sample", "orders", "csv", "guests", "funnel", "qr", "promo", "invitations", "links",
+  "edit", "translations", "sample", "orders", "csv", "guests", "funnel", "ads", "qr", "promo", "invitations", "links",
   "totals", "pageStats", "poster", "sessions", "salesSwitch", "materials", "emailNote", "referral",
 ];
 const STATUS: StatusAction[] = ["publish", "off", "archive", "delete"];
@@ -34,6 +34,7 @@ function rights(can: (p: string) => boolean, status: string): ItemRights {
     csv,
     guests: csv,
     funnel: can("report.read"),
+    ads: can("report.read"),
     qr: can("sales_link.manage"),
     promo: can("promo.read"),
     invitations: can("complimentary.read"),
@@ -166,6 +167,7 @@ describe("screen help: lines follow what the person sees", () => {
       "action-csv",
       "action-guests",
       "action-funnel",
+      "action-ads",
       "block-totals",
       "block-pageStats",
       "action-edit",
