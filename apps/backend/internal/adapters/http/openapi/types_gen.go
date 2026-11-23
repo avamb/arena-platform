@@ -10401,6 +10401,12 @@ type HostedPageOrg struct {
 
 	// Slug Organization slug, unique among active organizations.
 	Slug string `json:"slug"`
+
+	// TrackingEnabled True when the organizer measures ads (Meta, Google): an active Meta
+	// connection with a selected dataset, or manual Meta or GA4
+	// conversion credentials. The page then shows a cookie banner and
+	// sets no cookie before the visitor chooses; false means no banner.
+	TrackingEnabled *bool `json:"tracking_enabled,omitempty"`
 }
 
 // HostedPagePromoter The promoter an event is shown under (a partner or brand named as the
