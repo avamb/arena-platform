@@ -11,6 +11,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api/endpoints", () => ({
   fetchEventFunnel: vi.fn(),
+  fetchEventOutboundClicks: vi.fn().mockResolvedValue({
+    event_id: "e",
+    from: "2026-10-03",
+    to: "2026-11-01",
+    timezone: null,
+    total: 0,
+    visits: 0,
+    share_of_visitors: null,
+    by_day: [],
+    by_seller: [],
+    by_source: [],
+  }),
 }));
 
 import { fetchEventFunnel } from "@/lib/api/endpoints";

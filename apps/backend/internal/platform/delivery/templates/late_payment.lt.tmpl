@@ -1,0 +1,36 @@
+{{define "subject"}}{{if .LatePayment.Refunding}}Jūsų mokėjimas už {{.EventName}} grąžinamas{{else}}Dėl Jūsų mokėjimo už {{.EventName}}{{end}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="lt" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dėl Jūsų mokėjimo</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">{{if .LatePayment.Refunding}}Jūsų mokėjimas grąžinamas{{else}}Jūsų mokėjimas gautas po užsakymo uždarymo{{end}}</h1>
+  <p style="margin:0 0 12px 0;">{{if .LatePayment.BuyerCancelled}}Atšaukėte užsakymą {{.LatePayment.OrderNumber}} renginiui {{.EventName}}{{with .LatePayment.When}} ({{.}}){{end}}, tačiau {{.LatePayment.Total}} mokėjimas vis tiek mus pasiekė.{{else}}Jūsų {{.LatePayment.Total}} mokėjimas už užsakymą {{.LatePayment.OrderNumber}} ({{.EventName}}{{with .LatePayment.When}}, {{.}}{{end}}) mus pasiekė po to, kai užsakymas jau buvo uždarytas, ir bilietų Jums išlaikyti nebebuvo galima.{{end}}</p>
+  <p style="margin:0 0 12px 0;">{{if .LatePayment.Refunding}}Visą sumą grąžiname į Jūsų naudotą mokėjimo būdą. Bankui paprastai prireikia 5–10 darbo dienų, kad suma būtų matoma.{{else}}Organizatorius grąžins Jums visą sumą ir su Jumis susisieks dėl to.{{end}}</p>
+  <p style="margin:0 0 12px 0;">Šiam užsakymui bilietų neišduota.</p>
+  {{with .LatePayment.Venue}}<p style="margin:0 0 12px 0;">{{.}}</p>{{end}}
+  </td></tr>
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Bilietus apdoroja arenasoldout.com</a><br>{{end}}Jei paspausite „Atsisakyti prenumeratos“, laiškai su Jūsų bilietais ir svarbūs laiškai apie Jūsų užsakymą Jūsų nebepasieks. Rinkodaros laiškų be Jūsų sutikimo nesiunčiame.</td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}
+
+{{if .LatePayment.Refunding}}Jūsų mokėjimas grąžinamas{{else}}Jūsų mokėjimas gautas po užsakymo uždarymo{{end}}
+
+{{if .LatePayment.BuyerCancelled}}Atšaukėte užsakymą {{.LatePayment.OrderNumber}} renginiui {{.EventName}}{{with .LatePayment.When}} ({{.}}){{end}}, tačiau {{.LatePayment.Total}} mokėjimas vis tiek mus pasiekė.{{else}}Jūsų {{.LatePayment.Total}} mokėjimas už užsakymą {{.LatePayment.OrderNumber}} ({{.EventName}}{{with .LatePayment.When}}, {{.}}{{end}}) mus pasiekė po to, kai užsakymas jau buvo uždarytas, ir bilietų Jums išlaikyti nebebuvo galima.{{end}}
+{{if .LatePayment.Refunding}}Visą sumą grąžiname į Jūsų naudotą mokėjimo būdą. Bankui paprastai prireikia 5–10 darbo dienų, kad suma būtų matoma.{{else}}Organizatorius grąžins Jums visą sumą ir su Jumis susisieks dėl to.{{end}}
+Šiam užsakymui bilietų neišduota.
+{{with .LatePayment.Venue}}{{.}}
+{{end}}
+{{template "contact_text" .}}{{if not .WhiteLabel}}Bilietus apdoroja arenasoldout.com — https://arenasoldout.com{{end}}
+
+Jei paspausite „Atsisakyti prenumeratos“, laiškai su Jūsų bilietais ir svarbūs laiškai apie Jūsų užsakymą Jūsų nebepasieks. Rinkodaros laiškų be Jūsų sutikimo nesiunčiame.
+{{end}}

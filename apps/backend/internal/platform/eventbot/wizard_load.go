@@ -134,6 +134,21 @@ func (w *Wizard) LoadEventDraft(ctx context.Context, io EditIO, ws WizSession, e
 		if i == 0 {
 			d.Currency = s.Currency
 		}
+		if s.SalesMode == "external" && s.External != nil {
+			// A partner box office sells this date: it owns no categories, and the
+			// card shows the box office instead of them.
+			ds.External = draftExternalFromAPI(s.External)
+			if d.External == nil {
+				d.External = ds.External.clone()
+			}
+			none := DraftTickets{}
+			if i == 0 {
+				d.Tickets = DraftTickets{}
+			}
+			ds.Tickets = &none
+			d.Sessions = append(d.Sessions, ds)
+			continue
+		}
 		tiers, err := io.ListTiers(ctx, ws.JWT, ws.OrgID, eventID, s.Id)
 		if err != nil {
 			return nil, nil, err
@@ -284,6 +299,7 @@ func CopyDraft(src *Draft) *Draft {
 	d.Event.EventID, d.Event.UpdatedAt = "", ""
 	d.Sessions = nil
 	d.Cur = 0
+	d.External = src.External.clone() // a copy keeps who sells the tickets
 	// A copy sells one set of categories on every date: the first date's.
 	d.Tickets = withoutTierIDs(src.Tickets)
 	if src.anySeated() {

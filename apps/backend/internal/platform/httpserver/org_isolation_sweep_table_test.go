@@ -442,19 +442,28 @@ var orgIsolationAuditedSafe = map[string]string{
 	// hsalesfunnel (spec 50 A7): GetEventPageStatsHeader is keyed by (event, org)
 	// and answers the route's own 404 for an event of another organization.
 	"GET /v1/organizations/{org_id}/events/{event_id}/funnel": "hsalesfunnel",
+	// hsalesfunnel outbound clicks (spec 63, L-10): the same
+	// GetEventPageStatsHeader(event, org) gate, 404 event.not_found for a
+	// foreign event; every click query is keyed by (event, org).
+	"GET /v1/organizations/{org_id}/events/{event_id}/outbound-clicks": "hsalesfunnel",
 	// himports.HandleEventBundleRead (task 3-2): GetEventRaw, then the event's
 	// organization must equal the path organization (404 event.not_found).
 	// TestEventBundleRead_OrganizationBoundary drives a foreign, unknown and
 	// deleted event and a foreign organization.
-	"GET /v1/organizations/{org_id}/events/{event_id}/event-bundle":              "himports",
-	"GET /v1/organizations/{org_id}/events/{id}/artists":                         "events",
-	"PATCH /v1/organizations/{org_id}/events/{id}":                               "events",
-	"PATCH /v1/organizations/{org_id}/events/{id}/artists/{aid}":                 "events",
-	"POST /v1/organizations/{org_id}/events/{id}/artists":                        "events",
-	"POST /v1/organizations/{org_id}/events/{id}/status":                         "events",
-	"PUT /v1/organizations/{org_id}/events/{event_id}/contact":                   "events",
-	"PUT /v1/organizations/{org_id}/events/{id}/promoter":                        "events",
-	"PATCH /v1/organizations/{org_id}/promoters/{id}":                            "promoters",
+	"GET /v1/organizations/{org_id}/events/{event_id}/event-bundle": "himports",
+	"GET /v1/organizations/{org_id}/events/{id}/artists":            "events",
+	"PATCH /v1/organizations/{org_id}/events/{id}":                  "events",
+	"PATCH /v1/organizations/{org_id}/events/{id}/artists/{aid}":    "events",
+	"POST /v1/organizations/{org_id}/events/{id}/artists":           "events",
+	"POST /v1/organizations/{org_id}/events/{id}/status":            "events",
+	"PUT /v1/organizations/{org_id}/events/{event_id}/contact":      "events",
+	"PUT /v1/organizations/{org_id}/events/{id}/promoter":           "events",
+	"PATCH /v1/organizations/{org_id}/promoters/{id}":               "promoters",
+	// hcatalog tours (migration 0222, series.go): every query is keyed by
+	// (series id, org id); a foreign tour is 404 series.not_found.
+	"GET /v1/organizations/{org_id}/series/{series_id}":                          "series",
+	"PATCH /v1/organizations/{org_id}/series/{series_id}":                        "series",
+	"DELETE /v1/organizations/{org_id}/series/{series_id}":                       "series",
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/change-impact":         "events (requireEventInOrg on the session's event)",
 	"GET /v1/organizations/{org_id}/events/{event_id}/sessions/{id}/macs-export": "macs_export.go checks the session against event AND organization",
 
@@ -464,6 +473,13 @@ var orgIsolationAuditedSafe = map[string]string{
 	// then read and written by (id, event_id), and a photo's media_id must be an
 	// event_report object of the path organization. Covered by
 	// TestEventMaterialsExtras_StayInsideTheOrganization (all routes, as an org-B owner).
+	// htranslations: every handler loads the event with contenttranslate.LoadEventOriginal(org, event)
+	// and answers 404 event.not_found; TestTranslations_ForeignEventIs404 covers all five.
+	"GET /v1/organizations/{org_id}/events/{event_id}/translations":               "htranslations",
+	"PUT /v1/organizations/{org_id}/events/{event_id}/translations/{locale}":      "htranslations",
+	"DELETE /v1/organizations/{org_id}/events/{event_id}/translations/{locale}":   "htranslations",
+	"POST /v1/organizations/{org_id}/events/{event_id}/translations/machine":      "htranslations",
+	"PUT /v1/organizations/{org_id}/events/{event_id}/report-text":                "htranslations",
 	"GET /v1/organizations/{org_id}/events/{event_id}/partner-links":              "hmaterials",
 	"POST /v1/organizations/{org_id}/events/{event_id}/partner-links":             "hmaterials",
 	"PUT /v1/organizations/{org_id}/events/{event_id}/partner-links/order":        "hmaterials",

@@ -66,6 +66,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/extsale"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/seatmint"
@@ -326,6 +327,25 @@ func (h *Handler) bindSessionSeatingCore(
 		h.logger.Error("seating: bind session lookup failed", slog.String("error", err.Error()))
 		return nil, bindErr(http.StatusInternalServerError,
 			"seating.bind_failed", "failed to bind seating plan", nil)
+	}
+
+	// A session a partner box office sells (sessions.sales_mode =
+	// 'external', migration 0221) owns no plan, seats or categories here.
+	// Read under the row lock just taken, so a concurrent switch of the
+	// mode (PATCH .../sessions/{id}) serializes with this bind.
+	salesMode, err := qtx.LockSessionSalesMode(ctx, sessionID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, bindErr(http.StatusNotFound,
+				"session.not_found", "session not found", nil)
+		}
+		h.logger.Error("seating: bind sales mode lookup failed", slog.String("error", err.Error()))
+		return nil, bindErr(http.StatusInternalServerError,
+			"seating.bind_failed", "failed to bind seating plan", nil)
+	}
+	if salesMode == gen.SessionSalesModeExternal {
+		return nil, bindErr(http.StatusConflict, extsale.CodeSoldExternally,
+			"this session is sold by a partner box office, so it has no tiers or seats here", nil)
 	}
 
 	// Load the seating plan version + its parent plan so the geometry can

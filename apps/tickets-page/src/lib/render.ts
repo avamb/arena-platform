@@ -740,7 +740,7 @@ function mountTicketPicker(
 /** One poster card of the catalog: the artwork, the title, when and where,
  * and nothing to buy — the whole card is a link to the event's own page,
  * where its sessions and ticket picker live. */
-function renderCatalogCard(
+export function renderCatalogCard(
   event: HostedPageEvent,
   orgSlug: string,
   locale: PageLocale,

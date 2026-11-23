@@ -199,7 +199,8 @@ func TestBotE2E_PageLinkHintsComeFromTheAPI(t *testing.T) {
 		tg.waitSince(t, m, expect)
 	}
 
-	press("wz:new", "Заполнить по ссылке")
+	press("wz:new", "Кто продаёт билеты?")
+	press("wz:seller:platform", "Заполнить по ссылке")
 	press("wz:link", "ссылку на страницу")
 	m := tg.mark()
 	tg.push(msg(site.URL + "/cherry-orchard"))

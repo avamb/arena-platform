@@ -1,0 +1,115 @@
+{{define "subject"}}{{if and .Change.Date .Change.Venue}}Renginio duomenys pasikeitė{{else if .Change.Date}}Jūsų renginys perkeltas{{else}}Pasikeitė renginio vieta{{end}} — {{.EventName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="lt" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Jūsų renginys pasikeitė</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">Jūsų renginys pasikeitė</h1>
+  <p style="margin:0 0 12px 0;">Sveiki{{with .HolderName}} {{.}}{{end}},</p>
+  <p style="margin:0 0 12px 0;">Organizatorius pakeitė renginio <strong>{{.EventName}}</strong> duomenis. Štai kas pasikeitė.</p>
+  <table cellpadding="4" style="border-collapse:collapse;font-size:14px;margin-bottom:12px">
+    {{if .Change.Date}}{{with .Change.OldStart}}<tr><td><strong>Ankstesnė data ir laikas</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .Change.NewStart}}<tr><td><strong>Nauja data ir laikas</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{if .Change.Venue}}{{with .Change.OldVenue}}<tr><td><strong>Ankstesnė vieta</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .Change.NewVenue}}<tr><td><strong>Nauja vieta</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+  </table>
+  <table cellpadding="4" style="border-collapse:collapse;font-size:14px">
+    <tr><td><strong>Renginys</strong></td><td>{{.EventName}}</td></tr>
+    {{if not .Change.Date}}{{with .SessionStart}}<tr><td><strong>Seansas</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{with .DoorsOpen}}<tr><td><strong>Durys atidaromos</strong></td><td>{{.}}</td></tr>{{end}}
+    {{if not .Change.Venue}}{{with .VenueName}}<tr><td><strong>Vieta</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{with .Directions.GoogleURL}}<tr><td><strong>Kaip nuvykti</strong></td><td><a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a></td></tr>{{end}}
+    {{with .TierName}}<tr><td><strong>Kategorija</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatSector}}<tr><td><strong>Sektorius</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatRow}}<tr><td><strong>Eilė</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatNumber}}<tr><td><strong>Vieta</strong></td><td>{{.}}</td></tr>{{end}}
+  </table>
+  <p style="margin:0 0 12px 0;">Prie laiško pridėtas naujas bilieto PDF su atnaujintais duomenimis. Bilieto brūkšninis kodas nepasikeitė — prie įėjimo tinka ir senasis, ir naujasis PDF.</p>
+  {{with .Change.MessageHTML}}<div style="margin:16px 0;padding:12px 16px;border-left:3px solid {{$.Accent}};background:#f8f9fa">
+    <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>Organizatoriaus žinutė:</strong></p>
+    <div style="margin:0;font-size:14px;line-height:1.6;">{{.}}</div>
+  </div>{{end}}
+  {{with .EventNote.HTML}}<div style="margin:16px 0;padding:12px 16px;border-left:3px solid {{$.Accent}};background:#f8f9fa;">
+    <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>Apie renginį:</strong></p>
+    <div style="color:#46555f;font-size:14px;line-height:1.6;">{{.}}</div>
+  </div>{{end}}
+  {{if or .Change.ContactEmail .Change.ContactFormURL}}<p style="margin:0 0 12px 0;">Jei pakeitimas Jums netinka, parašykite organizatoriui{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}adresu <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{else if .Change.ContactFormURL}}per <a href="{{.Change.ContactFormURL}}" style="color:#1a73e8">pardavimo puslapio formą</a>{{end}}{{with .Change.ContactPhone}}, tel. {{.}}{{end}}, ir aprašykite, ką norėtumėte daryti. Organizatorius perskaito kiekvieną žinutę.</p>{{end}}
+  <p style="font-size:12px;color:#666">Bilieto ID: {{.TicketID}}</p>
+  <p style="font-size:12px;color:#666">Išsiųsta adresu: {{.RecipientEmail}}</p>
+  </td></tr>
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Kontaktai: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Kontaktai: <a href="{{.}}" style="color:#666">Rašyti organizatoriui</a>{{end}}{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Bilietus apdoroja arenasoldout.com</a>{{end}}</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Jei paspausite „Atsisakyti prenumeratos“, laiškai su Jūsų bilietais ir svarbūs laiškai apie Jūsų užsakymą Jūsų nebepasieks. Rinkodaros laiškų be Jūsų sutikimo nesiunčiame.</p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+Jūsų renginys pasikeitė
+
+Sveiki{{with .HolderName}} {{.}}{{end}},
+
+Organizatorius pakeitė renginio {{.EventName}} duomenis. Štai kas pasikeitė.
+
+{{if .Change.Date}}{{with .Change.OldStart}}Ankstesnė data ir laikas: {{.}}
+{{end}}{{with .Change.NewStart}}Nauja data ir laikas: {{.}}
+{{end}}{{end}}{{if .Change.Venue}}{{with .Change.OldVenue}}Ankstesnė vieta: {{.}}
+{{end}}{{with .Change.NewVenue}}Nauja vieta: {{.}}
+{{end}}{{end}}
+Renginys: {{.EventName}}
+{{if not .Change.Date}}{{with .SessionStart}}Seansas: {{.}}
+{{end}}{{end}}{{with .DoorsOpen}}Durys atidaromos {{.}}
+{{end}}{{if not .Change.Venue}}{{with .VenueName}}Vieta: {{.}}
+{{end}}{{end}}{{with .Directions.GoogleURL}}Kaip nuvykti: Google Maps {{.}} · Waze {{$.Directions.WazeURL}}
+{{end}}{{with .TierName}}Kategorija: {{.}}
+{{end}}{{with .SeatSector}}Sektorius: {{.}}
+{{end}}{{with .SeatRow}}Eilė: {{.}}
+{{end}}{{with .SeatNumber}}Vieta: {{.}}
+{{end}}
+Prie laiško pridėtas naujas bilieto PDF su atnaujintais duomenimis. Bilieto brūkšninis kodas nepasikeitė — prie įėjimo tinka ir senasis, ir naujasis PDF.
+{{with .Change.Message}}
+Organizatoriaus žinutė:
+{{.}}
+{{end}}
+{{with .EventNote.Plain}}Apie renginį:
+{{.}}
+
+{{end}}{{if or .Change.ContactEmail .Change.ContactFormURL}}Jei pakeitimas Jums netinka, parašykite organizatoriui{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}adresu {{.Change.ContactEmail}}{{else if .Change.ContactFormURL}}per pardavimo puslapio formą: {{.Change.ContactFormURL}}{{end}}{{with .Change.ContactPhone}}, tel. {{.}}{{end}}, ir aprašykite, ką norėtumėte daryti. Organizatorius perskaito kiekvieną žinutę.
+
+{{end}}Bilieto ID: {{.TicketID}}
+{{template "contact_text" .}}Išsiųsta adresu: {{.RecipientEmail}}
+
+--
+{{.Branding.SellerLabel}} {{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
+{{end}}{{with .Branding.PaymentLine}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}Kontaktai: {{.}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Kontaktai: {{.}}
+{{end}}{{end}}
+{{if not .WhiteLabel}}Bilietus apdoroja arenasoldout.com — https://arenasoldout.com{{end}}
+
+Jei paspausite „Atsisakyti prenumeratos“, laiškai su Jūsų bilietais ir svarbūs laiškai apie Jūsų užsakymą Jūsų nebepasieks. Rinkodaros laiškų be Jūsų sutikimo nesiunčiame.
+{{end}}

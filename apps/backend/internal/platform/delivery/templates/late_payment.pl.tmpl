@@ -1,0 +1,36 @@
+{{define "subject"}}{{if .LatePayment.Refunding}}Państwa płatność za wydarzenie {{.EventName}} jest zwracana{{else}}Dotyczy płatności za wydarzenie {{.EventName}}{{end}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="pl" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dotyczy Państwa płatności</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">{{if .LatePayment.Refunding}}Państwa płatność jest zwracana{{else}}Płatność dotarła po zamknięciu zamówienia{{end}}</h1>
+  <p style="margin:0 0 12px 0;">{{if .LatePayment.BuyerCancelled}}Anulowali Państwo zamówienie {{.LatePayment.OrderNumber}} na wydarzenie {{.EventName}}{{with .LatePayment.When}} ({{.}}){{end}}, ale płatność w kwocie {{.LatePayment.Total}} i tak do nas dotarła.{{else}}Państwa płatność w kwocie {{.LatePayment.Total}} za zamówienie {{.LatePayment.OrderNumber}} ({{.EventName}}{{with .LatePayment.When}}, {{.}}{{end}}) dotarła do nas po zamknięciu zamówienia i nie mogliśmy już zachować dla Państwa biletów.{{end}}</p>
+  <p style="margin:0 0 12px 0;">{{if .LatePayment.Refunding}}Zwracamy całą kwotę na użytą formę płatności. Bank zwykle potrzebuje na to od 5 do 10 dni roboczych.{{else}}Organizator zwróci Państwu całą kwotę i skontaktuje się z Państwem w tej sprawie.{{end}}</p>
+  <p style="margin:0 0 12px 0;">Do tego zamówienia nie wystawiono żadnych biletów.</p>
+  {{with .LatePayment.Venue}}<p style="margin:0 0 12px 0;">{{.}}</p>{{end}}
+  </td></tr>
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Obsługa biletów: arenasoldout.com</a><br>{{end}}Jeśli klikną Państwo „Wypisz się”, wiadomości z biletami oraz ważne wiadomości o zamówieniu przestaną do Państwa docierać. Nie wysyłamy wiadomości marketingowych bez Państwa zgody.</td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}
+
+{{if .LatePayment.Refunding}}Państwa płatność jest zwracana{{else}}Płatność dotarła po zamknięciu zamówienia{{end}}
+
+{{if .LatePayment.BuyerCancelled}}Anulowali Państwo zamówienie {{.LatePayment.OrderNumber}} na wydarzenie {{.EventName}}{{with .LatePayment.When}} ({{.}}){{end}}, ale płatność w kwocie {{.LatePayment.Total}} i tak do nas dotarła.{{else}}Państwa płatność w kwocie {{.LatePayment.Total}} za zamówienie {{.LatePayment.OrderNumber}} ({{.EventName}}{{with .LatePayment.When}}, {{.}}{{end}}) dotarła do nas po zamknięciu zamówienia i nie mogliśmy już zachować dla Państwa biletów.{{end}}
+{{if .LatePayment.Refunding}}Zwracamy całą kwotę na użytą formę płatności. Bank zwykle potrzebuje na to od 5 do 10 dni roboczych.{{else}}Organizator zwróci Państwu całą kwotę i skontaktuje się z Państwem w tej sprawie.{{end}}
+Do tego zamówienia nie wystawiono żadnych biletów.
+{{with .LatePayment.Venue}}{{.}}
+{{end}}
+{{template "contact_text" .}}{{if not .WhiteLabel}}Obsługa biletów: arenasoldout.com — https://arenasoldout.com{{end}}
+
+Jeśli klikną Państwo „Wypisz się”, wiadomości z biletami oraz ważne wiadomości o zamówieniu przestaną do Państwa docierać. Nie wysyłamy wiadomości marketingowych bez Państwa zgody.
+{{end}}

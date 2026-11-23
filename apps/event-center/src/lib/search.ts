@@ -65,6 +65,15 @@ export function parsePromotersSearch(raw: Record<string, unknown>): PromotersSea
   return raw.f === "archived" ? { f: "archived" } : {};
 }
 
+// Spec 63 L-2
+export interface SeriesSearch {
+  f?: "archived";
+}
+
+export function parseSeriesSearch(raw: Record<string, unknown>): SeriesSearch {
+  return raw.f === "archived" ? { f: "archived" } : {};
+}
+
 export interface EventsSearch {
   f?: EventFilter;
   q?: string;

@@ -374,12 +374,14 @@ function Wizard() {
       setSaveView({ phase: "saved" });
       clearDraftIfSaved(orgId, sent.id);
       await queryClient.invalidateQueries({ queryKey: ["events", orgId] });
-      if (isSeatedDraft(sent) && savedSession !== "" && needsSplitByPrice(sent.seating)) {
+      // The first date a partner box office sells has no seats to paint, whatever plan the draft names.
+      const seatedFirst = isSeatedDraft(sent) && sent.dates[0].sales !== "external";
+      if (seatedFirst && savedSession !== "" && needsSplitByPrice(sent.seating)) {
         // A plan of ONE category: every seat has one price. The next step is "Split seats by price" (spec 64 section 2.4).
         router.history.push(splitSeatsByPricePath(orgId, result.eventId, savedSession));
         return;
       }
-      if (isSeatedDraft(sent) && savedSession !== "") {
+      if (seatedFirst && savedSession !== "") {
         // The seats still carry the plan's categories: the next step is painting them.
         void navigate({
           to: "/o/$orgId/events/$eventId/sessions/$sessionId/seats",

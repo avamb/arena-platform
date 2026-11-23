@@ -1,0 +1,76 @@
+{{define "subject"}}Lippujenne hyvitys — {{.EventName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="fi" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hyvityksenne on matkalla</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">Hyvityksenne on matkalla</h1>
+  <p style="margin:0 0 12px 0;">Hei{{with .HolderName}} {{.}}{{end}},</p>
+  <p style="margin:0 0 12px 0;">Olemme lähettäneet hyvityksen <strong>{{.Refund.Total}}</strong> lipuistanne tapahtumaan <strong>{{.EventName}}</strong>{{with .SessionStart}} ({{.}}){{end}}.</p>
+  <p style="margin:0 0 6px 0;font-weight:bold;color:#22333D;">Hyvitetyt liput</p>
+  <table cellpadding="4" style="border-collapse:collapse;font-size:14px;">
+    {{range .Tickets}}<tr><td>Lippu {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{if .Void}} · <strong>ei enää voimassa</strong>{{end}}</td><td style="text-align:right;">{{.Price}}</td></tr>{{end}}
+    <tr><td style="border-top:1px solid #eceff1;"><strong>Hyvitetty yhteensä</strong></td><td style="border-top:1px solid #eceff1;text-align:right;"><strong>{{.Refund.Total}}</strong></td></tr>
+  </table>
+  <p style="margin:16px 0 12px 0;">Rahat palautuvat käyttämällenne maksutavalle. Pankki tarvitsee yleensä 5–10 arkipäivää, ennen kuin hyvitys näkyy.</p>
+  {{if .Refund.TicketsCancelled}}<p style="margin:0 0 12px 0;">Hyvitetyt liput eivät enää oikeuta sisäänpääsyyn.</p>{{else if .Refund.SomeTicketsCancelled}}<p style="margin:0 0 12px 0;">Vain merkinnällä ”ei enää voimassa” merkityillä lipuilla ei enää pääse sisään; muut yllä luetellut liput pysyvät voimassa.</p>{{end}}
+  <p style="font-size:12px;color:#666">Vastaanottaja: {{.RecipientEmail}}</p>
+  </td></tr>
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Yhteystiedot: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Yhteystiedot: <a href="{{.}}" style="color:#666">Kirjoita järjestäjälle</a>{{end}}{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Lippujen käsittely: arenasoldout.com</a>{{end}}</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">Jos napsautatte ”Peruuta tilaus”, lippunne sisältävät viestit ja tilaustanne koskevat tärkeät viestit eivät enää saavu teille. Emme lähetä markkinointiviestejä ilman suostumustanne.</p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+Hyvityksenne on matkalla
+
+Hei{{with .HolderName}} {{.}}{{end}},
+
+Olemme lähettäneet hyvityksen {{.Refund.Total}} lipuistanne tapahtumaan {{.EventName}}{{with .SessionStart}} ({{.}}){{end}}.
+
+Hyvitetyt liput:
+{{range .Tickets}}- Lippu {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{if .Void}} · ei enää voimassa{{end}}: {{.Price}}
+{{end}}Hyvitetty yhteensä: {{.Refund.Total}}
+
+Rahat palautuvat käyttämällenne maksutavalle. Pankki tarvitsee yleensä 5–10 arkipäivää, ennen kuin hyvitys näkyy.
+{{if .Refund.TicketsCancelled}}Hyvitetyt liput eivät enää oikeuta sisäänpääsyyn.
+{{else if .Refund.SomeTicketsCancelled}}Vain merkinnällä ”ei enää voimassa” merkityillä lipuilla ei enää pääse sisään; muut yllä luetellut liput pysyvät voimassa.
+{{end}}
+{{template "contact_text" .}}Vastaanottaja: {{.RecipientEmail}}
+
+--
+{{.Branding.SellerLabel}} {{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
+{{end}}{{with .Branding.PaymentLine}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}Yhteystiedot: {{.}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Yhteystiedot: {{.}}
+{{end}}{{end}}
+{{if not .WhiteLabel}}Lippujen käsittely: arenasoldout.com — https://arenasoldout.com{{end}}
+
+Jos napsautatte ”Peruuta tilaus”, lippunne sisältävät viestit ja tilaustanne koskevat tärkeät viestit eivät enää saavu teille. Emme lähetä markkinointiviestejä ilman suostumustanne.
+{{end}}

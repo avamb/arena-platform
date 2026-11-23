@@ -212,6 +212,19 @@ func (s *Server) handlePublicFeedEvent(w http.ResponseWriter, r *http.Request) {
 	s.feedHandler().HandlePublicFeedEvent(w, r)
 }
 
+// Tours (event_series): the feed's list and detail, and the hosted tour page.
+func (s *Server) handlePublicFeedSeries(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandlePublicFeedSeries(w, r)
+}
+
+func (s *Server) handlePublicFeedSeriesItem(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandlePublicFeedSeriesItem(w, r)
+}
+
+func (s *Server) handlePublicSeriesPage(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandlePublicSeriesPage(w, r)
+}
+
 // ─── hosted sales page resolver shim ──────────────────────────────────────────
 
 func (s *Server) handlePublicPage(w http.ResponseWriter, r *http.Request) {

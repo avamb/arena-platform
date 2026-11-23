@@ -84,6 +84,8 @@
   import CartSheet from './components/CartSheet.svelte';
   import GaTierCard from './components/GaTierCard.svelte';
   import SaleStateNotice from './components/SaleStateNotice.svelte';
+  import ExternalSaleNotice from './components/ExternalSaleNotice.svelte';
+  import { externalSaleOf } from './lib/externalSale.js';
   import SeatedTierCard from './components/SeatedTierCard.svelte';
   import GaAreaPopover from './components/GaAreaPopover.svelte';
   import OrderStatus from './components/OrderStatus.svelte';
@@ -225,6 +227,10 @@
   // and the steppers. A buyer who already holds seats keeps the cart bar. A
   // missing or unknown `sales_state` (older API) is not paused.
   const salesPaused = $derived(!salesClosed && selectedSession !== null && pausedSalesState(selectedSession) !== null);
+
+  // A date sold by a partner box office (sales_state "external") has no tiers
+  // here: the map, steppers and cart give way to a button to the partner's site.
+  const salesExternal = $derived(!salesClosed && externalSaleOf(selectedSession) !== null);
 
   // ── Widget stage ───────────────────────────────────────────────────────────
 
@@ -1308,6 +1314,11 @@
         {#if cartLimitNotice}
           <p class="arena-tickets-limit" role="status">{cartLimitNotice}</p>
         {/if}
+        <!-- A date sold by a partner box office: no map, no steppers, no cart; one button to the partner's site. -->
+        {#if salesExternal && selectedSession}
+          <ExternalSaleNotice session={selectedSession} locale={normLocale} />
+        {/if}
+        {#if !salesExternal}
         <!-- The seated category has no stepper, so it gets a card of the same kind that says where it is taken. -->
         {#if !salesClosed && !salesPaused && selectedSession?.schema_url && seatedTiers.length > 0}
           <div class="ga-tiers-section">
@@ -1367,6 +1378,7 @@
             onOpen={openCartSheet}
             cta={t.continue_to_payment}
           />
+        {/if}
         {/if}
 
         <!-- Event materials (task 2-2): gallery, videos, map, partner links,

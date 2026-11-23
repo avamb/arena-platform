@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/conversions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hfeed"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/honboarding"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hsite"
@@ -82,6 +83,21 @@ func (s *Server) handleSiteContact(w http.ResponseWriter, r *http.Request) {
 		Pool: s.pgxPool, Guard: s.siteFormGuard(), IPSalt: s.siteFormSalt(),
 		TrustedProxies: s.siteFormTrustedProxies(), Logger: s.logger,
 	}).HandleSend(w, r)
+}
+
+// handleSiteTrack is POST /v1/public/feeds/{feed_token}/track.
+func (s *Server) handleSiteTrack(w http.ResponseWriter, r *http.Request) {
+	h := &hsite.TrackHandler{
+		Pool: s.pgxPool, Deduper: &s.funnelDedupe,
+		TrustedProxies: s.siteFormTrustedProxies(), Logger: s.logger,
+	}
+	if s.publicFeedRL != nil {
+		h.Limiter = s.publicFeedRL
+	}
+	if s.pgxPool != nil {
+		h.Events = conversions.NewPGStore(s.pgxPool)
+	}
+	h.HandleTrack(w, r)
 }
 
 func (s *Server) handleSiteSubscribe(w http.ResponseWriter, r *http.Request) {

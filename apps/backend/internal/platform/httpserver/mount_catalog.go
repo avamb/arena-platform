@@ -91,6 +91,18 @@ func (s *Server) mountEventRoutes(r chi.Router) {
 			s.applyAuth(pr, "event.update", "events")
 			pr.Put("/organizations/{org_id}/events/{id}/promoter", s.handleSetEventPromoter)
 		})
+		// Migration 0222: tours (event_series), no permission of their own.
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "event.read", "events")
+			pr.Get("/organizations/{org_id}/series", s.handleListSeries)
+			pr.Get("/organizations/{org_id}/series/{series_id}", s.handleGetSeries)
+		})
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "event.update", "events")
+			pr.Post("/organizations/{org_id}/series", s.handleCreateSeries)
+			pr.Patch("/organizations/{org_id}/series/{series_id}", s.handleUpdateSeries)
+			pr.Delete("/organizations/{org_id}/series/{series_id}", s.handleArchiveSeries)
+		})
 	}
 }
 
@@ -254,6 +266,12 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 	if s.publicFeedQueries != nil {
 		r.Get("/public/feeds/{feed_token}/events", s.handlePublicFeedEvents)
 		r.Get("/public/feeds/{feed_token}/events/{event_id}", s.handlePublicFeedEvent)
+		// Tours (event_series): shown to a feed through its visible events.
+		r.Get("/public/feeds/{feed_token}/series", s.handlePublicFeedSeries)
+		r.Get("/public/feeds/{feed_token}/series/{series_id}", s.handlePublicFeedSeriesItem)
+		// Hosted tour page; "series" is a fixed segment of three, so it never
+		// meets the two-segment event page route.
+		r.Get("/public/pages/{org_slug}/series/{series_slug}", s.handlePublicSeriesPage)
 		// Hosted sales page resolver (tickets.arenasoldout.com/{org}/{event}).
 		r.Get("/public/pages/{org_slug}/{event_slug}", s.handlePublicPage)
 		// Promoter landing page (tickets.arenasoldout.com/{org}) — lists
@@ -272,6 +290,9 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 	// The same form, the subscription without a purchase and their site guard
 	// for a static site, addressed by feed token (spec 62 section 10).
 	r.With(s.siteFormIdempotency("organizer-contact")).Post("/public/feeds/{feed_token}/organizer-contact", s.handleSiteContact)
+	// Server-side tracking of a static site (spec 63 section 19). Not behind the
+	// idempotency middleware: the beacon carries its own event id.
+	r.Post("/public/feeds/{feed_token}/track", s.handleSiteTrack)
 	r.With(s.siteFormIdempotency("marketing-subscriptions")).Post("/public/feeds/{feed_token}/marketing-subscriptions", s.handleSiteSubscribe)
 	// Funnel telemetry sink — WID-0e (feature #322).
 	// Always mounted; handler self-gates with 503 when funnelQueries is nil.
