@@ -71,6 +71,7 @@ function expectedGroups(perms: string[]): [string, string[]][] {
       ],
     ],
     ["entrance", ["nav-scanner", ...(can("order.read") ? ["nav-guest-list"] : [])]],
+    ["ads", can("org.update") ? ["nav-ads-meta"] : []],
     [
       "settings",
       [
@@ -101,6 +102,7 @@ const TARGET: Record<string, RegExp> = {
   "nav-growth": /\/growth$/,
   "nav-scanner": /\/entrance$/,
   "nav-guest-list": /\/entrance#guest-list$/,
+  "nav-ads-meta": /\/ads\/meta$/,
   "nav-org-data": /\/org-data$/,
   "nav-payments": /\/org-data#payments$/,
   "nav-team": /\/team$/,
