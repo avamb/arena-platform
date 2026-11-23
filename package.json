@@ -15,7 +15,7 @@
     "admin:smoke": "node scripts/admin-smoke-guardrails.mjs && npm --prefix apps/admin-web run test && npm --prefix apps/admin-web run build && npm run check-ts"
   },
   "devDependencies": {
-    "@stoplight/spectral-cli": "^6.16.0",
+    "@stoplight/spectral-cli": "^6.17.1",
     "openapi-typescript": "^7.13.0",
     "typescript": "^5.8.3"
   }
