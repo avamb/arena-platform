@@ -285,7 +285,7 @@ function SeriesForm({ orgId, series, canEdit, canView, canUpload }: { orgId: str
   };
 
   return (
-    <div className={canEdit ? "has-save-bar" : undefined}>
+    <div>
       <UnsavedChangesGuard dirty={dirty} allowLeave={allowLeave} onOpenChange={setGuardOpen} onSaveAndLeave={save} />
       <SeriesFields
         orgId={orgId}
@@ -361,7 +361,7 @@ export function SeriesDetailScreen() {
   const canManage = access.can("event.update") && !archived;
 
   return (
-    <section aria-labelledby="series-title">
+    <section aria-labelledby="series-title" className={canManage ? "has-save-bar" : undefined}>
       {back}
       <h1 id="series-title" data-testid="series-heading">
         {series.name}
