@@ -527,9 +527,7 @@
   }
 
   function onWheel(e: WheelEvent): void {
-    // A plain wheel scrolls the page: the plan sits inside a long page and must not trap it.
-    // Ctrl or Cmd with the wheel zooms, and so does a trackpad pinch (browsers send it as ctrl+wheel).
-    if (!e.ctrlKey && !e.metaKey) return;
+    // The wheel zooms the plan inside its own clipped window (owner decision 24.11, as Ticket Tailor does).
     e.preventDefault();
     if (!svgContainer) return;
     hideSeatCard();
