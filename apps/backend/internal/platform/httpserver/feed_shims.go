@@ -19,6 +19,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hfeed"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mytickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesubscribe"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/secretbox"
 )
 
 // ─── handler construction ─────────────────────────────────────────────────────
@@ -81,7 +82,16 @@ func (s *Server) cartConversions() hfeed.CartConversions {
 	if s.pgxPool == nil {
 		return nil
 	}
-	return conversions.NewPGStore(s.pgxPool)
+	store := conversions.NewPGStore(s.pgxPool)
+	// Without the token box the store treats every Meta connection as off, so
+	// an organization connected through the Meta app would get no AddToCart /
+	// InitiateCheckout (the worker's store gets the same box, conversions_wiring.go).
+	if c := s.cfg; c != nil && c.MetaEnabled() {
+		if box, err := secretbox.ParseKeys(c.MetaTokenEncKey); err == nil {
+			store = store.WithMetaBox(box)
+		}
+	}
+	return store
 }
 
 // ticketAccessRecorder is the buyer's ticket access log (migration 0184); nil
