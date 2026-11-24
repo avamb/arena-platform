@@ -1802,10 +1802,13 @@ func (h *Handler) createPublicOrder(
 		}
 	}
 
-	if customerID != nil {
-		if err := h.supersedeOpenOrder(ctx, txq, checkCtx, cs, *customerID); err != nil {
-			return nil, err
-		}
+	// The customer's older open order on this session stays open when it may
+	// still be paid (or belongs to another e-mail of the same customer); the
+	// new order is then minted WITHOUT customer_id, because
+	// orders_one_pending_per_customer_session_uq admits one open order per
+	// customer and session. The reservation keeps its customer link.
+	if customerID != nil && !h.supersedeOpenOrder(ctx, tx, checkCtx, cs, *customerID, buyer.Email) {
+		customerID = nil
 	}
 
 	// The channel fee percentage is an audit snapshot only; the exact charge
@@ -1837,48 +1840,121 @@ func (h *Handler) createPublicOrder(
 	return &orderID, nil
 }
 
-// supersedeOpenOrder closes the customer's previous pending_payment order on
-// this event session before a new one is minted, so the partial unique index
-// orders_one_pending_per_customer_session_uq (spec §14.3) admits the insert.
+// supersedeOpenOrder decides what happens to the customer's previous
+// pending_payment order on this event session before a new one is minted,
+// and reports whether the NEW order may carry customer_id (the partial
+// unique index orders_one_pending_per_customer_session_uq, spec §14.3,
+// admits one open order per customer and session).
 //
-// A widget buyer who abandons one cart and starts another with the same email
-// legitimately arrives here; before W1-A6c that was two independent holds and
-// nothing else. The earlier hold still keeps its seats until it expires on its
-// own (unchanged behaviour), only its order aggregate is cancelled with a
-// "superseded_by_new_checkout" event so the admin list shows what happened.
-// Without this the second checkout/start died on the index with a 500.
+// A previous order is closed only when nobody can pay it any more:
+//
+//  1. no open order, or it is this very checkout: link the customer;
+//  2. the open order has ANOTHER e-mail (customers.Resolve joins two e-mails
+//     with one phone into one customer, spec §12.2): it is another person's
+//     purchase and is not touched; the new order goes without customer_id;
+//  3. the same e-mail, but a payment attempt of the old checkout is not
+//     'failed': the money may still arrive on the old page (a Stripe page
+//     cannot be closed from this transaction), so the old order is not
+//     touched either; the new order goes without customer_id;
+//  4. the same e-mail, at least one attempt and every attempt failed (no
+//     attempt yet counts as 3: a Stripe row lands after the provider call): the old
+//     purchase is closed WHOLE on this transaction through
+//     hcheckout.CancelUnpaidCheckoutTx — hold released, checkout abandoned,
+//     order cancelled with ordering.ReasonSupersededByNewCheckout — in a
+//     SAVEPOINT; the customer is linked only when that cancel really ran.
+//
+// Every read and write sits behind a SAVEPOINT: a failure here costs the new
+// order its customer link, never the buyer's checkout.
 func (h *Handler) supersedeOpenOrder(
 	ctx context.Context,
-	txq *gen.Queries,
+	tx pgx.Tx,
 	checkCtx gen.PublicCheckoutContextRow,
 	cs gen.CheckoutSessionRow,
 	customerID uuid.UUID,
-) error {
-	open, err := ordering.FindOpenOrder(ctx, txq, customerID, checkCtx.SessionID)
-	if errors.Is(err, ordering.ErrNoOpenOrder) {
+	buyerEmail string,
+) bool {
+	link := false
+	committed := h.bestEffort(ctx, tx, "supersede open order", cs.ID, func(sp pgx.Tx) error {
+		spq := gen.New(sp)
+		open, err := ordering.FindOpenOrder(ctx, spq, customerID, checkCtx.SessionID)
+		if errors.Is(err, ordering.ErrNoOpenOrder) {
+			link = true
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if open.CheckoutSessionID == cs.ID {
+			link = true
+			return nil
+		}
+		logKept := func(why string) {
+			h.logger.Info("public_feed_checkout: open order kept, new order has no customer link",
+				slog.String("why", why),
+				slog.String("open_order_id", open.ID.String()),
+				slog.String("customer_id", customerID.String()),
+				slog.String("session_id", checkCtx.SessionID.String()),
+				slog.String("checkout_session_id", cs.ID.String()),
+			)
+		}
+		if !sameEmail(open.BuyerEmail, buyerEmail) {
+			logKept("other_email")
+			return nil
+		}
+		intents, err := spq.ListPaymentIntentsByCheckout(ctx, open.CheckoutSessionID)
+		if err != nil {
+			return fmt.Errorf("list payment intents of checkout %s: %w", open.CheckoutSessionID, err)
+		}
+		// No attempt yet is NOT "nobody can pay": a Stripe attempt row is
+		// written only after the provider call, which may still be running.
+		if len(intents) == 0 {
+			logKept("no_payment_attempt_recorded")
+			return nil
+		}
+		for _, pi := range intents {
+			if pi.State != "failed" {
+				logKept("payment_attempt_open")
+				return nil
+			}
+		}
+		res, _, err := hcheckout.CancelUnpaidCheckoutTx(ctx, sp, spq, h.audit, hcheckout.BuyerCancelInput{
+			CheckoutSessionID: open.CheckoutSessionID,
+			ActorLabel:        "system:new_checkout",
+			Reason:            ordering.ReasonSupersededByNewCheckout,
+			Via:               "public_feed_checkout",
+			Now:               time.Now().UTC(),
+		})
+		if err != nil {
+			return fmt.Errorf("supersede open order %s: %w", open.ID, err)
+		}
+		if res.Outcome != hcheckout.BuyerCancelCancelled {
+			logKept("cancel_outcome_" + string(res.Outcome))
+			return nil
+		}
+		link = true
+		h.logger.Info("public_feed_checkout: superseded open order",
+			slog.String("order_id", open.ID.String()),
+			slog.String("customer_id", customerID.String()),
+			slog.String("session_id", checkCtx.SessionID.String()),
+			slog.String("checkout_session_id", cs.ID.String()),
+		)
 		return nil
+	})
+	// A savepoint that did not commit undid the cancel: the old order may
+	// still be open, so the new one must not take the customer link.
+	return committed && link
+}
+
+// sameEmail compares an order's stored buyer e-mail with the new buyer's,
+// normalized as customers.NormalizeEmail does. A missing or unparsable
+// address counts as a different one.
+func sameEmail(stored *string, raw string) bool {
+	if stored == nil {
+		return false
 	}
-	if err != nil {
-		return err
-	}
-	if open.CheckoutSessionID == cs.ID {
-		return nil
-	}
-	if _, err := ordering.Cancel(ctx, txq, ordering.CancelInput{
-		OrderID: open.ID,
-		OrgID:   open.OrgID,
-		Actor:   ordering.ActorSystem,
-		Reason:  "superseded_by_new_checkout",
-	}); err != nil {
-		return fmt.Errorf("supersede open order %s: %w", open.ID, err)
-	}
-	h.logger.Info("public_feed_checkout: superseded open order",
-		slog.String("order_id", open.ID.String()),
-		slog.String("customer_id", customerID.String()),
-		slog.String("session_id", checkCtx.SessionID.String()),
-		slog.String("checkout_session_id", cs.ID.String()),
-	)
-	return nil
+	a, errA := customers.NormalizeEmail(*stored)
+	b, errB := customers.NormalizeEmail(raw)
+	return errA == nil && errB == nil && a == b
 }
 
 // gaGateLines pairs the parsed GA tier ids with their requested quantities
