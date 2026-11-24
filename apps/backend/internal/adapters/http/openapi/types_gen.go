@@ -5873,6 +5873,35 @@ type CheckoutAttributionFirst struct {
 	UtmSource *string `json:"utm_source,omitempty"`
 }
 
+// CheckoutBuyerAttachRequest Body of `POST /v1/public/checkout/{checkout_token}/buyer`: the buyer
+// of a prepared order (spec 65), checked with the rules of
+// `checkout/start`.
+type CheckoutBuyerAttachRequest struct {
+	// Buyer The buyer's e-mail address (required), name and phone.
+	Buyer PublicBuyerInfo `json:"buyer"`
+
+	// Consent The tick on the sale terms, as in `checkout/start`.
+	Consent *PublicCheckoutConsent `json:"consent,omitempty"`
+
+	// Locale The buyer's language, as in `checkout/start`; an unknown value is ignored.
+	Locale *string `json:"locale,omitempty"`
+}
+
+// CheckoutBuyerAttachResponse Response of `POST /v1/public/checkout/{checkout_token}/buyer`.
+type CheckoutBuyerAttachResponse struct {
+	// CheckoutToken The checkout token, echoed.
+	CheckoutToken string `json:"checkout_token"`
+
+	// ExpiresAt Hold expiry (RFC 3339 UTC), unchanged by the attach.
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// PaymentExpiresAt When the provider's form stops taking the payment (RFC 3339 UTC).
+	PaymentExpiresAt time.Time `json:"payment_expires_at"`
+
+	// Status Always `pending`.
+	Status string `json:"status"`
+}
+
 // CheckoutCancelResponse Response of `POST /v1/public/checkout/{checkout_token}/cancel`.
 type CheckoutCancelResponse struct {
 	// Cancelled True when the order is cancelled (now or by an earlier call).
@@ -16983,6 +17012,23 @@ type PublicFeedCheckoutStartRequest struct {
 	// organizer's reward code (see `PublicMarketingConsent`).
 	MarketingConsent *PublicMarketingConsent `json:"marketing_consent,omitempty"`
 
+	// Prepare Spec 65 early order, optional. `true`: the hold, the order and
+	// the embedded Stripe session are created now, WITHOUT the buyer
+	// (the widget opens its order sheet); the buyer is attached at
+	// "Pay" with `POST /v1/public/checkout/{checkout_token}/buyer`.
+	// Requires `capabilities` to contain `stripe_elements`. The body
+	// must not carry `buyer`, `holder_email`, `promo_code`,
+	// `marketing_consent` or `consent` (422
+	// `checkout.prepare_unavailable`); the channel must give the
+	// embedded form (409 `checkout.prepare_unavailable` before any
+	// hold); a zero total is refused the same way and its hold
+	// released; when the embedded session cannot be created there is
+	// no hosted page: the order is cancelled, the hold released, 409
+	// `checkout.prepare_unavailable`. Required name, phone and consent
+	// are checked at attach. The 201 is the embedded answer plus
+	// `prepared: true`.
+	Prepare *bool `json:"prepare,omitempty"`
+
 	// PromoCode Optional promotional code to apply.
 	PromoCode *string `json:"promo_code"`
 
@@ -17072,6 +17118,12 @@ type PublicFeedCheckoutStartResponse struct {
 	// the channel's payment window from now. This is what a site counts
 	// down to; `expires_at` is a grace later. Present for a paid cart.
 	PaymentExpiresAt *time.Time `json:"payment_expires_at,omitempty"`
+
+	// Prepared True for a prepared order (`prepare: true`, spec 65): it has no
+	// buyer yet; attach one with
+	// `POST /v1/public/checkout/{checkout_token}/buyer` before the
+	// payment is confirmed. Absent otherwise.
+	Prepared *bool `json:"prepared,omitempty"`
 
 	// Pricing Itemized result of running the deterministic pricing pipeline
 	// (`ComputePricing`, feature #129). Every monetary field is
@@ -28551,6 +28603,9 @@ type PaymentIntentWebhookForConfigJSONRequestBody = PaymentIntentWebhookRequest
 
 // TransitionPaymentIntentJSONRequestBody defines body for TransitionPaymentIntent for application/json ContentType.
 type TransitionPaymentIntentJSONRequestBody = TransitionPaymentIntentRequest
+
+// AttachPublicCheckoutBuyerJSONRequestBody defines body for AttachPublicCheckoutBuyer for application/json ContentType.
+type AttachPublicCheckoutBuyerJSONRequestBody = CheckoutBuyerAttachRequest
 
 // UpdatePublicCheckoutTrackingConsentJSONRequestBody defines body for UpdatePublicCheckoutTrackingConsent for application/json ContentType.
 type UpdatePublicCheckoutTrackingConsentJSONRequestBody = TrackingConsent

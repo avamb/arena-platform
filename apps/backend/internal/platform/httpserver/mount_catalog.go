@@ -313,6 +313,8 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 		r.Post("/public/checkout/{checkout_token}/cancel", s.handlePublicCheckoutCancel)
 		// The embedded payment form could not run: the hosted page on the same hold (spec 65).
 		r.Post("/public/checkout/{checkout_token}/hosted", s.handlePublicCheckoutHostedFallback)
+		// The buyer of a prepared order (spec 65 early order).
+		r.Post("/public/checkout/{checkout_token}/buyer", s.handlePublicCheckoutBuyer)
 		// The buyer's cookie consent changed while the order is open (П-20).
 		r.Patch("/public/checkout/{checkout_token}/consent", s.handlePublicCheckoutConsent)
 		// The buyer's "Refer a friend" code and share link (spec 52).

@@ -16,6 +16,20 @@
  * (a load failure falls back at once), and the whole path to the Payment
  * Element's `ready` (init, `loadActions()`, ready) has 15 s. Past either the
  * hosted page is used.
+ *
+ * Deferred mode (`deferred: true`, preload-payment="checkout"): the checkout
+ * was prepared when the order sheet opened, without a buyer, and the form
+ * loads HIDDEN while the person types. Until `reveal(email)`:
+ *  - no fallback ever redirects or asks for the hosted page: a load or ready
+ *    timeout, a loaderror or a failed init only mark the controller failed and
+ *    call `onDeferredFailure` (the widget then pays the classic way);
+ *  - no step is reported: `checkout_form_view` waits until Stripe took the
+ *    e-mail (`updateEmail` succeeded), the screen is SHOWN (`markShown()`,
+ *    called by the screen after the widget switched to it, so after
+ *    PAYMENT_STARTED) and the card form is ready;
+ *  - nothing can be confirmed, by the card button or by a wallet.
+ * `reveal(email)` gives Stripe the e-mail (`actions.updateEmail`); a failure
+ * there is handled like any non-decline error (the hosted page).
  */
 
 import type { CheckoutStatusResponse, PaymentBlock } from './checkout.js';
@@ -117,11 +131,35 @@ export interface PaymentControllerOptions {
   recoverPollMaxMs?: number;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
+  /** A prepared checkout loading hidden: see "Deferred mode" above. */
+  deferred?: boolean;
+  /** Deferred mode: the form cannot be used; the widget pays the classic way. */
+  onDeferredFailure?: () => void;
+}
+
+/** What the widget holds of a hidden (deferred) payment screen. */
+export interface DeferredPaymentHandle {
+  /**
+   * Shows the form to the buyer and gives Stripe the e-mail. False when the
+   * controller already failed or is gone (the widget then pays the classic way).
+   */
+  reveal(email: string): Promise<boolean>;
+  /** The deferred form failed before it was shown. */
+  failed(): boolean;
 }
 
 export interface PaymentController {
   /** Opens Stripe and mounts the elements. Call once. */
   start(mounts: PaymentMounts): Promise<void>;
+  /** Deferred mode: the buyer pressed the sheet's "Pay". No-op in classic mode. */
+  reveal(email: string): Promise<boolean>;
+  /** Deferred mode: a fallback condition happened before reveal. */
+  hasFailed(): boolean;
+  /**
+   * Deferred mode: the screen is visible to the buyer now (the widget switched
+   * to it). No-op in classic mode, where the screen is shown from the start.
+   */
+  markShown(): void;
   /** The buyer pressed "Pay". */
   submit(): Promise<void>;
   /** Polls the platform until the order settles (return from a bank page). */
@@ -200,6 +238,15 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
   let paymentReady = false;
   let walletsKnown = false;
   let formViewSent = false;
+  // Deferred mode: hidden until reveal(); failed before reveal = classic path.
+  const deferred = opts.deferred === true;
+  let revealed = !deferred;
+  let deferredFailed = false;
+  // The e-mail waits here when reveal() comes before Stripe's actions.
+  let pendingEmail: string | null = null;
+  let emailApplied = !deferred;
+  // Deferred mode: the screen is visible (not just revealed to the controller).
+  let shown = !deferred;
 
   function set(patch: Partial<PaymentUiState>): void {
     if (destroyed) return;
@@ -221,7 +268,39 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
   function recomputeCanPay(): void {
     // Stripe's canConfirm is the authority; the element's `complete` covers
     // the moment before the session reports it.
-    set({ canPay: sessionCanConfirm || paymentComplete });
+    set({ canPay: (sessionCanConfirm || paymentComplete) && emailApplied });
+  }
+
+  /** Deferred mode, before reveal: give up quietly, the widget pays the classic way. */
+  function failDeferred(): void {
+    if (deferredFailed || destroyed) return;
+    deferredFailed = true;
+    clearDeadline();
+    if (walletTimer) clearTimeout(walletTimer);
+    walletTimer = null;
+    opts.onDeferredFailure?.();
+  }
+
+  /** Gives Stripe the buyer's e-mail once both the e-mail and the actions exist. */
+  async function applyEmail(): Promise<void> {
+    const email = pendingEmail;
+    const a = actions;
+    if (!email || !a || destroyed) return;
+    pendingEmail = null;
+    try {
+      if (typeof a.updateEmail !== 'function') throw new Error('updateEmail missing');
+      const r = await a.updateEmail(email);
+      if (r && r.type === 'error') throw new Error('updateEmail refused');
+    } catch {
+      // Like any non-decline error: the buyer is attached by now, so the
+      // hosted page can take the payment.
+      await fallBackToHosted();
+      return;
+    }
+    if (destroyed) return;
+    emailApplied = true;
+    recomputeCanPay();
+    maybeSendFormView();
   }
 
   /**
@@ -240,7 +319,7 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
   }
 
   function maybeSendFormView(): void {
-    if (!paymentReady || formViewSent) return;
+    if (!paymentReady || formViewSent || !revealed || !emailApplied || !shown || deferredFailed) return;
     if (walletsKnown) {
       sendFormView(true);
       return;
@@ -250,6 +329,11 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
 
   async function fallBackToHosted(): Promise<void> {
     if (destroyed) return;
+    if (!revealed) {
+      // Deferred and still hidden: never redirect, never ask for the hosted page.
+      failDeferred();
+      return;
+    }
     clearDeadline();
     set({ phase: 'falling_back', canPay: false });
     try {
@@ -422,7 +506,15 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
   }
 
   function canConfirmNow(): boolean {
-    return !!actions && !busy && !destroyed && (state.phase === 'ready' || state.phase === 'declined');
+    return (
+      !!actions &&
+      !busy &&
+      !destroyed &&
+      revealed &&
+      emailApplied &&
+      !deferredFailed &&
+      (state.phase === 'ready' || state.phase === 'declined')
+    );
   }
 
   return {
@@ -470,6 +562,8 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
       }
       checkout = opened.checkout;
       actions = opened.actions;
+      // Revealed before Stripe was ready: the e-mail goes now.
+      if (revealed && pendingEmail) void applyEmail();
 
       try {
         checkout.on('change', (session) => {
@@ -493,6 +587,8 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
           },
         );
         express.on('click', (e: { expressPaymentType?: string; resolve?: () => void }) => {
+          // Hidden (deferred, before reveal): no wallet sheet may open.
+          if (!revealed || deferredFailed) return;
           // The wallet sheet opens only after resolve(), and Stripe allows one
           // second for it: do it first, before anything else can throw.
           safely(() => e?.resolve?.());
@@ -520,9 +616,9 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
         payment.on('change', (e: { complete?: boolean; value?: { type?: string } }) => {
           paymentComplete = e?.complete === true;
           // Spec 65 §6.1: the Payment Element reporting complete=true (the bus
-          // sends it once per checkout).
-          if (paymentComplete) opts.steps.emit('payment_details_complete');
-          if (e?.value?.type) {
+          // sends it once per checkout). A hidden form reports no step.
+          if (paymentComplete && revealed) opts.steps.emit('payment_details_complete');
+          if (e?.value?.type && revealed) {
             opts.steps.emit('payment_method_selected', { method: methodKind(e.value.type) });
           }
           recomputeCanPay();
@@ -534,6 +630,26 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
       } catch {
         await fallBackToHosted();
       }
+    },
+
+    async reveal(email) {
+      if (destroyed || deferredFailed) return false;
+      if (revealed) return true;
+      revealed = true;
+      pendingEmail = email.trim();
+      // checkout_form_view goes once Stripe took the e-mail (applyEmail).
+      if (actions) await applyEmail();
+      return !deferredFailed && !destroyed;
+    },
+
+    hasFailed() {
+      return deferredFailed;
+    },
+
+    markShown() {
+      if (shown || destroyed) return;
+      shown = true;
+      maybeSendFormView();
     },
 
     async submit() {

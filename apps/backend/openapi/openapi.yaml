@@ -19581,6 +19581,24 @@ components:
           items:
             type: string
             description: A capability name, e.g. `stripe_elements`.
+        prepare:
+          type: boolean
+          description: |
+            Spec 65 early order, optional. `true`: the hold, the order and
+            the embedded Stripe session are created now, WITHOUT the buyer
+            (the widget opens its order sheet); the buyer is attached at
+            "Pay" with `POST /v1/public/checkout/{checkout_token}/buyer`.
+            Requires `capabilities` to contain `stripe_elements`. The body
+            must not carry `buyer`, `holder_email`, `promo_code`,
+            `marketing_consent` or `consent` (422
+            `checkout.prepare_unavailable`); the channel must give the
+            embedded form (409 `checkout.prepare_unavailable` before any
+            hold); a zero total is refused the same way and its hold
+            released; when the embedded session cannot be created there is
+            no hosted page: the order is cancelled, the hold released, 409
+            `checkout.prepare_unavailable`. Required name, phone and consent
+            are checked at attach. The 201 is the embedded answer plus
+            `prepared: true`.
         tracking_consent:
           deprecated: true
           description: |
@@ -20603,6 +20621,53 @@ components:
         marketing_discount_applied:
           type: boolean
           description: True when the cart's discount is the reward for the marketing consent tick.
+        prepared:
+          type: boolean
+          description: |
+            True for a prepared order (`prepare: true`, spec 65): it has no
+            buyer yet; attach one with
+            `POST /v1/public/checkout/{checkout_token}/buyer` before the
+            payment is confirmed. Absent otherwise.
+
+    CheckoutBuyerAttachRequest:
+      type: object
+      required: [buyer]
+      description: |
+        Body of `POST /v1/public/checkout/{checkout_token}/buyer`: the buyer
+        of a prepared order (spec 65), checked with the rules of
+        `checkout/start`.
+      properties:
+        buyer:
+          description: The buyer's e-mail address (required), name and phone.
+          allOf:
+            - $ref: "#/components/schemas/PublicBuyerInfo"
+        consent:
+          description: The tick on the sale terms, as in `checkout/start`.
+          allOf:
+            - $ref: "#/components/schemas/PublicCheckoutConsent"
+        locale:
+          type: string
+          description: The buyer's language, as in `checkout/start`; an unknown value is ignored.
+
+    CheckoutBuyerAttachResponse:
+      type: object
+      required: [checkout_token, status, expires_at, payment_expires_at]
+      description: Response of `POST /v1/public/checkout/{checkout_token}/buyer`.
+      properties:
+        checkout_token:
+          type: string
+          description: The checkout token, echoed.
+        status:
+          type: string
+          description: Always `pending`.
+        expires_at:
+          type: string
+          format: date-time
+          description: Hold expiry (RFC 3339 UTC), unchanged by the attach.
+        payment_expires_at:
+          type: string
+          format: date-time
+          description: When the provider's form stops taking the payment (RFC 3339 UTC).
 
     EmbeddedCheckoutPayment:
       type: object
@@ -61018,7 +61083,11 @@ paths:
             used with a different body (also while that first request is
             still running), or `checkout.price_changed` when `expected_total`
             differs from the computed total (`details.expected_total`,
-            `details.actual_total`, `details.currency`; nothing was held).
+            `details.actual_total`, `details.currency`; nothing was held),
+            or `checkout.prepare_unavailable` for `prepare: true` when the
+            channel has no embedded form, the total is zero or the embedded
+            session could not be created (`details.reason`; nothing stays
+            held).
           content:
             application/json:
               schema:
@@ -61044,6 +61113,10 @@ paths:
             `checkout.consent_required` when the session's `consent.required`
             is true and the body carries no `consent` with `accepted: true`;
             refused before any hold is taken.
+
+            `checkout.prepare_unavailable` for `prepare: true` without the
+            `stripe_elements` capability or with a buyer, a promo code, a
+            marketing tick or a consent (`details.reason`).
           content:
             application/json:
               schema:
@@ -62890,9 +62963,15 @@ paths:
         * unpaid, unknown, or no answer from the provider: the order is
           cancelled. A payment the provider confirms later is refunded in
           full (`late_payment: refund_requested` on the order status);
-        * a provider whose payment cannot be read back (Stripe) whose page
-          was handed out, hosted or embedded (spec 65): 409
-          `checkout.payment_in_progress`; its page expires by itself.
+        * a provider whose hosted page cannot be read back (Stripe) and was
+          handed out: 409 `checkout.payment_in_progress`; its page expires
+          by itself;
+        * an open embedded payment (spec 65, also a prepared order the
+          widget cancels when its sheet closes): it is expired at the
+          provider first. Expired: the cancel goes on (order cancelled,
+          places released). The provider refuses because it is paid or a
+          payment is being processed, or does not answer: 409
+          `checkout.payment_in_progress`, nothing is cancelled.
 
         Idempotent: a repeat answers `cancelled: true` again and writes
         nothing. No JWT: the `checkout_token` is the credential.
@@ -63017,6 +63096,99 @@ paths:
             (`checkout.payment_not_configured`), or the database is
             unavailable (`dependency.database_unavailable`); retry. Never
             502: the route sits behind Cloudflare.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/checkout/{checkout_token}/buyer:
+    post:
+      operationId: attachPublicCheckoutBuyer
+      summary: Attach the buyer to a prepared order
+      description: |
+        Spec 65 early order. `checkout/start` with `prepare: true` created
+        the hold, the order and the embedded Stripe session without the
+        buyer; the widget sends the buyer here when the buyer presses
+        "Pay", then gives the e-mail address to Stripe and confirms. This
+        route does not call Stripe.
+
+        The checks are those of `checkout/start`: a valid e-mail address,
+        the name and phone the channel requires, the sale-terms consent the
+        channel asks for. In one transaction the order's buyer is written,
+        the customer resolved, the buyer's previous unpaid order on the
+        same session closed and the consent recorded.
+
+        The same e-mail address again answers 200 and writes nothing;
+        another address is 409 `checkout.buyer_already_set`. No JWT: the
+        `checkout_token` is the credential. Sent with
+        `Cache-Control: no-store`.
+      tags: [v1]
+      parameters:
+        - name: checkout_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Opaque checkout token from `checkout/start`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutBuyerAttachRequest"
+      responses:
+        "200":
+          description: The buyer is attached (now or by an earlier call).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutBuyerAttachResponse"
+        "400":
+          description: |
+            The body is not JSON (`checkout.invalid_json`,
+            `checkout.invalid_body`), has no e-mail address
+            (`checkout.missing_holder_email`) or a malformed one
+            (`checkout.invalid_email`, the envelope of `checkout/start`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No checkout for this token (`checkout.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            `checkout.not_payable`: the order is paid, expired or cancelled,
+            or its payment window is over (`details.status` is the order
+            status). `checkout.buyer_already_set`: the order already has
+            another e-mail address.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            `checkout.buyer_name_required`, `checkout.buyer_phone_required`
+            or `checkout.consent_required`, with the rules of
+            `checkout/start`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limit exceeded (`checkout.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            The database is unavailable (`dependency.database_unavailable`)
+            or the buyer could not be saved (`checkout.unavailable`); retry.
+            Never 502: the route sits behind Cloudflare.
           content:
             application/json:
               schema:

@@ -108,6 +108,8 @@ SELECT o.session_id, o.status, o.source, o.currency,
 FROM   orders o
 WHERE  o.session_id = ANY($1::uuid[])
   AND  NOT o.is_test
+  AND  NOT (o.source = 'public_feed' AND o.buyer_email IS NULL
+            AND o.status IN ('pending_payment', 'expired', 'cancelled', 'abandoned'))
 GROUP  BY o.session_id, o.status, o.source, o.currency;
 
 -- name: ListSessionSummaryTickets :many

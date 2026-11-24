@@ -221,6 +221,45 @@ export interface CheckoutStartPayload {
 }
 
 /**
+ * Payload of checkout/start with `prepare: true` (preload-payment="checkout"):
+ * the order, the hold and the embedded Stripe session are created when the
+ * order sheet opens, WITHOUT a buyer. No buyer, promo code, marketing tick or
+ * consent may ride along (422 `checkout.prepare_unavailable`); the buyer comes
+ * later through POST /v1/public/checkout/{token}/buyer.
+ */
+export interface CheckoutPreparePayload {
+  session_id: string;
+  seats?: string[];
+  ga_items?: PublicGAItem[];
+  return_url?: string;
+  locale?: string;
+  attribution?: import('./attribution.js').AttributionPayload;
+  /** Must contain `stripe_elements`. */
+  capabilities: string[];
+  buyer_context?: import('./buyerContext.js').BuyerContextPayload;
+  prepare: true;
+}
+
+/** Body of POST /v1/public/checkout/{token}/buyer (attach the buyer to a prepared checkout). */
+export interface CheckoutBuyerPayload {
+  buyer: {
+    email: string;
+    name?: string | null;
+    phone?: string | null;
+  };
+  consent?: import('./consent.js').CheckoutConsentPayload;
+  locale?: string;
+}
+
+/** 200 answer of POST /v1/public/checkout/{token}/buyer. */
+export interface CheckoutBuyerResponse {
+  checkout_token: string;
+  status: 'pending';
+  expires_at: string;
+  payment_expires_at?: string;
+}
+
+/**
  * The block that lets the widget pay on its own page (spec 65 §3.4). Held in
  * memory only: `client_secret` is never logged, never put in storage and never
  * in a URL (§3.7).
@@ -295,6 +334,8 @@ export interface CheckoutStartResponse {
   payment?: PaymentBlock;
   /** The moment the payment form stops taking money (the hold ends a grace later). */
   payment_expires_at?: string;
+  /** True on the answer to a `prepare: true` start (no buyer yet). */
+  prepared?: boolean;
   /** What the order costs, in minor units, as the payment screen's summary shows it. */
   pricing?: {
     subtotal?: number;
@@ -623,6 +664,22 @@ export function buildCheckoutPayload(
   const promo = (promoCode ?? '').trim();
   if (promo) payload.promo_code = promo;
 
+  return payload;
+}
+
+/**
+ * Build the body of `POST checkout/{token}/buyer` from the sheet's values: the
+ * same buyer object as checkout/start, plus the ticked consent and the locale.
+ */
+export function buildBuyerPayload(
+  values: BuyerFormValues,
+  buyerFields: BuyerFieldConfig[],
+  extra: { consent?: import('./consent.js').CheckoutConsentPayload; locale?: string } = {},
+): CheckoutBuyerPayload {
+  const start = buildCheckoutPayload('', values, [], [], buyerFields);
+  const payload: CheckoutBuyerPayload = { buyer: start.buyer! };
+  if (extra.consent) payload.consent = extra.consent;
+  if (extra.locale) payload.locale = extra.locale;
   return payload;
 }
 

@@ -215,6 +215,17 @@ func (s *StripePaymentStarter) StartEmbeddedCheckout(ctx context.Context, req Ho
 	}, nil
 }
 
+// EmbeddedCheckoutAvailable reports, without calling the provider, whether a
+// NEW payment of this channel would be embedded: nil when the provider module
+// has the embedded mode, the config holds its browser key and the channel
+// does not force the hosted page; ErrEmbeddedCheckoutUnavailable or the
+// config error otherwise. The prepared order (spec 65) asks it before any
+// hold, because it never falls back to the hosted page.
+func (s *StripePaymentStarter) EmbeddedCheckoutAvailable(ctx context.Context, orgID, channelID uuid.UUID) error {
+	_, _, _, err := s.embeddedModule(ctx, orgID, channelID, true)
+	return err
+}
+
 // ReadEmbeddedCheckout implements EmbeddedPaymentStarter.
 func (s *StripePaymentStarter) ReadEmbeddedCheckout(ctx context.Context, orgID, channelID uuid.UUID, provider, sessionID string) (payments.EmbeddedCheckoutSession, EmbeddedPaymentBlock, error) {
 	emb, cfg, key, err := s.embeddedModule(ctx, orgID, channelID, false)

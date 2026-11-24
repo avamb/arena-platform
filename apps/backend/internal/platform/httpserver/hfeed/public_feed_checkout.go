@@ -164,6 +164,14 @@ type PublicFeedCheckoutStartRequest struct {
 	// (an older widget) always gets the hosted page. Unknown values are
 	// ignored.
 	Capabilities []string `json:"capabilities,omitempty"`
+	// Prepare asks for the early order of spec 65 (checkout_prepare.go): the
+	// hold, the order and the embedded payment session are created when the
+	// order sheet opens, WITHOUT the buyer, who is attached later through
+	// POST /v1/public/checkout/{checkout_token}/buyer. Only a plain paid cart
+	// of a channel with the embedded form qualifies; anything else is
+	// 422/409 checkout.prepare_unavailable and the widget starts the
+	// checkout the classic way at "Pay".
+	Prepare bool `json:"prepare,omitempty"`
 }
 
 // normalizeBuyerLocale validates a caller-supplied locale against the
@@ -310,6 +318,15 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// ── 3a. A prepared order (spec 65) carries no buyer and nothing that
+	// depends on one; refused before anything is read or held.
+	if req.Prepare {
+		if reason := prepareRequestRefusal(req); reason != "" {
+			writePrepareUnavailable(w, r, http.StatusUnprocessableEntity, reason)
+			return
+		}
+	}
+
 	// ── 4. Merge buyer.email into holder_email (WID-0d, feature #321) ──────────
 	// Do this before the holder_email empty-check so that callers using the new
 	// buyer object don't need to repeat the email in the top-level field.
@@ -325,8 +342,9 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 	buyerLocale := normalizeBuyerLocale(req.Locale)
 
 	// ── 4b. Validate holder_email ─────────────────────────────────────────────
+	// A prepared order has no buyer yet: the address is checked at attach.
 	req.HolderEmail = strings.TrimSpace(req.HolderEmail)
-	if req.HolderEmail == "" {
+	if req.HolderEmail == "" && !req.Prepare {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"checkout.missing_holder_email", "Enter the e-mail address for the tickets (holder_email).", r,
 			map[string]any{"field": "holder_email"},
@@ -336,7 +354,7 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 	// A malformed address is refused HERE, before any hold or order exists:
 	// the payment provider refuses it too, but only after the seats are held
 	// (F-BR-03).
-	if !emailaddr.Valid(req.HolderEmail) {
+	if !req.Prepare && !emailaddr.Valid(req.HolderEmail) {
 		writeInvalidEmail(w, r)
 		return
 	}
@@ -451,6 +469,12 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 		hcheckout.WriteCategoryGateError(w, r, gateErr)
 		return
 	}
+	// A prepared order is paid only in the embedded form: a channel that
+	// cannot give it is refused before any hold (spec 65 early order).
+	if req.Prepare && !h.preparedPaymentAvailable(ctx, checkCtx) {
+		writePrepareUnavailable(w, r, http.StatusConflict, prepareReasonNotEmbeddable)
+		return
+	}
 	// The service charge is the CHANNEL's fee_percent (the same setting the
 	// Bil24 gateway applies), read on the pool before the hold transaction
 	// opens — never inside it (AGENTS.md: no pool read while holding the
@@ -494,8 +518,10 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 
 	// A flag that is off means "optional": an empty value is accepted and a
 	// non-empty one is kept (buyerName above). Only a required field refuses
-	// an empty value; whitespace alone counts as empty.
-	if collectName {
+	// an empty value; whitespace alone counts as empty. A prepared order
+	// (spec 65) has no buyer yet: name, phone and consent are checked at
+	// attach, with these same rules.
+	if collectName && !req.Prepare {
 		if buyerName == nil {
 			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 				"checkout.buyer_name_required",
@@ -507,7 +533,7 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	if collectPhone {
+	if collectPhone && !req.Prepare {
 		if buyerPhone == nil {
 			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 				"checkout.buyer_phone_required",
@@ -527,7 +553,7 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 	// notice the feed showed) is gathered now, on the pool, before any
 	// transaction opens. A tick sent to a channel that does not ask for it is
 	// ignored: nothing of the buyer is stored without a reason.
-	if consentRefused(consentRequired, req.Consent) {
+	if !req.Prepare && consentRefused(consentRequired, req.Consent) {
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 			"checkout.consent_required",
 			"Please accept the sale terms of the organizer and the platform policy, then try again.",
@@ -958,6 +984,11 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 		if h.refuseChangedPrice(w, r, req.ExpectedTotal, bd) {
 			return // the deferred rollback releases the holds
 		}
+		if req.Prepare && bd.Total <= 0 {
+			// A free order would complete without a buyer.
+			writePrepareUnavailable(w, r, http.StatusConflict, prepareReasonFree)
+			return // the deferred rollback releases the holds
+		}
 		if !h.applyPaymentPreflight(ctx, w, r, checkCtx, bd.Total, preflight) {
 			return
 		}
@@ -994,7 +1025,7 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 		}
 		h.confirmPublicCheckout(ctx, w, r, checkCtx, res.ID, checkoutToken, bd, promoCodeID, expiresAt,
 			publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, seatTierPrices, req.ReturnURL, buyerLocale, consent, attr, growth,
-			wantsEmbeddedCheckout(req.Capabilities))
+			wantsEmbeddedCheckout(req.Capabilities), req.Prepare)
 		return
 	}
 
@@ -1127,6 +1158,11 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 	if h.refuseChangedPrice(w, r, req.ExpectedTotal, bd) {
 		return // the deferred rollback releases the holds
 	}
+	if req.Prepare && bd.Total <= 0 {
+		// A free order would complete without a buyer.
+		writePrepareUnavailable(w, r, http.StatusConflict, prepareReasonFree)
+		return // the deferred rollback releases the holds
+	}
 	if !h.applyPaymentPreflight(ctx, w, r, checkCtx, bd.Total, preflight) {
 		return
 	}
@@ -1152,7 +1188,7 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 	// so no tier price map is needed.
 	h.confirmPublicCheckout(ctx, w, r, checkCtx, reservation.ID, checkoutToken, bd, promoCodeID, expiresAt,
 		publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, nil, req.ReturnURL, buyerLocale, consent, attr, growth,
-		wantsEmbeddedCheckout(req.Capabilities))
+		wantsEmbeddedCheckout(req.Capabilities), req.Prepare)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1405,6 +1441,7 @@ func (h *Handler) confirmPublicCheckout(
 	attr orderAttribution,
 	growth growthCheckout,
 	wantsEmbedded bool,
+	prepare bool,
 ) {
 	// ── 0. A paid cart needs a place to send the buyer BACK to, and a
 	// payment window, before anything is written. Resolving the return URL
@@ -1662,7 +1699,7 @@ func (h *Handler) confirmPublicCheckout(
 	// ── Paid order: take the money. This runs AFTER the commit on purpose —
 	// a provider call can hang for seconds and must never hold a transaction
 	// that has seats locked behind it.
-	answer, ok := h.startPayment(ctx, w, r, hostedPaymentInput{
+	payIn := hostedPaymentInput{
 		CheckCtx:      checkCtx,
 		Session:       cs,
 		CheckoutToken: checkoutToken,
@@ -1671,7 +1708,18 @@ func (h *Handler) confirmPublicCheckout(
 		Buyer:         buyer,
 		ReturnBase:    returnBase,
 		ExpiresAt:     expiresAt,
-	}, wantsEmbedded)
+	}
+	var answer paymentStartAnswer
+	var ok bool
+	if prepare {
+		// The embedded form only, never a hosted page: a failure cancels
+		// the order and gives the places back (checkout_prepare.go).
+		var block *EmbeddedPaymentBlock
+		block, ok = h.startPreparedPayment(ctx, w, r, payIn)
+		answer = paymentStartAnswer{embedded: block}
+	} else {
+		answer, ok = h.startPayment(ctx, w, r, payIn, wantsEmbedded)
+	}
 	if !ok {
 		return
 	}
@@ -1690,6 +1738,9 @@ func (h *Handler) confirmPublicCheckout(
 		"pricing":            bd,
 
 		"marketing_discount_applied": growth.rewardWon && bd.Discount > 0,
+	}
+	if prepare {
+		body["prepared"] = true
 	}
 	if answer.embedded != nil {
 		h.writeEmbeddedStartAnswer(w, r, body, answer.embedded)
@@ -1768,6 +1819,55 @@ func (h *Handler) createPublicOrder(
 	tierUnitPrices map[uuid.UUID]int64,
 	attr orderAttribution,
 ) (*uuid.UUID, error) {
+	customerID, err := h.resolvePublicCustomer(ctx, tx, txq, checkCtx, cs, buyer)
+	if err != nil {
+		return nil, err
+	}
+
+	// The channel fee percentage is an audit snapshot only; the exact charge
+	// travels in orders.charge, so a lookup failure degrades to 0.
+	var chargePercentBP int32
+	if ch, chErr := txq.GetSalesChannelByID(ctx, checkCtx.SalesChannelID, checkCtx.OrgID); chErr == nil {
+		chargePercentBP = ordering.ChargePercentBP(ch.FeePercent)
+	}
+
+	res, err := ordering.CreateOrderFromCheckout(ctx, txq, ordering.CreateInput{
+		CheckoutSessionID: cs.ID,
+		EventID:           checkCtx.EventID,
+		CustomerID:        customerID,
+		Source:            ordering.SourcePublicFeed,
+		Actor:             ordering.ActorSystem,
+		ChargePercentBP:   chargePercentBP,
+		BuyerName:         buyer.Name,
+		BuyerEmail:        ptrOrNil(buyer.Email),
+		BuyerPhone:        buyer.Phone,
+		TierUnitPrices:    tierUnitPrices,
+		SalesLinkID:       attr.linkID,
+		Attribution:       attr.json,
+	})
+	if err != nil {
+		return nil, err
+	}
+	orderID := res.Order.ID
+	h.storeBuyerContext(ctx, tx, cs.ID, orderID, attr.buyerCtx)
+	return &orderID, nil
+}
+
+// resolvePublicCustomer resolves (or creates) the customer behind the buyer's
+// e-mail on the caller's transaction, links it to the organization and the
+// reservation, and closes the buyer's previous open order on the same session
+// (supersedeOpenOrder). It is shared by the order creation of checkout/start
+// and by the buyer attach of a prepared order (spec 65), so the two cannot
+// drift apart. A buyer without an e-mail resolves to no customer. Only the
+// supersede step can fail the caller; the resolution itself is best-effort.
+func (h *Handler) resolvePublicCustomer(
+	ctx context.Context,
+	tx pgx.Tx,
+	txq *gen.Queries,
+	checkCtx gen.PublicCheckoutContextRow,
+	cs gen.CheckoutSessionRow,
+	buyer publicOrderBuyer,
+) (*uuid.UUID, error) {
 	var customerID *uuid.UUID
 	if buyer.Email != "" {
 		// Best-effort by design (see the doc comment above), but "log and
@@ -1832,34 +1932,7 @@ func (h *Handler) createPublicOrder(
 			return nil, err
 		}
 	}
-
-	// The channel fee percentage is an audit snapshot only; the exact charge
-	// travels in orders.charge, so a lookup failure degrades to 0.
-	var chargePercentBP int32
-	if ch, chErr := txq.GetSalesChannelByID(ctx, checkCtx.SalesChannelID, checkCtx.OrgID); chErr == nil {
-		chargePercentBP = ordering.ChargePercentBP(ch.FeePercent)
-	}
-
-	res, err := ordering.CreateOrderFromCheckout(ctx, txq, ordering.CreateInput{
-		CheckoutSessionID: cs.ID,
-		EventID:           checkCtx.EventID,
-		CustomerID:        customerID,
-		Source:            ordering.SourcePublicFeed,
-		Actor:             ordering.ActorSystem,
-		ChargePercentBP:   chargePercentBP,
-		BuyerName:         buyer.Name,
-		BuyerEmail:        ptrOrNil(buyer.Email),
-		BuyerPhone:        buyer.Phone,
-		TierUnitPrices:    tierUnitPrices,
-		SalesLinkID:       attr.linkID,
-		Attribution:       attr.json,
-	})
-	if err != nil {
-		return nil, err
-	}
-	orderID := res.Order.ID
-	h.storeBuyerContext(ctx, tx, cs.ID, orderID, attr.buyerCtx)
-	return &orderID, nil
+	return customerID, nil
 }
 
 // supersedeOpenOrder closes the customer's previous pending_payment order on

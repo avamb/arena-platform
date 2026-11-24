@@ -18,6 +18,7 @@
   import { countdownSeconds } from '../lib/cart.js';
   import {
     createPaymentController,
+    type DeferredPaymentHandle,
     type PaymentController,
     type PaymentUiState,
   } from '../lib/paymentController.js';
@@ -48,6 +49,20 @@
     onBack?: () => void;
     /** Replaceable in tests and by the host: navigates to the hosted page. */
     redirect?: (url: string) => void;
+    /**
+     * A prepared checkout (preload-payment="checkout"): the screen loads hidden
+     * and waits for `reveal`; read once, on mount.
+     */
+    deferred?: boolean;
+    /**
+     * The screen is visible to the buyer. A deferred screen is mounted hidden
+     * and turns visible after "Pay"; its form view is reported only then.
+     */
+    shown?: boolean;
+    /** Deferred: the handle the widget reveals the screen through (null when gone). */
+    onHandle?: (token: string, handle: DeferredPaymentHandle | null) => void;
+    /** Deferred: the hidden form failed; the widget pays the classic way. */
+    onDeferredFailure?: (token: string) => void;
   }
 
   const {
@@ -68,6 +83,10 @@
     redirect = (url: string) => {
       window.location.href = url;
     },
+    deferred = false,
+    shown = true,
+    onHandle,
+    onDeferredFailure,
   }: Props = $props();
 
   const s = $derived(getPaymentStrings(locale));
@@ -85,6 +104,9 @@
   const paymentSlot = `arena-pay-element-${uid}`;
   let light: LightDomMounts | null = null;
   let controller: PaymentController | null = null;
+  let mountedToken = '';
+  let mountedDeferred = false;
+  let releaseHandle: (() => void) | null = null;
   let clock: ReturnType<typeof setInterval> | null = null;
 
   const busy = $derived(
@@ -137,6 +159,12 @@
   onMount(() => {
     tick();
     clock = setInterval(tick, 1000);
+    // Read once: the parent's props may be gone by the time this screen is destroyed.
+    mountedToken = checkoutToken;
+    mountedDeferred = deferred;
+    const handleCb = onHandle;
+    const failCb = onDeferredFailure;
+    releaseHandle = mountedDeferred && handleCb ? () => handleCb(mountedToken, null) : null;
     controller = createPaymentController({
       block: payment,
       locale,
@@ -148,7 +176,16 @@
       // After Stripe accepts the payment keep asking until the hold is over and a
       // few minutes more (the webhook can be late), never less than a minute.
       lateSettleMaxMs: lateSettleMs(),
+      deferred: mountedDeferred,
+      onDeferredFailure: () => failCb?.(mountedToken),
     });
+    if (mountedDeferred) {
+      handleCb?.(mountedToken, {
+        reveal: (email: string) => (controller ? controller.reveal(email) : Promise.resolve(false)),
+        failed: () => !controller || controller.hasFailed(),
+      });
+    }
+    if (shown) controller.markShown();
     // Stripe's form must live in the light DOM (never ready inside a ShadowRoot).
     light = mountInLightDom(expressNode, paymentNode, expressSlot, paymentSlot);
     const mounts = { express: light.express, payment: light.payment };
@@ -165,7 +202,15 @@
     }
   });
 
+  // A hidden (deferred) screen turned visible: the widget switched to it after
+  // "Pay" (and after PAYMENT_STARTED), so the form view may be reported now.
+  $effect(() => {
+    if (shown) controller?.markShown();
+  });
+
   onDestroy(() => {
+    releaseHandle?.();
+    releaseHandle = null;
     if (clock) clearInterval(clock);
     controller?.destroy();
     controller = null;
