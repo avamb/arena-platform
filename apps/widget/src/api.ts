@@ -314,6 +314,9 @@ export async function postCheckoutBuyer(
  * session first, then cancels the order and releases the places. Sent with
  * `keepalive` so it survives the page being left.
  *
+ * @returns The order's status after the call (`cancelled`, `paid`, `expired`,
+ *          `needs_help`, `refunded`) and whether it is cancelled; null when the
+ *          answer has no readable body.
  * @throws ApiError. 409 `checkout.payment_in_progress`: Stripe refused, the
  *         money is going through.
  */
@@ -321,10 +324,23 @@ export async function postCheckoutCancel(
   checkoutToken: string,
   apiBase = '',
   opts: { keepalive?: boolean } = {},
-): Promise<void> {
+): Promise<CheckoutCancelResponse | null> {
   const url = `${apiBase}/v1/public/checkout/${encodeURIComponent(checkoutToken)}/cancel`;
   const res = await fetch(url, { method: 'POST', keepalive: opts.keepalive === true });
   if (!res.ok) throw await apiErrorFromResponse(res, 'postCheckoutCancel');
+  try {
+    return (await res.json()) as CheckoutCancelResponse;
+  } catch {
+    return null;
+  }
+}
+
+/** Response of POST /v1/public/checkout/{checkoutToken}/cancel. */
+export interface CheckoutCancelResponse {
+  checkout_token?: string;
+  status?: string;
+  /** True when the order is cancelled (now or by an earlier call). */
+  cancelled?: boolean;
 }
 
 /**

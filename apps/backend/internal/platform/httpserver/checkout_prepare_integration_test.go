@@ -523,6 +523,162 @@ func TestCheckoutPrepare_AttachRefusedAfterTheHoldExpired(t *testing.T) {
 	}
 }
 
+// The hold is still live but the payment window (hold expiry minus the
+// grace, the Stripe session's own expiry) is over: the attach is refused.
+func TestCheckoutPrepare_AttachRefusedAfterThePaymentWindow(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+	f, _ := embeddedFixture(t, ctx, pool, "prg")
+	defer f.cleanup()
+	stripe := newStubStripe(t)
+	srv := buildEmbeddedServer(t, pool, stripe.baseURL(), true)
+
+	start := prepareOK(t, srv, f)
+	// The default grace is 120 s: 60 s of hold left is past payment_expires_at.
+	if _, err := pool.Exec(ctx, `UPDATE reservations SET expires_at = now() + interval '60 seconds'
+		WHERE id = (SELECT reservation_id FROM checkout_sessions WHERE id = $1)`, uuid.MustParse(start.CheckoutSess.ID)); err != nil {
+		t.Fatalf("shorten hold: %v", err)
+	}
+	if code, out := attachBuyer(t, srv, start.CheckoutToken, map[string]any{"email": f.buyerMail, "name": "N", "phone": f.buyerPhone}, nil); code != http.StatusConflict || prepErrCode(out) != "checkout.not_payable" {
+		t.Fatalf("attach inside the grace = %d %v", code, out)
+	}
+	if o := orderOf(t, ctx, pool, start.CheckoutSess.ID); o.BuyerEmail != nil {
+		t.Fatal("a refused attach wrote the buyer")
+	}
+}
+
+// No active feed publishes the order's event any more: nobody can tell the
+// channel's name, phone and consent rules, so the attach is refused instead
+// of going on with every rule switched off.
+func TestCheckoutPrepare_AttachRefusedWithoutFeedContext(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+	f, _ := embeddedFixture(t, ctx, pool, "prh")
+	defer f.cleanup()
+	stripe := newStubStripe(t)
+	srv := buildEmbeddedServer(t, pool, stripe.baseURL(), true)
+
+	start := prepareOK(t, srv, f)
+	if _, err := pool.Exec(ctx, `UPDATE agent_feed_tokens SET is_active = false WHERE sales_channel_id = $1`, f.channelID); err != nil {
+		t.Fatalf("switch the feed off: %v", err)
+	}
+	// Name and phone left out on purpose: with the flags read as false this
+	// attach would have passed.
+	if code, out := attachBuyer(t, srv, start.CheckoutToken, map[string]any{"email": f.buyerMail}, nil); code != http.StatusConflict || prepErrCode(out) != "checkout.not_payable" {
+		t.Fatalf("attach without a feed context = %d %v", code, out)
+	}
+	if o := orderOf(t, ctx, pool, start.CheckoutSess.ID); o.BuyerEmail != nil {
+		t.Fatal("a refused attach wrote the buyer")
+	}
+}
+
+// The unpaid-order reminder of a prepared order counts from the attach, not
+// from the prepare: an order opened 30 minutes ago and attached just now is
+// not due; 16 minutes after the attach it is.
+func TestCheckoutPrepare_ReminderCountsFromAttach(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+	f, _ := embeddedFixture(t, ctx, pool, "pri")
+	defer f.cleanup()
+	defer func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM worker_jobs WHERE job_type = $1
+			AND payload->>'order_id' IN (SELECT id::text FROM orders WHERE org_id = $2)`, cartreminder.JobTypeEmail, f.orgID)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM checkout_reminders WHERE order_id IN (SELECT id FROM orders WHERE org_id = $1)`, f.orgID)
+	}()
+	stripe := newStubStripe(t)
+	srv := buildEmbeddedServer(t, pool, stripe.baseURL(), true)
+
+	start := prepareOK(t, srv, f)
+	if code, out := attachBuyer(t, srv, start.CheckoutToken, map[string]any{"email": f.buyerMail, "name": "Reminded Buyer", "phone": f.buyerPhone}, nil); code != http.StatusOK {
+		t.Fatalf("attach = %d %v", code, out)
+	}
+	ord := orderOf(t, ctx, pool, start.CheckoutSess.ID)
+	var attachedEvents int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM order_events WHERE order_id = $1 AND type = 'buyer_attached'`, ord.ID).Scan(&attachedEvents); err != nil || attachedEvents != 1 {
+		t.Fatalf("buyer_attached events = %d (%v), want 1", attachedEvents, err)
+	}
+	// Opened 30 minutes ago; the window is long enough for the pick.
+	if _, err := pool.Exec(ctx, `UPDATE orders SET created_at = now() - interval '30 minutes',
+		expires_at = now() + interval '1 hour' WHERE id = $1`, ord.ID); err != nil {
+		t.Fatalf("backdate order: %v", err)
+	}
+	now := time.Now().UTC()
+	if n, err := cartreminder.SweepOrgs(ctx, pool, now, []uuid.UUID{f.orgID}); err != nil || n != 0 {
+		t.Fatalf("sweep right after the attach queued %d (%v), want 0", n, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE order_events SET created_at = now() - interval '16 minutes'
+		WHERE order_id = $1 AND type = 'buyer_attached'`, ord.ID); err != nil {
+		t.Fatalf("backdate attach: %v", err)
+	}
+	if n, err := cartreminder.SweepOrgs(ctx, pool, time.Now().UTC(), []uuid.UUID{f.orgID}); err != nil || n != 1 {
+		t.Fatalf("sweep 16 minutes after the attach queued %d (%v), want 1", n, err)
+	}
+}
+
+// The webhook fills a missing e-mail taking the checkout row before the
+// order row, the order of the attach: a transaction that holds the checkout
+// and then asks for the order (as the attach does) while the paid webhook
+// runs must not deadlock.
+func TestCheckoutPrepare_FillEmailLocksCheckoutBeforeOrder(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+	f, _ := embeddedFixture(t, ctx, pool, "prj")
+	defer f.cleanup()
+	stripe := newStubStripe(t)
+	srv := buildEmbeddedServer(t, pool, stripe.baseURL(), true)
+
+	start := prepareOK(t, srv, f)
+	csID := uuid.MustParse(start.CheckoutSess.ID)
+	ord := orderOf(t, ctx, pool, start.CheckoutSess.ID)
+	cs := *intentsOf(t, ctx, pool, start.CheckoutSess.ID)[0].ProviderPaymentID
+
+	// "The attach": checkout row locked first.
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if _, err := tx.Exec(ctx, `SET LOCAL lock_timeout = '10s'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM checkout_sessions WHERE id = $1 FOR UPDATE`, csID); err != nil {
+		t.Fatalf("lock checkout: %v", err)
+	}
+
+	type result struct {
+		code int
+		body []byte
+	}
+	done := make(chan result, 1)
+	collected := "locked-" + f.orgID.String()[:8] + "@arena-integration.test"
+	go func() {
+		code, body := postSignedWebhook(t, srv, completedWithEmail(t, cs, "pi_prj_"+uuid.NewString()[:8], collected), f.webhookSecret)
+		done <- result{code, body}
+	}()
+	// Let the webhook reach its first lock.
+	time.Sleep(500 * time.Millisecond)
+	// "The attach" now asks for the order row. Before the fix the webhook
+	// already held it and waited for the checkout row: deadlock.
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM orders WHERE id = $1 FOR UPDATE`, ord.ID); err != nil {
+		t.Fatalf("lock order behind the webhook: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	var res result
+	select {
+	case res = <-done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the webhook did not finish")
+	}
+	if res.code != http.StatusOK || !strings.Contains(string(res.body), `"checkout_completed":true`) {
+		t.Fatalf("paid webhook = %d %s", res.code, res.body)
+	}
+	if o := orderOf(t, ctx, pool, start.CheckoutSess.ID); o.Status != "paid" || o.BuyerEmail == nil || *o.BuyerEmail != collected {
+		t.Fatalf("paid order = %q email %v", o.Status, o.BuyerEmail)
+	}
+}
+
 func TestCheckoutPrepare_SameIdempotencyKeyOneOrder(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := t.Context()

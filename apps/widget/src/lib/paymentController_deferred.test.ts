@@ -180,24 +180,69 @@ describe('deferred: failures before reveal', () => {
 });
 
 describe('deferred: hidden until reveal', () => {
-  it('reports checkout_form_view only after reveal AND ready', async () => {
+  const formViews = (h: ReturnType<typeof setup>) => h.events.filter((e) => e.step === 'checkout_form_view');
+
+  it('reports checkout_form_view only after reveal, the e-mail taken, shown AND ready', async () => {
     const h = setup();
     await loaded(h);
     await flush();
     expect(h.events.map((e) => e.step)).toEqual([]);
     await h.ctrl.reveal('buyer@example.com');
-    expect(h.events.filter((e) => e.step === 'checkout_form_view')).toHaveLength(1);
+    // updateEmail succeeded, but the screen is not visible yet.
+    expect(formViews(h)).toHaveLength(0);
+    h.ctrl.markShown();
+    expect(formViews(h)).toHaveLength(1);
+    h.ctrl.markShown();
+    expect(formViews(h)).toHaveLength(1);
     h.ctrl.destroy();
   });
 
-  it('revealed before ready: the form view waits for ready', async () => {
+  it('shown before the e-mail is taken: the form view waits for updateEmail', async () => {
+    let answer!: () => void;
+    const h = setup({
+      updateEmail: () => new Promise((r) => (answer = () => r({ type: 'success' }))),
+    });
+    await loaded(h);
+    const revealing = h.ctrl.reveal('buyer@example.com');
+    h.ctrl.markShown();
+    await flush();
+    expect(formViews(h)).toHaveLength(0);
+    answer();
+    await revealing;
+    expect(formViews(h)).toHaveLength(1);
+    h.ctrl.destroy();
+  });
+
+  it('a failing updateEmail never reports the form view', async () => {
+    const h = setup({
+      updateEmail: async () => ({ type: 'error', error: { type: 'invalid_request_error' } }),
+    });
+    await loaded(h);
+    h.ctrl.markShown();
+    await h.ctrl.reveal('buyer@example.com');
+    await flush();
+    expect(formViews(h)).toHaveLength(0);
+    h.ctrl.destroy();
+  });
+
+  it('shown alone (no reveal) reports nothing', async () => {
+    const h = setup();
+    await loaded(h);
+    h.ctrl.markShown();
+    await flush();
+    expect(formViews(h)).toHaveLength(0);
+    h.ctrl.destroy();
+  });
+
+  it('revealed and shown before ready: the form view waits for ready', async () => {
     const h = setup();
     await h.ctrl.start({ express: 'E', payment: 'P' });
     h.express.fire('availablepaymentmethodschange', { availablePaymentMethods: { applePay: false } });
     await h.ctrl.reveal('buyer@example.com');
-    expect(h.events.filter((e) => e.step === 'checkout_form_view')).toHaveLength(0);
+    h.ctrl.markShown();
+    expect(formViews(h)).toHaveLength(0);
     h.payment.fire('ready');
-    expect(h.events.filter((e) => e.step === 'checkout_form_view')).toHaveLength(1);
+    expect(formViews(h)).toHaveLength(1);
     h.ctrl.destroy();
   });
 

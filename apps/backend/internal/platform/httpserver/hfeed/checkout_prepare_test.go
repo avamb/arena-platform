@@ -3,6 +3,8 @@ package hfeed
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -10,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
@@ -78,6 +82,51 @@ func TestHandlePublicCheckoutBuyer_NoDatabase(t *testing.T) {
 	h.HandlePublicCheckoutBuyer(rec, req)
 	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("no database: %d %q", rec.Code, rec.Header().Get("Cache-Control"))
+	}
+}
+
+// The attach closes with the PAYMENT window (hold expiry minus the grace),
+// not with the hold.
+func TestPaymentWindowOpen(t *testing.T) {
+	now := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+	grace := 2 * time.Minute
+	cases := []struct {
+		name string
+		hold time.Time
+		want bool
+	}{
+		{"well inside", now.Add(10 * time.Minute), true},
+		{"hold live, inside the grace", now.Add(time.Minute), false},
+		{"exactly at payment_expires_at", now.Add(grace), false},
+		{"one second before payment_expires_at", now.Add(grace + time.Second), true},
+		{"hold over", now.Add(-time.Second), false},
+	}
+	for _, tc := range cases {
+		if got := paymentWindowOpen(tc.hold, grace, now); got != tc.want {
+			t.Errorf("%s: open = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// No feed context or no buyer flags refuses the attach; it never proceeds
+// with every channel flag false.
+func TestAttachLookupOutcome(t *testing.T) {
+	cases := []struct {
+		name  string
+		err   error
+		token string
+		want  lookupOutcome
+	}{
+		{"found", nil, "tok", lookupFound},
+		{"no row", pgx.ErrNoRows, "", lookupMissing},
+		{"wrapped no row", fmt.Errorf("x: %w", pgx.ErrNoRows), "tok", lookupMissing},
+		{"row without a token", nil, "  ", lookupMissing},
+		{"database error", errors.New("boom"), "tok", lookupFailed},
+	}
+	for _, tc := range cases {
+		if got := attachLookupOutcome(tc.err, tc.token); got != tc.want {
+			t.Errorf("%s: outcome = %v, want %v", tc.name, got, tc.want)
+		}
 	}
 }
 

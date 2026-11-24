@@ -54,6 +54,11 @@
      * and waits for `reveal`; read once, on mount.
      */
     deferred?: boolean;
+    /**
+     * The screen is visible to the buyer. A deferred screen is mounted hidden
+     * and turns visible after "Pay"; its form view is reported only then.
+     */
+    shown?: boolean;
     /** Deferred: the handle the widget reveals the screen through (null when gone). */
     onHandle?: (token: string, handle: DeferredPaymentHandle | null) => void;
     /** Deferred: the hidden form failed; the widget pays the classic way. */
@@ -79,6 +84,7 @@
       window.location.href = url;
     },
     deferred = false,
+    shown = true,
     onHandle,
     onDeferredFailure,
   }: Props = $props();
@@ -179,6 +185,7 @@
         failed: () => !controller || controller.hasFailed(),
       });
     }
+    if (shown) controller.markShown();
     // Stripe's form must live in the light DOM (never ready inside a ShadowRoot).
     light = mountInLightDom(expressNode, paymentNode, expressSlot, paymentSlot);
     const mounts = { express: light.express, payment: light.payment };
@@ -193,6 +200,12 @@
     } else {
       void controller.start(mounts);
     }
+  });
+
+  // A hidden (deferred) screen turned visible: the widget switched to it after
+  // "Pay" (and after PAYMENT_STARTED), so the form view may be reported now.
+  $effect(() => {
+    if (shown) controller?.markShown();
   });
 
   onDestroy(() => {

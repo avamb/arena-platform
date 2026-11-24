@@ -129,7 +129,10 @@ func (h *Handler) HandlePublicCheckoutBuyer(w http.ResponseWriter, r *http.Reque
 		h.writeAttachUnavailable(w, r)
 		return
 	}
-	if !fallbackPayable(pc, time.Now().UTC()) {
+	if now := time.Now().UTC(); !fallbackPayable(pc, now) || !paymentWindowOpen(pc.HoldExpiresAt, h.paymentGrace, now) {
+		// The hold alone is not enough: the Stripe session dies at hold expiry
+		// minus the grace (payment_expires_at), so a buyer attached after it
+		// could never pay.
 		h.writeNotPayable(w, r, h.currentPublicStatus(ctx, cs))
 		return
 	}
@@ -139,30 +142,41 @@ func (h *Handler) HandlePublicCheckoutBuyer(w http.ResponseWriter, r *http.Reque
 	}
 
 	// ── The channel's rules, read on the pool before the transaction ───────
+	// Fails closed: without an active feed token that publishes the event
+	// nobody can say which name, phone and consent the channel requires, and
+	// an attach with every flag false would skip them. Such an order (its
+	// feed was switched off or unpublished after prepare) is not payable.
 	fc, err := h.checkoutQueries.GetCheckoutFeedContext(ctx, cs.ID)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	switch attachLookupOutcome(err, fc.FeedToken) {
+	case lookupMissing:
+		h.logger.Warn("public_checkout_buyer: no active feed publishes the order's event; refusing the attach",
+			slog.String("checkout_session_id", cs.ID.String()))
+		h.writeNotPayable(w, r, publicStatusPending)
+		return
+	case lookupFailed:
 		h.logger.Error("public_checkout_buyer: feed lookup failed",
 			slog.String("checkout_session_id", cs.ID.String()), slog.String("error", err.Error()))
 		h.writeAttachUnavailable(w, r)
 		return
 	}
-	var collectName, collectPhone, consentRequired bool
-	var consentSeller string
-	if fc.FeedToken != "" {
-		flags, flagsErr := h.publicFeedQueries.GetFeedTokenBuyerFlags(ctx, fc.FeedToken)
-		if flagsErr == nil {
-			collectName = flags.CollectName
-			collectPhone = flags.CollectPhone
-			consentRequired, consentSeller = consentFromFlags(flags)
-		} else if !errors.Is(flagsErr, pgx.ErrNoRows) {
-			// Fails closed, like checkout/start: the flags decide whether the
-			// buyer must accept the sale terms.
-			h.logger.Error("public_checkout_buyer: get buyer flags failed",
-				slog.String("checkout_session_id", cs.ID.String()), slog.String("error", flagsErr.Error()))
-			h.writeAttachUnavailable(w, r)
-			return
-		}
+	flags, flagsErr := h.publicFeedQueries.GetFeedTokenBuyerFlags(ctx, fc.FeedToken)
+	switch attachLookupOutcome(flagsErr, fc.FeedToken) {
+	case lookupMissing:
+		h.logger.Warn("public_checkout_buyer: the feed token has no buyer flags; refusing the attach",
+			slog.String("checkout_session_id", cs.ID.String()))
+		h.writeNotPayable(w, r, publicStatusPending)
+		return
+	case lookupFailed:
+		// Fails closed, like checkout/start: the flags decide whether the
+		// buyer must accept the sale terms.
+		h.logger.Error("public_checkout_buyer: get buyer flags failed",
+			slog.String("checkout_session_id", cs.ID.String()), slog.String("error", flagsErr.Error()))
+		h.writeAttachUnavailable(w, r)
+		return
 	}
+	collectName := flags.CollectName
+	collectPhone := flags.CollectPhone
+	consentRequired, consentSeller := consentFromFlags(flags)
 	if collectName && buyerName == nil {
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 			"checkout.buyer_name_required",
@@ -245,9 +259,25 @@ func (h *Handler) attachBuyerTx(r *http.Request, cs gen.CheckoutSessionRow, buye
 	defer func() { _ = tx.Rollback(ctx) }()
 	txq := gen.New(tx)
 
+	// The checkout row is locked first (the order a cancel and the payment
+	// webhook take); the hold's expiry is read with it so the payment window
+	// is checked again under the lock.
 	var state string
-	if err := tx.QueryRow(ctx, `SELECT state FROM checkout_sessions WHERE id = $1 FOR UPDATE`, cs.ID).Scan(&state); err != nil {
+	var holdExpiresAt time.Time
+	err = tx.QueryRow(ctx, `
+		SELECT cs.state, r.expires_at
+		FROM   checkout_sessions cs
+		JOIN   reservations r ON r.id = cs.reservation_id
+		WHERE  cs.id = $1
+		FOR UPDATE OF cs`, cs.ID).Scan(&state, &holdExpiresAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return attachNotPayable, "", nil
+	}
+	if err != nil {
 		return 0, "", err
+	}
+	if !paymentWindowOpen(holdExpiresAt, h.paymentGrace, time.Now().UTC()) {
+		return attachNotPayable, "", nil
 	}
 	o, err := txq.GetOrderByCheckoutSession(ctx, cs.ID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -294,6 +324,11 @@ func (h *Handler) attachBuyerTx(r *http.Request, cs gen.CheckoutSessionRow, buye
 			return 0, "", err
 		}
 	}
+	// The moment the order got its buyer: the unpaid-order reminder counts
+	// from it, not from the prepare (cartreminder.SweepOrgs).
+	if _, err := txq.InsertOrderEvent(ctx, ord.ID, ordering.EventBuyerAttached, ordering.ActorSystem, json.RawMessage(`{}`)); err != nil {
+		return 0, "", err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return 0, "", err
 	}
@@ -320,6 +355,36 @@ func (h *Handler) writeAttachAnswer(w http.ResponseWriter, token string, pc gen.
 		"expires_at":         pc.HoldExpiresAt.UTC().Format(time.RFC3339),
 		"payment_expires_at": pc.HoldExpiresAt.Add(-h.paymentGrace).UTC().Format(time.RFC3339),
 	})
+}
+
+// paymentWindowOpen reports whether a buyer can still pay: the provider
+// session dies at the hold's expiry minus the grace (payment_expires_at),
+// which is earlier than the hold itself.
+func paymentWindowOpen(holdExpiresAt time.Time, grace time.Duration, now time.Time) bool {
+	return now.Before(holdExpiresAt.Add(-grace))
+}
+
+type lookupOutcome int
+
+const (
+	lookupFound lookupOutcome = iota
+	lookupMissing
+	lookupFailed
+)
+
+// attachLookupOutcome classifies a lookup of the channel's rules: no row (or
+// no feed token to read the flags through) is "missing", which the attach
+// refuses; any other error is "failed".
+func attachLookupOutcome(err error, feedToken string) lookupOutcome {
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return lookupMissing
+	case err != nil:
+		return lookupFailed
+	case strings.TrimSpace(feedToken) == "":
+		return lookupMissing
+	}
+	return lookupFound
 }
 
 func (h *Handler) writeAttachUnavailable(w http.ResponseWriter, r *http.Request) {

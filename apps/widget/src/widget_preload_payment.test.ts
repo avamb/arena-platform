@@ -122,4 +122,10 @@ describe('the one payment screen', () => {
     expect(screenSource).toContain('deferred: mountedDeferred,');
     expect(screenSource).toContain('controller.reveal(email)');
   });
+
+  it('tells its controller when it is shown, so the form view waits for the switch to the screen', () => {
+    expect(widgetSource).toContain('shown={payView.shown}');
+    expect(screenSource).toMatch(/\$effect\(\(\) => \{\s*if \(shown\) controller\?\.markShown\(\);\s*\}\);/);
+    expect(screenSource).toContain('if (shown) controller.markShown();');
+  });
 });

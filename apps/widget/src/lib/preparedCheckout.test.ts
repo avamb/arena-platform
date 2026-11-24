@@ -8,6 +8,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { postCheckoutBuyer, postCheckoutCancel, postCheckoutPrepare } from '../api.js';
 import {
   createPreparedCheckout,
+  PREPARE_DEBOUNCE_MS,
+  PREPARED_STILL_HELD_CODE,
   isPlainCart,
   loadsStripeEarly,
   preloadMode,
@@ -34,6 +36,7 @@ let tokenSeq: number;
 /** Overrides per route: return a Response to replace the default answer. */
 let onPrepare: (() => Response | Promise<Response>) | null;
 let onBuyer: (() => Response | Promise<Response>) | null;
+let onCancel: ((token: string) => Response | Promise<Response>) | null;
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -62,6 +65,7 @@ beforeEach(() => {
   tokenSeq = 0;
   onPrepare = null;
   onBuyer = null;
+  onCancel = null;
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string, init: RequestInit = {}) => {
@@ -93,7 +97,8 @@ beforeEach(() => {
       }
       if (m && m[2] === 'cancel') {
         order.push(`cancel:${m[1]}`);
-        return json(200, { status: 'cancelled' });
+        if (onCancel) return onCancel(m[1]!);
+        return json(200, { checkout_token: m[1], status: 'cancelled', cancelled: true });
       }
       return json(404, {});
     }),
@@ -118,10 +123,11 @@ const BUYER: CheckoutBuyerPayload = {
   locale: 'en',
 };
 
-function make(extra: { handleWaitMs?: number } = {}) {
+function make(extra: { handleWaitMs?: number; cancelRetryMs?: number } = {}) {
   const changes: Array<PreparedCheckout | null> = [];
   let keySeq = 0;
   const m = createPreparedCheckout({
+    cancelRetryMs: 5,
     ...extra,
     prepare: (k) => postCheckoutPrepare('feed-1', PREPARE_BODY, '', k),
     attach: (t, b) => postCheckoutBuyer(t, b, ''),
@@ -429,6 +435,211 @@ describe('pay with a prepared checkout', () => {
   });
 });
 
+// ─── A prepare without an answer (M1) ─────────────────────────────────────────
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+describe('a prepare that throws without an HTTP answer', () => {
+  it('is sent once more with the SAME key, and the replayed hold is cancelled', async () => {
+    let n = 0;
+    onPrepare = () => {
+      n += 1;
+      if (n === 1) throw new TypeError('Failed to fetch');
+      tokenSeq += 1;
+      return preparedAnswer(`tok${tokenSeq}`);
+    };
+    const { m, changes } = make({ handleWaitMs: 20 });
+    m.update(true, 'cart-A');
+    await flush();
+    await m.settled();
+    expect(prepares()).toHaveLength(2);
+    expect(prepares()[0]!.headers['Idempotency-Key']).toBe('idem-1');
+    expect(prepares()[1]!.headers['Idempotency-Key']).toBe('idem-1');
+    expect(cancels().map((c) => c.url)).toEqual(['/v1/public/checkout/tok1/cancel']);
+    // The replayed hold is never shown as the prepared one.
+    expect(changes.filter((c) => c?.token === 'tok1')).toEqual([]);
+    // Once the cancel is through a fresh prepare (new key) may run.
+    await wait(PREPARE_DEBOUNCE_MS + 50);
+    expect(prepares()).toHaveLength(3);
+    expect(prepares()[2]!.headers['Idempotency-Key']).toBe('idem-2');
+    expect(m.current?.token).toBe('tok2');
+  });
+
+  it('a 5xx is retried the same way', async () => {
+    let n = 0;
+    onPrepare = () => {
+      n += 1;
+      if (n === 1) return errorEnvelope(502, 'http_502');
+      tokenSeq += 1;
+      return preparedAnswer(`tok${tokenSeq}`);
+    };
+    const { m } = make();
+    m.update(true, 'cart-A');
+    await flush();
+    await m.settled();
+    expect(prepares()).toHaveLength(2);
+    expect(prepares()[1]!.headers['Idempotency-Key']).toBe('idem-1');
+    expect(cancels()).toHaveLength(1);
+    m.destroy();
+  });
+
+  it('a retry that also fails turns prepare off for the page view', async () => {
+    vi.useFakeTimers();
+    onPrepare = () => {
+      throw new TypeError('Failed to fetch');
+    };
+    const { m } = make();
+    m.update(true, 'cart-A');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(prepares()).toHaveLength(2);
+    m.update(true, 'cart-B');
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(prepares()).toHaveLength(2);
+    const out = await m.pay({ plain: true, cartKey: 'cart-B', email: 'a@b.cz', body: BUYER });
+    expect(out.kind).toBe('classic');
+  });
+
+  it('a 4xx answer is not retried: nothing was held', async () => {
+    onPrepare = () => errorEnvelope(409, 'checkout.seat_unavailable');
+    const { m } = make();
+    m.update(true, 'cart-A');
+    await flush();
+    expect(prepares()).toHaveLength(1);
+    expect(cancels()).toHaveLength(0);
+    m.destroy();
+  });
+});
+
+// ─── A cancel that does not get through (M2) ──────────────────────────────────
+
+describe('a cancel counts only when the checkout is gone', () => {
+  it('409 payment_in_progress is sent once more; through the second time, prepare goes on', async () => {
+    let n = 0;
+    onCancel = (t) => {
+      n += 1;
+      return n === 1 ? errorEnvelope(409, 'checkout.payment_in_progress') : json(200, { checkout_token: t, status: 'cancelled', cancelled: true });
+    };
+    const { m } = await preparedWithHandle();
+    m.update(true, 'cart-B');
+    await wait(PREPARE_DEBOUNCE_MS + 50);
+    expect(cancels()).toHaveLength(2);
+    expect(prepares()).toHaveLength(2);
+    expect(m.current?.token).toBe('tok2');
+    m.destroy();
+  });
+
+  it('404 and status expired count as done', async () => {
+    onCancel = () => errorEnvelope(404, 'checkout.not_found');
+    const a = await preparedWithHandle();
+    a.m.update(false, 'cart-A');
+    await a.m.settled();
+    expect(cancels()).toHaveLength(1);
+    calls = [];
+    order = [];
+    onCancel = (t) => json(200, { checkout_token: t, status: 'expired', cancelled: false });
+    const b = await preparedWithHandle();
+    b.m.update(false, 'cart-A');
+    await b.m.settled();
+    expect(cancels()).toHaveLength(1);
+  });
+
+  it('never cancelled (5xx, then "paid"): no new hold, and Pay with the same cart attaches to it', async () => {
+    let n = 0;
+    onCancel = (t) => {
+      n += 1;
+      return n === 1 ? errorEnvelope(503, 'http_503') : json(200, { checkout_token: t, status: 'paid', cancelled: false });
+    };
+    const { m, changes } = await preparedWithHandle();
+    // The sheet closes: the cancel fails twice.
+    m.update(false, 'cart-A');
+    await m.settled();
+    expect(cancels()).toHaveLength(2);
+    expect(m.current).toBeNull();
+    // The sheet opens again with the same cart: the live checkout comes back, no prepare.
+    m.update(true, 'cart-A');
+    await flush();
+    expect(prepares()).toHaveLength(1);
+    expect(m.current?.token).toBe('tok1');
+    expect(changes[changes.length - 1]?.token).toBe('tok1');
+    m.setHandle('tok1', fakeHandle());
+    const out = await m.pay({ plain: true, cartKey: 'cart-A', email: 'buyer@example.com', body: BUYER });
+    expect(out.kind).toBe('attached');
+    expect(attaches().map((c) => c.url)).toEqual(['/v1/public/checkout/tok1/buyer']);
+    expect(prepares()).toHaveLength(1);
+  });
+
+  it('never cancelled: a cart change prepares nothing; Pay restores it with the original cart', async () => {
+    onCancel = () => errorEnvelope(409, 'checkout.payment_in_progress');
+    const { m } = await preparedWithHandle();
+    m.update(true, 'cart-B');
+    await m.settled();
+    await wait(PREPARE_DEBOUNCE_MS + 50);
+    expect(prepares()).toHaveLength(1);
+    expect(m.current).toBeNull();
+    // The buyer put the cart back: Pay attaches to the live checkout.
+    m.update(true, 'cart-A');
+    const paying = m.pay({ plain: true, cartKey: 'cart-A', email: 'buyer@example.com', body: BUYER });
+    await flush();
+    m.setHandle('tok1', fakeHandle());
+    const out = await paying;
+    expect(out.kind).toBe('attached');
+    expect(prepares()).toHaveLength(1);
+  });
+
+  it('never cancelled and the cart changed: Pay tries once more, then refuses instead of a second hold', async () => {
+    onCancel = () => errorEnvelope(409, 'checkout.payment_in_progress');
+    const { m } = await preparedWithHandle();
+    m.update(true, 'cart-B');
+    await m.settled();
+    expect(cancels()).toHaveLength(2);
+    const out = await m.pay({ plain: true, cartKey: 'cart-B', email: 'buyer@example.com', body: BUYER });
+    expect(out.kind).toBe('refused');
+    if (out.kind === 'refused') expect((out.error as { code?: string }).code).toBe(PREPARED_STILL_HELD_CODE);
+    expect(cancels()).toHaveLength(4);
+    expect(prepares()).toHaveLength(1);
+    expect(attaches()).toHaveLength(0);
+    // The extra try gets through: classic is allowed again.
+    onCancel = null;
+    const again = await m.pay({ plain: true, cartKey: 'cart-B', email: 'buyer@example.com', body: BUYER });
+    expect(again.kind).toBe('classic');
+    expect(prepares()).toHaveLength(1);
+  });
+
+  it('an attach failure whose cancel does not get through refuses instead of a classic start', async () => {
+    onBuyer = () => errorEnvelope(409, 'checkout.buyer_already_set');
+    onCancel = () => errorEnvelope(500, 'http_500');
+    const { m } = await preparedWithHandle();
+    const out = await m.pay({ plain: true, cartKey: 'cart-A', email: 'buyer@example.com', body: BUYER });
+    expect(out.kind).toBe('refused');
+    if (out.kind === 'refused') expect((out.error as { code?: string }).code).toBe(PREPARED_STILL_HELD_CODE);
+    expect(cancels()).toHaveLength(2);
+  });
+});
+
+describe('attach 400 checkout.invalid_email (L3)', () => {
+  it('is the buyer\'s to fix like a 422: refused, the prepared checkout stays', async () => {
+    onBuyer = () => errorEnvelope(400, 'checkout.invalid_email');
+    const { m, handle } = await preparedWithHandle();
+    const out = await m.pay({ plain: true, cartKey: 'cart-A', email: 'bad@', body: BUYER });
+    expect(out.kind).toBe('refused');
+    if (out.kind === 'refused') expect((out.error as { code?: string }).code).toBe('checkout.invalid_email');
+    expect(cancels()).toHaveLength(0);
+    expect(handle.reveal).not.toHaveBeenCalled();
+    expect(m.current?.token).toBe('tok1');
+    onBuyer = null;
+    const again = await m.pay({ plain: true, cartKey: 'cart-A', email: 'buyer@example.com', body: BUYER });
+    expect(again.kind).toBe('attached');
+  });
+
+  it('another 400 is not the buyer\'s: classic', async () => {
+    onBuyer = () => errorEnvelope(400, 'validation.bad_request');
+    const { m } = await preparedWithHandle();
+    const out = await m.pay({ plain: true, cartKey: 'cart-A', email: 'buyer@example.com', body: BUYER });
+    expect(out.kind).toBe('classic');
+    expect(cancels()).toHaveLength(1);
+  });
+});
+
 // ─── With a real controller on a fake Stripe ──────────────────────────────────
 
 function fakeStripe(opts: { openFails?: boolean } = {}) {
@@ -487,7 +698,7 @@ function controllerFor(m: ReturnType<typeof make>['m'], token: string, stripe: R
 }
 
 describe('the hidden payment screen', () => {
-  it('attach comes before Stripe gets the e-mail; the form view only after reveal', async () => {
+  it('attach comes before Stripe gets the e-mail; the form view only once shown', async () => {
     const t = make();
     t.m.update(true, 'cart-A');
     await flush();
@@ -501,6 +712,9 @@ describe('the hidden payment screen', () => {
     expect(out.kind).toBe('attached');
     await flush();
     expect(order).toEqual(['prepare', 'attach:tok1', 'updateEmail:buyer@example.com']);
+    // Attached and e-mail taken, but the widget has not switched to the screen yet.
+    expect(c.stepsSeen).not.toContain('checkout_form_view');
+    c.ctrl.markShown();
     expect(c.stepsSeen).toContain('checkout_form_view');
     c.ctrl.destroy();
   });

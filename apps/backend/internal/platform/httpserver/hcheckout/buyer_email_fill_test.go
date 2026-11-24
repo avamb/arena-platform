@@ -1,6 +1,75 @@
 package hcheckout
 
-import "testing"
+import (
+	"context"
+	"io"
+	"log/slog"
+	"strings"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+)
+
+// sqlRecorderTx is a pgx.Tx that records the SQL it is given, in order. Its
+// savepoint is itself. Only what fillMissingBuyerEmailTx calls is implemented.
+type sqlRecorderTx struct {
+	pgx.Tx
+	sql []string
+}
+
+func (t *sqlRecorderTx) Begin(context.Context) (pgx.Tx, error) { return t, nil }
+func (t *sqlRecorderTx) Commit(context.Context) error          { return nil }
+func (t *sqlRecorderTx) Rollback(context.Context) error        { return nil }
+func (t *sqlRecorderTx) Exec(_ context.Context, sql string, _ ...any) (pgconn.CommandTag, error) {
+	t.sql = append(t.sql, sql)
+	return pgconn.NewCommandTag("UPDATE 1"), nil
+}
+func (t *sqlRecorderTx) QueryRow(_ context.Context, sql string, _ ...any) pgx.Row {
+	t.sql = append(t.sql, sql)
+	return recorderRow{}
+}
+
+type recorderRow struct{}
+
+func (recorderRow) Scan(dest ...any) error {
+	for _, d := range dest {
+		if p, ok := d.(*uuid.UUID); ok {
+			*p = uuid.New()
+		}
+	}
+	return nil
+}
+
+// The fill takes the checkout row BEFORE it writes the order row: the order
+// of the buyer attach, so the two can never deadlock.
+func TestFillMissingBuyerEmail_LocksCheckoutBeforeOrder(t *testing.T) {
+	h := &Handler{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	tx := &sqlRecorderTx{}
+	h.fillMissingBuyerEmailTx(context.Background(), tx, uuid.New(), "paid@example.com")
+	if len(tx.sql) != 2 {
+		t.Fatalf("statements = %d (%q), want 2", len(tx.sql), tx.sql)
+	}
+	if !strings.Contains(tx.sql[0], "FROM checkout_sessions") || !strings.Contains(tx.sql[0], "FOR UPDATE") {
+		t.Errorf("first statement does not lock the checkout: %q", tx.sql[0])
+	}
+	if !strings.Contains(tx.sql[1], "UPDATE orders") {
+		t.Errorf("second statement does not fill the order: %q", tx.sql[1])
+	}
+}
+
+// No address or a malformed one touches nothing.
+func TestFillMissingBuyerEmail_InvalidAddressWritesNothing(t *testing.T) {
+	h := &Handler{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	for _, email := range []string{"", "  ", "not-an-address"} {
+		tx := &sqlRecorderTx{}
+		h.fillMissingBuyerEmailTx(context.Background(), tx, uuid.New(), email)
+		if len(tx.sql) != 0 {
+			t.Errorf("%q: statements = %q, want none", email, tx.sql)
+		}
+	}
+}
 
 // A prepared widget order (spec 65) may reach payment without its buyer: the
 // completed session's collected e-mail must come out of the envelope.

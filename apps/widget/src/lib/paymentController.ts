@@ -23,7 +23,10 @@
  *  - no fallback ever redirects or asks for the hosted page: a load or ready
  *    timeout, a loaderror or a failed init only mark the controller failed and
  *    call `onDeferredFailure` (the widget then pays the classic way);
- *  - no step is reported (`checkout_form_view` waits for reveal AND ready);
+ *  - no step is reported: `checkout_form_view` waits until Stripe took the
+ *    e-mail (`updateEmail` succeeded), the screen is SHOWN (`markShown()`,
+ *    called by the screen after the widget switched to it, so after
+ *    PAYMENT_STARTED) and the card form is ready;
  *  - nothing can be confirmed, by the card button or by a wallet.
  * `reveal(email)` gives Stripe the e-mail (`actions.updateEmail`); a failure
  * there is handled like any non-decline error (the hosted page).
@@ -152,6 +155,11 @@ export interface PaymentController {
   reveal(email: string): Promise<boolean>;
   /** Deferred mode: a fallback condition happened before reveal. */
   hasFailed(): boolean;
+  /**
+   * Deferred mode: the screen is visible to the buyer now (the widget switched
+   * to it). No-op in classic mode, where the screen is shown from the start.
+   */
+  markShown(): void;
   /** The buyer pressed "Pay". */
   submit(): Promise<void>;
   /** Polls the platform until the order settles (return from a bank page). */
@@ -237,6 +245,8 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
   // The e-mail waits here when reveal() comes before Stripe's actions.
   let pendingEmail: string | null = null;
   let emailApplied = !deferred;
+  // Deferred mode: the screen is visible (not just revealed to the controller).
+  let shown = !deferred;
 
   function set(patch: Partial<PaymentUiState>): void {
     if (destroyed) return;
@@ -290,6 +300,7 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
     if (destroyed) return;
     emailApplied = true;
     recomputeCanPay();
+    maybeSendFormView();
   }
 
   /**
@@ -308,7 +319,7 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
   }
 
   function maybeSendFormView(): void {
-    if (!paymentReady || formViewSent || !revealed) return;
+    if (!paymentReady || formViewSent || !revealed || !emailApplied || !shown || deferredFailed) return;
     if (walletsKnown) {
       sendFormView(true);
       return;
@@ -626,14 +637,19 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
       if (revealed) return true;
       revealed = true;
       pendingEmail = email.trim();
-      // The form may already be ready: checkout_form_view goes now.
-      maybeSendFormView();
+      // checkout_form_view goes once Stripe took the e-mail (applyEmail).
       if (actions) await applyEmail();
       return !deferredFailed && !destroyed;
     },
 
     hasFailed() {
       return deferredFailed;
+    },
+
+    markShown() {
+      if (shown || destroyed) return;
+      shown = true;
+      maybeSendFormView();
     },
 
     async submit() {

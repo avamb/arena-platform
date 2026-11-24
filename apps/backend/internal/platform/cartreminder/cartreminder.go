@@ -3,7 +3,7 @@
 //
 //   - The sweep (JobTypeSweep, every minute) picks orders of the widget and
 //     the tickets page (source public_feed) that are unpaid DueAfter after
-//     checkout/start, still have at least MinLeftAtPick of their payment
+//     checkout/start (after the buyer attach for a prepared order), still have at least MinLeftAtPick of their payment
 //     window, carry a buyer e-mail and an amount, and whose organization has
 //     not switched reminders off. One transaction inserts the order into
 //     checkout_reminders and queues JobTypeEmail; the primary key on order_id
@@ -27,6 +27,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
 )
 
 // Worker jobs.
@@ -79,11 +81,18 @@ func Sweep(ctx context.Context, pool *pgxpool.Pool, now time.Time) (int, error) 
 // use it so a pass never claims another package's orders in a shared database.
 func SweepOrgs(ctx context.Context, pool *pgxpool.Pool, now time.Time, orgs []uuid.UUID) (int, error) {
 	now = now.UTC()
+	// A prepared order (spec 65 early order) is created when the order sheet
+	// opens and gets its buyer later, at "Pay" (order_events buyer_attached).
+	// Its DueAfter counts from that moment, the latest of created_at and the
+	// attach: the person started paying then, not when the sheet opened.
 	rows, err := pool.Query(ctx, `
 		SELECT o.id, o.org_id, o.checkout_session_id
 		FROM   orders o
 		WHERE  o.status = 'pending_payment' AND o.source = 'public_feed'
-		  AND  o.created_at <= $1 AND o.created_at > $2
+		  AND  o.created_at > $2
+		  AND  GREATEST(o.created_at,
+		                COALESCE((SELECT max(e.created_at) FROM order_events e
+		                          WHERE e.order_id = o.id AND e.type = $6), o.created_at)) <= $1
 		  AND  o.total > 0 AND COALESCE(btrim(o.buyer_email), '') <> ''
 		  AND  o.expires_at >= $3
 		  AND  NOT EXISTS (SELECT 1 FROM checkout_reminders r WHERE r.order_id = o.id)
@@ -91,7 +100,7 @@ func SweepOrgs(ctx context.Context, pool *pgxpool.Pool, now time.Time, orgs []uu
 		  AND  ($5::uuid[] IS NULL OR o.org_id = ANY($5::uuid[]))
 		ORDER  BY o.created_at
 		LIMIT  $4`,
-		now.Add(-DueAfter), now.Add(-lookback), now.Add(MinLeftAtPick), batch, orgs)
+		now.Add(-DueAfter), now.Add(-lookback), now.Add(MinLeftAtPick), batch, orgs, ordering.EventBuyerAttached)
 	if err != nil {
 		return 0, err
 	}

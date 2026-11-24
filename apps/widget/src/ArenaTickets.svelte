@@ -1717,6 +1717,7 @@
             awaitReturn={payView.shown && paymentAwaitReturn}
             steps={paymentSteps.forToken(payView.token)}
             deferred={payView.deferred}
+            shown={payView.shown}
             onHandle={preparedCtl.setHandle}
             onDeferredFailure={preparedCtl.markFailed}
             onPaid={finishPayment}
