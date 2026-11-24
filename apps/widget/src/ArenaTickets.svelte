@@ -249,6 +249,14 @@
   let stage = $state<WidgetStage>('selecting');
   let cartSheetOpen = $state(false);
 
+  // The host page sees the open checkout sheet as `data-cart-open` on <arena-tickets>,
+  // so it can hide its own "Buy tickets" buttons with CSS alone while the buyer pays.
+  $effect(() => {
+    if (!host) return;
+    if (cartSheetOpen) host.setAttribute('data-cart-open', '');
+    else host.removeAttribute('data-cart-open');
+  });
+
   // ── Selection state ────────────────────────────────────────────────────────
 
   let selectedSeatKeys = $state<ReadonlySet<string>>(new Set());
