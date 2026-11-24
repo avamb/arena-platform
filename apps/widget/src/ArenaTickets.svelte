@@ -30,7 +30,7 @@
   import { parseLocale, parseFeedToken, parseSessionId, isRtlLocale } from './utils.js';
   import { fetchFeedEvent, fetchFeedEvents, postCheckoutStart, postCheckoutQuote, getCheckoutStatus, postCheckoutRecover, ApiError } from './api.js';
   import type { FeedSession, FeedEvent, Geometry, CategoryPrice, SeatStatusValue } from './types.js';
-  import type { BuyerFormValues } from './lib/checkout.js';
+  import type { BuyerFormValues, CheckoutQuotePayload, CheckoutQuoteResponse } from './lib/checkout.js';
   import { buildCheckoutPayload, buildQuotePayload, getCheckoutI18n, parseConflictsFromApiError, conflictKeySet, filterCartWithoutConflicts } from './lib/checkout.js';
   import { cartQuoteKey, promoErrorMessage, isPromoErrorCode } from './lib/promo.js';
   import {
@@ -53,7 +53,8 @@
   import { consentErrorMessage, consentPayload, forceConsent } from './lib/consent.js';
   import { isMarketingRewardRefusal, marketingErrorMessage, marketingPayload } from './lib/marketing.js';
   import { captureAttribution, type AttributionPayload } from './lib/attribution.js';
-  import { buildBuyerContext, captureClickIds, isTrackingGranted, persistClickIds, readBrowserCookies, type ClickIds } from './lib/buyerContext.js';
+  import { buildBuyerContext, captureClickIds, isTrackingGranted, persistClickIds, readBrowserCookies, type BuyerContextPayload, type ClickIds } from './lib/buyerContext.js';
+  import { initialAddToCartState, trackCartChange, withAddToCart } from './lib/addToCart.js';
   import { createFunnel, parseFunnelHost, type Funnel, type FunnelStep } from './lib/funnel.js';
   import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
   import { dispatchWidgetEvent, ARENA_EVENTS } from './lib/events.js';
@@ -400,6 +401,50 @@
     if (cartCount > 0 && sid) untrack(() => sendFunnel('seats_chosen', sid));
   });
 
+  // ── AddToCart for server-side Meta / GA4 (lib/addToCart.ts) ────────────────
+  //
+  // One id per cart, from its first item until it empties or a checkout
+  // starts; the seats the buyer selected in it are remembered. Every quote
+  // carries them, but only with the buyer's explicit tracking yes.
+
+  let addToCart = initialAddToCartState();
+  let addToCartSentFor: string | null = null;
+
+  $effect(() => {
+    const n = cartCount;
+    const keys = selectedSeatKeys;
+    untrack(() => {
+      addToCart = trackCartChange(addToCart, n, keys);
+    });
+  });
+
+  /** The buyer context now (the host's attribute may change after mount). */
+  function buyerContextNow(): BuyerContextPayload | null {
+    return buildBuyerContext({
+      consent: trackingConsent,
+      consentVersion: trackingConsentVersion,
+      clickIds,
+      cookies: readBrowserCookies(),
+      pageUrl: window.location.origin + window.location.pathname,
+    });
+  }
+
+  /** A quote of this cart, with the AddToCart fields when the buyer said yes. */
+  function postTrackedQuote(payload: CheckoutQuotePayload, signal?: AbortSignal): Promise<CheckoutQuoteResponse> {
+    if (!normFeedToken) return Promise.reject(new Error('no feed token'));
+    const tracked = withAddToCart(payload, buyerContextNow(), addToCart, gaQuantities);
+    if (tracked.add_to_cart_id) addToCartSentFor = tracked.add_to_cart_id;
+    return postCheckoutQuote(normFeedToken, tracked, resolvedApiBase, signal);
+  }
+
+  /** Opening the cart is the AddToCart moment: one quote per cart, best effort. */
+  function sendAddToCart(): void {
+    if (!selectedSession || !addToCart.id || addToCartSentFor === addToCart.id) return;
+    if (!isTrackingGranted(trackingConsent)) return;
+    const payload = buildQuotePayload(selectedSession.id, [...selectedSeatKeys], buildGaItems(gaQuantities), promo.code);
+    void postTrackedQuote(payload).catch(() => {});
+  }
+
   // ── Promo code ─────────────────────────────────────────────────────────────
   //
   // The cart sheet never computes a discount: the code is checked by the
@@ -423,10 +468,7 @@
     getCartKey: () => cartKey,
     buildPayload: (code) =>
       selectedSession ? buildQuotePayload(selectedSession.id, [...selectedSeatKeys], buildGaItems(gaQuantities), code) : null,
-    quote: (payload, signal) => {
-      if (!normFeedToken) return Promise.reject(new Error('no feed token'));
-      return postCheckoutQuote(normFeedToken, payload, resolvedApiBase, signal);
-    },
+    quote: (payload, signal) => postTrackedQuote(payload, signal),
     strings: () => promoStrings,
     conflictText: (err) => (parseConflictsFromApiError(err).length > 0 ? t.conflict_notice : null),
     errorCode: (err) => (err instanceof ApiError ? err.code : undefined),
@@ -477,10 +519,7 @@
       selectedSession
         ? marketingPayload(selectedSession.marketing_optin, true, marketingDiscountUsedFor === selectedSession.id)
         : undefined,
-    quote: (payload, signal) => {
-      if (!normFeedToken) return Promise.reject(new Error('no feed token'));
-      return postCheckoutQuote(normFeedToken, payload, resolvedApiBase, signal);
-    },
+    quote: (payload, signal) => postTrackedQuote(payload, signal),
     onChange: (next) => {
       marketingQ = next;
     },
@@ -746,6 +785,7 @@
 
   function openCartSheet(): void {
     cartSheetOpen = true;
+    sendAddToCart();
     // WID-T2: notify host page that the cart sheet was opened (view_cart analytics).
     const sessionId = selectedSession?.id ?? '';
     dispatchWidgetEvent(host, ARENA_EVENTS.CART_OPENED, { sessionId, itemCount: cartCount });
@@ -829,16 +869,9 @@
       if (returnUrl) payload.return_url = returnUrl;
       // Tracking context for server-side Meta / GA4: only when the host page
       // answered granted or denied; read now, the attribute may change later.
-      const cookies = readBrowserCookies();
       // Consent given after mount: the ids seen on this page are kept now.
       if (isTrackingGranted(trackingConsent)) persistClickIds(normFeedToken, clickIds);
-      const buyerCtx = buildBuyerContext({
-        consent: trackingConsent,
-        consentVersion: trackingConsentVersion,
-        clickIds,
-        cookies,
-        pageUrl: window.location.origin + window.location.pathname,
-      });
+      const buyerCtx = buyerContextNow();
       if (buyerCtx) payload.buyer_context = buyerCtx;
       // Spec 43: the sales link / utm touch, when there is one. The platform
       // cleans it and never refuses a purchase over it.
@@ -860,6 +893,9 @@
       const consent = consentPayload(values.consentAccepted === true, normLocale);
       if (consent) payload.consent = consent;
       const response = await postCheckoutStart(normFeedToken, payload, resolvedApiBase);
+      // The checkout started: the next cart is a new one for AddToCart.
+      addToCart = initialAddToCartState();
+      addToCartSentFor = null;
       // Save token in case user returns after the payment page.
       rememberCheckoutToken(response.checkout_token);
       checkoutToken = response.checkout_token;

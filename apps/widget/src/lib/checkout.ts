@@ -224,6 +224,15 @@ export interface CheckoutQuotePayload {
   promo_code?: string;
   /** The mailing tick (spec 51-1); ticked, it may earn the organizer's reward code. */
   marketing_consent?: import('./marketing.js').MarketingConsentPayload;
+  /**
+   * AddToCart for server-side Meta / GA4 (lib/addToCart.ts): sent only with
+   * a `buyer_context` whose `tracking_consent` is true.
+   */
+  buyer_context?: import('./buyerContext.js').BuyerContextPayload;
+  /** This cart's id, the AddToCart dedup key ([A-Za-z0-9_-], at most 64). */
+  add_to_cart_id?: string;
+  /** Distinct seats toggled in this cart plus the GA tickets in it (0..1000). */
+  seats_considered?: number;
 }
 
 /**

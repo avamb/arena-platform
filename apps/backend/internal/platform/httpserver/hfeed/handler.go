@@ -166,6 +166,10 @@ type Handler struct {
 	// paymentApplier runs a payment the provider reports as paid through
 	// the webhook's own state machine (the buyer-cancel pre-check, П-2).
 	paymentApplier ConfirmedPaymentApplier
+
+	// cartConversions queues the cart's AddToCart / InitiateCheckout for
+	// Meta and GA4 (WithCartConversions, cart_conversions.go); nil = off.
+	cartConversions CartConversions
 }
 
 // WithContactForm configures the hosted page's "Write to the organizer" form:
