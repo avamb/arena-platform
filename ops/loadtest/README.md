@@ -357,3 +357,68 @@ ops/loadtest/
     ├── checkout-summary.json
     └── feed-summary.json
 ```
+
+---
+
+## Staging "hype" sales opening (`staging-hype.mjs`)
+
+Node 22 script, no npm dependencies (Playwright only through `apps/widget`).
+Models a sales opening on the STAGING stand: many buyers load the seat map at
+once, pick adjacent seats, start checkout and pay (signed Stripe webhook, as in
+`native.js`); a few real mobile browsers pay with the Stripe test card. It
+refuses any `API_BASE` that does not contain "staging" or is not localhost.
+The feed token and the webhook secret come from files (`FEED_TOKEN_FILE`,
+`WHSEC_FILE`) and are never printed or logged. Env knobs are listed in the
+header comment of the script.
+
+```powershell
+$env:FEED_TOKEN_FILE = "C:\path\feed.txt"; $env:WHSEC_FILE = "C:\path\whsec.txt"
+$env:MODE = "smoke"; node ops/loadtest/staging-hype.mjs                      # 1 fast, 1 classic, 1 abandon, 1 browser
+$env:MODE = "hype"; $env:BUYERS = "900"; node ops/loadtest/staging-hype.mjs  # the opening
+```
+
+Output: `results/hype-<run>.jsonl` (every request and buyer outcome) and
+`results/hype-<run>.json` (summary: sell-out seconds, per-request p50/p95/max
+and status counts, retries, outcomes, webhook-to-paid, double-sold check, final
+seat-status). Stop switch: 5xx share over 5% in 30 s or 10 transport errors in
+a row aborts the run (exit 3).
+
+Live view while a run is going: `node ops/loadtest/live-view.mjs`, then open
+http://localhost:4319/ (env `SESSION_ID`, `RUN` = file or run name, default the
+newest `results/hype-*.jsonl`, `PORT`, `API_BASE`; staging or localhost only).
+It shows the hall with seat colours (free, held, sold), counters, requests per
+second, checkout_start p95 and error counts. The server polls the public
+seat-status once per 2 s for all browsers and reads the JSONL incrementally; no
+tokens are used.
+
+### `PROFILE=big`: 5000 buyers, ~45 minutes, held seats must come back
+
+```powershell
+$env:MODE = "hype"; $env:PROFILE = "big"; node ops/loadtest/staging-hype.mjs
+```
+
+Defaults: `BUYERS=5000`, `ARRIVAL_SECONDS=300`, `MAX_SECONDS=3000`. Each buyer
+gets one behaviour by share: `FAST_SHARE` 0.55, `SLOW_SHARE` 0.10 (pays after
+`SLOW_MIN_SECONDS`-`SLOW_MAX_SECONDS`, 120-1500), `CANCEL_SHARE` 0.15,
+`SILENT_SHARE` 0.10 (starts and stops, no cancel, no pay), `CARDFAIL_SHARE`
+0.05 (extra 10-30 s, then pays), `DOUBLE_SHARE` 0.05 (double pay, reload, two
+tabs). `PREPARE_SHARE` still splits fast and classic inside each behaviour.
+`WAITERS` (500) buyers who find the hall sold out keep polling until
+`WAIT_UNTIL_SECONDS` (2700) and buy seats that come back. `LATE_WEBHOOKS` (20)
+silent buyers get a signed `completed` webhook `LATE_AFTER_SECONDS` (2070) after
+their start; `DUP` (20) paid orders get the same event again, a new event id and
+an `expired` event. The summary adds per-behaviour outcomes, non-2xx codes per
+request name, waiter stats, seat recovery times, late and duplicate webhook
+results, DOUBLE results (a second 201 or order is a defect, exit 1), a 30-second
+timeline (seat counts, requests/s, in-flight, event-loop lag), seats still held
+at the end and the double-sold check over all paid orders. Details in the
+header of the script. An unpaid hold lives about 33 minutes on the stand, so a
+full run needs the whole hour: do not stop it early.
+
+One Node process lags past ~2000 buyers (event-loop lag up to 3 s): run 5000
+as several processes with distinct `RUN` names on the same `SESSION_ID`
+(1667 buyers each). Buyer phones depend on `RUN`, because the stand matches
+customers by phone as well as by e-mail; `SAME_PHONES=1` makes all runs share
+phones on purpose, to test buyers who share a phone. Before a big run
+set the worker `EMAIL_MODE=log` and raise the api `PUBLIC_API_IP_RATE_LIMIT`
+on the stand, and restore both afterwards.
