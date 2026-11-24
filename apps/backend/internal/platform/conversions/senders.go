@@ -91,7 +91,7 @@ func (it PurchaseItem) contentName() string {
 	}
 	date := ""
 	if !it.StartAt.IsZero() {
-		date = it.StartAt.UTC().Format("2006-01-02")
+		date = it.StartAt.UTC().Format("2006-01-02") // allow:timeformat: a date inside the human content_name, not a wire timestamp
 	}
 	switch {
 	case it.City != "" && date != "":
