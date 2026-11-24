@@ -137,7 +137,7 @@ func TestQuoteAddToCart_PayloadAndDedup(t *testing.T) {
 	}
 }
 
-func TestQuoteAddToCart_FailureAndNilQueuerAreQuiet(t *testing.T) {
+func TestQuoteAddToCart_FailureAndNilQueuerAreQuiet(_ *testing.T) {
 	f := &fakeCartConversions{fail: errors.New("db down")}
 	h := &Handler{logger: slog.Default(), cartConversions: f}
 	r := httptest.NewRequest("POST", "/quote", nil)

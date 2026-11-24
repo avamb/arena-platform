@@ -79,16 +79,25 @@ func (s *PGStore) EnqueueEvent(ctx context.Context, orgID uuid.UUID, ev SiteEven
 	}
 	_, err = s.pool.Exec(ctx, `
 		INSERT INTO conversion_deliveries (order_id, org_id, provider, kind, event_id, payload)
-		SELECT NULL, st.org_id, p.provider, $2, $3, $4::jsonb
-		  FROM org_conversion_settings st
+		SELECT NULL, o.org_id, p.provider, $2, $3, $4::jsonb
+		  FROM (SELECT $1::uuid AS org_id) o
+		  LEFT JOIN org_conversion_settings st ON st.org_id = o.org_id
 		 CROSS JOIN LATERAL (VALUES
-		        ('meta'::text, COALESCE(st.meta_pixel_id, '') <> '' AND COALESCE(st.meta_capi_token, '') <> ''),
+		        -- Meta is ready with a manual pixel and token, or (when the
+		        -- connection is on) with an active Meta connection that has a
+		        -- token and a selected dataset, exactly as Enqueue decides.
+		        ('meta'::text, (COALESCE(st.meta_pixel_id, '') <> '' AND COALESCE(st.meta_capi_token, '') <> '')
+		                       OR ($6::boolean AND EXISTS (
+		                             SELECT 1
+		                               FROM org_meta_connections c
+		                               JOIN org_meta_assets a ON a.org_id = c.org_id AND a.kind = 'dataset' AND a.selected
+		                              WHERE c.org_id = o.org_id AND c.status = 'active' AND c.access_token_enc IS NOT NULL))),
 		        ('ga4'::text,  COALESCE(st.ga4_measurement_id, '') <> '' AND COALESCE(st.ga4_api_secret, '') <> ''
 		                       AND $5::boolean)
 		       ) AS p(provider, ready)
-		 WHERE st.org_id = $1 AND p.ready
+		 WHERE p.ready
 		ON CONFLICT (org_id, provider, event_id) WHERE event_id IS NOT NULL DO NOTHING`,
-		orgID, ev.Kind, ev.EventID, raw, ev.Context.GAClientID != "")
+		orgID, ev.Kind, ev.EventID, raw, ev.Context.GAClientID != "", s.connectionOn())
 	return err
 }
 
