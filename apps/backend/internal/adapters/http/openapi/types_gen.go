@@ -16832,8 +16832,24 @@ type PublicEventVenue struct {
 
 // PublicFeedCheckoutQuoteRequest The cart to price, in the shape of `PublicFeedCheckoutStartRequest`
 // (seated `seats`, general-admission `ga_items`, or both) plus the
-// optional promo code. The quote takes no buyer details.
+// optional promo code. The quote takes no buyer details; the optional
+// tracking fields only feed the cart's AddToCart event.
 type PublicFeedCheckoutQuoteRequest struct {
+	// AddToCartId The widget's id of this cart, optional. It is the dedup key of
+	// the AddToCart event (`atc:<id>`): quotes that repeat the same id
+	// queue the event once. A value outside the pattern or longer than
+	// 64 characters sends no event and never fails the quote.
+	AddToCartId *string `json:"add_to_cart_id,omitempty"`
+
+	// BuyerContext The browser's tracking context, the object `checkout/start` takes,
+	// optional. Only when its `tracking_consent` is true (with
+	// `tracking_consent_text_version`) and `add_to_cart_id` is usable
+	// does the quote queue the cart's AddToCart for the organization's
+	// server-side Meta CAPI and GA4; the server adds the client IP and
+	// User-Agent itself. Nothing of it is stored with the quote. A
+	// malformed object is ignored, never an error.
+	BuyerContext *PublicCheckoutBuyerContext `json:"buyer_context,omitempty"`
+
 	// GaItems GA items for GA or hybrid sessions.
 	GaItems *[]PublicGAItem `json:"ga_items,omitempty"`
 
@@ -16848,6 +16864,12 @@ type PublicFeedCheckoutQuoteRequest struct {
 
 	// Seats Seat keys for seated or hybrid sessions.
 	Seats *[]string `json:"seats,omitempty"`
+
+	// SeatsConsidered How many distinct seats the buyer selected in this cart, including
+	// ones they removed again, optional. Sent with AddToCart as
+	// `seats_considered` when above zero. A value outside 0..1000 is
+	// ignored, never an error.
+	SeatsConsidered *int `json:"seats_considered,omitempty"`
 
 	// SessionId UUID of the event session the cart belongs to.
 	SessionId openapi_types.UUID `json:"session_id"`
@@ -16895,7 +16917,9 @@ type PublicFeedCheckoutStartRequest struct {
 	// are NOT kept in the context: they are stored on the checkout (the
 	// same place `PATCH /v1/public/checkout/{checkout_token}/consent`
 	// updates) and read from there at send time. Without an explicit yes
-	// stored at send time no conversion leaves the platform.
+	// stored at send time no conversion leaves the platform. With an
+	// explicit `tracking_consent: true` the created checkout is also
+	// queued as InitiateCheckout (event id `ic:<checkout session id>`).
 	BuyerContext *PublicCheckoutBuyerContext `json:"buyer_context,omitempty"`
 
 	// Capabilities What the widget can do with the payment (spec 65 §3.5), optional.

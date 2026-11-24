@@ -613,6 +613,7 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 		// carries the time of the choice.
 		growth.tracking = h.trackingConsentFromStart(conversions.ConsentFromBuyerContext(req.BuyerContext))
 	}
+	growth.trackCart = checkoutTracksCart(growth.tracking, req.BuyerContext)
 
 	// ── 9. Mint checkout_token ────────────────────────────────────────────────
 	checkoutToken, err := mintCheckoutToken()
@@ -1628,6 +1629,13 @@ func (h *Handler) confirmPublicCheckout(
 			"checkout.confirm_failed", "We could not confirm the checkout. Try again in a minute.", r,
 		))
 		return
+	}
+
+	// The checkout exists: InitiateCheckout for Meta / GA4, on the pool now
+	// that no transaction is open, and only with the buyer's explicit yes.
+	if growth.trackCart {
+		h.queueCartEvent(ctx, checkCtx.OrgID, conversions.KindInitiateCheckout, checkoutEventIDPfx+cs.ID.String(),
+			checkCtx.SessionID, bd, attr.buyerCtx, 0)
 	}
 
 	// ── Free order: the buyer goes straight back to the embedding page,
