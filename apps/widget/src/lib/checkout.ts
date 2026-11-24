@@ -206,6 +206,11 @@ export interface CheckoutStartPayload {
    * checkout/recover.
    */
   attribution?: import('./attribution.js').AttributionPayload;
+  /**
+   * Browser tracking context for server-side Meta CAPI / GA4. Present only
+   * when the host page set `tracking-consent` to granted or denied.
+   */
+  buyer_context?: import('./buyerContext.js').BuyerContextPayload;
 }
 
 /**

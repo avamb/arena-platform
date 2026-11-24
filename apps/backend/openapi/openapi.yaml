@@ -11665,6 +11665,14 @@ components:
           type: [string, "null"]
           description: Public URL of the organization logo, or null when none is set.
           example: "https://api.arenasoldout.com/v1/media-files/01929d0e-0e47-7000-8000-000000000099"
+        tracking_enabled:
+          type: boolean
+          description: |
+            True when the organizer measures ads (Meta, Google): an active Meta
+            connection with a selected dataset, or manual Meta or GA4
+            conversion credentials. The page then shows a cookie banner and
+            sets no cookie before the visitor chooses; false means no banner.
+          example: false
 
     HostedPageEvent:
       type: object

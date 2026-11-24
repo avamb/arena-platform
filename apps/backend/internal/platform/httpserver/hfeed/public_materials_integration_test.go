@@ -350,7 +350,7 @@ func TestPublicMaterials_ExistingFieldsUnchanged(t *testing.T) {
 	if err := json.Unmarshal(page["event"], &event); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := strings.Join(sortedKeys(org), ","), "logo_url,name,slug"; got != want {
+	if got, want := strings.Join(sortedKeys(org), ","), "logo_url,name,slug,tracking_enabled"; got != want {
 		t.Errorf("page org keys = %s, want %s", got, want)
 	}
 	const wantEvent = "age_rating,description,description_html,description_text,first_session_at,first_session_doors_at,first_session_timezone,id,image_url," +
