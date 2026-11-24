@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/metaconnect"
 )
@@ -48,6 +49,106 @@ type Purchase struct {
 	Context BuyerContext
 	Email   string
 	Phone   string
+
+	// Items are the sessions bought (what, where and when); empty when unknown.
+	Items []PurchaseItem
+}
+
+// PurchaseItem is one session of a purchase. Price is a major-unit unit price.
+type PurchaseItem struct {
+	SessionID string
+	EventID   string
+	EventName string
+	StartAt   time.Time // zero when unknown
+	Venue     string
+	City      string
+	Country   string
+	Quantity  int
+	Price     float64
+}
+
+// purchaseItems maps the order's sessions to Purchase items.
+func purchaseItems(od OrderData) []PurchaseItem {
+	var out []PurchaseItem
+	for _, s := range od.Sessions {
+		if s.SessionID == "" {
+			continue
+		}
+		out = append(out, PurchaseItem{
+			SessionID: s.SessionID, EventID: s.EventID, EventName: s.EventName, StartAt: s.StartAt,
+			Venue: s.Venue, City: s.City, Country: s.Country, Quantity: s.Quantity,
+			Price: money.MajorScale(s.UnitPrice, money.ScaleFor(od.Currency)),
+		})
+	}
+	return out
+}
+
+// contentName is "<event name> — <city>, <YYYY-MM-DD>"; the city and the date
+// are left out when unknown, and it is empty without an event name.
+func (it PurchaseItem) contentName() string {
+	if it.EventName == "" {
+		return ""
+	}
+	date := ""
+	if !it.StartAt.IsZero() {
+		date = it.StartAt.UTC().Format("2006-01-02")
+	}
+	switch {
+	case it.City != "" && date != "":
+		return it.EventName + " — " + it.City + ", " + date
+	case it.City != "":
+		return it.EventName + " — " + it.City
+	case date != "":
+		return it.EventName + " — " + date
+	}
+	return it.EventName
+}
+
+// addMetaItems adds the what/where/when of the purchase to Meta custom_data.
+func addMetaItems(custom map[string]any, items []PurchaseItem) {
+	if len(items) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(items))
+	contents := make([]map[string]any, 0, len(items))
+	num := 0
+	for _, it := range items {
+		ids = append(ids, it.SessionID)
+		contents = append(contents, map[string]any{"id": it.SessionID, "quantity": it.Quantity, "item_price": it.Price})
+		num += it.Quantity
+	}
+	first := items[0]
+	custom["content_ids"] = ids
+	custom["content_type"] = "product"
+	custom["contents"] = contents
+	custom["num_items"] = num
+	if n := first.contentName(); n != "" {
+		custom["content_name"] = n
+	}
+	for k, v := range map[string]string{
+		"event_id": first.EventID, "event_name": first.EventName, "city": first.City,
+		"country": first.Country, "venue": first.Venue,
+	} {
+		if v != "" {
+			custom[k] = v
+		}
+	}
+}
+
+// ga4Items is the purchase items array.
+func ga4Items(items []PurchaseItem) []any {
+	out := make([]any, 0, len(items))
+	for _, it := range items {
+		m := map[string]any{"item_id": it.SessionID, "quantity": it.Quantity, "price": it.Price}
+		if n := it.contentName(); n != "" {
+			m["item_name"] = n
+		}
+		if it.City != "" {
+			m["item_category"] = it.City
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 // SendError says whether a retry can help.
@@ -174,17 +275,19 @@ func (m MetaSender) Send(ctx context.Context, pixelID, token, testEventCode stri
 	if fbc != "" {
 		user["fbc"] = fbc
 	}
+	custom := map[string]any{
+		"currency": strings.ToUpper(p.Currency),
+		"value":    p.Value,
+		"order_id": p.OrderNumber,
+	}
+	addMetaItems(custom, p.Items)
 	ev := map[string]any{
 		"event_name":    "Purchase",
 		"event_time":    p.EventTime.Unix(),
 		"event_id":      p.OrderID,
 		"action_source": "website",
 		"user_data":     user,
-		"custom_data": map[string]any{
-			"currency": strings.ToUpper(p.Currency),
-			"value":    p.Value,
-			"order_id": p.OrderNumber,
-		},
+		"custom_data":   custom,
 	}
 	if p.Context.PageURL != "" {
 		ev["event_source_url"] = p.Context.PageURL
@@ -221,16 +324,17 @@ func (g GA4Sender) Send(ctx context.Context, measurementID, apiSecret string, p 
 	if cid == "" {
 		cid = FallbackClientID(p.OrderNumber, p.EventTime)
 	}
+	params := map[string]any{
+		"transaction_id": p.OrderNumber,
+		"value":          p.Value,
+		"currency":       strings.ToUpper(p.Currency),
+	}
+	if len(p.Items) > 0 {
+		params["items"] = ga4Items(p.Items)
+	}
 	body, err := json.Marshal(map[string]any{
 		"client_id": cid,
-		"events": []any{map[string]any{
-			"name": "purchase",
-			"params": map[string]any{
-				"transaction_id": p.OrderNumber,
-				"value":          p.Value,
-				"currency":       strings.ToUpper(p.Currency),
-			},
-		}},
+		"events":    []any{map[string]any{"name": "purchase", "params": params}},
 	})
 	if err != nil {
 		return &SendError{Msg: "encode", Permanent: true}

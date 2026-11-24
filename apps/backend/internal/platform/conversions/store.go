@@ -58,6 +58,23 @@ type OrderData struct {
 	Email    string
 	Phone    string
 	Context  BuyerContext
+	// Sessions are the sessions the order bought, one entry per session
+	// (normally one). Empty when the lookup found nothing: every field here is
+	// optional context for the pixel, never a reason to fail a send.
+	Sessions []OrderSession
+}
+
+// OrderSession is what an order bought for one session.
+type OrderSession struct {
+	SessionID string
+	EventID   string
+	EventName string
+	StartAt   time.Time // zero when unknown
+	Venue     string
+	City      string // English name, falling back to cities.slug
+	Country   string // ISO 3166-1 alpha-2
+	Quantity  int
+	UnitPrice int64 // minor units, the highest unit price among the tickets
 }
 
 // Delivery is one claimed conversion_deliveries row.
@@ -284,7 +301,53 @@ func (s *PGStore) Order(ctx context.Context, orderID uuid.UUID) (OrderData, erro
 		return OrderData{}, err
 	}
 	_ = json.Unmarshal(raw, &od.Context)
+	od.Sessions = s.orderSessions(ctx, orderID)
 	return od, nil
+}
+
+// orderSessions reads what the order bought, grouped by session. Best effort:
+// an error yields nothing (the purchase is then sent without the extras).
+func (s *PGStore) orderSessions(ctx context.Context, orderID uuid.UUID) []OrderSession {
+	rows, err := s.pool.Query(ctx, `
+		SELECT s.id::text, e.id::text, COALESCE(e.name, ''), s.start_at,
+		       COALESCE(v.name, ''), COALESCE(t_en.value, ci.slug, ''), COALESCE(co.iso2::text, ''),
+		       count(*), COALESCE(max(oi.unit_price), 0)
+		  FROM order_items oi
+		  JOIN orders o ON o.id = oi.order_id
+		  LEFT JOIN tickets tk ON tk.id = oi.ticket_id
+		  LEFT JOIN ticket_tiers tt ON tt.id = oi.tier_id
+		  JOIN sessions s ON s.id = COALESCE(tk.session_id, tt.session_id, o.session_id)
+		  LEFT JOIN events e ON e.id = s.event_id
+		  LEFT JOIN venues v ON v.id = s.venue_id
+		  LEFT JOIN cities ci ON ci.id = v.city_id
+		  LEFT JOIN countries co ON co.id = ci.country_id
+		  LEFT JOIN i18n_text t_en ON t_en.namespace = 'geo.cities'
+		         AND t_en.key = ci.slug AND t_en.locale = 'en'
+		 WHERE oi.order_id = $1 AND oi.kind = 'ticket'
+		 GROUP BY s.id, e.id, e.name, s.start_at, v.name, t_en.value, ci.slug, co.iso2
+		 ORDER BY s.start_at, s.id`, orderID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []OrderSession
+	for rows.Next() {
+		var os OrderSession
+		var evID *string
+		if err := rows.Scan(&os.SessionID, &evID, &os.EventName, &os.StartAt, &os.Venue, &os.City, &os.Country,
+			&os.Quantity, &os.UnitPrice); err != nil {
+			return nil
+		}
+		if evID != nil {
+			os.EventID = *evID
+		}
+		os.StartAt = os.StartAt.UTC()
+		out = append(out, os)
+	}
+	if rows.Err() != nil {
+		return nil
+	}
+	return out
 }
 
 // ConsentForOrder reads the buyer's tracking consent the order's checkout
