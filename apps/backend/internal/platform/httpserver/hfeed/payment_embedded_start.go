@@ -54,22 +54,7 @@ func (h *Handler) tryEmbeddedPayment(ctx context.Context, w http.ResponseWriter,
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), hostedPaymentStartTimeout)
 	defer cancel()
 
-	res, err := es.StartEmbeddedCheckout(ctx, HostedCheckoutRequest{
-		OrgID:             in.CheckCtx.OrgID,
-		ChannelID:         in.CheckCtx.SalesChannelID,
-		CheckoutSessionID: in.Session.ID,
-		CheckoutToken:     in.CheckoutToken,
-		OrderID:           in.OrderID,
-		Amount:            in.Breakdown.Total,
-		Currency:          in.Breakdown.Currency,
-		ProductName:       h.hostedLineItemName(ctx, in.CheckCtx),
-		BuyerEmail:        in.Buyer.Email,
-		BuyerName:         derefOr(in.Buyer.Name),
-		BuyerPhone:        derefOr(in.Buyer.Phone),
-		ReturnURL:         in.ReturnBase,
-		ExpiresAtUnix:     in.ExpiresAt.Add(-h.paymentGrace).Unix(),
-		BuyerLocale:       in.Buyer.Locale,
-	})
+	res, err := es.StartEmbeddedCheckout(ctx, h.embeddedCheckoutRequest(ctx, in))
 	if err != nil {
 		var refused *payments.HostedCheckoutRefusedError
 		_, isTyped := AsPaymentStartError(err)
@@ -141,6 +126,29 @@ func (h *Handler) tryEmbeddedPayment(ctx context.Context, w http.ResponseWriter,
 	)
 	block := res.Block
 	return &block, true, true
+}
+
+// embeddedCheckoutRequest is the embedded session request of a just-confirmed
+// checkout, shared by checkout/start and the prepared order (spec 65). A
+// prepared order has no buyer yet, so its e-mail, name and phone are empty
+// and Stripe takes the address from the widget (updateEmail) before confirm.
+func (h *Handler) embeddedCheckoutRequest(ctx context.Context, in hostedPaymentInput) HostedCheckoutRequest {
+	return HostedCheckoutRequest{
+		OrgID:             in.CheckCtx.OrgID,
+		ChannelID:         in.CheckCtx.SalesChannelID,
+		CheckoutSessionID: in.Session.ID,
+		CheckoutToken:     in.CheckoutToken,
+		OrderID:           in.OrderID,
+		Amount:            in.Breakdown.Total,
+		Currency:          in.Breakdown.Currency,
+		ProductName:       h.hostedLineItemName(ctx, in.CheckCtx),
+		BuyerEmail:        in.Buyer.Email,
+		BuyerName:         derefOr(in.Buyer.Name),
+		BuyerPhone:        derefOr(in.Buyer.Phone),
+		ReturnURL:         in.ReturnBase,
+		ExpiresAtUnix:     in.ExpiresAt.Add(-h.paymentGrace).Unix(),
+		BuyerLocale:       in.Buyer.Locale,
+	}
 }
 
 // writeEmbeddedStartAnswer writes the 201 of an embedded checkout/start and,

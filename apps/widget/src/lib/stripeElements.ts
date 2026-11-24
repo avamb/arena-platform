@@ -57,6 +57,12 @@ export interface ElementLike {
 
 export interface CheckoutActionsLike {
   confirm(options?: Record<string, unknown>): Promise<ConfirmResultLike>;
+  /**
+   * Gives the session the buyer's e-mail. A prepared checkout (created when
+   * the order sheet opens, without a buyer) gets it here after "Pay": Stripe
+   * refuses to confirm a session that has no e-mail.
+   */
+  updateEmail?(email: string): Promise<{ type: 'success' } | { type: 'error'; error: StripeErrorLike }>;
 }
 
 export interface CheckoutLike {

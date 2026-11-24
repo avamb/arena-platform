@@ -29,10 +29,18 @@
    */
   import { onMount, untrack } from 'svelte';
   import { parseLocale, parseFeedToken, parseSessionId, isRtlLocale } from './utils.js';
-  import { fetchFeedEvent, fetchFeedEvents, postCheckoutStart, postCheckoutQuote, getCheckoutStatus, postCheckoutRecover, ApiError } from './api.js';
+  import { fetchFeedEvent, fetchFeedEvents, postCheckoutStart, postCheckoutQuote, getCheckoutStatus, postCheckoutRecover, postCheckoutPrepare, postCheckoutBuyer, postCheckoutCancel, ApiError } from './api.js';
   import type { FeedSession, FeedEvent, Geometry, CategoryPrice, SeatStatusValue } from './types.js';
-  import type { BuyerFormValues } from './lib/checkout.js';
-  import { buildCheckoutPayload, buildQuotePayload, getCheckoutI18n, parseConflictsFromApiError, conflictKeySet, filterCartWithoutConflicts } from './lib/checkout.js';
+  import type { BuyerFormValues, CheckoutPreparePayload } from './lib/checkout.js';
+  import { buildBuyerPayload, buildCheckoutPayload, buildQuotePayload, getCheckoutI18n, parseConflictsFromApiError, conflictKeySet, filterCartWithoutConflicts } from './lib/checkout.js';
+  import { cartTotal } from './lib/cart.js';
+  import {
+    createPreparedCheckout,
+    isPlainCart,
+    loadsStripeEarly,
+    preloadMode,
+    type PreparedCheckout,
+  } from './lib/preparedCheckout.js';
   import { cartQuoteKey, promoErrorMessage, isPromoErrorCode } from './lib/promo.js';
   import {
     afterCheckoutErrorChange,
@@ -155,8 +163,11 @@
     trackingConsentVersion?: string;
     /** 'stripe': the host knows its channel pays through embedded Stripe, so
      * the widget loads Stripe.js as soon as the checkout sheet opens, while
-     * the buyer types the e-mail, instead of after "Pay". Anything else (or
-     * absent) loads Stripe.js only when the platform answers with it. */
+     * the buyer types the e-mail, instead of after "Pay". 'checkout' does
+     * that AND prepares the order and the Stripe session when the sheet opens
+     * with a plain cart, so the card form loads hidden while the buyer types
+     * (lib/preparedCheckout.ts). Anything else (or absent) loads Stripe.js
+     * only when the platform answers with it. */
     preloadPayment?: string;
   }
 
@@ -256,8 +267,10 @@
   // on the critical path to the card form. With preload-payment="stripe" it
   // starts when the sheet opens. loadStripeJs is one shared promise, so the
   // payment screen reuses it; a failure here is ignored and retried there.
+  // preload-payment="checkout" implies it.
+  const preload = $derived(preloadMode(preloadPayment));
   $effect(() => {
-    if (cartSheetOpen && preloadPayment.trim().toLowerCase() === 'stripe') {
+    if (cartSheetOpen && loadsStripeEarly(preload)) {
       loadStripeJs().catch(() => {});
     }
   });
@@ -535,6 +548,126 @@
     void promo.code;
     void marketingDiscountUsedFor;
     untrack(() => void marketingQuoter.refresh(ticked));
+  });
+
+  // ── Early order (preload-payment="checkout") ───────────────────────────────
+  //
+  // A plain cart (no promo code, no marketing tick, total > 0) is prepared when
+  // the sheet opens: order, hold and Stripe session without a buyer, and the
+  // payment screen loads HIDDEN below. "Pay" attaches the buyer and reveals it.
+  // Everything else, and every failure, goes the classic way at "Pay".
+
+  // The prepared, unattached checkout (its block carries the client secret:
+  // memory only, like paymentBlock).
+  let preparedView = $state.raw<PreparedCheckout | null>(null);
+
+  const prepareWanted = $derived(
+    preload === 'checkout' &&
+      cartSheetOpen &&
+      stage === 'selecting' &&
+      !checkoutToken &&
+      !!selectedSession &&
+      !!normFeedToken &&
+      isPlainCart({
+        promoCode: promo.code,
+        promoBusy: promo.busy,
+        marketingTicked,
+        lineCount: cart.lines.length,
+        total: cartTotal(cart.lines).amount,
+      }),
+  );
+
+  /** checkout/start with prepare:true for the cart as it is now (no buyer, promo, marketing or consent). */
+  function buildPreparePayload(): CheckoutPreparePayload {
+    const payload: CheckoutPreparePayload = {
+      session_id: selectedSession?.id ?? '',
+      capabilities: ['stripe_elements'],
+      prepare: true,
+    };
+    const seats = [...selectedSeatKeys];
+    const gaItems = buildGaItems(gaQuantities);
+    if (seats.length > 0) payload.seats = seats;
+    if (gaItems.length > 0) payload.ga_items = gaItems;
+    const returnUrl = buildReturnUrl();
+    if (returnUrl) payload.return_url = returnUrl;
+    if (typeof normLocale === 'string' && normLocale.length > 0) payload.locale = normLocale;
+    const ctx = buildBuyerContext({
+      consent: trackingConsent,
+      consentVersion: trackingConsentVersion,
+      clickIds,
+      cookies: readBrowserCookies(),
+      pageUrl: window.location.origin + window.location.pathname,
+    });
+    if (ctx) payload.buyer_context = ctx;
+    // Spec 43: the same sales link / utm touch as the classic start.
+    return attribution ? { ...payload, attribution } : payload;
+  }
+
+  const preparedCtl = createPreparedCheckout({
+    prepare: (idempotencyKey) =>
+      postCheckoutPrepare(normFeedToken, buildPreparePayload(), resolvedApiBase, idempotencyKey),
+    attach: (token, body) => postCheckoutBuyer(token, body, resolvedApiBase),
+    cancel: (token) => postCheckoutCancel(token, resolvedApiBase, { keepalive: true }),
+    onChange: (p) => {
+      preparedView = p;
+      // The sheet's countdown runs on the prepared hold.
+      if (!checkoutToken) holdExpiresAt = p ? p.expiresAt : null;
+    },
+  });
+
+  $effect(() => {
+    // The sheet opened or closed, the cart, the promo code or the tick changed.
+    const want = prepareWanted;
+    const key = cartKey;
+    untrack(() => preparedCtl.update(want, key));
+  });
+
+  onMount(() => {
+    // The page is left: cancel what was prepared (keepalive), so the places
+    // are free at once instead of when the hold runs out.
+    const onPageHide = (): void => preparedCtl.pageHide();
+    const onPageShow = (e: PageTransitionEvent): void => {
+      if (e.persisted) preparedCtl.update(prepareWanted, cartKey);
+    };
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('pageshow', onPageShow);
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('pageshow', onPageShow);
+      preparedCtl.destroy();
+    };
+  });
+
+  /**
+   * The one payment screen: shown for a checkout on stage 'paying', HIDDEN for
+   * a prepared one. Both have the same place in the DOM and the same key (the
+   * checkout token), so "Pay" on a prepared checkout reveals the very screen
+   * that loaded Stripe: its iframes are never moved or mounted again.
+   */
+  const payView = $derived.by(() => {
+    if (stage === 'paying' && paymentBlock && checkoutToken) {
+      return {
+        token: checkoutToken,
+        block: paymentBlock,
+        shown: true,
+        deferred: false,
+        expiresAt: paymentExpiresAt,
+        total: paymentTotal,
+        currency: paymentCurrency,
+      };
+    }
+    if (preparedView && stage === 'selecting') {
+      return {
+        token: preparedView.token,
+        block: preparedView.block,
+        shown: false,
+        deferred: true,
+        expiresAt: preparedView.paymentExpiresAt,
+        total: preparedView.total,
+        currency: preparedView.currency,
+      };
+    }
+    return null;
   });
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -839,8 +972,72 @@
     }
   }
 
+  /**
+   * "Pay" with a prepared checkout: attach the buyer, reveal the hidden screen.
+   * Returns false when the classic checkout/start must run instead.
+   */
+  async function payPrepared(values: BuyerFormValues): Promise<boolean> {
+    if (!selectedSession) return false;
+    const session = selectedSession;
+    promoCtl.cancelPending();
+    checkoutSubmitting = true;
+    checkoutError = null;
+    const outcome = await preparedCtl.pay({
+      plain: prepareWanted && values.marketingAccepted !== true,
+      cartKey,
+      email: values.email.trim(),
+      body: buildBuyerPayload(
+        values,
+        session.buyer_fields as import('./lib/checkout.js').BuyerFieldConfig[],
+        {
+          consent: consentPayload(values.consentAccepted === true, normLocale) ?? undefined,
+          locale: typeof normLocale === 'string' && normLocale.length > 0 ? normLocale : undefined,
+        },
+      ),
+    });
+    // A second press while the first is running: nothing to do.
+    if (outcome.kind === 'busy') return true;
+    checkoutSubmitting = false;
+    if (outcome.kind === 'classic') return false;
+    if (outcome.kind === 'refused') {
+      showCheckoutError(outcome.error, values);
+      return true;
+    }
+    const p = outcome.prepared;
+    // All in one synchronous step: the payment screen keeps its key (the token)
+    // while it turns from hidden to shown, so Stripe is not mounted again.
+    preparedCtl.consume(p.token);
+    rememberCheckoutToken(p.token);
+    checkoutToken = p.token;
+    holdExpiresAt = outcome.attach?.expires_at ?? p.expiresAt;
+    dispatchWidgetEvent(host, ARENA_EVENTS.PAYMENT_STARTED, {
+      checkoutToken: p.token,
+      sessionId: session.id,
+    });
+    paymentBlock = p.block;
+    paymentAwaitReturn = false;
+    paymentExpiresAt = outcome.attach?.payment_expires_at ?? p.paymentExpiresAt;
+    paymentTotal = p.total;
+    paymentCurrency = p.currency;
+    cartSheetOpen = false;
+    stage = 'paying';
+    return true;
+  }
+
   async function handleCheckout(values: BuyerFormValues): Promise<void> {
     if (!selectedSession || !normFeedToken) return;
+    // preload-payment="checkout": a prepared checkout is used when it can be;
+    // otherwise (or after any failure) the classic path below runs unchanged.
+    if (preload === 'checkout') {
+      let handled = false;
+      try {
+        handled = await payPrepared(values);
+      } catch {
+        handled = false;
+        checkoutSubmitting = false;
+      }
+      if (handled) return;
+    }
     // An applied code whose quote is not for this very cart must not ride
     // along: the sheet would show one total and the payment page another.
     // An Apply still waiting when the buyer pays is dropped: the order goes
@@ -947,6 +1144,15 @@
       // Redirect to payment provider.
       window.location.href = redirectUrl;
     } catch (err) {
+      showCheckoutError(err, values);
+    } finally {
+      checkoutSubmitting = false;
+    }
+  }
+
+  /** The sheet's message after checkout/start (or the prepared attach) refused. */
+  function showCheckoutError(err: unknown, values: BuyerFormValues): void {
+    {
       // WID-S2: parse nested envelope 409 seat conflicts and surface them on
       // the seat map via the conflictKeys prop (SeatMapView → applyConflictHighlight).
       const conflicts = parseConflictsFromApiError(err);
@@ -990,8 +1196,6 @@
         conflictKeys = new Set();
         checkoutError = makeCheckoutError('other', buyerErrorText(err, normLocale, t.error_checkout));
       }
-    } finally {
-      checkoutSubmitting = false;
     }
   }
 
@@ -1257,25 +1461,8 @@
     </div>
 
   {:else if stage === 'paying' && paymentBlock && checkoutToken}
-    <!-- ── Pay on this page (Stripe Checkout Elements, spec 65 E4) ─────────── -->
-    <div class="arena-tickets-frame">
-      <PaymentScreen
-        payment={paymentBlock}
-        {checkoutToken}
-        apiBase={resolvedApiBase}
-        locale={normLocale}
-        expiresAt={paymentExpiresAt}
-        total={paymentTotal}
-        currency={paymentCurrency}
-        organizerName={selectedSession?.consent?.seller_legal_name ?? ''}
-        awaitReturn={paymentAwaitReturn}
-        steps={paymentSteps.forToken(checkoutToken)}
-        onPaid={finishPayment}
-        onTerminal={finishPayment}
-        onRestart={restartPayment}
-        onBack={cart.lines.length > 0 ? backToContacts : undefined}
-      />
-    </div>
+    <!-- Pay on this page: the payment screen below, outside this chain, so a
+         prepared (hidden) screen is the same instance once shown. -->
 
   {:else if stage === 'redirecting'}
     <!-- ── Redirecting to payment ─────────────────────────────────────────── -->
@@ -1501,6 +1688,46 @@
       <!-- No feed-token provided -->
     </div>
   {/if}
+
+  <!-- ── Pay on this page (Stripe Checkout Elements, spec 65 E4) ───────────
+       Shown on stage 'paying'. With preload-payment="checkout" the screen of a
+       prepared checkout is rendered here HIDDEN (laid out off-screen, invisible,
+       aria-hidden, inert; never display:none, Stripe must be able to measure it)
+       at the very place it is shown later: "Pay" only flips the class. -->
+  {#if payView}
+    {#key payView.token}
+      <div
+        class="arena-pay-slot"
+        class:arena-pay-slot--hidden={!payView.shown}
+        aria-hidden={payView.shown ? undefined : 'true'}
+        inert={!payView.shown}
+        data-testid="payment-slot"
+        data-shown={payView.shown ? 'true' : 'false'}
+      >
+        <div class="arena-tickets-frame">
+          <PaymentScreen
+            payment={payView.block}
+            checkoutToken={payView.token}
+            apiBase={resolvedApiBase}
+            locale={normLocale}
+            expiresAt={payView.expiresAt}
+            total={payView.total}
+            currency={payView.currency}
+            organizerName={selectedSession?.consent?.seller_legal_name ?? ''}
+            awaitReturn={payView.shown && paymentAwaitReturn}
+            steps={paymentSteps.forToken(payView.token)}
+            deferred={payView.deferred}
+            onHandle={preparedCtl.setHandle}
+            onDeferredFailure={preparedCtl.markFailed}
+            onPaid={finishPayment}
+            onTerminal={finishPayment}
+            onRestart={restartPayment}
+            onBack={cart.lines.length > 0 ? backToContacts : undefined}
+          />
+        </div>
+      </div>
+    {/key}
+  {/if}
 </div>
 
 <style>
@@ -1656,6 +1883,22 @@
 
   .arena-tickets-placeholder {
     display: none;
+  }
+
+  /* A prepared payment screen loading while the buyer types: laid out (Stripe
+     measures its mount points) but off-screen and invisible. Never
+     display:none, and never moved: showing it only drops this class. */
+  .arena-pay-slot {
+    display: block;
+    height: 100%;
+  }
+  .arena-pay-slot--hidden {
+    position: fixed;
+    top: 0;
+    left: -10000px;
+    width: min(100vw, 520px);
+    visibility: hidden;
+    pointer-events: none;
   }
 
   .arena-tickets-platform {

@@ -105,7 +105,8 @@ describe('the screen', () => {
 
   it('keeps one step bus per checkout token', () => {
     expect(widgetSource).toContain('createPaymentStepsRegistry(');
-    expect(widgetSource).toContain('paymentSteps.forToken(checkoutToken)');
+    // The token of the screen shown (stage 'paying') or of the prepared one.
+    expect(widgetSource).toContain('paymentSteps.forToken(payView.token)');
   });
 
   it('drops the secret from the status object and counts down to the payment window', () => {

@@ -733,6 +733,11 @@ type webhookPaymentIntentRequest struct {
 	// always names what was charged on a payment event: a paid one that
 	// names no amount is not trusted (D-01). The flat mock shape has none.
 	StripeEnvelope bool `json:"-"`
+	// BuyerEmail is the e-mail address a Stripe checkout.session event says
+	// the buyer paid with (customer_details.email, else customer_email). It
+	// fills the order of a prepared checkout that never got its buyer
+	// (spec 65 early order); an order with an address keeps it.
+	BuyerEmail string `json:"-"`
 }
 
 // providerChargeRef returns the pi_… this event carries, or nil when it
@@ -776,6 +781,13 @@ type stripeEventEnvelope struct {
 			AmountTotal    *int64 `json:"amount_total"`
 			AmountReceived *int64 `json:"amount_received"`
 			Currency       string `json:"currency"`
+			// checkout.session.* only: the e-mail address Stripe collected
+			// (customer_details.email), or the one the session was created
+			// with (customer_email).
+			CustomerEmail   string `json:"customer_email"`
+			CustomerDetails *struct {
+				Email string `json:"email"`
+			} `json:"customer_details"`
 		} `json:"object"`
 	} `json:"data"`
 }
@@ -829,6 +841,10 @@ func parseWebhookPaymentIntentRequest(body []byte) (webhookPaymentIntentRequest,
 		HostedPaymentID:   env.Data.Object.PaymentIntent,
 		PaidCurrency:      env.Data.Object.Currency,
 		StripeEnvelope:    true,
+		BuyerEmail:        strings.TrimSpace(env.Data.Object.CustomerEmail),
+	}
+	if d := env.Data.Object.CustomerDetails; d != nil && strings.TrimSpace(d.Email) != "" {
+		req.BuyerEmail = strings.TrimSpace(d.Email)
 	}
 	switch {
 	case env.Data.Object.AmountTotal != nil:
@@ -1138,6 +1154,7 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 			req.StripeEnvelope = true
 			if env, err := parseWebhookPaymentIntentRequest(body); err == nil {
 				req.PaidAmountMinor, req.PaidCurrency = env.PaidAmountMinor, env.PaidCurrency
+				req.BuyerEmail = env.BuyerEmail
 			}
 		}
 	} else {
@@ -1487,6 +1504,15 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"webhook.shop_order_failed", "failed to update the shop order of this payment", r))
 		return
+	}
+
+	// Step 2a': a prepared widget order whose buyer was never attached (spec
+	// 65 early order, a tampered client) takes the e-mail address the
+	// provider collected, before anything below reads the order's address
+	// (the ticket letter, a late-payment notice). Behind a SAVEPOINT: it
+	// must never cost the payment.
+	if updated.State == "succeeded" && updated.CheckoutSessionID != nil {
+		h.fillMissingBuyerEmailTx(ctx, tx, *updated.CheckoutSessionID, req.BuyerEmail)
 	}
 
 	// Step 2b (HIGH-severity fix, 2026-09-13): complete the linked checkout

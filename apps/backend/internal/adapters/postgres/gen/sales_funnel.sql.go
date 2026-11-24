@@ -205,6 +205,8 @@ const listFunnelServerRows = `WITH x AS (
     ) rf ON true
     WHERE  o.event_id = $1 AND o.org_id = $2
       AND  o.source <> 'complimentary'
+      AND  NOT (o.source = 'public_feed' AND o.buyer_email IS NULL
+                AND o.status IN ('pending_payment', 'expired', 'cancelled', 'abandoned'))
       AND  o.created_at >= $3::date - 1 AND o.created_at < $4::date + 2
       AND  (o.created_at AT TIME ZONE $5::text)::date BETWEEN $3 AND $4
       AND  ($6::uuid IS NULL OR o.session_id = $6::uuid)
@@ -285,6 +287,8 @@ const getFunnelServerTotals = `WITH x AS (
     FROM   orders o
     WHERE  o.event_id = $1 AND o.org_id = $2
       AND  o.source <> 'complimentary'
+      AND  NOT (o.source = 'public_feed' AND o.buyer_email IS NULL
+                AND o.status IN ('pending_payment', 'expired', 'cancelled', 'abandoned'))
       AND  o.created_at >= $3::date - 1 AND o.created_at < $4::date + 2
       AND  (o.created_at AT TIME ZONE $5::text)::date BETWEEN $3 AND $4
       AND  ($6::uuid IS NULL OR o.session_id = $6::uuid)

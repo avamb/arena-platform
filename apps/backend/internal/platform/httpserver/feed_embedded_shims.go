@@ -9,3 +9,9 @@ import "net/http"
 func (s *Server) handlePublicCheckoutHostedFallback(w http.ResponseWriter, r *http.Request) {
 	s.feedHandler().HandlePublicCheckoutHostedFallback(w, r)
 }
+
+// handlePublicCheckoutBuyer serves
+// POST /v1/public/checkout/{checkout_token}/buyer (spec 65 prepared order).
+func (s *Server) handlePublicCheckoutBuyer(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandlePublicCheckoutBuyer(w, r)
+}

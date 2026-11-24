@@ -329,6 +329,8 @@ WHERE  org_id = $1
   AND  ($4::uuid IS NULL OR session_id = $4)
   AND  ($5::timestamptz IS NULL OR created_at >= $5)
   AND  ($6::timestamptz IS NULL OR created_at <= $6)
+  AND  NOT (source = 'public_feed' AND buyer_email IS NULL
+            AND status IN ('pending_payment', 'expired', 'cancelled', 'abandoned'))
 ORDER  BY created_at DESC, id DESC
 LIMIT  $7 OFFSET $8`
 

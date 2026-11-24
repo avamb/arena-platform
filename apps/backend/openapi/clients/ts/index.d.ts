@@ -9520,9 +9520,15 @@ export interface paths {
          *     * unpaid, unknown, or no answer from the provider: the order is
          *       cancelled. A payment the provider confirms later is refunded in
          *       full (`late_payment: refund_requested` on the order status);
-         *     * a provider whose payment cannot be read back (Stripe) whose page
-         *       was handed out, hosted or embedded (spec 65): 409
-         *       `checkout.payment_in_progress`; its page expires by itself.
+         *     * a provider whose hosted page cannot be read back (Stripe) and was
+         *       handed out: 409 `checkout.payment_in_progress`; its page expires
+         *       by itself;
+         *     * an open embedded payment (spec 65, also a prepared order the
+         *       widget cancels when its sheet closes): it is expired at the
+         *       provider first. Expired: the cancel goes on (order cancelled,
+         *       places released). The provider refuses because it is paid or a
+         *       payment is being processed, or does not answer: 409
+         *       `checkout.payment_in_progress`, nothing is cancelled.
          *
          *     Idempotent: a repeat answers `cancelled: true` again and writes
          *     nothing. No JWT: the `checkout_token` is the credential.
@@ -9569,6 +9575,41 @@ export interface paths {
          *     with `Cache-Control: no-store`.
          */
         post: operations["switchPublicCheckoutToHostedPage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/checkout/{checkout_token}/buyer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attach the buyer to a prepared order
+         * @description Spec 65 early order. `checkout/start` with `prepare: true` created
+         *     the hold, the order and the embedded Stripe session without the
+         *     buyer; the widget sends the buyer here when the buyer presses
+         *     "Pay", then gives the e-mail address to Stripe and confirms. This
+         *     route does not call Stripe.
+         *
+         *     The checks are those of `checkout/start`: a valid e-mail address,
+         *     the name and phone the channel requires, the sale-terms consent the
+         *     channel asks for. In one transaction the order's buyer is written,
+         *     the customer resolved, the buyer's previous unpaid order on the
+         *     same session closed and the consent recorded.
+         *
+         *     The same e-mail address again answers 200 and writes nothing;
+         *     another address is 409 `checkout.buyer_already_set`. No JWT: the
+         *     `checkout_token` is the credential. Sent with
+         *     `Cache-Control: no-store`.
+         */
+        post: operations["attachPublicCheckoutBuyer"];
         delete?: never;
         options?: never;
         head?: never;
@@ -31689,6 +31730,24 @@ export interface components {
              */
             capabilities?: string[];
             /**
+             * @description Spec 65 early order, optional. `true`: the hold, the order and
+             *     the embedded Stripe session are created now, WITHOUT the buyer
+             *     (the widget opens its order sheet); the buyer is attached at
+             *     "Pay" with `POST /v1/public/checkout/{checkout_token}/buyer`.
+             *     Requires `capabilities` to contain `stripe_elements`. The body
+             *     must not carry `buyer`, `holder_email`, `promo_code`,
+             *     `marketing_consent` or `consent` (422
+             *     `checkout.prepare_unavailable`); the channel must give the
+             *     embedded form (409 `checkout.prepare_unavailable` before any
+             *     hold); a zero total is refused the same way and its hold
+             *     released; when the embedded session cannot be created there is
+             *     no hosted page: the order is cancelled, the hold released, 409
+             *     `checkout.prepare_unavailable`. Required name, phone and consent
+             *     are checked at attach. The 201 is the embedded answer plus
+             *     `prepared: true`.
+             */
+            prepare?: boolean;
+            /**
              * @deprecated
              * @description Deprecated alias of `buyer_context.tracking_consent` +
              *     `tracking_consent_text_version`; both write the same stored
@@ -32519,6 +32578,43 @@ export interface components {
             payment?: components["schemas"]["EmbeddedCheckoutPayment"];
             /** @description True when the cart's discount is the reward for the marketing consent tick. */
             marketing_discount_applied?: boolean;
+            /**
+             * @description True for a prepared order (`prepare: true`, spec 65): it has no
+             *     buyer yet; attach one with
+             *     `POST /v1/public/checkout/{checkout_token}/buyer` before the
+             *     payment is confirmed. Absent otherwise.
+             */
+            prepared?: boolean;
+        };
+        /**
+         * @description Body of `POST /v1/public/checkout/{checkout_token}/buyer`: the buyer
+         *     of a prepared order (spec 65), checked with the rules of
+         *     `checkout/start`.
+         */
+        CheckoutBuyerAttachRequest: {
+            /** @description The buyer's e-mail address (required), name and phone. */
+            buyer: components["schemas"]["PublicBuyerInfo"];
+            /** @description The tick on the sale terms, as in `checkout/start`. */
+            consent?: components["schemas"]["PublicCheckoutConsent"];
+            /** @description The buyer's language, as in `checkout/start`; an unknown value is ignored. */
+            locale?: string;
+        };
+        /** @description Response of `POST /v1/public/checkout/{checkout_token}/buyer`. */
+        CheckoutBuyerAttachResponse: {
+            /** @description The checkout token, echoed. */
+            checkout_token: string;
+            /** @description Always `pending`. */
+            status: string;
+            /**
+             * Format: date-time
+             * @description Hold expiry (RFC 3339 UTC), unchanged by the attach.
+             */
+            expires_at: string;
+            /**
+             * Format: date-time
+             * @description When the provider's form stops taking the payment (RFC 3339 UTC).
+             */
+            payment_expires_at: string;
         };
         /**
          * @description What the widget initialises the provider's browser SDK with for an
@@ -71713,7 +71809,11 @@ export interface operations {
              *     used with a different body (also while that first request is
              *     still running), or `checkout.price_changed` when `expected_total`
              *     differs from the computed total (`details.expected_total`,
-             *     `details.actual_total`, `details.currency`; nothing was held).
+             *     `details.actual_total`, `details.currency`; nothing was held),
+             *     or `checkout.prepare_unavailable` for `prepare: true` when the
+             *     channel has no embedded form, the total is zero or the embedded
+             *     session could not be created (`details.reason`; nothing stays
+             *     held).
              */
             409: {
                 headers: {
@@ -71743,6 +71843,10 @@ export interface operations {
              *     `checkout.consent_required` when the session's `consent.required`
              *     is true and the body carries no `consent` with `accepted: true`;
              *     refused before any hold is taken.
+             *
+             *     `checkout.prepare_unavailable` for `prepare: true` without the
+             *     `stripe_elements` capability or with a buyer, a promo code, a
+             *     marketing tick or a consent (`details.reason`).
              */
             422: {
                 headers: {
@@ -73692,6 +73796,105 @@ export interface operations {
              *     (`checkout.payment_not_configured`), or the database is
              *     unavailable (`dependency.database_unavailable`); retry. Never
              *     502: the route sits behind Cloudflare.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    attachPublicCheckoutBuyer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque checkout token from `checkout/start`. */
+                checkout_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckoutBuyerAttachRequest"];
+            };
+        };
+        responses: {
+            /** @description The buyer is attached (now or by an earlier call). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutBuyerAttachResponse"];
+                };
+            };
+            /**
+             * @description The body is not JSON (`checkout.invalid_json`,
+             *     `checkout.invalid_body`), has no e-mail address
+             *     (`checkout.missing_holder_email`) or a malformed one
+             *     (`checkout.invalid_email`, the envelope of `checkout/start`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No checkout for this token (`checkout.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `checkout.not_payable`: the order is paid, expired or cancelled,
+             *     or its payment window is over (`details.status` is the order
+             *     status). `checkout.buyer_already_set`: the order already has
+             *     another e-mail address.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `checkout.buyer_name_required`, `checkout.buyer_phone_required`
+             *     or `checkout.consent_required`, with the rules of
+             *     `checkout/start`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded (`checkout.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The database is unavailable (`dependency.database_unavailable`)
+             *     or the buyer could not be saved (`checkout.unavailable`); retry.
+             *     Never 502: the route sits behind Cloudflare.
              */
             503: {
                 headers: {

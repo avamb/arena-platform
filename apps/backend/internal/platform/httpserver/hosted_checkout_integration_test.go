@@ -97,6 +97,16 @@ type stubStripe struct {
 	// failHostedCreates makes the next N hosted (non-elements) session
 	// creations answer 500, as a Stripe outage would.
 	failHostedCreates int
+	// failElementsCreates makes the next N embedded (ui_mode=elements)
+	// session creations answer 400, as a Stripe refusal would.
+	failElementsCreates int
+}
+
+// failNextElementsCreates makes the next n embedded session creations fail.
+func (s *stubStripe) failNextElementsCreates(n int) {
+	s.refundMu.Lock()
+	defer s.refundMu.Unlock()
+	s.failElementsCreates = n
 }
 
 // failNextHostedCreates makes the next n hosted session creations fail.
@@ -248,6 +258,20 @@ func newStubStripe(t *testing.T) *stubStripe {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = fmt.Fprint(w, `{"error":{"type":"api_error","message":"stub outage"}}`)
+				return
+			}
+		}
+		if form.Get("ui_mode") == "elements" {
+			s.refundMu.Lock()
+			fail := s.failElementsCreates > 0
+			if fail {
+				s.failElementsCreates--
+			}
+			s.refundMu.Unlock()
+			if fail {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = fmt.Fprint(w, `{"error":{"type":"invalid_request_error","message":"stub refusal"}}`)
 				return
 			}
 		}
