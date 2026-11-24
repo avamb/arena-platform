@@ -250,11 +250,12 @@
   let stage = $state<WidgetStage>('selecting');
   let cartSheetOpen = $state(false);
 
-  // The host page sees the open checkout sheet as `data-cart-open` on <arena-tickets>,
-  // so it can hide its own "Buy tickets" buttons with CSS alone while the buyer pays.
+  // The host page sees the checkout as `data-cart-open` on <arena-tickets>, so it can hide
+  // its own "Buy tickets" buttons with CSS alone while the buyer pays: the sheet is open, or
+  // the widget has left seat selection (an inline payment step closes the sheet first).
   $effect(() => {
     if (!host) return;
-    if (cartSheetOpen) host.setAttribute('data-cart-open', '');
+    if (cartSheetOpen || stage !== 'selecting') host.setAttribute('data-cart-open', '');
     else host.removeAttribute('data-cart-open');
   });
 

@@ -10,8 +10,9 @@ import { describe, it, expect } from 'vitest';
 import widgetSource from './ArenaTickets.svelte?raw';
 
 describe('data-cart-open on the host element', () => {
-  it('mirrors the open checkout sheet on the host', () => {
-    expect(widgetSource).toMatch(/if \(cartSheetOpen\) host\.setAttribute\('data-cart-open', ''\);/);
+  it('mirrors the open checkout sheet and every stage after seat selection on the host', () => {
+    // An inline payment step (embedded Stripe) closes the sheet first: the stage keeps the attribute.
+    expect(widgetSource).toMatch(/if \(cartSheetOpen \|\| stage !== 'selecting'\) host\.setAttribute\('data-cart-open', ''\);/);
     expect(widgetSource).toMatch(/else host\.removeAttribute\('data-cart-open'\);/);
   });
 
