@@ -15,6 +15,7 @@
       promo: { type: 'String', attribute: 'promo' },
       trackingConsent: { type: 'String', attribute: 'tracking-consent' },
       trackingConsentVersion: { type: 'String', attribute: 'tracking-consent-version' },
+      preloadPayment: { type: 'String', attribute: 'preload-payment' },
     },
   }}
 />
@@ -93,6 +94,7 @@
   import GaAreaPopover from './components/GaAreaPopover.svelte';
   import OrderStatus from './components/OrderStatus.svelte';
   import PaymentScreen from './components/PaymentScreen.svelte';
+  import { loadStripeJs } from './lib/stripeElements.js';
   import { createPaymentStepsRegistry } from './lib/paymentSteps.js';
   import type { PaymentBlock } from './lib/checkout.js';
   import Materials from './components/Materials.svelte';
@@ -151,9 +153,14 @@
     trackingConsent?: string;
     /** Version of the consent text the host showed (sent with the answer). */
     trackingConsentVersion?: string;
+    /** 'stripe': the host knows its channel pays through embedded Stripe, so
+     * the widget loads Stripe.js as soon as the checkout sheet opens, while
+     * the buyer types the e-mail, instead of after "Pay". Anything else (or
+     * absent) loads Stripe.js only when the platform answers with it. */
+    preloadPayment?: string;
   }
 
-  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '', frame = '', materials = '', funnel = '', promo: promoAttribute = '', trackingConsent = '', trackingConsentVersion = '' }: Props = $props();
+  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '', frame = '', materials = '', funnel = '', promo: promoAttribute = '', trackingConsent = '', trackingConsentVersion = '', preloadPayment = '' }: Props = $props();
 
   /**
    * Host element reference for CustomEvent dispatch (WID-S5).
@@ -244,6 +251,16 @@
 
   let stage = $state<WidgetStage>('selecting');
   let cartSheetOpen = $state(false);
+
+  // Stripe.js takes ~0.3 s plus its own connections; loaded after "Pay" it sat
+  // on the critical path to the card form. With preload-payment="stripe" it
+  // starts when the sheet opens. loadStripeJs is one shared promise, so the
+  // payment screen reuses it; a failure here is ignored and retried there.
+  $effect(() => {
+    if (cartSheetOpen && preloadPayment.trim().toLowerCase() === 'stripe') {
+      loadStripeJs().catch(() => {});
+    }
+  });
 
   // ── Selection state ────────────────────────────────────────────────────────
 
