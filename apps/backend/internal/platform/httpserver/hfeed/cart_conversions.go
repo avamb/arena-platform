@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -98,6 +99,9 @@ func (h *Handler) queueCartEvent(ctx context.Context, orgID uuid.UUID, kind, eve
 	if h.cartConversions == nil || eventID == "" {
 		return
 	}
+	// A tracking label must never hold up a purchase: two pool queries at most 2 s.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+	defer cancel()
 	var bc conversions.BuyerContext
 	if len(cleanedCtx) > 0 {
 		_ = json.Unmarshal(cleanedCtx, &bc)
