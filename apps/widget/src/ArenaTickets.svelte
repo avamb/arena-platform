@@ -10,6 +10,7 @@
       cover: { type: 'String', attribute: 'cover' },
       sessions: { type: 'String', attribute: 'sessions' },
       frame: { type: 'String', attribute: 'frame' },
+      checkout: { type: 'String', attribute: 'checkout' },
       materials: { type: 'String', attribute: 'materials' },
       funnel: { type: 'String', attribute: 'funnel' },
       promo: { type: 'String', attribute: 'promo' },
@@ -131,6 +132,8 @@
      * things. Anything else (or absent) keeps the frame, which is what a
      * standalone embed on someone else's site wants. */
     frame?: string;
+    /** 'one-step' shows the cart and the buyer form on ONE screen of the cart sheet. */
+    checkout?: string;
     /** 'hidden' drops the event's materials block (gallery, videos, map,
      * "where else to buy", photo report). A host page that already shows
      * the same material itself — the hosted tickets page does — sets it so
@@ -153,7 +156,7 @@
     trackingConsentVersion?: string;
   }
 
-  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '', frame = '', materials = '', funnel = '', promo: promoAttribute = '', trackingConsent = '', trackingConsentVersion = '' }: Props = $props();
+  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '', frame = '', checkout = '', materials = '', funnel = '', promo: promoAttribute = '', trackingConsent = '', trackingConsentVersion = '' }: Props = $props();
 
   /**
    * Host element reference for CustomEvent dispatch (WID-S5).
@@ -170,6 +173,7 @@
   // Case- and space-insensitive so cover="Hidden" behaves; any other value
   // keeps the cover, since a typo must not silently strip the artwork.
   const coverHidden = $derived(cover.trim().toLowerCase() === 'hidden');
+  const oneStep = $derived(checkout.trim().toLowerCase() === 'one-step');
   const frameHidden = $derived(frame.trim().toLowerCase() === 'hidden');
   const materialsHidden = $derived(materials.trim().toLowerCase() === 'hidden');
   const badgeT = $derived(getPlatformBadgeStrings(normLocale));
@@ -1441,6 +1445,7 @@
     {#if cartSheetOpen && selectedSession}
       <CartSheet
         cart={effectiveCart}
+        {oneStep}
         buyerFields={selectedSession.buyer_fields as import('./lib/checkout.js').BuyerFieldConfig[]}
         serviceFeePercent={selectedSession.service_fee_percent}
         promoAvailable={selectedSession.promo_codes_available === true || wantedPromo !== null}
