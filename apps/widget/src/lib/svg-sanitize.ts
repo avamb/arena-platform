@@ -172,7 +172,10 @@ function serializeNode(node: globalThis.Node, out: string[], inTextContainer: bo
 
   // Namespace + element allowlist: anything else is dropped with its subtree
   // (covers script, foreignObject, use, image, style, a, defs, filters, …).
-  if (el.namespaceURI !== SVG_NS || !ALLOWED_ELEMENTS.has(name)) {
+  // An element in NO namespace (an `xmlns=""` reset, which some SVG writers
+  // emit on decor groups) is read as SVG: the allowlist below still decides,
+  // and the output is re-serialised inside the map's own SVG root.
+  if ((el.namespaceURI !== SVG_NS && el.namespaceURI !== null) || !ALLOWED_ELEMENTS.has(name)) {
     return;
   }
 

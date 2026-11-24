@@ -79,6 +79,21 @@ describe('sanitizeDecorSvg — prefixed decor as the backend stores it', () => {
     const out = sanitizeDecorSvg('<svg:rect x="0" y="0" width="1" height="1" inkscape:label="x"/>');
     expect(out).toBe('<rect x="0" y="0" width="1" height="1"/>');
   });
+
+  it('reads elements under an xmlns="" reset as SVG (venue generator decor), allowlist still applies', () => {
+    const input =
+      '<title xmlns="">Hall</title>' +
+      '<g xmlns="" id="VenueDecor" pointer-events="none">' +
+      '<rect x="40" y="572" width="360" height="870" fill="#d4d4d4"/>' +
+      '<text x="220" y="1013" text-anchor="middle">SCENA</text>' +
+      '<script>alert(1)</script>' +
+      '</g>';
+    const out = sanitizeDecorSvg(input);
+    expect(out).toContain('<rect x="40" y="572" width="360" height="870" fill="#d4d4d4"/>');
+    expect(out).toContain('SCENA</text>');
+    expect(out).not.toContain('script');
+    expect(out).not.toContain('xmlns');
+  });
 });
 
 describe('sanitizeDecorSvg — inline style fills', () => {
