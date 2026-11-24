@@ -54,7 +54,8 @@ async function pollStatus() {
     const j = await r.json();
     status = { status_version: j.status_version, seats: j.seats || {}, at: Date.now() };
   } catch (e) {
-    status = { ...status, error: String(e.message || e) };
+    console.error("live-view: seat-status poll failed:", e);
+    status = { ...status, error: "seat-status poll failed" };
   }
 }
 setInterval(pollStatus, 2000);
@@ -205,5 +206,5 @@ http.createServer(async (req, res) => {
     if (url === "/api/status") return send(200, "application/json", JSON.stringify(status));
     if (url === "/api/run") return send(200, "application/json", JSON.stringify(runJson()));
     send(404, "text/plain", "not found");
-  } catch (e) { send(502, "application/json", JSON.stringify({ error: String(e.message || e) })); }
+  } catch (e) { console.error("live-view:", e); send(502, "application/json", JSON.stringify({ error: "upstream request failed" })); }
 }).listen(PORT, "127.0.0.1", () => console.log(`live view: http://localhost:${PORT}/  run=${path.basename(RUN_FILE)} api=${API_BASE}`));
