@@ -759,9 +759,6 @@ func TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes(t *testing.T) {
 	for path, methods := range codeRoutes {
 		for method := range methods {
 			if specRoutes[path] == nil || !specRoutes[path][method] {
-				if _, ahead := codeAheadOfSpec[strings.ToUpper(method)+" "+path]; ahead {
-					continue
-				}
 				missing = append(missing, strings.ToUpper(method)+" "+path)
 			}
 		}
@@ -772,31 +769,6 @@ func TestOpenAPIDriftCheck_SpecCoversAllCodeRoutes(t *testing.T) {
 		t.Errorf("routes present in code but MISSING from openapi.yaml (%d):\n  %s\n\nAdd these routes to openapi/openapi.yaml",
 			len(missing), strings.Join(missing, "\n  "))
 	}
-
-	// Staleness guard: an entry whose route is now documented must go.
-	for key, feature := range codeAheadOfSpec {
-		method, path, ok := strings.Cut(key, " ")
-		if !ok {
-			t.Errorf("codeAheadOfSpec entry %q is malformed (want \"METHOD /path\")", key)
-			continue
-		}
-		if specRoutes[path] != nil && specRoutes[path][strings.ToLower(method)] {
-			t.Errorf("codeAheadOfSpec entry %q (%s) is now documented in openapi.yaml — delete the entry", key, feature)
-		}
-	}
-}
-
-// codeAheadOfSpec lists (METHOD path) pairs served by the code BEFORE their
-// openapi.yaml entry lands — the code-first exception to the code → YAML
-// drift check, for a stage whose OpenAPI step is a separate task. Every entry
-// names the work that documents it; the check above fails once the route is
-// documented, so the list cannot go stale silently.
-var codeAheadOfSpec = map[string]string{
-	"POST /v1/public/feeds/{feed_token}/holds":              "spec 67 stage 4 (OpenAPI of the seat hold at the click)",
-	"GET /v1/public/holds/{hold_token}":                     "spec 67 stage 4 (OpenAPI of the seat hold at the click)",
-	"DELETE /v1/public/holds/{hold_token}":                  "spec 67 stage 4 (OpenAPI of the seat hold at the click)",
-	"DELETE /v1/public/holds/{hold_token}/seats/{seat_key}": "spec 67 stage 4 (OpenAPI of the seat hold at the click)",
-	"POST /v1/public/holds/{hold_token}/extend":             "spec 67 stage 4 (OpenAPI of the seat hold at the click)",
 }
 
 // specPendingImplementation lists (METHOD path) pairs that are documented in

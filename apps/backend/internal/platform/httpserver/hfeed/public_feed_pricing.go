@@ -27,6 +27,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/holdpolicy"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
@@ -42,7 +43,7 @@ const (
 	// the cap checkout/start has always enforced on its legacy qty field.
 	maxLineQuantity = 50
 	// maxCartSeats is the most assigned seats in one cart.
-	maxCartSeats = 100
+	maxCartSeats = holdpolicy.MaxCartSeats
 )
 
 // checkCartCaps answers "" for a cart within the caps, otherwise the stable

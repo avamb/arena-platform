@@ -41,6 +41,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hseating"
 )
 
 const phVisitorKey = "integration-hold-visitor-key-0123456789abcdef"
@@ -699,6 +700,54 @@ func TestHoldsPublic_Limits(t *testing.T) {
 	})
 }
 
+// A click without device_id is counted under the visitor's address, whether
+// or not the address limits are on (spec 67, section 6).
+func TestHoldsPublic_NoDeviceClicksHitDeviceLimit(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+	f := newPHFixture(t, ctx, pool, 3, 4)
+	srv := buildPHServer(t, pool)
+	for i := 0; i < 2; i++ {
+		if code, out := phPost(t, srv, f, phClick(f.sessions[i], "", phSeat(1)), ""); code != http.StatusCreated {
+			t.Fatalf("hold %d = %d %q", i+1, code, out.code())
+		}
+	}
+	code, out := phPost(t, srv, f, phClick(f.sessions[2], "", phSeat(1)), "")
+	if code != http.StatusTooManyRequests || out.code() != "hold.too_many_active" {
+		t.Fatalf("third no-device hold = %d %q, want 429 hold.too_many_active", code, out.code())
+	}
+	if st := phSeatStatus(t, ctx, pool, f.sessions[2], phSeat(1)); st != "available" {
+		t.Errorf("third hold took a seat: %q", st)
+	}
+}
+
+// "Hold again" takes only the seats of the old hold.
+func TestHoldsPublic_ReholdForeignSeatRefused(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+	f := newPHFixture(t, ctx, pool, 1, 6)
+	srv := buildPHServer(t, pool)
+	s := f.sessions[0]
+	code, h1 := phPost(t, srv, f, phClick(s, "dev-foreign", phSeat(1), phSeat(2)), "")
+	if code != http.StatusCreated {
+		t.Fatalf("hold = %d %q", code, h1.code())
+	}
+	phExpire(t, ctx, pool, h1.HoldToken)
+	code, out := phPost(t, srv, f, map[string]any{"session_id": s.String(), "device_id": "dev-foreign",
+		"rehold_of": h1.HoldToken, "seat_keys": []string{phSeat(1), phSeat(5)}}, "")
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("rehold with a foreign seat = %d %q, want 422", code, out.code())
+	}
+	if st := phSeatStatus(t, ctx, pool, s, phSeat(5)); st != "available" {
+		t.Errorf("foreign seat = %q, want available", st)
+	}
+	code, ok := phPost(t, srv, f, map[string]any{"session_id": s.String(), "device_id": "dev-foreign",
+		"rehold_of": h1.HoldToken, "seat_keys": []string{phSeat(2)}}, "")
+	if code != http.StatusCreated || len(ok.SeatKeys) != 1 || ok.SeatKeys[0] != phSeat(2) {
+		t.Fatalf("rehold of an old seat = %d %+v", code, ok)
+	}
+}
+
 func TestHoldsPublic_TwentyParallelCreatesOneDevice(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := t.Context()
@@ -843,6 +892,7 @@ func TestHoldsPublic_SeatStatusPollInterval(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE events SET hold_profile = 'high_demand' WHERE id = $1`, f.eventID); err != nil {
 		t.Fatal(err)
 	}
+	hseating.ResetPollPolicyCache() // the profile is cached for 30 s
 	if v := read("?since_version=999999"); v != 1500 {
 		t.Errorf("high_demand poll_interval_ms = %v, want 1500", v)
 	}

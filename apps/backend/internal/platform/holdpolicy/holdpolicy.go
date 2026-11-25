@@ -114,6 +114,10 @@ func Default() Policy {
 	}
 }
 
+// MaxCartSeats is the platform limit of assigned seats in one public cart
+// (hfeed checkCartCaps uses it); a hold can never be larger than a cart.
+const MaxCartSeats = 100
+
 // ErrInvalid reports a policy that breaks a CHECK of hold_policy_profiles.
 var ErrInvalid = errors.New("holdpolicy: invalid policy")
 
@@ -135,7 +139,7 @@ func (p Policy) Validate() error {
 		return bad("extend_count", p.ExtendCount)
 	case p.Paying < 0 || !whole(p.Paying, time.Second):
 		return bad("paying", p.Paying)
-	case p.MaxSeatsPerHold < 1:
+	case p.MaxSeatsPerHold < 1 || p.MaxSeatsPerHold > MaxCartSeats:
 		return bad("max_seats_per_hold", p.MaxSeatsPerHold)
 	case p.MaxActivePerDevice < 1:
 		return bad("max_active_per_device", p.MaxActivePerDevice)

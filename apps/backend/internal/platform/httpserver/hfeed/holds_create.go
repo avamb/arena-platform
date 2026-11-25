@@ -197,13 +197,21 @@ func (hh *HoldsHandler) checkCreate(w http.ResponseWriter, r *http.Request) (hol
 			slog.String("session_id", sessionID.String()), slog.String("error", perr.Error()))
 	}
 
+	ipHash := hh.ipHash(hh.h.clientIP(r))
+	deviceHash := hh.deviceHash(deviceID)
+	if deviceHash == nil {
+		// A click without device_id must not escape the per-device limits,
+		// the pause and the inherited deadline: the address stands in for the
+		// device, whether or not the address limits are switched on.
+		deviceHash = ipHash
+	}
 	in := holdCreateInput{
 		sessionID:  sessionID,
 		orgID:      checkCtx.OrgID,
 		channelID:  checkCtx.SalesChannelID,
 		seatKeys:   seatKeys,
-		deviceHash: hh.deviceHash(deviceID),
-		ipHash:     hh.ipHash(hh.h.clientIP(r)),
+		deviceHash: deviceHash,
+		ipHash:     ipHash,
 		policy:     policy,
 		now:        hh.now(),
 	}
@@ -344,8 +352,23 @@ func (hh *HoldsHandler) newHoldTx(ctx context.Context, q *gen.Queries, in holdCr
 		}
 		id := old.ID
 		reholdOf = &id
+		oldSeats := holdSeatKeysOf(old.HoldPolicy)
 		if len(seats) == 0 {
-			seats, _, _ = hcheckout.NormalizeSeatKeys(holdSeatKeysOf(old.HoldPolicy))
+			seats, _, _ = hcheckout.NormalizeSeatKeys(oldSeats)
+		} else {
+			// "Hold again" returns the seats of the old hold only.
+			had := make(map[string]struct{}, len(oldSeats))
+			for _, k := range oldSeats {
+				had[k] = struct{}{}
+			}
+			for _, k := range seats {
+				if _, ok := had[k]; !ok {
+					return holdCreateOutcome{}, refuse(http.StatusUnprocessableEntity, "hold.rehold_foreign_seat",
+						"Hold again takes only the seats of the expired hold. Select other seats as a new hold.",
+						observability.HoldResultRejected,
+						map[string]any{"field": "seat_keys", "seat_key": k})
+				}
+			}
 		}
 		if len(seats) == 0 {
 			return holdCreateOutcome{}, reholdUnavailable()

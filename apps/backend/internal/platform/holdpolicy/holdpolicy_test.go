@@ -40,6 +40,8 @@ func TestValidate_MirrorsChecks(t *testing.T) {
 		{"extend_count -1", func(p *Policy) { p.ExtendCount = -1 }, false},
 		{"paying negative", func(p *Policy) { p.Paying = -time.Second }, false},
 		{"max seats 0", func(p *Policy) { p.MaxSeatsPerHold = 0 }, false},
+		{"max seats at cart limit", func(p *Policy) { p.MaxSeatsPerHold = MaxCartSeats }, true},
+		{"max seats over cart limit", func(p *Policy) { p.MaxSeatsPerHold = MaxCartSeats + 1 }, false},
 		{"max device 0", func(p *Policy) { p.MaxActivePerDevice = 0 }, false},
 		{"max ip 0", func(p *Policy) { p.MaxActivePerIP = 0 }, false},
 		{"rehold negative", func(p *Policy) { p.ReholdPause = -time.Second }, false},

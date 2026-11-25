@@ -36,7 +36,6 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/holdpolicy"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
 )
@@ -327,7 +326,7 @@ func (h *Handler) HandleGetPublicSessionSeatStatus(w http.ResponseWriter, r *htt
 
 	// How often the widget asks again: the session's hold profile (spec 67
 	// section 4.9), standard when the profile cannot be read.
-	pollPolicy, pollErr := holdpolicy.ForSession(ctx, h.queries, sessionID)
+	pollPolicy, pollErr := cachedPollPolicy(ctx, h.queries, sessionID)
 	if pollErr != nil && !errors.Is(pollErr, pgx.ErrNoRows) {
 		h.logger.Warn("seating_public: hold policy unreadable, using standard poll interval",
 			slog.String("session_id", sessionID.String()), slog.String("error", pollErr.Error()))
