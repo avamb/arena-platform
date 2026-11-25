@@ -13,6 +13,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/txretry"
 )
 
 // ActorHoldClose is the order_events actor of an order this job expired.
@@ -56,16 +57,34 @@ func (s *PGStore) OpenIntents(ctx context.Context, reservationID uuid.UUID, prov
 	return s.q.ListOpenPageIntents(ctx, reservationID, providers)
 }
 
-// Release implements Store: step 5 of section 5.2 in one transaction. The
-// reservation row is locked first; ExpireHoldForOrderTx then takes sessions,
-// the seats and inventory_ledger in the order every hold mutation uses.
+// Release implements Store: step 5 of section 5.2 in one transaction,
+// retried whole on 40P01/40001. The locks follow the one order of a change of
+// an existing hold: the reservation row, its checkouts, its pending orders,
+// its open payment attempts, then (ExpireHoldForOrderTx) sessions, the seats
+// and inventory_ledger.
+//
+// Under the reservation lock it refuses (released=false, the mark cleared,
+// the hold tried again on the next pass) when the hold has an open payment
+// attempt that is not in intentIDs: a page recorded after OpenIntents was
+// read is open at the provider and must be closed first.
 func (s *PGStore) Release(ctx context.Context, reservationID uuid.UUID, mark time.Time, intentIDs []uuid.UUID) (bool, error) {
+	var released bool
+	err := txretry.Do(ctx, txretry.DefaultAttempts, func() error {
+		var err error
+		released, err = s.releaseOnce(ctx, reservationID, mark, intentIDs)
+		return err
+	})
+	return released, err
+}
+
+func (s *PGStore) releaseOnce(ctx context.Context, reservationID uuid.UUID, mark time.Time, intentIDs []uuid.UUID) (bool, error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return false, fmt.Errorf("holdclose: begin release: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
+	// 1. The reservation row.
 	var (
 		state   string
 		current *time.Time
@@ -83,6 +102,38 @@ func (s *PGStore) Release(ctx context.Context, reservationID uuid.UUID, mark tim
 		return false, tx.Commit(ctx)
 	}
 
+	txq := gen.New(tx)
+	// 2. Its checkouts, 3. its pending orders, 4. its open attempts.
+	checkouts, err := txq.LockCheckoutSessionsOfReservation(ctx, reservationID)
+	if err != nil {
+		return false, fmt.Errorf("holdclose: lock checkouts: %w", err)
+	}
+	orderIDs, err := txq.LockPendingOrdersOfReservation(ctx, reservationID)
+	if err != nil {
+		return false, fmt.Errorf("holdclose: lock orders: %w", err)
+	}
+	open, err := txq.LockOpenAttemptsOfReservation(ctx, reservationID)
+	if err != nil {
+		return false, fmt.Errorf("holdclose: lock payment attempts: %w", err)
+	}
+	closed := make(map[uuid.UUID]struct{}, len(intentIDs))
+	for _, id := range intentIDs {
+		closed[id] = struct{}{}
+	}
+	for _, id := range open {
+		if _, ok := closed[id]; !ok {
+			// A page recorded after the close began: take the claim back,
+			// the next pass closes it with the others.
+			if err := txq.ClearHoldCloseMark(ctx, reservationID, mark); err != nil {
+				return false, fmt.Errorf("holdclose: clear mark: %w", err)
+			}
+			if err := tx.Commit(ctx); err != nil {
+				return false, fmt.Errorf("holdclose: commit cleared mark: %w", err)
+			}
+			return false, nil
+		}
+	}
+
 	if _, err := tx.Exec(ctx, `
 		UPDATE payment_intents
 		SET    state           = 'failed',
@@ -96,16 +147,6 @@ func (s *PGStore) Release(ctx context.Context, reservationID uuid.UUID, mark tim
 		return false, fmt.Errorf("holdclose: fail payment attempts: %w", err)
 	}
 
-	txq := gen.New(tx)
-	orderRows, err := tx.Query(ctx,
-		`SELECT id FROM orders WHERE reservation_id = $1 AND status = 'pending_payment'`, reservationID)
-	if err != nil {
-		return false, fmt.Errorf("holdclose: list orders: %w", err)
-	}
-	orderIDs, err := pgx.CollectRows(orderRows, pgx.RowTo[uuid.UUID])
-	if err != nil {
-		return false, fmt.Errorf("holdclose: read orders: %w", err)
-	}
 	now := time.Now().UTC()
 	for _, id := range orderIDs {
 		if _, _, err := ordering.ExpireIfStillPending(ctx, txq, ordering.ExpireIfStillPendingInput{
@@ -115,19 +156,12 @@ func (s *PGStore) Release(ctx context.Context, reservationID uuid.UUID, mark tim
 		}
 	}
 
-	csRows, err := tx.Query(ctx,
-		`SELECT id FROM checkout_sessions
-		 WHERE reservation_id = $1 AND state NOT IN ('completed', 'abandoned', 'expired')`, reservationID)
-	if err != nil {
-		return false, fmt.Errorf("holdclose: list checkouts: %w", err)
-	}
-	csIDs, err := pgx.CollectRows(csRows, pgx.RowTo[uuid.UUID])
-	if err != nil {
-		return false, fmt.Errorf("holdclose: read checkouts: %w", err)
-	}
-	for _, id := range csIDs {
-		if _, err := txq.ExpireCheckoutSession(ctx, id); err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return false, fmt.Errorf("holdclose: expire checkout %s: %w", id, err)
+	for _, c := range checkouts {
+		if c.State == "completed" || c.State == "abandoned" || c.State == "expired" {
+			continue
+		}
+		if _, err := txq.ExpireCheckoutSession(ctx, c.ID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return false, fmt.Errorf("holdclose: expire checkout %s: %w", c.ID, err)
 		}
 	}
 

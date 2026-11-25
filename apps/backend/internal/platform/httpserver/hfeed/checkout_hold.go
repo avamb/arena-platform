@@ -269,16 +269,3 @@ func (w holdPaymentWindow) grace(def time.Duration) time.Duration {
 func newHoldPageExpiry(p holdpolicy.Policy, now time.Time) time.Time {
 	return now.Add(p.PageLifetime())
 }
-
-// recordPageExpiry writes page_expires_at on the payment attempt of a page
-// just created for a hold. Best effort: the page exists and the buyer can pay
-// on it; a missing value only keeps the old rules for this checkout.
-func (h *Handler) recordPageExpiry(ctx context.Context, q *gen.Queries, intentID uuid.UUID, pageExpiresAt time.Time) {
-	if q == nil || pageExpiresAt.IsZero() {
-		return
-	}
-	if _, err := q.SetPaymentIntentPageExpiresAt(ctx, intentID, pageExpiresAt); err != nil {
-		h.logger.Warn("public_feed_checkout: recording the page expiry of the payment attempt failed",
-			slog.String("payment_intent_id", intentID.String()), slog.String("error", err.Error()))
-	}
-}

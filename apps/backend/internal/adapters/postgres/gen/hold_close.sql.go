@@ -27,8 +27,22 @@ WHERE  r.state IN ('draft', 'active')
            JOIN   payment_intents pi ON pi.checkout_session_id = cs.id
            WHERE  cs.reservation_id = r.id
              AND  pi.state IN ('created', 'requires_action')
-             AND  pi.page_expires_at IS NOT NULL
-             AND  pi.page_expires_at + make_interval(secs => $2::float8) > now()
+             AND  (
+                      (pi.page_expires_at IS NOT NULL
+                       AND pi.page_expires_at + make_interval(secs => $2::float8) > now())
+                   OR (pi.page_expires_at IS NULL
+                       AND r.hold_token_hash IS NOT NULL
+                       AND pi.provider = ANY($3::text[])
+                       AND pi.provider_payment_id IS NOT NULL
+                       AND r.expires_at
+                           + make_interval(secs => GREATEST(
+                                 $4::float8,
+                                 COALESCE((r.hold_policy ->> 'payment_seconds')::float8, 0)
+                                 + COALESCE((r.hold_policy ->> 'extend_seconds')::float8, 0)
+                                   * COALESCE((r.hold_policy ->> 'extend_count')::float8, 0)
+                                 + COALESCE((r.hold_policy ->> 'paying_seconds')::float8, 0)))
+                           + make_interval(secs => $2::float8) > now())
+                  )
        )
 ORDER BY r.expires_at ASC
 LIMIT  $1
@@ -38,10 +52,20 @@ FOR UPDATE OF r SKIP LOCKED`
 // reservation.expire_sweep since spec 67 section 5.2: a reservation with an
 // open payment attempt whose provider page lives until page_expires_at is
 // skipped until page_expires_at + grace (the hard limit); hold.close_payment
-// closes the page first. Rows without page_expires_at behave as before.
-// Must be called inside a transaction (FOR UPDATE SKIP LOCKED).
-func (q *Queries) GetExpiredReservationsHoldAware(ctx context.Context, limit int32, grace time.Duration) ([]ReservationRow, error) {
-	rows, err := q.db.Query(ctx, getExpiredReservationsHoldAware, limit, grace.Seconds())
+// closes the page first.
+//
+// A hold of the click (hold_token_hash) with an open attempt of a provider
+// in pageClosingProviders that has NO page_expires_at (a page whose expiry
+// was never recorded) is skipped as well, up to expires_at + the longest
+// page the hold's policy can make (max(minPageLifetime, payment + extend x
+// extend_count + paying)) + grace, so it can never stick forever. Rows of
+// the old path behave as before. Must be called inside a transaction (FOR
+// UPDATE SKIP LOCKED).
+func (q *Queries) GetExpiredReservationsHoldAware(ctx context.Context, limit int32, grace time.Duration, pageClosingProviders []string, minPageLifetime time.Duration) ([]ReservationRow, error) {
+	if pageClosingProviders == nil {
+		pageClosingProviders = []string{}
+	}
+	rows, err := q.db.Query(ctx, getExpiredReservationsHoldAware, limit, grace.Seconds(), pageClosingProviders, minPageLifetime.Seconds())
 	if err != nil {
 		return nil, err
 	}

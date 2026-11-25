@@ -623,7 +623,8 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	reg.Register(reservationexpiry.JobType, reservationexpiry.NewHandler(reservationexpiry.Options{
 		Processor: hcheckout.NewReservationProcessor(pool, reservationQueries, logger).
 			WithCheckoutQueries(reservationQueries).
-			WithPaymentGrace(httpserver.WidgetPaymentGrace(cfg)),
+			WithPaymentGrace(httpserver.WidgetPaymentGrace(cfg)).
+			WithPageClosingProviders(pageClosingProviders()),
 		Logger:    logger,
 		Scheduler: reservationexpiry.NewPGScheduler(pool),
 	}))

@@ -9,8 +9,8 @@
 // the expiry job began closing the page (closing_started_at), or once the
 // hold's time is over, it is 409 hold.expired.
 //
-// One transaction, locks in the order of the buyer cancel: the checkout row,
-// then the order, then the reservation.
+// One transaction, locks in the order of a change of an existing hold: the
+// reservation row, then the checkout, then the order.
 package hfeed
 
 import (
@@ -27,6 +27,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/holdpolicy"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/txretry"
 )
 
 // HandlePublicCheckoutPaying serves POST /v1/public/checkout/{checkout_token}/paying.
@@ -112,11 +113,24 @@ type payingResult struct {
 	expiresAt   *time.Time
 }
 
-// markPayingTx writes the mark in one transaction: the checkout row, the
-// order and the reservation locked in that order (the buyer cancel's).
+// markPayingTx writes the mark in one transaction, retried whole on
+// 40P01/40001. A hold of the click is locked in the one order of a change of
+// an existing hold: the reservation row, the checkout, the order. A checkout
+// of the old path writes nothing and keeps the classic order (the checkout,
+// then the order).
 func (h *Handler) markPayingTx(r *http.Request, cs gen.CheckoutSessionRow) (payingResult, error) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 15*time.Second)
 	defer cancel()
+	var res payingResult
+	err := txretry.Do(ctx, txretry.DefaultAttempts, func() error {
+		var err error
+		res, err = h.markPayingOnce(ctx, cs)
+		return err
+	})
+	return res, err
+}
+
+func (h *Handler) markPayingOnce(ctx context.Context, cs gen.CheckoutSessionRow) (payingResult, error) {
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return payingResult{}, err
@@ -124,6 +138,27 @@ func (h *Handler) markPayingTx(r *http.Request, cs gen.CheckoutSessionRow) (payi
 	defer func() { _ = tx.Rollback(ctx) }()
 	txq := gen.New(tx)
 
+	// hold_token_hash never changes, so this unlocked read picks the order.
+	hasToken, err := txq.ReservationHasHoldToken(ctx, cs.ReservationID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return payingResult{outcome: payingClosed}, nil
+	}
+	if err != nil {
+		return payingResult{}, err
+	}
+	var hold gen.HoldCheckoutRow
+	if hasToken {
+		// 1. The reservation row.
+		hold, err = txq.LockHoldCheckout(ctx, cs.ReservationID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return payingResult{outcome: payingClosed}, nil
+		}
+		if err != nil {
+			return payingResult{}, err
+		}
+	}
+
+	// 2. The checkout.
 	var state string
 	if err := tx.QueryRow(ctx, `SELECT state FROM checkout_sessions WHERE id = $1 FOR UPDATE`, cs.ID).Scan(&state); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -134,6 +169,7 @@ func (h *Handler) markPayingTx(r *http.Request, cs gen.CheckoutSessionRow) (payi
 	if state == "completed" {
 		return payingResult{outcome: payingPaid}, nil
 	}
+	// 3. The order.
 	o, err := txq.GetOrderByCheckoutSession(ctx, cs.ID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return payingResult{outcome: payingClosed}, nil
@@ -151,14 +187,7 @@ func (h *Handler) markPayingTx(r *http.Request, cs gen.CheckoutSessionRow) (payi
 	if ord.Status != ordering.StatusPendingPayment || state != "pricing_confirmed" {
 		return payingResult{outcome: payingClosed}, nil
 	}
-	hold, err := txq.LockHoldCheckout(ctx, cs.ReservationID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return payingResult{outcome: payingClosed}, nil
-	}
-	if err != nil {
-		return payingResult{}, err
-	}
-	if !hold.HasHoldToken {
+	if !hasToken || !hold.HasHoldToken {
 		// The old path has no hold to keep: nothing to write.
 		return payingResult{outcome: payingRepeat, expiresAt: ord.ExpiresAt}, nil
 	}

@@ -988,11 +988,13 @@ func (h *Handler) startHostedPayment(
 	} else if h.checkoutQueries != nil {
 		// The hosted SESSION id (cs_…) is the provider_payment_id: it is what
 		// every checkout.session.* webhook event identifies this payment by.
-		pi, err := h.checkoutQueries.InsertHostedPaymentIntent(ctx,
-			&csID, in.CheckCtx.OrgID, result.Provider,
-			result.SessionID, in.Breakdown.Total, in.Breakdown.Currency,
-			result.RedirectURL,
-		)
+		// The attempt and its page expiry in one row; on the hold path under
+		// the hold's row lock, refused when the hold closed meanwhile.
+		_, err := h.recordPageAttempt(ctx, newPageAttempt(in, result.Provider, result.SessionID, result.RedirectURL))
+		if errors.Is(err, errHoldClosedForPage) {
+			h.refuseClosedHoldPage(ctx, w, r, in.CheckCtx.OrgID, in.CheckCtx.SalesChannelID, csID, result.Provider, result.SessionID)
+			return "", false
+		}
 		if err != nil {
 			// The buyer's money would arrive against a payment intent that
 			// does not exist and the webhook would 404 it, so this is fatal
@@ -1007,7 +1009,6 @@ func (h *Handler) startHostedPayment(
 			))
 			return "", false
 		}
-		h.recordPageExpiry(ctx, h.checkoutQueries, pi.ID, in.PageExpiresAt)
 	}
 
 	h.logger.Info("public_feed_checkout: hosted payment started",

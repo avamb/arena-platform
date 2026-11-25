@@ -20,10 +20,13 @@
 //  4. on a refusal (ErrCheckoutSessionNotExpirable) reads the session again:
 //     expired goes on as 5, complete is left to the payment webhook, open is
 //     tried again on the next pass;
-//  5. when every open page of the hold is closed: one transaction, lock order
-//     reservation row, sessions, seats, inventory_ledger: the attempts
+//  5. when every open page of the hold is closed: one transaction (retried
+//     on 40P01/40001), lock order reservation row, checkouts, orders,
+//     payment attempts, sessions, seats, inventory_ledger: the attempts
 //     fail with session_expired, the order expires, the checkout expires,
-//     and the seats are released (hcheckout.ExpireHoldForOrderTx);
+//     and the seats are released (hcheckout.ExpireHoldForOrderTx). An open
+//     attempt recorded after step 2 read them clears the mark instead: the
+//     next pass closes its page too;
 //  6. when the provider does not answer the mark is cleared and the hold is
 //     tried again on the next pass. No seat is released.
 //

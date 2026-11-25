@@ -5,7 +5,9 @@
 //
 //  1. the checkout row is locked FIRST, then the order — the same order the
 //     payment webhook takes them in (CompleteCheckoutSession, then MarkPaid),
-//     so a cancel racing a payment waits instead of deadlocking;
+//     so a cancel racing a payment waits instead of deadlocking. A cancel
+//     with KeepHold of a hold of the click (spec 67) locks the reservation
+//     row before both, the lock order of every change of an existing hold;
 //  2. the state is decided from the rows read under those locks: a checkout
 //     already completed (or an order already paid) is NOT cancelled — the
 //     buyer sees "thank you"; an expired one is left as it is (its places
@@ -147,6 +149,29 @@ func releaseHoldIfNotKept(ctx context.Context, txq *gen.Queries, reservationID u
 // ordering.ReasonSupersededByNewCheckout). It locks the checkout first, then
 // the order, the same order the payment webhook takes them in.
 func CancelUnpaidCheckoutTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, auditW audit.Writer, in BuyerCancelInput) (BuyerCancelResult, bool, error) {
+	if in.KeepHold {
+		// A cancel that keeps a hold of the click changes an existing hold,
+		// so it takes that hold's lock order: the reservation row FIRST, then
+		// the checkout, then the order (spec 67). hold_token_hash never
+		// changes, so the unlocked read below picks the order; a reservation
+		// of the old path keeps the classic order (checkout, order, then the
+		// reservation inside releaseHoldTx).
+		var resID uuid.UUID
+		var hasToken bool
+		err := tx.QueryRow(ctx, `SELECT r.id, r.hold_token_hash IS NOT NULL
+			FROM checkout_sessions cs JOIN reservations r ON r.id = cs.reservation_id
+			WHERE cs.id = $1`, in.CheckoutSessionID).Scan(&resID, &hasToken)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			// No checkout (or no reservation): answered below.
+		case err != nil:
+			return BuyerCancelResult{}, false, fmt.Errorf("hcheckout: read hold of checkout: %w", err)
+		case hasToken:
+			if _, err := txq.LockHoldCheckout(ctx, resID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return BuyerCancelResult{}, false, fmt.Errorf("hcheckout: lock hold: %w", err)
+			}
+		}
+	}
 	var state string
 	var reservationID, orgID uuid.UUID
 	if err := tx.QueryRow(ctx, `SELECT state, reservation_id, org_id FROM checkout_sessions WHERE id = $1 FOR UPDATE`,
@@ -189,8 +214,10 @@ func CancelUnpaidCheckoutTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, au
 	released := true
 	kept := false
 	if in.KeepHold {
-		// The reservation row is locked after the checkout and the order,
-		// the order releaseHoldTx below takes it in too.
+		// A hold of the click is locked already (first, above); this reads
+		// it under that lock. A reservation of the old path is locked here,
+		// after the checkout and the order, the order releaseHoldTx below
+		// takes it in too.
 		hold, err := txq.LockHoldCheckout(ctx, reservationID)
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):

@@ -7,8 +7,11 @@
 -- reservation.expire_sweep's candidates: like GetExpiredReservations, but a
 -- reservation with an open payment attempt whose provider page is still alive
 -- (payment_intents.page_expires_at + grace $2 seconds in the future) is left
--- to hold.close_payment until that hard limit. A row without page_expires_at
--- (the old path) is a candidate exactly as before.
+-- to hold.close_payment until that hard limit. A hold of the click with an
+-- open attempt of a page-closing provider ($3) whose page_expires_at was never
+-- recorded is left to it too, up to expires_at + the longest page of its
+-- policy (at least $4 seconds) + grace. A row of the old path is a candidate
+-- exactly as before.
 SELECT r.id, r.org_id, r.channel_id, r.session_id, r.tier_id, r.user_id, r.quantity, r.state,
        r.expires_at, r.created_at, r.updated_at, r.cancelled_at, r.converted_at, r.expired_at
 FROM   reservations r
@@ -20,8 +23,22 @@ WHERE  r.state IN ('draft', 'active')
            JOIN   payment_intents pi ON pi.checkout_session_id = cs.id
            WHERE  cs.reservation_id = r.id
              AND  pi.state IN ('created', 'requires_action')
-             AND  pi.page_expires_at IS NOT NULL
-             AND  pi.page_expires_at + make_interval(secs => $2::float8) > now()
+             AND  (
+                      (pi.page_expires_at IS NOT NULL
+                       AND pi.page_expires_at + make_interval(secs => $2::float8) > now())
+                   OR (pi.page_expires_at IS NULL
+                       AND r.hold_token_hash IS NOT NULL
+                       AND pi.provider = ANY($3::text[])
+                       AND pi.provider_payment_id IS NOT NULL
+                       AND r.expires_at
+                           + make_interval(secs => GREATEST(
+                                 $4::float8,
+                                 COALESCE((r.hold_policy ->> 'payment_seconds')::float8, 0)
+                                 + COALESCE((r.hold_policy ->> 'extend_seconds')::float8, 0)
+                                   * COALESCE((r.hold_policy ->> 'extend_count')::float8, 0)
+                                 + COALESCE((r.hold_policy ->> 'paying_seconds')::float8, 0)))
+                           + make_interval(secs => $2::float8) > now())
+                  )
        )
 ORDER BY r.expires_at ASC
 LIMIT  $1

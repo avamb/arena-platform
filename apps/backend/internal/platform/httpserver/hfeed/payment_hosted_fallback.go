@@ -143,14 +143,20 @@ func (h *Handler) HandlePublicCheckoutHostedFallback(w http.ResponseWriter, r *h
 	// it when the hold ends.
 	payUntil := pageExpiry
 	var newPageExpiry time.Time
-	if hw, ok := h.checkoutHoldWindow(ctx, h.checkoutQueries, cs.ID); ok && hw.short {
+	// holdID: the hold of the click behind the checkout; the new page is
+	// recorded under its row lock (checkout_hold_page.go).
+	var holdID uuid.UUID
+	if hw, ok := h.checkoutHoldWindow(ctx, h.checkoutQueries, cs.ID); ok && hw.row.HasHoldToken {
+		holdID = hw.row.ReservationID
 		if hw.row.ClosingStartedAt != nil {
 			h.writeNotPayable(w, r, publicStatusPending)
 			return
 		}
-		newPageExpiry = newHoldPageExpiry(holdpolicy.FromSnapshot(hw.row.HoldPolicy), now)
-		pageExpiry = newPageExpiry
-		payUntil = pc.HoldExpiresAt
+		if hw.short {
+			newPageExpiry = newHoldPageExpiry(holdpolicy.FromSnapshot(hw.row.HoldPolicy), now)
+			pageExpiry = newPageExpiry
+			payUntil = pc.HoldExpiresAt
+		}
 	}
 	if open.HostedCheckoutURL != nil && *open.HostedCheckoutURL != "" {
 		// Already on a hosted page (a repeated call): the same page again.
@@ -159,6 +165,11 @@ func (h *Handler) HandlePublicCheckoutHostedFallback(w http.ResponseWriter, r *h
 	}
 	if !isEmbeddedIntent(*open) {
 		h.writeNotPayable(w, r, publicStatusPending)
+		return
+	}
+	if holdID != uuid.Nil && holdTooLateForPage(pc.HoldExpiresAt, now) {
+		// No new page for a hold about to end; the embedded session stays.
+		writeHoldExpired(w, r)
 		return
 	}
 	if floor := time.Duration(providerPageFloor(open.Provider)) * time.Second; floor > 0 && pageExpiry.Sub(now) < floor+hostedFallbackFloorMargin {
@@ -247,7 +258,14 @@ func (h *Handler) HandlePublicCheckoutHostedFallback(w http.ResponseWriter, r *h
 		return
 	}
 
-	if err := h.recordHostedFallback(pctx, pc, open.ID, result, newPageExpiry); err != nil {
+	err = h.recordHostedFallback(pctx, pc, holdID, open.ID, result, newPageExpiry)
+	if errors.Is(err, errHoldClosedForPage) {
+		// hold.close_payment claimed the hold while the page was created:
+		// the page is never handed out and is closed now.
+		h.refuseClosedHoldPage(pctx, w, r, pc.OrgID, pc.ChannelID, cs.ID, result.Provider, result.SessionID)
+		return
+	}
+	if err != nil {
 		h.logger.Error("public_checkout_hosted: recording the hosted page failed; not handing it out",
 			slog.String("checkout_session_id", cs.ID.String()),
 			slog.String("provider_payment_id", result.SessionID),
@@ -303,33 +321,24 @@ func fallbackPayable(pc gen.CheckoutPaymentContextRow, now time.Time) bool {
 // embedded one superseded, in one transaction. A retry after a lost answer
 // finds the same page (same idempotency key) already recorded and reuses it.
 // pageExpiresAt, when set, is the page_expires_at of the new page (a hold of
-// the click, spec 67 section 3.2).
-func (h *Handler) recordHostedFallback(ctx context.Context, pc gen.CheckoutPaymentContextRow, supersededID uuid.UUID, result *HostedCheckoutResult, pageExpiresAt time.Time) error {
-	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := gen.New(tx)
-	if _, err := q.GetPaymentIntentByProviderID(ctx, result.SessionID); errors.Is(err, pgx.ErrNoRows) {
-		csID := pc.CheckoutSessionID
-		pi, err := q.InsertHostedPaymentIntent(ctx, &csID, pc.OrgID, result.Provider, result.SessionID,
-			derefInt64(pc.Total), derefOr(pc.Currency), result.RedirectURL)
-		if err != nil {
-			return err
-		}
-		if !pageExpiresAt.IsZero() {
-			if _, err := q.SetPaymentIntentPageExpiresAt(ctx, pi.ID, pageExpiresAt); err != nil {
-				return err
-			}
-		}
-	} else if err != nil {
-		return err
-	}
-	if _, err := q.MarkPaymentIntentSuperseded(ctx, supersededID); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+// the click, spec 67 section 3.2), written in the same row. holdID, when
+// set, is the hold of the click: its row is locked first and checked again,
+// and errHoldClosedForPage reports a hold closed or claimed meanwhile.
+func (h *Handler) recordHostedFallback(ctx context.Context, pc gen.CheckoutPaymentContextRow, holdID, supersededID uuid.UUID, result *HostedCheckoutResult, pageExpiresAt time.Time) error {
+	_, err := h.recordPageAttempt(ctx, pageAttempt{
+		holdReservationID: holdID,
+		checkoutSessionID: pc.CheckoutSessionID,
+		orgID:             pc.OrgID,
+		provider:          result.Provider,
+		providerPaymentID: result.SessionID,
+		amount:            derefInt64(pc.Total),
+		currency:          derefOr(pc.Currency),
+		hostedURL:         result.RedirectURL,
+		pageExpiresAt:     pageExpiresAt,
+		supersededID:      supersededID,
+		reuseExisting:     true,
+	})
+	return err
 }
 
 func (h *Handler) writeHostedFallbackAnswer(w http.ResponseWriter, token, redirectURL string, pageExpiry time.Time) {

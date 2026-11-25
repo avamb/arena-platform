@@ -32,6 +32,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/holdpolicy"
 )
 
 // ReservationProcessor handles background TTL expiration of reservations.
@@ -44,6 +45,11 @@ type ReservationProcessor struct {
 	// hard limit before which the sweep leaves the hold to hold.close_payment
 	// (spec 67 section 5.2).
 	paymentGrace time.Duration
+	// pageClosingProviders are the payment modules hold.close_payment closes
+	// the page of. A hold of the click with an open attempt of one of them
+	// and no recorded page_expires_at is left to that job up to expires_at +
+	// the longest page of its policy + paymentGrace. Empty: no such skip.
+	pageClosingProviders []string
 	// now is the clock of the re-check under the row lock; time.Now in
 	// production.
 	now func() time.Time
@@ -58,6 +64,15 @@ func (p *ReservationProcessor) WithPaymentGrace(grace time.Duration) *Reservatio
 	if grace > 0 {
 		p.paymentGrace = grace
 	}
+	return p
+}
+
+// WithPageClosingProviders sets the payment modules whose page
+// hold.close_payment closes (spec 67 section 5.2): an open attempt of one of
+// them on a hold of the click keeps the hold away from this sweep even when
+// its page_expires_at was never recorded, up to a hard limit.
+func (p *ReservationProcessor) WithPageClosingProviders(providers []string) *ReservationProcessor {
+	p.pageClosingProviders = append([]string(nil), providers...)
 	return p
 }
 
@@ -107,7 +122,8 @@ func (p *ReservationProcessor) ProcessExpiredReservations(ctx context.Context, l
 	// GetExpiredReservationsHoldAware: a hold with an open provider page is
 	// left to hold.close_payment until page_expires_at + paymentGrace (spec
 	// 67 section 5.2); every other row is polled as GetExpiredReservations did.
-	expired, err := q.GetExpiredReservationsHoldAware(ctx, limit, p.paymentGrace)
+	expired, err := q.GetExpiredReservationsHoldAware(ctx, limit, p.paymentGrace,
+		p.pageClosingProviders, holdpolicy.MinProviderPageLifetime)
 	if err != nil {
 		return 0, fmt.Errorf("reservation_processor: poll expired reservations: %w", err)
 	}

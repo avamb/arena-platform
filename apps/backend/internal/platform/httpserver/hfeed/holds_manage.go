@@ -8,7 +8,8 @@
 //
 // Only the token addresses a hold: an unknown token is 404 hold.not_found
 // whoever's it is, so nothing leaks (section 5.4). Every change locks the
-// hold row first, then the hcheckout helpers take sessions → seats → ledger.
+// hold row first, then (extend on the payment step) its checkouts and
+// orders, then the hcheckout helpers take sessions → seats → ledger.
 package hfeed
 
 import (
@@ -286,6 +287,14 @@ func (hh *HoldsHandler) HandleExtendHold(w http.ResponseWriter, r *http.Request)
 			return fmt.Errorf("extend hold: %w", err)
 		}
 		if inPayment {
+			// The lock order of an existing hold: the reservation row (above),
+			// its checkouts, then its orders.
+			if _, err := q.LockCheckoutSessionsOfReservation(ctx, row.ID); err != nil {
+				return fmt.Errorf("lock checkouts: %w", err)
+			}
+			if _, err := q.LockPendingOrdersOfReservation(ctx, row.ID); err != nil {
+				return fmt.Errorf("lock orders: %w", err)
+			}
 			if _, err := q.SetPendingOrderExpiryForReservation(ctx, row.ID, newExpiry); err != nil {
 				return fmt.Errorf("extend order: %w", err)
 			}
