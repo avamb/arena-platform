@@ -8384,7 +8384,8 @@ export interface paths {
          * Get the public settings of a static site
          * @description Returns the organizer's own block for the "thank you" page of a static
          *     site, read from the sales channel of the feed token. Only the
-         *     `thank_you` block is ever returned, no other channel setting. No JWT
+         *     `thank_you` block and the `socials` links are ever returned, no other
+         *     channel setting. No JWT
          *     required: the feed token in the path is the credential. Rate-limited
          *     per token and per IP. Cached publicly for a short time.
          */
@@ -9478,6 +9479,37 @@ export interface paths {
          *     No JWT.
          */
         post: operations["createSiteMarketingSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/checkout/{checkout_token}/marketing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Subscribe the order's buyer to the organizer's mailings
+         * @description The buyer on the thank-you page of a static site agrees to the
+         *     organizer's mailings. The address is the PAID order's own buyer e-mail
+         *     (never one in the body). Double opt-in: a pending subscription is
+         *     stored, the grant is journaled (source `site`) and the confirmation
+         *     letter is queued in the same transaction, like
+         *     `POST /v1/public/feeds/{feed_token}/marketing-subscriptions`, with the
+         *     same hourly limits: 10 grants per client IP answer 429, 3 per address
+         *     are absorbed as a quiet `pending`. No captcha: the opaque
+         *     `checkout_token` is the credential. A confirmed address writes
+         *     nothing and answers `already_confirmed`; a grant already made for
+         *     this order answers `pending` without a new letter. Rate-limited per
+         *     token and per IP like the other public checkout routes.
+         */
+        post: operations["subscribePublicCheckoutMarketing"];
         delete?: never;
         options?: never;
         head?: never;
@@ -24640,6 +24672,11 @@ export interface components {
             /** @description Public feed only. True when the translation served was made from an older original than the current one; it is still served. */
             translation_stale?: boolean;
             /**
+             * @description Public feed only. The buyers' hosted page of the event, `<PUBLIC_TICKETS_BASE_URL>/<page slug>/<event slug>` (the promoter's slug when the event has an active promoter with a page, else the organization's). Empty string when the event has no slug or the server has no tickets base. It is an address, not a sign that the page is reachable.
+             * @example https://tickets.arenasoldout.com/teatrkolibel/silver-hoof
+             */
+            page_url?: string;
+            /**
              * @description Event genre/category (AB-45c). E.g. "concert", "festival", "theatre".
              *     Tri-state PATCH: absent=keep, null=clear, value=set.
              * @example festival
@@ -25158,10 +25195,34 @@ export interface components {
             /** @description Absolute https link of the block, or null. */
             url: string | null;
         };
+        /** @description One social-network link of the organizer. */
+        FeedSiteSocial: {
+            /** @description Network key, lower case: `facebook`, `instagram`, `telegram`, `tiktok`, `youtube`, `x`, `whatsapp`, `linkedin`, `vk` or `threads`. */
+            network: string;
+            /** @description Absolute https link of the organizer's page there, at most 2048 characters, without a user name. */
+            url: string;
+        };
         /** @description Public settings of a static site that sells through a feed token. */
         FeedSiteSettings: {
             /** @description The thank-you block, or null when the organizer set none. */
             thank_you: components["schemas"]["FeedSiteThankYou"] | null;
+            /** @description The organizer's social-network links, at most 8, in the organizer's order. An empty list when none are set or none is valid. */
+            socials: components["schemas"]["FeedSiteSocial"][];
+        };
+        /** @description Body of `POST /v1/public/checkout/{checkout_token}/marketing`. The e-mail is never in the body; it is the order's own buyer e-mail. */
+        CheckoutMarketingRequest: {
+            /** @description The version of the consent text the page showed. Only the `marketing_offer.text_version` of the order status is accepted (`marketing-thankyou-2026-11-25`: the text names the organizer). Stored with the grant as the evidence of what was agreed to. */
+            text_version: string;
+            /** @description The page the buyer was on, an https link of at most 2048 characters without a user name. The confirmation sends the buyer back to it when it lies on one of the sales channel's site origins, else to the hosted tickets page. Optional. */
+            page_url?: string;
+        };
+        /** @description Answer of `POST /v1/public/checkout/{checkout_token}/marketing`. */
+        CheckoutMarketingResponse: {
+            /**
+             * @description `pending`: the confirmation letter is on its way (or was sent for this order already); `already_confirmed`: the address is subscribed, nothing was written.
+             * @enum {string}
+             */
+            status: "pending" | "already_confirmed";
         };
         /** @description List-tours response of a feed. */
         FeedSeriesListEnvelope: {
@@ -32989,6 +33050,13 @@ export interface components {
             items: components["schemas"]["CheckoutStatusItem"][];
             /** @description Issued tickets; non-empty only when status is `paid`. */
             tickets: components["schemas"]["CheckoutStatusTicketItem"][];
+            /** @description Always present. The mailing subscription the thank-you page may offer the buyer, or null when the order is not paid, the organizer does not offer mailings, the organization is deleted, or the order's buyer e-mail already has a pending or confirmed subscription to the organizer's mailings. */
+            marketing_offer: {
+                /** @description The organizer's name the consent text names. */
+                org_name: string;
+                /** @description The consent text version to send to `POST /v1/public/checkout/{checkout_token}/marketing`; the route accepts only this one. */
+                text_version: string;
+            } | null;
         };
         /**
          * @description Request body for `POST /v1/checkout/start`. Creates a new checkout
@@ -73651,6 +73719,87 @@ export interface operations {
                 };
             };
             /** @description Database unavailable, the subscription could not be stored (`subscription.failed`, retry), or the captcha is not configured or cannot be checked (`subscription.captcha_not_configured`, `subscription.captcha_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    subscribePublicCheckoutMarketing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque checkout token (64 lowercase hex characters) minted when the checkout started. */
+                checkout_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckoutMarketingRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutMarketingResponse"];
+                };
+            };
+            /** @description The body is not readable or a field is wrong (`checkout.invalid_body`, `checkout.invalid_text_version`, `checkout.invalid_page_url`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No checkout for this token, or its organization is deleted (`checkout.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The order is not paid (`checkout.not_paid`) or the organizer does not offer mailings (`marketing.not_offered`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The order's e-mail cannot receive mailings (`subscription.invalid_email`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests (`checkout.rate_limited`, `subscription.rate_limited`); `Retry-After` says when to try again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable (`dependency.database_unavailable`, `subscription.failed`); retry. */
             503: {
                 headers: {
                     [name: string]: unknown;

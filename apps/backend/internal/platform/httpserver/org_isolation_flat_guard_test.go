@@ -129,6 +129,7 @@ var flatRouteFamilies = []flatFamily{
 	{"POST", "/v1/public/checkout/{checkout_token}/buyer", flatPublic, "checkout token in the URL; writes the buyer of only that checkout's order, with that checkout's channel rules (spec 65 prepared order)"},
 	{"PATCH", "/v1/public/checkout/{checkout_token}/consent", flatPublic, "checkout token in the URL; writes only that checkout's consent (spec 62 P-20)"},
 	{"GET", "/v1/public/checkout/{checkout_token}/referral", flatPublic, "feed token or checkout token in the URL"},
+	{"POST", "/v1/public/checkout/{checkout_token}/marketing", flatPublic, "checkout token in the URL; subscribes only that paid order's buyer e-mail to its own organization's mailings"},
 	{"POST", "/v1/public/organizer-contact/{org_slug}", flatPublic, "public page slug; reads only whether the page has a form, never answers the address (hcontact)"},
 	{"POST", "/v1/public/feeds/{feed_token}/checkout/start", flatPublic, "feed token or checkout token in the URL"},
 	{"POST", "/v1/public/feeds/{feed_token}/checkout/quote", flatPublic, "feed token or checkout token in the URL"},

@@ -40,6 +40,15 @@ import (
 // the meaning of the text changes.
 const TextVersion = "marketing-optin-2026-11-02"
 
+// ThankYouTextVersion names the consent text of the thank-you block of a static
+// site's order page (POST /v1/public/checkout/{token}/marketing). The visible
+// text is "Receive news and offers from {organizer name} at the order's e-mail"
+// (the widget's thankYouI18n newsletter consent line, in 7 languages) with the
+// organizer's name filled in. The route accepts ONLY this version. Change it
+// together with THANK_YOU_TEXT_VERSION in the widget whenever the meaning of
+// that text changes.
+const ThankYouTextVersion = "marketing-thankyou-2026-11-25"
+
 // JobTypeConfirmEmail is the double opt-in letter (handler in delivery).
 const JobTypeConfirmEmail = "marketing.confirm_email"
 
