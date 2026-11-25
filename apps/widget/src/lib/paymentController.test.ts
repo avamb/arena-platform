@@ -121,6 +121,14 @@ describe('mounting', () => {
     h.ctrl.destroy();
   });
 
+  it('hides Stripe Link on the card form and leaves the wallets alone', async () => {
+    const h = setup([], [status('pending')]);
+    await ready(h);
+    const create = (await h.open.mock.results[0]!.value).checkout.createPaymentElement as ReturnType<typeof vi.fn>;
+    expect(create).toHaveBeenCalledWith({ wallets: { link: 'never' } });
+    h.ctrl.destroy();
+  });
+
   it('knows whether a wallet is available from the express element', async () => {
     const h = setup([], [status('pending')]);
     await ready(h);
