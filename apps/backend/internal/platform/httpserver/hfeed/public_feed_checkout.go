@@ -1860,7 +1860,7 @@ func (h *Handler) createPublicOrder(
 func (h *Handler) resolvePublicCustomer(
 	ctx context.Context,
 	tx pgx.Tx,
-	txq *gen.Queries,
+	_ *gen.Queries,
 	checkCtx gen.PublicCheckoutContextRow,
 	cs gen.CheckoutSessionRow,
 	buyer publicOrderBuyer,
