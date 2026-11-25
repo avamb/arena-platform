@@ -37,6 +37,11 @@ func TestEventBundleExternalSale_ImportReadAndRoundTrip(t *testing.T) {
 	ext := f.payload()
 	ext.CategoryList = nil
 	ext.ActionEvent.ExternalSale = []byte(`{"url":"https://www.eventim.de/event/1","sellerName":"Eventim","priceFrom":39.5,"currency":"EUR"}`)
+	// The dry run of a NEW partner-sold session must not ask for capacity: the
+	// event center's wizard runs it before every save (staging 2026-11-23).
+	if dry := dryRun(t, f, h, ext); !dry.Valid {
+		t.Fatalf("dry run refuses a new external session: %+v", dry.Errors)
+	}
 	rec, created := f.call(h, ext)
 	if rec.Code != http.StatusOK || !created.Created {
 		t.Fatalf("create external: %d %s", rec.Code, rec.Body.String())

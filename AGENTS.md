@@ -508,6 +508,8 @@ Places, categories, hold and quota lock order, plan geometry, seat layouts, venu
 * A category has ONE colour for the organizer and the buyer: tier colour, else the home plan category's, else the palette
 * The bot's "Split seats by price" fills an EMPTY open category of the same price before creating a new one (loEmptyOpen)
 * A category of a plan-bound session that owns no place is never offered or sold (feed, gate, gateway, widget)
+* A private seating plan is read only by its owner organization and a platform superadmin (planReadAccess)
+* Plan decor is an allowlist of drawing, on every write and on read (SanitizeDecorSVG, cache, stored checksum, SetPlanSVGHeaders)
 
 ### [Events, sessions, promoters and sales channels](docs/agents/catalog-sessions-channels.md)
 

@@ -417,10 +417,10 @@ var flatRouteFamilies = []flatFamily{
 	// ── catalog shared for reading ──────────────────────────────────────────
 	{"GET", "/v1/venues", flatSharedRead, "contacts of other organizations removed"},
 	{"GET", "/v1/venues/{id}", flatSharedRead, "contacts of other organizations removed"},
-	{"GET", "/v1/venues/{venue_id}/seating-plans", flatSharedRead, "plans are shared for reading"},
-	{"GET", "/v1/seating-plans/{id}", flatSharedRead, "plans are shared for reading"},
-	{"GET", "/v1/seating-plans/{id}/versions", flatSharedRead, "plans are shared for reading"},
-	{"GET", "/v1/seating-plans/{id}/versions/{n}", flatSharedRead, "plans are shared for reading"},
+	{"GET", "/v1/venues/{venue_id}/seating-plans", flatRowGuard, "hseating planReadAccess: a private plan only for its owner organization or a superadmin, others left out"},
+	{"GET", "/v1/seating-plans/{id}", flatRowGuard, "hseating planReadAccess: a private plan only for its owner organization or a superadmin, else 404"},
+	{"GET", "/v1/seating-plans/{id}/versions", flatRowGuard, "hseating planReadAccess: a private plan only for its owner organization or a superadmin, else 404"},
+	{"GET", "/v1/seating-plans/{id}/versions/{n}", flatRowGuard, "hseating planReadAccess: a private plan only for its owner organization or a superadmin, else 404"},
 
 	// ── nothing of an organization ──────────────────────────────────────────
 	{"POST", "/v1/organizations", flatOwnAccount, "creates a new organization, touches no existing one"},
