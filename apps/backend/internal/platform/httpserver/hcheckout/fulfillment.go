@@ -99,7 +99,21 @@ func FulfillCompletedCheckoutTx(
 	case ordErr != nil:
 		return out, fmt.Errorf("order lookup: %w", ordErr)
 	default:
-		if _, paidErr := ordering.MarkPaid(ctx, txq, ordering.PaidInput{
+		// An order closed by a new checkout of the same buyer while its own
+		// payment page stayed open is revived (cancelled → paid): the caller
+		// (the payment webhook) has checked that its hold is still active.
+		// Any other cancelled order still refuses through MarkPaid.
+		markPaid := ordering.MarkPaid
+		if ord.Status == ordering.StatusCancelled {
+			events, evErr := txq.ListOrderEventsByOrder(ctx, ord.ID)
+			if evErr != nil {
+				return out, fmt.Errorf("order events lookup: %w", evErr)
+			}
+			if ordering.LastCancelReason(events) == ordering.ReasonSupersededByNewCheckout {
+				markPaid = ordering.MarkPaidAfterSupersede
+			}
+		}
+		if _, paidErr := markPaid(ctx, txq, ordering.PaidInput{
 			OrderID: ord.ID,
 			OrgID:   ord.OrgID,
 			Actor:   ordering.ActorSystem,
