@@ -3,7 +3,7 @@
 // level, one row per ad and day, and the campaigns of the selected ad
 // account, with the token of the organization's Meta connection
 // (internal/platform/metaconnect, sealed by secretbox). The rows live in
-// ad_spend_daily and ad_campaigns (migration 0226), the sync state in
+// ad_spend_daily and ad_campaigns (migration 0227), the sync state in
 // meta_insights_state, the call volume in meta_graph_calls.
 //
 // Two worker jobs run it: meta.insights_sweep every 10 minutes (database
