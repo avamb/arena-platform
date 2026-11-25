@@ -203,6 +203,7 @@ func (h *Handler) HandleVerifyPaymentConfig(w http.ResponseWriter, r *http.Reque
 	}
 
 	verified := h.verifyAndRecord(ctx, row)
+	domains := h.syncWalletDomains(ctx, verified)
 
 	h.writePaymentConfigAudit(ctx, r, "v1.payment_config.verify", verified.ID.String(), map[string]any{
 		"org_id":              orgID.String(),
@@ -212,8 +213,9 @@ func (h *Handler) HandleVerifyPaymentConfig(w http.ResponseWriter, r *http.Reque
 	})
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"payment_config":   PaymentConfigFromRow(verified),
-		"webhook_warnings": h.webhookWarnings(ctx, verified),
+		"payment_config":         PaymentConfigFromRow(verified),
+		"webhook_warnings":       h.webhookWarnings(ctx, verified),
+		"payment_method_domains": domains,
 	})
 }
 

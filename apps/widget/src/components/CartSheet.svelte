@@ -181,12 +181,45 @@
     showBuyerForm = true;
   }
   function handleBackToCart(): void { showBuyerForm = false; }
+
+  // Keyboard-aware sheet: when the phone keyboard opens, the visual viewport
+  // shrinks while the layout viewport does not. Lift the sheet by the covered
+  // height and cap its height to the visible area, so the pay button stays
+  // reachable. No visualViewport (old browsers, jsdom): nothing happens.
+  let sheetEl = $state<HTMLElement | null>(null);
+  let kbOpen = $state(false);
+  $effect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    const el = sheetEl;
+    if (!vv || !el) return;
+    let lastInset = 0;
+    const update = (): void => {
+      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      el.style.setProperty('--arena-kb-inset', `${inset}px`);
+      el.style.setProperty('--arena-vv-height', `${vv.height}px`);
+      kbOpen = inset > 0;
+      if (inset > lastInset) {
+        const active = (el.getRootNode() as Document | ShadowRoot).activeElement;
+        if (active && el.contains(active)) {
+          active.scrollIntoView({ block: 'nearest' });
+        }
+      }
+      lastInset = inset;
+    };
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    update();
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  });
 </script>
 
 <!-- Sheet overlay -->
 <div class="sheet-overlay" role="presentation" onclick={onClose}></div>
 
-<div class="sheet" role="dialog" aria-modal="true" aria-label="Your cart">
+<div class="sheet" class:kb-open={kbOpen} bind:this={sheetEl} role="dialog" aria-modal="true" aria-label="Your cart">
   <div class="sheet-header">
     <button class="back-btn" onclick={showBuyerForm ? handleBackToCart : onClose} aria-label={showBuyerForm ? t.cart_back : t.cart_title}>
       {#if showBuyerForm}← {t.cart_back}{:else}✕{/if}
@@ -336,7 +369,7 @@
   }
   .sheet {
     position: fixed;
-    bottom: 0;
+    bottom: var(--arena-kb-inset, 0px);
     left: 0;
     right: 0;
     z-index: 40;
@@ -347,6 +380,10 @@
     flex-direction: column;
     box-shadow: 0 -4px 24px rgba(0,0,0,0.2);
     overflow: hidden;
+  }
+  /* Keyboard open: cap the height to what is really visible. */
+  .sheet.kb-open {
+    max-height: calc(var(--arena-vv-height, 100vh) * 0.9);
   }
   /* A full-bleed bottom sheet is right on a phone and wrong on a monitor:
      stretched to 1900px the cart becomes one line of text with the price a
@@ -359,7 +396,7 @@
       left: 50%;
       right: auto;
       transform: translateX(-50%);
-      bottom: 24px;
+      bottom: calc(24px + var(--arena-kb-inset, 0px));
       width: min(560px, calc(100vw - 3rem));
       border-radius: 16px;
       box-shadow: 0 8px 32px rgba(0,0,0,0.24);

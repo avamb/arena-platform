@@ -119,7 +119,10 @@ ORDER  BY s.start_at, s.id;
 --                 in minor units (a refund reaches its order by the order, the
 --                 ticket it names or the payment intent, like the session
 --                 summary)
--- Invitations (source 'complimentary') are not sales and are left out. The
+-- Invitations (source 'complimentary') are not sales and are left out, and so
+-- is a prepared widget order no buyer was attached to (spec 65 early order:
+-- public_feed, buyer_email NULL, never paid) — its checkout_start is counted
+-- at attach. The
 -- created_at bounds on both sides are slack by a day each way so that
 -- orders_org_created_idx can be used; the zone-aware date test is the exact one.
 WITH x AS (
@@ -151,6 +154,8 @@ WITH x AS (
     ) rf ON true
     WHERE  o.event_id = $1 AND o.org_id = $2
       AND  o.source <> 'complimentary'
+      AND  NOT (o.source = 'public_feed' AND o.buyer_email IS NULL
+                AND o.status IN ('pending_payment', 'expired', 'cancelled', 'abandoned'))
       AND  o.created_at >= $3::date - 1 AND o.created_at < $4::date + 2
       AND  (o.created_at AT TIME ZONE $5::text)::date BETWEEN $3 AND $4
       AND  ($6::uuid IS NULL OR o.session_id = $6::uuid)
@@ -187,6 +192,8 @@ WITH x AS (
     FROM   orders o
     WHERE  o.event_id = $1 AND o.org_id = $2
       AND  o.source <> 'complimentary'
+      AND  NOT (o.source = 'public_feed' AND o.buyer_email IS NULL
+                AND o.status IN ('pending_payment', 'expired', 'cancelled', 'abandoned'))
       AND  o.created_at >= $3::date - 1 AND o.created_at < $4::date + 2
       AND  (o.created_at AT TIME ZONE $5::text)::date BETWEEN $3 AND $4
       AND  ($6::uuid IS NULL OR o.session_id = $6::uuid)

@@ -34,6 +34,10 @@ const (
 	SecretAPIKey = "api_key"
 	// SecretWebhookSecret is the endpoint signing secret (whsec_…).
 	SecretWebhookSecret = "webhook_secret"
+	// SecretPublishableKey is the OPTIONAL publishable key (pk_test_…/pk_live_…)
+	// the embedded checkout hands to Stripe.js in the buyer's browser. It is
+	// public by design, never a credential and never sent to Stripe's API.
+	SecretPublishableKey = "publishable_key"
 )
 
 // signatureHeader is the header Stripe signs every delivery with.
@@ -86,6 +90,18 @@ func ProviderDescriptor() payments.Descriptor {
 				Hidden:        true,
 				Prefixes:      []string{"whsec_"},
 			},
+			{
+				Key:        SecretPublishableKey,
+				Label:      "Stripe publishable key (Developers → API keys → Publishable key)",
+				Required:   false,
+				Credential: false,
+				Hidden:     false,
+				Prefixes:   []string{"pk_test_", "pk_live_"},
+				ModePrefixes: map[string][]string{
+					"test": {"pk_test_"},
+					"live": {"pk_live_"},
+				},
+			},
 		},
 		Capabilities: payments.Capabilities{
 			HostedCheckout: true,
@@ -104,6 +120,11 @@ func ProviderDescriptor() payments.Descriptor {
 			Disputes: true,
 			// Stripe: "expires_at must be at least 30 minutes" from now.
 			MinPageLifetimeSeconds: 30 * 60,
+			// Checkout Session with ui_mode=elements (spec 65), paid with
+			// Stripe.js on arena's page; only when the config holds the
+			// publishable key.
+			EmbeddedCheckout:    true,
+			EmbeddedCheckoutKey: SecretPublishableKey,
 		},
 	}
 }

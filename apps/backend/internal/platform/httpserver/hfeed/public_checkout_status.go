@@ -159,6 +159,15 @@ type checkoutStatusResponse struct {
 	// expires_at has passed (the hosted session itself is already dead by
 	// then — its own expiry is set to fire before arena releases the seats).
 	PaymentURL *string `json:"payment_url,omitempty"`
+	// Payment is the embedded payment form of a still-pending order whose
+	// hold is live (spec 65 §3.7): the client secret is read back from the
+	// provider on every request, never stored. Omitted once the order is
+	// paid, expired or failed, once the hold has passed, and once the
+	// embedded session was replaced by a hosted page (payment_url). Only
+	// sent when the request asks for it with ?include=payment: reading the
+	// client secret back costs a provider call, and the widget's status
+	// polling does not need it on every tick.
+	Payment *EmbeddedPaymentBlock `json:"payment,omitempty"`
 	// Event is what the order is for (name, session start, venue and its
 	// time zone) so a static page can render the order without a second
 	// call. Omitted when the session can no longer be resolved.
@@ -202,6 +211,10 @@ type checkoutStatusEvent struct {
 //  5. For paid sessions: load tickets + static_qr human_code.
 //  6. Return 200 with the status envelope.
 func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.Request) {
+	// The status changes within seconds of a payment and carries the order's
+	// tickets: no cache, on every answer including errors.
+	w.Header().Set("Cache-Control", "no-store")
+
 	if h.checkoutQueries == nil || h.reservationQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
@@ -314,6 +327,10 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 	if publicStatus == publicStatusPending && reservation.ExpiresAt.After(time.Now().UTC()) {
 		if url := h.pendingPaymentURL(ctx, cs.ID); url != "" {
 			resp.PaymentURL = &url
+		} else if wantsPaymentBlock(r) {
+			if block := h.pendingEmbeddedPayment(ctx, cs); block != nil {
+				resp.Payment = block
+			}
 		}
 	}
 
@@ -508,7 +525,7 @@ func (h *Handler) pendingPaymentURL(ctx context.Context, checkoutSessionID uuid.
 	// ListPaymentIntentsByCheckout returns newest first; a retry after a
 	// failure adds a row rather than replacing one.
 	for _, pi := range intents {
-		if pi.State == "succeeded" || pi.State == "failed" {
+		if pi.State == "succeeded" || pi.State == "failed" || intentSuperseded(pi) {
 			continue
 		}
 		if pi.HostedCheckoutURL != nil && *pi.HostedCheckoutURL != "" {
@@ -708,4 +725,22 @@ func writeTicketNotValid(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusGone, httputil.ErrorEnvelope(
 		"checkout.ticket_not_valid", "This ticket is no longer valid. Use the tickets from your latest letter.", r,
 	))
+}
+
+// paymentIncludeValue is the ?include= value that asks the order status for
+// the embedded payment block (spec 65 §3.7).
+const paymentIncludeValue = "payment"
+
+// wantsPaymentBlock reports whether the status request carries
+// ?include=payment (a comma-separated list; repeated keys also count).
+// Without it the status makes no provider call and sends no payment block.
+func wantsPaymentBlock(r *http.Request) bool {
+	for _, v := range r.URL.Query()["include"] {
+		for _, part := range strings.Split(v, ",") {
+			if strings.EqualFold(strings.TrimSpace(part), paymentIncludeValue) {
+				return true
+			}
+		}
+	}
+	return false
 }

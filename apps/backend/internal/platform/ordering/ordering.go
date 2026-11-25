@@ -81,6 +81,10 @@ const (
 	// the shop has already taken the buyer's money, so the gateway records
 	// the discrepancy for reconciliation and completes the payment anyway.
 	EventAmountMismatch = "amount_mismatch"
+	// EventBuyerAttached records the moment a prepared widget order (spec 65
+	// early order) got its buyer through POST /v1/public/checkout/{token}/buyer.
+	// The unpaid-order reminder counts from it, not from created_at.
+	EventBuyerAttached = "buyer_attached"
 )
 
 // ActorSystem is the order_events.actor value for anything the platform does

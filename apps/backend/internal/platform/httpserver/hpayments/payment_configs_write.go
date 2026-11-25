@@ -190,6 +190,7 @@ func (h *Handler) HandleCreatePaymentConfig(w http.ResponseWriter, r *http.Reque
 	// Same as on update: the credential is tried against the provider now,
 	// while the operator is still on the screen that can fix it.
 	row = h.verifyAndRecord(ctx, row)
+	_ = h.syncWalletDomains(ctx, row)
 
 	h.writePaymentConfigAudit(ctx, r, "v1.payment_config.create", row.ID.String(), map[string]any{
 		"org_id":              orgID.String(),
@@ -335,6 +336,9 @@ func (h *Handler) HandleUpdatePaymentConfig(w http.ResponseWriter, r *http.Reque
 	// to stop. Never blocks or fails the save — see verifyAndRecord.
 	if secretsChanged {
 		row = h.verifyAndRecord(ctx, row)
+	}
+	if secretsChanged || req.IsActive != nil {
+		_ = h.syncWalletDomains(ctx, row)
 	}
 
 	h.writePaymentConfigAudit(ctx, r, "v1.payment_config.update", row.ID.String(), map[string]any{

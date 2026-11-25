@@ -78,6 +78,8 @@ WHERE  o.org_id = $1
   AND  ($5::uuid IS NULL OR o.event_id = $5)
   AND  ($6::timestamptz IS NULL OR o.created_at >= $6)
   AND  ($7::timestamptz IS NULL OR o.created_at <= $7)
+  AND  NOT (o.source = 'public_feed' AND o.buyer_email IS NULL
+            AND o.status IN ('pending_payment', 'expired', 'cancelled', 'abandoned'))
   AND  ($14::timestamptz IS NULL OR s.start_at >= $14)
   AND  ($15::timestamptz IS NULL OR s.start_at <= $15)
   AND  (

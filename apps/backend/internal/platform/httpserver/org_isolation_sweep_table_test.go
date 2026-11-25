@@ -511,6 +511,9 @@ var orgIsolationAuditedSafe = map[string]string{
 	"PATCH /v1/organizations/{org_id}/channels/{id}":                     "channels",
 	"PUT /v1/organizations/{org_id}/channels/{id}/gateway-credential":    "channels",
 	"PUT /v1/organizations/{org_id}/channels/{id}/wp-webhook":            "channels",
+	// Site hosts of a channel (spec 65 E3): GetSalesChannelByID(id, org_id) answers 404 first, then the replace is keyed by (channel_id, org_id).
+	"GET /v1/organizations/{org_id}/channels/{id}/site-domains": "channels",
+	"PUT /v1/organizations/{org_id}/channels/{id}/site-domains": "channels",
 	// hseller: the channel is looked up among the PATH organization's hosted-page
 	// channels only (covered by TestSellerProfile_StaysInsideTheOrganization).
 	"PATCH /v1/organizations/{org_id}/channels/{channel_id}/seller-display": "hseller",
@@ -590,6 +593,8 @@ var orgIsolationAuditedSafe = map[string]string{
 	"PATCH /v1/organizations/{org_id}/promo-codes/{id}":                          "promo",
 	"POST /v1/organizations/{org_id}/bot-invitations/{id}/resend":                "hbot",
 	"POST /v1/organizations/{org_id}/payment-configs/{id}/verify":                "hpayments",
+	// Wallet domains of a config (spec 65 E3): GetPaymentProviderConfigByID(id, org_id) answers 404, the list is keyed by (config, org).
+	"GET /v1/organizations/{org_id}/payment-configs/{id}/payment-method-domains": "hpayments",
 
 	// hiam membership routes: the {org_id} is ignored by the handlers (H1/H2 of the
 	// audit). Owned by SEC-1, covered by its memberships_cross_org_integration_test.go.
