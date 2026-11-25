@@ -81,6 +81,12 @@ type BuyerCancelInput struct {
 	Via string
 	IP  string
 	Now time.Time
+	// KeepHold keeps the places of a seat hold of the click (spec 67
+	// section 4.5): the order is cancelled and the checkout abandoned, but
+	// the reservation keeps its seats and its expires_at, back on the select
+	// step. A reservation without a hold key (the old path, the gateway) is
+	// released as before whatever this says.
+	KeepHold bool
 }
 
 // ErrCheckoutNotFound: no checkout session with that id.
@@ -90,6 +96,8 @@ var ErrCheckoutNotFound = errors.New("hcheckout: checkout session not found")
 type BuyerCancelResult struct {
 	Outcome BuyerCancelOutcome
 	OrderID *uuid.UUID
+	// HoldKept: a KeepHold cancel left the seats in the open hold.
+	HoldKept bool
 }
 
 // CancelUnpaidCheckout runs the buyer's cancel. auditW may be nil (tests);
@@ -121,6 +129,15 @@ func CancelUnpaidCheckout(ctx context.Context, pool TxStarter, q *gen.Queries, a
 		return nil
 	})
 	return out, err
+}
+
+// releaseHoldIfNotKept gives the hold back through releaseHoldTx unless a
+// KeepHold cancel kept it.
+func releaseHoldIfNotKept(ctx context.Context, txq *gen.Queries, reservationID uuid.UUID, kept bool) (gen.ReservationRow, error) {
+	if kept {
+		return gen.ReservationRow{}, nil
+	}
+	return releaseHoldTx(ctx, txq, reservationID)
 }
 
 // CancelUnpaidCheckoutTx is the transaction body, on the caller's
@@ -170,7 +187,29 @@ func CancelUnpaidCheckoutTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, au
 	}
 
 	released := true
-	if _, err := releaseHoldTx(ctx, txq, reservationID); err != nil {
+	kept := false
+	if in.KeepHold {
+		// The reservation row is locked after the checkout and the order,
+		// the order releaseHoldTx below takes it in too.
+		hold, err := txq.LockHoldCheckout(ctx, reservationID)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			released = false
+			kept = true
+		case err != nil:
+			return BuyerCancelResult{}, false, fmt.Errorf("hcheckout: lock hold: %w", err)
+		case hold.State == "converted":
+			res.Outcome = BuyerCancelPaid
+			return res, false, nil
+		case hold.HasHoldToken:
+			// Open: the seats stay in the hold. Closed by a sweep: there
+			// is nothing to give back. The records are closed below.
+			released = false
+			kept = true
+			res.HoldKept = hold.State == "draft" || hold.State == "active"
+		}
+	}
+	if _, err := releaseHoldIfNotKept(ctx, txq, reservationID, kept); err != nil {
 		var nr *NotReleasableError
 		switch {
 		case errors.As(err, &nr) && nr.State == "converted":
@@ -205,6 +244,7 @@ func CancelUnpaidCheckoutTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, au
 			"checkout_session_id": in.CheckoutSessionID.String(),
 			"reservation_id":      reservationID.String(),
 			"hold_released":       released,
+			"hold_kept":           res.HoldKept,
 			"actor_label":         in.ActorLabel,
 			"reason":              reason,
 			"via":                 in.Via,

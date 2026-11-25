@@ -120,6 +120,9 @@ func ProviderDescriptor() payments.Descriptor {
 			Disputes: true,
 			// Stripe: "expires_at must be at least 30 minutes" from now.
 			MinPageLifetimeSeconds: 30 * 60,
+			// POST /v1/checkout/sessions/{id}/expire closes the embedded
+			// and the hosted session alike (spec 67 section 5.5).
+			CanExpirePage: true,
 			// Checkout Session with ui_mode=elements (spec 65), paid with
 			// Stripe.js on arena's page; only when the config holds the
 			// publishable key.

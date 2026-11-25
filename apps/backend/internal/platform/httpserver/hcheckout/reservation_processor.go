@@ -27,6 +27,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -39,6 +40,25 @@ type ReservationProcessor struct {
 	queries         *gen.Queries
 	checkoutQueries *gen.Queries // optional; when non-nil, cascades expiry to checkout_sessions
 	logger          *slog.Logger
+	// paymentGrace is added to an open attempt's page_expires_at to form the
+	// hard limit before which the sweep leaves the hold to hold.close_payment
+	// (spec 67 section 5.2).
+	paymentGrace time.Duration
+	// now is the clock of the re-check under the row lock; time.Now in
+	// production.
+	now func() time.Time
+}
+
+// defaultReservationPaymentGrace is WIDGET_PAYMENT_GRACE_SECONDS' default.
+const defaultReservationPaymentGrace = 120 * time.Second
+
+// WithPaymentGrace sets the payment grace of the hard limit
+// (page_expires_at + grace) for holds with an open provider page.
+func (p *ReservationProcessor) WithPaymentGrace(grace time.Duration) *ReservationProcessor {
+	if grace > 0 {
+		p.paymentGrace = grace
+	}
+	return p
 }
 
 // NewReservationProcessor constructs a ReservationProcessor.
@@ -49,9 +69,11 @@ func NewReservationProcessor(pool TxStarter, queries *gen.Queries, logger *slog.
 		logger = slog.Default()
 	}
 	return &ReservationProcessor{
-		pool:    pool,
-		queries: queries,
-		logger:  logger,
+		pool:         pool,
+		queries:      queries,
+		logger:       logger,
+		paymentGrace: defaultReservationPaymentGrace,
+		now:          time.Now,
 	}
 }
 
@@ -82,7 +104,10 @@ func (p *ReservationProcessor) ProcessExpiredReservations(ctx context.Context, l
 	defer tx.Rollback(ctx) //nolint:errcheck
 
 	q := gen.New(tx)
-	expired, err := q.GetExpiredReservations(ctx, limit)
+	// GetExpiredReservationsHoldAware: a hold with an open provider page is
+	// left to hold.close_payment until page_expires_at + paymentGrace (spec
+	// 67 section 5.2); every other row is polled as GetExpiredReservations did.
+	expired, err := q.GetExpiredReservationsHoldAware(ctx, limit, p.paymentGrace)
 	if err != nil {
 		return 0, fmt.Errorf("reservation_processor: poll expired reservations: %w", err)
 	}
@@ -167,6 +192,17 @@ func (p *ReservationProcessor) expireReservation(ctx context.Context, r gen.Rese
 			slog.String("reservation_id", r.ID.String()),
 			slog.String("session_id", r.SessionID.String()),
 			slog.String("state", current.State),
+		)
+		_ = tx.Commit(ctx)
+		return nil
+	}
+	// Re-check the deadline under the row lock (spec 67 section 5.2): a
+	// conversion into an order or an extension between the poll and this
+	// lock has already moved expires_at forward.
+	if !current.ExpiresAt.Before(p.now()) {
+		p.logger.Info("reservation_processor: reservation deadline moved, skipping",
+			slog.String("reservation_id", r.ID.String()),
+			slog.Time("expires_at", current.ExpiresAt),
 		)
 		_ = tx.Commit(ctx)
 		return nil

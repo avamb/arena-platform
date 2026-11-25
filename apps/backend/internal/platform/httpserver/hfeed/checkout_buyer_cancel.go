@@ -31,8 +31,11 @@
 package hfeed
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -50,6 +53,18 @@ import (
 
 // ErrCodePaymentInProgress answers a cancel while a payment may still land.
 const ErrCodePaymentInProgress = "checkout.payment_in_progress"
+
+// checkoutCancelMaxBody is how much of a cancel body is read.
+const checkoutCancelMaxBody = 4 * 1024
+
+// PublicCheckoutCancelRequest is the optional body of
+// POST /v1/public/checkout/{checkout_token}/cancel.
+type PublicCheckoutCancelRequest struct {
+	// KeepHold keeps the seats of a seat hold of the click in the hold with
+	// its expires_at: the order is cancelled and the hold is back on the
+	// select step (spec 67 section 4.5). Ignored on the old path.
+	KeepHold bool `json:"keep_hold,omitempty"`
+}
 
 // hostedPaymentReader is the read-back half of the payment starter
 // (StripePaymentStarter.LookupHostedPayment).
@@ -86,6 +101,23 @@ func (h *Handler) HandlePublicCheckoutCancel(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	ctx := r.Context()
+
+	// The body is optional: {"keep_hold": true} keeps the seats of a hold of
+	// the click (spec 67 section 4.5). An unreadable body is refused.
+	var req PublicCheckoutCancelRequest
+	if body, rerr := io.ReadAll(io.LimitReader(r.Body, checkoutCancelMaxBody)); rerr != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
+			"checkout.invalid_body", "We could not read the request body.", r,
+		))
+		return
+	} else if len(bytes.TrimSpace(body)) > 0 {
+		if err := json.Unmarshal(body, &req); err != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
+				"checkout.invalid_json", "The request body is not valid JSON. Fix it and send it again.", r,
+			))
+			return
+		}
+	}
 
 	cs, err := h.checkoutQueries.GetCheckoutSessionByToken(ctx, checkoutToken)
 	if err != nil {
@@ -134,6 +166,7 @@ func (h *Handler) HandlePublicCheckoutCancel(w http.ResponseWriter, r *http.Requ
 		Via:               via,
 		IP:                h.clientIP(r),
 		Now:               time.Now().UTC(),
+		KeepHold:          req.KeepHold,
 	})
 	if err != nil {
 		h.logger.Error("public_checkout_cancel: cancel failed",
@@ -146,7 +179,17 @@ func (h *Handler) HandlePublicCheckoutCancel(w http.ResponseWriter, r *http.Requ
 	switch res.Outcome {
 	case hcheckout.BuyerCancelCancelled:
 		h.logger.Info("public_checkout_cancel: the buyer cancelled an unpaid order",
-			slog.String("checkout_session_id", cs.ID.String()))
+			slog.String("checkout_session_id", cs.ID.String()),
+			slog.Bool("hold_kept", res.HoldKept))
+		if req.KeepHold {
+			httputil.WriteJSON(w, http.StatusOK, map[string]any{
+				"checkout_token": checkoutToken,
+				"status":         publicStatusCancelled,
+				"cancelled":      true,
+				"hold_kept":      res.HoldKept,
+			})
+			return
+		}
 		h.writeCancelAnswer(w, checkoutToken, publicStatusCancelled, true)
 	case hcheckout.BuyerCancelAlreadyCancelled:
 		h.writeCancelAnswer(w, checkoutToken, publicStatusCancelled, true)

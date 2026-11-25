@@ -15,3 +15,9 @@ func (s *Server) handlePublicCheckoutHostedFallback(w http.ResponseWriter, r *ht
 func (s *Server) handlePublicCheckoutBuyer(w http.ResponseWriter, r *http.Request) {
 	s.feedHandler().HandlePublicCheckoutBuyer(w, r)
 }
+
+// handlePublicCheckoutPaying serves
+// POST /v1/public/checkout/{checkout_token}/paying (spec 67 section 4.8).
+func (s *Server) handlePublicCheckoutPaying(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandlePublicCheckoutPaying(w, r)
+}

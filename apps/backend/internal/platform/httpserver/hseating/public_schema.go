@@ -36,6 +36,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/holdpolicy"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
 )
@@ -324,14 +325,24 @@ func (h *Handler) HandleGetPublicSessionSeatStatus(w http.ResponseWriter, r *htt
 
 	w.Header().Set("Cache-Control", seatStatusCacheControl)
 
+	// How often the widget asks again: the session's hold profile (spec 67
+	// section 4.9), standard when the profile cannot be read.
+	pollPolicy, pollErr := holdpolicy.ForSession(ctx, h.queries, sessionID)
+	if pollErr != nil && !errors.Is(pollErr, pgx.ErrNoRows) {
+		h.logger.Warn("seating_public: hold policy unreadable, using standard poll interval",
+			slog.String("session_id", sessionID.String()), slog.String("error", pollErr.Error()))
+	}
+	pollIntervalMs := pollPolicy.PollInterval.Milliseconds()
+
 	// Fast-path for callers already at the head cursor: no seats to
 	// stream, just echo the cursor back.
 	if isDelta && sinceVersion >= meta.SeatStatusVersion {
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{
-			"session_id":     meta.ID.String(),
-			"status_version": meta.SeatStatusVersion,
-			"seats":          map[string]string{},
-			"delta":          true,
+			"session_id":       meta.ID.String(),
+			"status_version":   meta.SeatStatusVersion,
+			"seats":            map[string]string{},
+			"delta":            true,
+			"poll_interval_ms": pollIntervalMs,
 		})
 		return
 	}
@@ -360,10 +371,11 @@ func (h *Handler) HandleGetPublicSessionSeatStatus(w http.ResponseWriter, r *htt
 	}
 
 	response := map[string]any{
-		"session_id":     meta.ID.String(),
-		"status_version": meta.SeatStatusVersion,
-		"seats":          seats,
-		"delta":          isDelta,
+		"session_id":       meta.ID.String(),
+		"status_version":   meta.SeatStatusVersion,
+		"seats":            seats,
+		"delta":            isDelta,
+		"poll_interval_ms": pollIntervalMs,
 	}
 	httputil.WriteJSON(w, http.StatusOK, response)
 }

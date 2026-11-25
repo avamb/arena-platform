@@ -194,7 +194,7 @@ type LookupStore interface {
 
 // SweepStore is the query surface the order.expire_sweep job needs.
 type SweepStore interface {
-	ListExpirableOrders(ctx context.Context, before time.Time, limit int32) ([]gen.OrderRow, error)
+	ListExpirableOrders(ctx context.Context, before time.Time, grace time.Duration, limit int32) ([]gen.OrderRow, error)
 	ExpireOrderIfStillPending(ctx context.Context, id uuid.UUID) (gen.OrderRow, error)
 	EventStore
 }

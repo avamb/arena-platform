@@ -776,6 +776,19 @@ WHERE  o.status = 'pending_payment'
            WHERE  pi.checkout_session_id = o.checkout_session_id
              AND  pi.state = 'succeeded'
        )
+  AND  NOT EXISTS (
+           SELECT 1 FROM reservations r
+           WHERE  r.id = o.reservation_id
+             AND  r.paying_until IS NOT NULL
+             AND  r.paying_until > $1
+       )
+  AND  NOT EXISTS (
+           SELECT 1 FROM payment_intents pi
+           WHERE  pi.checkout_session_id = o.checkout_session_id
+             AND  pi.state IN ('created', 'requires_action')
+             AND  pi.page_expires_at IS NOT NULL
+             AND  pi.page_expires_at + make_interval(secs => $3::float8) > $1
+       )
 ORDER  BY o.expires_at ASC
 LIMIT  $2`
 
@@ -785,8 +798,13 @@ LIMIT  $2`
 // payment intent. Orders that DID get paid in the window between expires_at
 // and the sweep tick are deliberately excluded so the sweep can never expire
 // a paid purchase.
-func (q *Queries) ListExpirableOrders(ctx context.Context, before time.Time, limit int32) ([]OrderRow, error) {
-	rows, err := q.db.Query(ctx, listExpirableOrders, before, limit)
+//
+// Spec 67 section 5.2: an order whose reservation is paying (paying_until
+// after before) or whose open payment attempt's provider page is alive until
+// page_expires_at + grace (the hard limit) is not a candidate either. Rows
+// without paying_until and page_expires_at behave as before.
+func (q *Queries) ListExpirableOrders(ctx context.Context, before time.Time, grace time.Duration, limit int32) ([]OrderRow, error) {
+	rows, err := q.db.Query(ctx, listExpirableOrders, before, limit, grace.Seconds())
 	if err != nil {
 		return nil, err
 	}

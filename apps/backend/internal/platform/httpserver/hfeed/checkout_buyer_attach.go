@@ -129,7 +129,11 @@ func (h *Handler) HandlePublicCheckoutBuyer(w http.ResponseWriter, r *http.Reque
 		h.writeAttachUnavailable(w, r)
 		return
 	}
-	if now := time.Now().UTC(); !fallbackPayable(pc, now) || !paymentWindowOpen(pc.HoldExpiresAt, h.paymentGrace, now) {
+	// A hold of the click on the short payment step takes "Pay" until the
+	// hold's own expires_at, without the grace (spec 67 section 3.3).
+	hw, _ := h.checkoutHoldWindow(ctx, h.checkoutQueries, cs.ID)
+	grace := hw.grace(h.paymentGrace)
+	if now := time.Now().UTC(); !fallbackPayable(pc, now) || !paymentWindowOpen(pc.HoldExpiresAt, grace, now) || hw.row.ClosingStartedAt != nil {
 		// The hold alone is not enough: the Stripe session dies at hold expiry
 		// minus the grace (payment_expires_at), so a buyer attached after it
 		// could never pay.
@@ -137,7 +141,7 @@ func (h *Handler) HandlePublicCheckoutBuyer(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if pc.BuyerEmail != nil && strings.TrimSpace(*pc.BuyerEmail) != "" {
-		h.answerExistingBuyer(w, r, checkoutToken, pc, *pc.BuyerEmail, email)
+		h.answerExistingBuyerWithin(w, r, checkoutToken, pc, *pc.BuyerEmail, email, grace)
 		return
 	}
 
@@ -215,7 +219,7 @@ func (h *Handler) HandlePublicCheckoutBuyer(w http.ResponseWriter, r *http.Reque
 	}
 
 	buyer := publicOrderBuyer{Email: email, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}
-	outcome, existing, err := h.attachBuyerTx(r, cs, buyer, consent)
+	outcome, existing, err := h.attachBuyerTx(r, cs, buyer, consent, grace)
 	if err != nil {
 		h.logger.Error("public_checkout_buyer: attach failed",
 			slog.String("checkout_session_id", cs.ID.String()), slog.String("error", err.Error()))
@@ -226,11 +230,11 @@ func (h *Handler) HandlePublicCheckoutBuyer(w http.ResponseWriter, r *http.Reque
 	case attachNotPayable:
 		h.writeNotPayable(w, r, h.currentPublicStatus(ctx, cs))
 	case attachAlreadySet:
-		h.answerExistingBuyer(w, r, checkoutToken, pc, existing, email)
+		h.answerExistingBuyerWithin(w, r, checkoutToken, pc, existing, email, grace)
 	default:
 		h.logger.Info("public_checkout_buyer: the buyer was attached to a prepared order",
 			slog.String("checkout_session_id", cs.ID.String()))
-		h.writeAttachAnswer(w, checkoutToken, pc)
+		h.writeAttachAnswer(w, checkoutToken, pc, grace)
 	}
 }
 
@@ -246,7 +250,10 @@ const (
 // row, then the order row — the order of the buyer cancel — and re-checks
 // both, so a cancel, an expiry or a payment that won the race is answered,
 // not overwritten. existing is the order's e-mail when it already had one.
-func (h *Handler) attachBuyerTx(r *http.Request, cs gen.CheckoutSessionRow, buyer publicOrderBuyer, consent *pendingConsent) (attachOutcome, string, error) {
+//
+// grace is what the end of "Pay" lies before the hold's expiry: the
+// payment grace, or 0 on the short payment step of a hold of the click.
+func (h *Handler) attachBuyerTx(r *http.Request, cs gen.CheckoutSessionRow, buyer publicOrderBuyer, consent *pendingConsent, grace time.Duration) (attachOutcome, string, error) {
 	// Detached and bounded: a buyer whose connection drops mid-write still
 	// gets the attach committed or not at all, never cut off between the
 	// customer and the order writes.
@@ -264,19 +271,22 @@ func (h *Handler) attachBuyerTx(r *http.Request, cs gen.CheckoutSessionRow, buye
 	// is checked again under the lock.
 	var state string
 	var holdExpiresAt time.Time
+	var closing bool
 	err = tx.QueryRow(ctx, `
-		SELECT cs.state, r.expires_at
+		SELECT cs.state, r.expires_at, r.closing_started_at IS NOT NULL
 		FROM   checkout_sessions cs
 		JOIN   reservations r ON r.id = cs.reservation_id
 		WHERE  cs.id = $1
-		FOR UPDATE OF cs`, cs.ID).Scan(&state, &holdExpiresAt)
+		FOR UPDATE OF cs`, cs.ID).Scan(&state, &holdExpiresAt, &closing)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return attachNotPayable, "", nil
 	}
 	if err != nil {
 		return 0, "", err
 	}
-	if !paymentWindowOpen(holdExpiresAt, h.paymentGrace, time.Now().UTC()) {
+	// The expiry job is closing the provider page of the hold (spec 67
+	// section 5.2): no buyer is taken any more.
+	if closing || !paymentWindowOpen(holdExpiresAt, grace, time.Now().UTC()) {
 		return attachNotPayable, "", nil
 	}
 	o, err := txq.GetOrderByCheckoutSession(ctx, cs.ID)
@@ -338,8 +348,14 @@ func (h *Handler) attachBuyerTx(r *http.Request, cs gen.CheckoutSessionRow, buye
 // answerExistingBuyer answers an order that already has a buyer: the same
 // address is a repeat (200, nothing written), another one is refused.
 func (h *Handler) answerExistingBuyer(w http.ResponseWriter, r *http.Request, token string, pc gen.CheckoutPaymentContextRow, existing, email string) {
+	h.answerExistingBuyerWithin(w, r, token, pc, existing, email, h.paymentGrace)
+}
+
+// answerExistingBuyerWithin is answerExistingBuyer with the grace of the
+// checkout's payment window (0 on the short step of a hold of the click).
+func (h *Handler) answerExistingBuyerWithin(w http.ResponseWriter, r *http.Request, token string, pc gen.CheckoutPaymentContextRow, existing, email string, grace time.Duration) {
 	if strings.EqualFold(strings.TrimSpace(existing), strings.TrimSpace(email)) {
-		h.writeAttachAnswer(w, token, pc)
+		h.writeAttachAnswer(w, token, pc, grace)
 		return
 	}
 	httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
@@ -348,12 +364,12 @@ func (h *Handler) answerExistingBuyer(w http.ResponseWriter, r *http.Request, to
 	))
 }
 
-func (h *Handler) writeAttachAnswer(w http.ResponseWriter, token string, pc gen.CheckoutPaymentContextRow) {
+func (h *Handler) writeAttachAnswer(w http.ResponseWriter, token string, pc gen.CheckoutPaymentContextRow, grace time.Duration) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"checkout_token":     token,
 		"status":             publicStatusPending,
 		"expires_at":         pc.HoldExpiresAt.UTC().Format(time.RFC3339),
-		"payment_expires_at": pc.HoldExpiresAt.Add(-h.paymentGrace).UTC().Format(time.RFC3339),
+		"payment_expires_at": pc.HoldExpiresAt.Add(-grace).UTC().Format(time.RFC3339),
 	})
 }
 

@@ -70,6 +70,7 @@ export type NavRoutePath =
   | "/billing/invoices"
   | "/billing/payment-fees"
   | "/billing/bank"
+  | "/hold-policy"
   | "/analytics/flows"
   | "/analytics/errors"
   | "/organizations/$orgId/promo-codes";
@@ -411,6 +412,15 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     scopeKinds: ["global", "platform"],
     purpose:
       "Billing: bank payments that come in. Match to an invoice a payment that the bank feed did not match. Or ignore it and give a reason. Or import a statement by hand. Necessary permission: billing.admin and a platform superadmin. Each change needs a reason, and the platform keeps an audit record.",
+  },
+  {
+    id: "hold_policy",
+    label: "Seat hold",
+    to: "/hold-policy",
+    permission: { anyOf: ["superadmin.read"] },
+    scopeKinds: ["global", "platform"],
+    purpose:
+      "Seat hold: how long a seat stays with the buyer while the buyer selects and pays, and the limits against bots. Two profiles, standard and high_demand. A change applies to new holds. Necessary permission: superadmin.read and a platform superadmin. Each change needs a reason, and the platform keeps an audit record.",
   },
   {
     id: "analytics_flows",

@@ -100,9 +100,10 @@ func (h *Handler) tryEmbeddedPayment(ctx context.Context, w http.ResponseWriter,
 	}
 
 	csID := in.Session.ID
-	if _, err := h.checkoutQueries.InsertEmbeddedPaymentIntent(ctx,
+	pi, err := h.checkoutQueries.InsertEmbeddedPaymentIntent(ctx,
 		&csID, in.CheckCtx.OrgID, res.Provider, res.SessionID, in.Breakdown.Total, in.Breakdown.Currency,
-	); err != nil {
+	)
+	if err != nil {
 		// Same rule as the hosted path: money against a row that does not
 		// exist would be lost, so the buyer gets no form.
 		h.logger.Error("public_feed_checkout: recording the embedded payment intent failed; no payment form handed out",
@@ -115,6 +116,7 @@ func (h *Handler) tryEmbeddedPayment(ctx context.Context, w http.ResponseWriter,
 		))
 		return nil, true, false
 	}
+	h.recordPageExpiry(ctx, h.checkoutQueries, pi.ID, in.PageExpiresAt)
 
 	// The client secret is deliberately NOT logged.
 	h.logger.Info("public_feed_checkout: embedded payment started",
@@ -146,7 +148,7 @@ func (h *Handler) embeddedCheckoutRequest(ctx context.Context, in hostedPaymentI
 		BuyerName:         derefOr(in.Buyer.Name),
 		BuyerPhone:        derefOr(in.Buyer.Phone),
 		ReturnURL:         in.ReturnBase,
-		ExpiresAtUnix:     in.ExpiresAt.Add(-h.paymentGrace).Unix(),
+		ExpiresAtUnix:     in.pageExpiry(h.paymentGrace).Unix(),
 		BuyerLocale:       in.Buyer.Locale,
 	}
 }

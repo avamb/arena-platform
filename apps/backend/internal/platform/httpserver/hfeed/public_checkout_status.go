@@ -313,7 +313,17 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 	resp.Event = h.checkoutEventBlock(ctx, reservation.SessionID)
 
 	if publicStatus == publicStatusPending && h.paymentWindow > 0 && cs.Total != nil && *cs.Total > 0 {
-		pay := reservation.ExpiresAt.Add(-h.paymentGrace).UTC().Format(time.RFC3339)
+		payUntil := reservation.ExpiresAt.Add(-h.paymentGrace)
+		// A hold of the click on the short payment step: "Pay" is taken
+		// until the earlier of its page's expiry (page_expires_at) and the
+		// hold itself, without the grace (spec 67 section 3.3).
+		if hw, ok := h.checkoutHoldWindow(ctx, h.checkoutQueries, cs.ID); ok && hw.short {
+			payUntil = reservation.ExpiresAt
+			if hw.row.PageExpiresAt.Before(payUntil) {
+				payUntil = *hw.row.PageExpiresAt
+			}
+		}
+		pay := payUntil.UTC().Format(time.RFC3339)
 		resp.PaymentExpiresAt = &pay
 	}
 

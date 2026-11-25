@@ -36,6 +36,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/holdpolicy"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
@@ -136,9 +137,24 @@ func (h *Handler) HandlePublicCheckoutHostedFallback(w http.ResponseWriter, r *h
 		alreadyExpired = true
 	}
 	pageExpiry := pc.HoldExpiresAt.Add(-h.paymentGrace)
+	// "Pay" ends with the page on the old path; on the short payment step of
+	// a hold of the click it ends with the hold, and the new page gets its
+	// own life from page_expires_at's rule (spec 67 section 3.3): arena closes
+	// it when the hold ends.
+	payUntil := pageExpiry
+	var newPageExpiry time.Time
+	if hw, ok := h.checkoutHoldWindow(ctx, h.checkoutQueries, cs.ID); ok && hw.short {
+		if hw.row.ClosingStartedAt != nil {
+			h.writeNotPayable(w, r, publicStatusPending)
+			return
+		}
+		newPageExpiry = newHoldPageExpiry(holdpolicy.FromSnapshot(hw.row.HoldPolicy), now)
+		pageExpiry = newPageExpiry
+		payUntil = pc.HoldExpiresAt
+	}
 	if open.HostedCheckoutURL != nil && *open.HostedCheckoutURL != "" {
 		// Already on a hosted page (a repeated call): the same page again.
-		h.writeHostedFallbackAnswer(w, checkoutToken, *open.HostedCheckoutURL, pageExpiry)
+		h.writeHostedFallbackAnswer(w, checkoutToken, *open.HostedCheckoutURL, payUntil)
 		return
 	}
 	if !isEmbeddedIntent(*open) {
@@ -231,7 +247,7 @@ func (h *Handler) HandlePublicCheckoutHostedFallback(w http.ResponseWriter, r *h
 		return
 	}
 
-	if err := h.recordHostedFallback(pctx, pc, open.ID, result); err != nil {
+	if err := h.recordHostedFallback(pctx, pc, open.ID, result, newPageExpiry); err != nil {
 		h.logger.Error("public_checkout_hosted: recording the hosted page failed; not handing it out",
 			slog.String("checkout_session_id", cs.ID.String()),
 			slog.String("provider_payment_id", result.SessionID),
@@ -243,7 +259,7 @@ func (h *Handler) HandlePublicCheckoutHostedFallback(w http.ResponseWriter, r *h
 		slog.String("checkout_session_id", cs.ID.String()),
 		slog.String("superseded_payment_intent_id", open.ID.String()),
 		slog.String("provider_payment_id", result.SessionID))
-	h.writeHostedFallbackAnswer(w, checkoutToken, result.RedirectURL, pageExpiry)
+	h.writeHostedFallbackAnswer(w, checkoutToken, result.RedirectURL, payUntil)
 }
 
 // expiredEmbeddedWithoutSuccessor returns the checkout's NEWEST payment
@@ -286,7 +302,9 @@ func fallbackPayable(pc gen.CheckoutPaymentContextRow, now time.Time) bool {
 // recordHostedFallback writes the hosted page's payment intent and marks the
 // embedded one superseded, in one transaction. A retry after a lost answer
 // finds the same page (same idempotency key) already recorded and reuses it.
-func (h *Handler) recordHostedFallback(ctx context.Context, pc gen.CheckoutPaymentContextRow, supersededID uuid.UUID, result *HostedCheckoutResult) error {
+// pageExpiresAt, when set, is the page_expires_at of the new page (a hold of
+// the click, spec 67 section 3.2).
+func (h *Handler) recordHostedFallback(ctx context.Context, pc gen.CheckoutPaymentContextRow, supersededID uuid.UUID, result *HostedCheckoutResult, pageExpiresAt time.Time) error {
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
@@ -295,9 +313,15 @@ func (h *Handler) recordHostedFallback(ctx context.Context, pc gen.CheckoutPayme
 	q := gen.New(tx)
 	if _, err := q.GetPaymentIntentByProviderID(ctx, result.SessionID); errors.Is(err, pgx.ErrNoRows) {
 		csID := pc.CheckoutSessionID
-		if _, err := q.InsertHostedPaymentIntent(ctx, &csID, pc.OrgID, result.Provider, result.SessionID,
-			derefInt64(pc.Total), derefOr(pc.Currency), result.RedirectURL); err != nil {
+		pi, err := q.InsertHostedPaymentIntent(ctx, &csID, pc.OrgID, result.Provider, result.SessionID,
+			derefInt64(pc.Total), derefOr(pc.Currency), result.RedirectURL)
+		if err != nil {
 			return err
+		}
+		if !pageExpiresAt.IsZero() {
+			if _, err := q.SetPaymentIntentPageExpiresAt(ctx, pi.ID, pageExpiresAt); err != nil {
+				return err
+			}
 		}
 	} else if err != nil {
 		return err

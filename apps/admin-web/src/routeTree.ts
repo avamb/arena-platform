@@ -40,6 +40,7 @@ import { Route as BillingPricesRoute } from "@/routes/billingPrices";
 import { Route as BillingInvoicesRoute } from "@/routes/billingInvoices";
 import { Route as BillingPaymentFeesRoute } from "@/routes/billingPaymentFees";
 import { Route as BillingBankRoute } from "@/routes/billingBank";
+import { Route as HoldPolicyRoute } from "@/routes/holdPolicy";
 import { Route as AnalyticsFlowsRoute } from "@/routes/analyticsFlows";
 import { Route as AnalyticsErrorsRoute } from "@/routes/analyticsErrors";
 import { Route as AnalyticsPersonRoute } from "@/routes/analyticsPerson";
@@ -96,6 +97,7 @@ export const routeTree = RootRoute.addChildren([
   BillingInvoicesRoute,
   BillingPaymentFeesRoute,
   BillingBankRoute,
+  HoldPolicyRoute,
   AnalyticsFlowsRoute,
   AnalyticsErrorsRoute,
   AnalyticsPersonRoute,

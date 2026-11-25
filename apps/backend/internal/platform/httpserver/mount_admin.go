@@ -7,6 +7,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hbilling"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hholdpolicy"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
@@ -115,6 +116,38 @@ func (s *Server) mountBillingAdminRoutes(r chi.Router) {
 		pr.Get("/admin/billing/white-label", func(w http.ResponseWriter, r *http.Request) { h().HandleListWhiteLabel(w, r) })
 		pr.Post("/admin/billing/white-label", func(w http.ResponseWriter, r *http.Request) { h().HandleCreateWhiteLabel(w, r) })
 		pr.Post("/admin/billing/white-label/{id}/end", func(w http.ResponseWriter, r *http.Request) { h().HandleEndWhiteLabel(w, r) })
+	})
+}
+
+// requireHoldPolicySuperadmin lets only a platform superadmin through to the
+// seat hold settings (spec 67 section 7.2).
+func (s *Server) requireHoldPolicySuperadmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !auth.HasSuperadminOrgAccess(r.Context()) {
+			httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
+				"hold_policy.superadmin_only", "platform superadmin access is required for the seat hold settings", r,
+			))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// mountHoldPolicyAdminRoutes mounts the superadmin screen "Seat hold" (spec 67
+// section 7.2): the two hold profiles and the profile of one event. Reads and
+// writes need superadmin.read AND a platform superadmin; writes need
+// X-Admin-Reason and write their audit row on the change's transaction.
+func (s *Server) mountHoldPolicyAdminRoutes(r chi.Router) {
+	if !s.authEnabled() {
+		return
+	}
+	h := hholdpolicy.New(s.pgxPool, s.audit, s.logger)
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "superadmin.read", "superadmin")
+		pr.Use(s.requireHoldPolicySuperadmin)
+		pr.Get("/admin/hold-policy", h.HandleList)
+		pr.Put("/admin/hold-policy/{profile}", h.HandlePut)
+		pr.Put("/admin/events/{event_id}/hold-profile", h.HandlePutEventProfile)
 	})
 }
 

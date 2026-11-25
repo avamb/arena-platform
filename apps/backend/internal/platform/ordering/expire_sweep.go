@@ -41,6 +41,12 @@ const DefaultSweepInterval = time.Minute
 // "this order is dead".
 const DefaultSweepBatchSize = 500
 
+// DefaultPaymentGrace is the payment grace (WIDGET_PAYMENT_GRACE_SECONDS
+// default) added to a provider page's expiry to form the hard limit before
+// which an order with an open attempt on that page is not expired (spec 67
+// section 5.2).
+const DefaultPaymentGrace = 120 * time.Second
+
 // SweepScheduler enqueues the next sweep run. Returning an error fails the
 // current handler invocation, which the worker then retries normally.
 type SweepScheduler interface {
@@ -91,6 +97,10 @@ type ExpireSweepOptions struct {
 
 	// Now is injectable for deterministic tests; defaults to time.Now().UTC.
 	Now func() time.Time
+
+	// Grace is the payment grace of the hard limit (page_expires_at +
+	// Grace); defaults to DefaultPaymentGrace.
+	Grace time.Duration
 }
 
 // NewExpireSweepHandler returns the handler for job_type=ExpireSweepJobType.
@@ -110,9 +120,12 @@ func NewExpireSweepHandler(opts ExpireSweepOptions) func(ctx context.Context, pa
 	if opts.Now == nil {
 		opts.Now = func() time.Time { return time.Now().UTC() }
 	}
+	if opts.Grace <= 0 {
+		opts.Grace = DefaultPaymentGrace
+	}
 
 	return func(ctx context.Context, _ []byte) error {
-		expired, err := RunExpireSweep(ctx, opts.Store, opts.Now(), opts.BatchSize, opts.Logger)
+		expired, err := RunExpireSweepWithGrace(ctx, opts.Store, opts.Now(), opts.Grace, opts.BatchSize, opts.Logger)
 		if err != nil {
 			return err
 		}
@@ -138,11 +151,18 @@ func NewExpireSweepHandler(opts ExpireSweepOptions) func(ctx context.Context, pa
 // the candidate query and the update, the guard matches zero rows and the
 // order is skipped instead of being expired out from under a paying customer.
 func RunExpireSweep(ctx context.Context, q SweepStore, now time.Time, batchSize int32, logger *slog.Logger) (int, error) {
+	return RunExpireSweepWithGrace(ctx, q, now, DefaultPaymentGrace, batchSize, logger)
+}
+
+// RunExpireSweepWithGrace is RunExpireSweep with an explicit payment grace for
+// the hard limit of an order whose provider page is still alive (spec 67
+// section 5.2).
+func RunExpireSweepWithGrace(ctx context.Context, q SweepStore, now time.Time, grace time.Duration, batchSize int32, logger *slog.Logger) (int, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
-	candidates, err := q.ListExpirableOrders(ctx, now, batchSize)
+	candidates, err := q.ListExpirableOrders(ctx, now, grace, batchSize)
 	if err != nil {
 		return 0, fmt.Errorf("ordering: list expirable orders: %w", err)
 	}

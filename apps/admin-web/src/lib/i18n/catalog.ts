@@ -23,6 +23,7 @@
  */
 
 import { analyticsEn, analyticsRu } from "./analyticsStrings";
+import { holdPolicyEn, holdPolicyRu } from "./holdPolicyStrings";
 
 export type LocaleCode = "ru" | "en";
 
@@ -148,6 +149,7 @@ export const ruCatalog: Catalog = {
 
   // Analytics section (spec 50, stage A8)
   ...analyticsRu,
+  ...holdPolicyRu,
 };
 
 /** English catalog (fallback / switchable). */
@@ -258,6 +260,7 @@ export const enCatalog: Catalog = {
 
   // Analytics section (spec 50, stage A8)
   ...analyticsEn,
+  ...holdPolicyEn,
 };
 
 export const CATALOGS: Readonly<Record<LocaleCode, Catalog>> = {

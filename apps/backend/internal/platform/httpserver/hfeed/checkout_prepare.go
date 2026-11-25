@@ -146,9 +146,10 @@ func (h *Handler) startPreparedPayment(ctx context.Context, w http.ResponseWrite
 	}
 
 	csID := in.Session.ID
-	if _, err := h.checkoutQueries.InsertEmbeddedPaymentIntent(pctx,
+	pi, err := h.checkoutQueries.InsertEmbeddedPaymentIntent(pctx,
 		&csID, in.CheckCtx.OrgID, res.Provider, res.SessionID, in.Breakdown.Total, in.Breakdown.Currency,
-	); err != nil {
+	)
+	if err != nil {
 		// Money against a row that does not exist would be lost: the
 		// session is closed at the provider (best effort, it was never
 		// handed out) and the order is cancelled.
@@ -169,6 +170,7 @@ func (h *Handler) startPreparedPayment(ctx context.Context, w http.ResponseWrite
 		writePrepareUnavailable(w, r, http.StatusConflict, prepareReasonPaymentFailure)
 		return nil, false
 	}
+	h.recordPageExpiry(pctx, h.checkoutQueries, pi.ID, in.PageExpiresAt)
 
 	// The client secret is deliberately NOT logged.
 	h.logger.Info("public_feed_checkout: prepared order with an embedded payment",
