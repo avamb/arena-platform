@@ -1268,7 +1268,9 @@ func (h *Handler) HandleUpdateEventStatus(w http.ResponseWriter, r *http.Request
 				))
 				return
 			}
-			if len(tiers) == 0 {
+			// A partner sells an external session: it owns no categories by
+			// design, so the gate must not ask for one (spec 63 §14.4).
+			if len(tiers) == 0 && sess.SalesMode != gen.SessionSalesModeExternal {
 				untieredSessionIDs = append(untieredSessionIDs, sess.ID.String())
 			}
 			if sess.Status == "draft" {
