@@ -109,6 +109,25 @@ let scriptPromise: Promise<StripeFactory> | null = null;
  */
 const instances = new Map<string, StripeLike>();
 
+/**
+ * Adds a `<link rel="preconnect">` (no crossorigin: the script tag is a
+ * non-CORS request and only reuses a non-CORS connection) for the Stripe.js origin to
+ * the document head once per page, so the connection is warm by the time
+ * Stripe.js is requested. Idempotent; returns true when a tag was added.
+ */
+export function preconnectStripe(doc: Document | undefined = typeof document === 'undefined' ? undefined : document): boolean {
+  if (!doc || !doc.head) return false;
+  const origin = new URL(STRIPE_JS_URL).origin;
+  for (const l of Array.from(doc.head.querySelectorAll('link[rel="preconnect"]'))) {
+    if (l.getAttribute('href') === origin) return false;
+  }
+  const link = doc.createElement('link');
+  link.rel = 'preconnect';
+  link.href = origin;
+  doc.head.appendChild(link);
+  return true;
+}
+
 /** Test hook: forgets the cached load and instances so the next call starts over. */
 export function resetStripeLoaderForTests(): void {
   scriptPromise = null;

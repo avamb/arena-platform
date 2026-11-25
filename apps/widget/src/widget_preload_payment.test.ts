@@ -22,11 +22,19 @@ describe('preload-payment attribute', () => {
 
   it('starts Stripe.js when the sheet opens, for "stripe" and for "checkout"', () => {
     expect(widgetSource).toContain('const preload = $derived(preloadMode(preloadPayment));');
-    expect(widgetSource).toMatch(/if \(cartSheetOpen && loadsStripeEarly\(preload\)\) \{\s*loadStripeJs\(\)\.catch\(\(\) => \{\}\);/);
+    expect(widgetSource).toContain('loadsStripeEarly(preload, selectedSession?.embedded_payment)');
+    expect(widgetSource).toMatch(/if \(cartSheetOpen && stripeEarly\) \{\s*loadStripeJs\(\)\.catch\(\(\) => \{\}\);/);
+  });
+
+  it('preconnects once the cart has a line AND the buyer acted, never on page load', () => {
+    expect(widgetSource).toMatch(/if \(cartCount > 0 && stripeEarly && buyerActed\) preconnectStripe\(\);/);
+    expect(widgetSource).toContain('let buyerActed = $state(false);');
+    expect(widgetSource).toContain("el.addEventListener('pointerdown', mark);");
+    expect(widgetSource).toContain("el.addEventListener('keydown', mark);");
   });
 
   it('shares the one Stripe.js loader with the payment screen', () => {
-    expect(widgetSource).toContain("import { loadStripeJs } from './lib/stripeElements.js';");
+    expect(widgetSource).toContain("import { loadStripeJs, preconnectStripe } from './lib/stripeElements.js';");
   });
 });
 

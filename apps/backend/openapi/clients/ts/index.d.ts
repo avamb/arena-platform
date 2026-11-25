@@ -8483,6 +8483,12 @@ export interface paths {
          *         and not used up. The widget shows its promo field only then.
          *         It reveals that such a code exists, never which one, and not
          *         whether one fits a cart: `checkout/quote` decides that.
+         *       * `embedded_payment` — boolean. True when a payment started on
+         *         this feed would be embedded in the page (the deployment
+         *         switch is on, the channel does not force the hosted page and
+         *         the organization's provider config holds the browser key).
+         *         The widget loads the provider's script early only then.
+         *         Carries no key.
          *       * `show_withdrawal_notice` — boolean. True when the seller
          *         organization is in the EU/EEA (the country of its legal
          *         address, else the organization country: the 27 EU states

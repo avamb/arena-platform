@@ -202,6 +202,10 @@ type FeedTokenBuyerFlagsRow struct {
 	// the window the buyer gets from them (hfeed.EffectivePaymentWindow).
 	Provider             string
 	PaymentWindowSeconds *int32
+	// OrgID and SalesChannelID name the channel and its organization (the
+	// feed's embedded-payment flag reads the provider config with them).
+	OrgID          uuid.UUID
+	SalesChannelID uuid.UUID
 }
 
 const getFeedTokenBuyerFlags = `-- name: GetFeedTokenBuyerFlags :one
@@ -231,7 +235,9 @@ SELECT
     o.legal_address_postal_code,
     sc.settings #> '{hosted_page,public_contact}' AS public_contact,
     sc.provider,
-    sc.payment_window_seconds
+    sc.payment_window_seconds,
+    sc.org_id,
+    sc.id
 FROM agent_feed_tokens ft
 JOIN sales_channels sc ON sc.id = ft.sales_channel_id
 JOIN organizations o ON o.id = sc.org_id
@@ -251,6 +257,6 @@ func (q *Queries) GetFeedTokenBuyerFlags(ctx context.Context, feedToken string) 
 	err := row.Scan(&r.CollectName, &r.CollectPhone, &r.FeePercent, &r.PromoCodesAvailable,
 		&r.ConsentRequired, &r.OrgName, &r.LegalName, &r.TaxID,
 		&r.AddressLine1, &r.AddressCity, &r.AddressPostalCode, &r.PublicContact,
-		&r.Provider, &r.PaymentWindowSeconds)
+		&r.Provider, &r.PaymentWindowSeconds, &r.OrgID, &r.SalesChannelID)
 	return r, err
 }

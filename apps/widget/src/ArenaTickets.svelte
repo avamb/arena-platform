@@ -103,7 +103,7 @@
   import GaAreaPopover from './components/GaAreaPopover.svelte';
   import OrderStatus from './components/OrderStatus.svelte';
   import PaymentScreen from './components/PaymentScreen.svelte';
-  import { loadStripeJs } from './lib/stripeElements.js';
+  import { loadStripeJs, preconnectStripe } from './lib/stripeElements.js';
   import { createPaymentStepsRegistry } from './lib/paymentSteps.js';
   import type { PaymentBlock } from './lib/checkout.js';
   import Materials from './components/Materials.svelte';
@@ -268,12 +268,37 @@
   // on the critical path to the card form. With preload-payment="stripe" it
   // starts when the sheet opens. loadStripeJs is one shared promise, so the
   // payment screen reuses it; a failure here is ignored and retried there.
-  // preload-payment="checkout" implies it.
+  // preload-payment="checkout" implies it. With the attribute absent (auto) it
+  // happens only when the session's payment is embedded (`embedded_payment`).
   const preload = $derived(preloadMode(preloadPayment));
+  const stripeEarly = $derived(loadsStripeEarly(preload, selectedSession?.embedded_payment));
   $effect(() => {
-    if (cartSheetOpen && loadsStripeEarly(preload)) {
+    if (cartSheetOpen && stripeEarly) {
       loadStripeJs().catch(() => {});
     }
+  });
+  // The buyer's first press or key anywhere in the widget (the host element,
+  // which covers the shadow root). Until then the preconnect waits: a
+  // preselected quantity must not warm js.stripe.com on page load.
+  let buyerActed = $state(false);
+  $effect(() => {
+    const el = host;
+    const mark = () => {
+      buyerActed = true;
+      el.removeEventListener('pointerdown', mark);
+      el.removeEventListener('keydown', mark);
+    };
+    el.addEventListener('pointerdown', mark);
+    el.addEventListener('keydown', mark);
+    return () => {
+      el.removeEventListener('pointerdown', mark);
+      el.removeEventListener('keydown', mark);
+    };
+  });
+  // The first ticket or seat in the cart warms the connection to js.stripe.com
+  // (one tag per page); never on page load, never before a buyer action.
+  $effect(() => {
+    if (cartCount > 0 && stripeEarly && buyerActed) preconnectStripe();
   });
 
   // ── Selection state ────────────────────────────────────────────────────────
