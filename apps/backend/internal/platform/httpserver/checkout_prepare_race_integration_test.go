@@ -4,8 +4,7 @@
 // money-path fixes:
 //
 //   - two attaches with the same e-mail on the same session at the same time
-//     both answer 200; the customer link of the second sits in a SAVEPOINT,
-//     so orders_one_pending_per_customer_session_uq never fails the attach;
+//     both answer 200 and keep both orders payable;
 //   - the reminder's "newer order" check compares the moment each order got
 //     its buyer, so an order prepared first and attached later is the newer.
 package httpserver
@@ -18,7 +17,13 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/cartreminder"
 )
 
-func TestCheckoutPrepare_ParallelAttachSameEmailBothAnswer200(t *testing.T) {
+// customers.Resolve serializes the two attaches, so this test proves that a
+// second tab with the same e-mail neither cancels the first payable order nor
+// fails: both answer 200 and both orders stay pending_payment, and exactly one
+// of them carries the customer of that e-mail. It does not reproduce the 23505
+// window: the savepoint in checkout_buyer_attach.go is a defence for that
+// window.
+func TestCheckoutPrepare_SameEmailAttachesBothAnswer200KeepBothPayable(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := t.Context()
 	f, _ := embeddedFixture(t, ctx, pool, "prr")
@@ -50,6 +55,7 @@ func TestCheckoutPrepare_ParallelAttachSameEmailBothAnswer200(t *testing.T) {
 			t.Errorf("attach %d = %d %v, want 200", i, code, outs[i])
 		}
 	}
+	linked := 0
 	for _, csID := range []string{a.CheckoutSess.ID, b.CheckoutSess.ID} {
 		o := orderOf(t, ctx, pool, csID)
 		if o.Status != "pending_payment" {
@@ -58,6 +64,19 @@ func TestCheckoutPrepare_ParallelAttachSameEmailBothAnswer200(t *testing.T) {
 		if o.BuyerEmail == nil || *o.BuyerEmail != f.buyerMail {
 			t.Errorf("order of %s buyer e-mail = %v, want %q", csID, o.BuyerEmail, f.buyerMail)
 		}
+		if o.CustomerID == nil {
+			continue
+		}
+		linked++
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM customer_identities
+			WHERE kind = 'email' AND value_normalized = lower($1) AND customer_id = $2`,
+			f.buyerMail, *o.CustomerID).Scan(&n); err != nil || n != 1 {
+			t.Errorf("order of %s customer %v is not the customer of %q (rows %d, err %v)", csID, *o.CustomerID, f.buyerMail, n, err)
+		}
+	}
+	if linked != 1 {
+		t.Errorf("orders with customer_id set = %d, want exactly 1", linked)
 	}
 }
 
@@ -107,5 +126,12 @@ func TestCheckoutPrepare_ReminderNewerOrderCountsFromAttach(t *testing.T) {
 	}
 	if !got.NewerOrder {
 		t.Errorf("second order: NewerOrder = false, want true — the first order got its buyer later")
+	}
+	gotFirst, err := cartreminder.LoadOrder(ctx, pool, firstOrd.ID)
+	if err != nil {
+		t.Fatalf("LoadOrder first: %v", err)
+	}
+	if gotFirst.NewerOrder {
+		t.Errorf("first order: NewerOrder = true, want false — it got its buyer last")
 	}
 }
