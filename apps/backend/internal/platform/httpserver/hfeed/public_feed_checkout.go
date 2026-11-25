@@ -1967,6 +1967,11 @@ func (h *Handler) createPublicOrder(
 		chargePercentBP = ordering.ChargePercentBP(ch.FeePercent)
 	}
 
+	// Known gap: two simultaneous starts with the same e-mail on one session
+	// can still meet orders_one_pending_per_customer_session_uq here. The
+	// attach of a prepared order moves the customer link into a SAVEPOINT
+	// (attachBuyerTx); doing the same here means changing the order insert
+	// inside ordering.CreateOrderFromCheckout, left for its own change.
 	res, err := ordering.CreateOrderFromCheckout(ctx, txq, ordering.CreateInput{
 		CheckoutSessionID: cs.ID,
 		EventID:           checkCtx.EventID,

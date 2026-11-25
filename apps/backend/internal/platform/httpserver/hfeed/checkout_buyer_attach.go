@@ -317,12 +317,24 @@ func (h *Handler) attachBuyerTx(r *http.Request, cs gen.CheckoutSessionRow, buye
 	if err != nil {
 		return 0, "", err
 	}
-	changed, err := txq.AttachOrderBuyer(ctx, ord.ID, buyer.Email, buyer.Name, buyer.Phone, customerID)
+	// The buyer is written without the customer link: two attaches with the
+	// same e-mail on the same session can both pass the supersede step, which
+	// reads committed rows only, and the second customer_id write then hits
+	// orders_one_pending_per_customer_session_uq (23505). The link sits in its
+	// own SAVEPOINT; when it fails, the order keeps customer_id NULL and the
+	// buyer can still pay.
+	changed, err := txq.AttachOrderBuyer(ctx, ord.ID, buyer.Email, buyer.Name, buyer.Phone, nil)
 	if err != nil {
 		return 0, "", err
 	}
 	if !changed {
 		return attachNotPayable, "", nil
+	}
+	if customerID != nil {
+		h.bestEffort(ctx, tx, "order customer link", cs.ID, func(sp pgx.Tx) error {
+			_, err := sp.Exec(ctx, `UPDATE orders SET customer_id = $2, updated_at = now() WHERE id = $1`, ord.ID, *customerID)
+			return err
+		})
 	}
 	if buyer.Locale != "" {
 		if err := txq.SetCheckoutBuyerLocale(ctx, cs.ID, buyer.Locale); err != nil {
