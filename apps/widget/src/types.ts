@@ -253,6 +253,12 @@ export interface FeedSession {
    */
   promo_codes_available?: boolean;
   /**
+   * True when a payment started on this feed would be embedded in the page
+   * (Stripe.js is then worth loading before "Pay"). Absent on older backends
+   * (treated as false).
+   */
+  embedded_payment?: boolean;
+  /**
    * True when the event is bound to a specific date, so the statutory right
    * of withdrawal does not apply: the cart sheet then prints a notice above
    * the pay button. Absent on older backends (treated as false).

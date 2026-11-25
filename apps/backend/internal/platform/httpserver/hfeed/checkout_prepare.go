@@ -194,3 +194,14 @@ func (h *Handler) startPreparedPayment(ctx context.Context, w http.ResponseWrite
 	block := res.Block
 	return &block, true
 }
+
+// embeddedPaymentAvailable is the feed's `embedded_payment` flag: the same
+// check a prepared order makes before any hold (preparedPaymentAvailable),
+// by DB reads only (no provider call), once per feed request and outside any
+// transaction. Any failure is non-fatal: the flag is false.
+func (h *Handler) embeddedPaymentAvailable(ctx context.Context, orgID, channelID uuid.UUID) bool {
+	if orgID == uuid.Nil || channelID == uuid.Nil {
+		return false
+	}
+	return h.preparedPaymentAvailable(ctx, gen.PublicCheckoutContextRow{OrgID: orgID, SalesChannelID: channelID})
+}

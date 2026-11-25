@@ -171,8 +171,10 @@ describe('the preload-payment attribute', () => {
     expect(preloadMode('checkout')).toBe('checkout');
     expect(preloadMode(' Checkout ')).toBe('checkout');
     expect(preloadMode('stripe')).toBe('stripe');
-    expect(preloadMode('')).toBe('none');
-    expect(preloadMode(undefined)).toBe('none');
+    expect(preloadMode('')).toBe('auto');
+    expect(preloadMode(undefined)).toBe('auto');
+    expect(preloadMode('none')).toBe('none');
+    expect(preloadMode(' OFF ')).toBe('none');
     expect(preloadMode('yes')).toBe('none');
   });
 
@@ -180,6 +182,15 @@ describe('the preload-payment attribute', () => {
     expect(loadsStripeEarly('checkout')).toBe(true);
     expect(loadsStripeEarly('stripe')).toBe(true);
     expect(loadsStripeEarly('none')).toBe(false);
+    expect(loadsStripeEarly('none', true)).toBe(false);
+    expect(loadsStripeEarly('stripe', false)).toBe(true);
+  });
+
+  it('auto loads early only when the session payment is embedded', () => {
+    expect(loadsStripeEarly('auto', true)).toBe(true);
+    expect(loadsStripeEarly('auto', false)).toBe(false);
+    expect(loadsStripeEarly('auto', undefined)).toBe(false);
+    expect(loadsStripeEarly('auto')).toBe(false);
   });
 });
 

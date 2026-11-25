@@ -40,19 +40,30 @@ export const CANCEL_RETRY_MS = 2000;
 /** "Pay" is refused with this code when a prepared hold could not be released. */
 export const PREPARED_STILL_HELD_CODE = 'checkout.prepared_still_held';
 
-/** The `preload-payment` attribute: '' (nothing), 'stripe' (Stripe.js only), 'checkout'. */
-export type PreloadMode = 'none' | 'stripe' | 'checkout';
+/**
+ * The `preload-payment` attribute: '' / absent = 'auto' (Stripe.js early only
+ * for a session whose payment will be embedded, `embedded_payment`), 'none' or
+ * 'off' = nothing, 'stripe' (Stripe.js early, explicit), 'checkout' (early
+ * order). An unknown value means 'none'.
+ */
+export type PreloadMode = 'auto' | 'none' | 'stripe' | 'checkout';
 
 export function preloadMode(attr: string | null | undefined): PreloadMode {
   const v = (attr ?? '').trim().toLowerCase();
+  if (v === '') return 'auto';
   if (v === 'checkout') return 'checkout';
   if (v === 'stripe') return 'stripe';
   return 'none';
 }
 
-/** "checkout" implies the Stripe.js preload of "stripe". */
-export function loadsStripeEarly(mode: PreloadMode): boolean {
-  return mode === 'stripe' || mode === 'checkout';
+/**
+ * Whether Stripe.js (and the preconnect) may be loaded ahead of "Pay".
+ * "checkout" implies "stripe" (explicit). 'auto' follows the feed session's
+ * `embedded_payment`: a hosted-page organizer's buyer downloads nothing.
+ */
+export function loadsStripeEarly(mode: PreloadMode, embeddedPayment: boolean | null | undefined = false): boolean {
+  if (mode === 'stripe' || mode === 'checkout') return true;
+  return mode === 'auto' && embeddedPayment === true;
 }
 
 export interface PlainCartInput {
