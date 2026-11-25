@@ -103,7 +103,7 @@
   import GaAreaPopover from './components/GaAreaPopover.svelte';
   import OrderStatus from './components/OrderStatus.svelte';
   import PaymentScreen from './components/PaymentScreen.svelte';
-  import { loadStripeJs } from './lib/stripeElements.js';
+  import { loadStripeJs, preconnectStripe } from './lib/stripeElements.js';
   import { createPaymentStepsRegistry } from './lib/paymentSteps.js';
   import type { PaymentBlock } from './lib/checkout.js';
   import Materials from './components/Materials.svelte';
@@ -268,12 +268,19 @@
   // on the critical path to the card form. With preload-payment="stripe" it
   // starts when the sheet opens. loadStripeJs is one shared promise, so the
   // payment screen reuses it; a failure here is ignored and retried there.
-  // preload-payment="checkout" implies it.
+  // preload-payment="checkout" implies it. With the attribute absent (auto) it
+  // happens only when the session's payment is embedded (`embedded_payment`).
   const preload = $derived(preloadMode(preloadPayment));
+  const stripeEarly = $derived(loadsStripeEarly(preload, selectedSession?.embedded_payment));
   $effect(() => {
-    if (cartSheetOpen && loadsStripeEarly(preload)) {
+    if (cartSheetOpen && stripeEarly) {
       loadStripeJs().catch(() => {});
     }
+  });
+  // The first ticket or seat in the cart warms the connection to js.stripe.com
+  // (one tag per page); never on page load.
+  $effect(() => {
+    if (cartCount > 0 && stripeEarly) preconnectStripe();
   });
 
   // ── Selection state ────────────────────────────────────────────────────────

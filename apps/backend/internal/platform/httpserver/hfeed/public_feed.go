@@ -339,6 +339,12 @@ type publicFeedSessionResponse struct {
 	// shows its promo field only then. It says nothing about which code, nor
 	// whether one fits a cart: checkout/quote decides that.
 	PromoCodesAvailable bool `json:"promo_codes_available"`
+	// EmbeddedPayment is true when a payment started on this feed would be
+	// embedded in the page (deployment switch on, channel not forced to the
+	// hosted page, the organization's provider config holds the browser key).
+	// The widget loads the provider's script early only then. Says nothing
+	// secret: no key is sent.
+	EmbeddedPayment bool `json:"embedded_payment"`
 	// ShowWithdrawalNotice is true when the seller organization is in the
 	// EU/EEA (legal-address country, else the organization country): the
 	// widget then tells the buyer before payment that tickets for an event
@@ -857,6 +863,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	serviceFeePercent := "0.00"
 	paymentWindow := h.paymentWindow
 	promoCodesAvailable := false
+	embeddedPayment := false
 	consentRequired, consentLegalName := false, ""
 	if h.publicFeedQueries != nil {
 		flags, flagsErr := h.publicFeedQueries.GetFeedTokenBuyerFlags(ctx, feedToken)
@@ -867,6 +874,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 			}
 			paymentWindow = EffectivePaymentWindow(h.paymentWindow, flags.PaymentWindowSeconds, providerPageFloor(flags.Provider))
 			promoCodesAvailable = flags.PromoCodesAvailable
+			embeddedPayment = h.embeddedPaymentAvailable(ctx, flags.OrgID, flags.SalesChannelID)
 			consentRequired, consentLegalName = consentFromFlags(flags)
 		} else if !errors.Is(flagsErr, pgx.ErrNoRows) {
 			h.logger.Error("public_feed: get buyer flags failed",
@@ -969,6 +977,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 				sessResp.ServiceFeePercent = serviceFeePercent
 				sessResp.PaymentWindowSeconds = windowSeconds(paymentWindow)
 				sessResp.PromoCodesAvailable = promoCodesAvailable
+				sessResp.EmbeddedPayment = embeddedPayment
 				sessResp.ShowWithdrawalNotice = showWithdrawalNotice
 				sessResp.WhiteLabel = whiteLabel
 				sessResp.Consent = consent
