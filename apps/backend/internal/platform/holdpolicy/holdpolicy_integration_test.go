@@ -15,7 +15,7 @@ import (
 )
 
 // TestHoldPolicy_SeededProfilesAndEventOverride reads both profiles seeded
-// by migration 0225 and checks that an event's hold_profile picks the
+// by migration 0226 and checks that an event's hold_profile picks the
 // profile its sessions read, NULL meaning standard.
 func TestHoldPolicy_SeededProfilesAndEventOverride(t *testing.T) {
 	dsn := os.Getenv("DATABASE_URL")

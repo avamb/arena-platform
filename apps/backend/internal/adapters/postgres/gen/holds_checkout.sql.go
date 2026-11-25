@@ -13,7 +13,7 @@ import (
 )
 
 // HoldCheckoutRow is the part of a reservations row the checkout of a hold
-// reads (migration 0225 columns included). HasHoldToken is false for a hold
+// reads (migration 0226 columns included). HasHoldToken is false for a hold
 // of the old path or of the gateway (hold_token_hash IS NULL).
 type HoldCheckoutRow struct {
 	ID               uuid.UUID  `json:"id"`
@@ -149,7 +149,7 @@ SET    page_expires_at = $2,
 WHERE  id = $1`
 
 // SetPaymentIntentPageExpiresAt records when the provider page of the
-// payment attempt expires (migration 0225, spec 67 section 3.2).
+// payment attempt expires (migration 0226, spec 67 section 3.2).
 func (q *Queries) SetPaymentIntentPageExpiresAt(ctx context.Context, id uuid.UUID, pageExpiresAt time.Time) (int64, error) {
 	ct, err := q.db.Exec(ctx, setPaymentIntentPageExpiresAt, id, pageExpiresAt)
 	if err != nil {

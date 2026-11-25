@@ -124,7 +124,7 @@ func SeatingPlanVersionFromRow(v gen.SeatingPlanVersionRow) SeatingPlanVersionRe
 		ID:               v.ID.String(),
 		SeatingPlanID:    v.SeatingPlanID.String(),
 		VersionNumber:    v.VersionNumber,
-		Geometry:         v.Geometry,
+		Geometry:         sanitizedGeometryJSON(v.Geometry),
 		GeometryChecksum: v.GeometryChecksum,
 		CapacitySeated:   v.CapacitySeated,
 		CapacityStanding: v.CapacityStanding,

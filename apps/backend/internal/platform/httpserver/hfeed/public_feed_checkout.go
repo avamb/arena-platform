@@ -659,7 +659,9 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 		// carries the time of the choice.
 		growth.tracking = h.trackingConsentFromStart(conversions.ConsentFromBuyerContext(req.BuyerContext))
 	}
-	growth.trackCart = checkoutTracksCart(growth.tracking, req.BuyerContext)
+	// A prepared checkout fires InitiateCheckout at the buyer attach instead
+	// (checkout_buyer_track.go): its order opens long before anybody pays.
+	growth.trackCart = !req.Prepare && checkoutTracksCart(growth.tracking, req.BuyerContext)
 
 	// ── 9. Mint checkout_token ────────────────────────────────────────────────
 	checkoutToken, err := mintCheckoutToken()

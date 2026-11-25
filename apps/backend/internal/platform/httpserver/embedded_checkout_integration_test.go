@@ -202,7 +202,8 @@ func TestEmbeddedCheckout_StartReturnsClientSecretAndCompletedWebhookPays(t *tes
 	if form.Get("ui_mode") != "elements" || form.Has("success_url") || form.Has("cancel_url") {
 		t.Errorf("elements form: ui_mode=%q success_url=%v cancel_url=%v", form.Get("ui_mode"), form.Has("success_url"), form.Has("cancel_url"))
 	}
-	if form.Get("allowed_payment_method_types[0]") != "card" || form.Get("allowed_payment_method_types[1]") != "link" || form.Has("payment_method_types[0]") {
+	if form.Get("allowed_payment_method_types[0]") != "card" || form.Has("allowed_payment_method_types[1]") ||
+		form.Get("wallet_options[link][display]") != "never" || form.Has("payment_method_types[0]") {
 		t.Errorf("payment methods: %v", form)
 	}
 	ret := form.Get("return_url")
