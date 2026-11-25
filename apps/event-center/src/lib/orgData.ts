@@ -289,3 +289,24 @@ export function paymentsNotConnected(
   if (configs === undefined) return false;
   return !configs.some((c) => c.is_active && c.verification_status === "ok");
 }
+
+// ─── quick payment in the widget: a Stripe publishable key ───────────────────
+
+/** Whether the Stripe config already holds a publishable key (the API lists only the NAMES of stored secrets). */
+export function hasPublishableKey(secretFieldsSet: readonly string[] | undefined): boolean {
+  return (secretFieldsSet ?? []).includes("publishable_key");
+}
+
+/** The configs the quick-payment block belongs to: active Stripe ones. */
+export function stripeQuickPayConfigs<T extends { provider: string; is_active: boolean }>(configs: readonly T[] | undefined): T[] {
+  return (configs ?? []).filter((c) => c.provider === "stripe" && c.is_active);
+}
+
+/** What is wrong with a typed key before any request: empty, or the prefix does not match the config's mode. */
+export function publishableKeyProblem(mode: "test" | "live", raw: string): "empty" | "prefixLive" | "prefixTest" | null {
+  const v = raw.trim();
+  if (v === "") return "empty";
+  if (mode === "live" && !v.startsWith("pk_live_")) return "prefixLive";
+  if (mode === "test" && !v.startsWith("pk_test_")) return "prefixTest";
+  return null;
+}

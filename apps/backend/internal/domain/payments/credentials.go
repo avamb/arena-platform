@@ -44,6 +44,15 @@ type CredentialVerifier interface {
 	VerifyCredentials(ctx context.Context) error
 }
 
+// BrowserKeyProber is implemented by providers whose browser-side (public)
+// key can be checked before it is saved. Advisory: only an error wrapping
+// ErrCredentialRefused is a verdict; a check that could not be made returns
+// nil, so it never blocks a save. The key is the one named by
+// Capabilities.EmbeddedCheckoutKey.
+type BrowserKeyProber interface {
+	ProbeBrowserKey(ctx context.Context, key string) error
+}
+
 // WebhookSubscription is what a provider reports about the endpoint that
 // receives its events for one config.
 type WebhookSubscription struct {

@@ -148,6 +148,10 @@ func (h *Handler) HandleCreatePaymentConfig(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	if h.rejectUnknownBrowserKey(w, r, req.Provider, req.Mode, req.Secrets) {
+		return
+	}
+
 	// Build the secrets jsonb from the patch map (empty patch -> '{}').
 	secretsJSON, _, err := MergeSecrets(nil, req.Secrets)
 	if err != nil {
@@ -301,6 +305,10 @@ func (h *Handler) HandleUpdatePaymentConfig(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	if h.rejectUnknownBrowserKey(w, r, existing.Provider, existing.Mode, req.Secrets) {
+		return
+	}
+
 	mergedSecrets, secretsChanged, err := MergeSecrets(existing.Secrets, req.Secrets)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
@@ -334,7 +342,10 @@ func (h *Handler) HandleUpdatePaymentConfig(w http.ResponseWriter, r *http.Reque
 	// operator sees the verdict on the screen they are already looking at.
 	// Waiting for a buyer to discover it is what this whole mechanism exists
 	// to stop. Never blocks or fails the save — see verifyAndRecord.
-	if secretsChanged {
+	// A patch of non-credential keys only (the Stripe publishable key) does
+	// not re-check the stored credential: a provider hiccup at that moment
+	// would turn a working config "unverified" for nothing.
+	if secretsChanged && patchTouchesCredential(row.Provider, req.Secrets) {
 		row = h.verifyAndRecord(ctx, row)
 	}
 	if secretsChanged || req.IsActive != nil {
