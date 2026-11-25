@@ -1,5 +1,5 @@
 // Package holdpolicy reads the seat hold times and limits (spec
-// 08_architecture/67, section 7.1, migration 0225).
+// 08_architecture/67, section 7.1, migration 0226).
 //
 // A profile lives in hold_policy_profiles; an event names its own profile in
 // events.hold_profile (NULL = standard). The profile is read when a hold is
@@ -20,7 +20,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
-// Profile names seeded by migration 0225.
+// Profile names seeded by migration 0226.
 const (
 	ProfileStandard   = "standard"
 	ProfileHighDemand = "high_demand"
@@ -96,7 +96,7 @@ func (p *Policy) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// Default is the standard profile as seeded by migration 0225. It is used
+// Default is the standard profile as seeded by migration 0226. It is used
 // when the profile table cannot be read.
 func Default() Policy {
 	return Policy{
@@ -122,7 +122,7 @@ const MaxCartSeats = 100
 var ErrInvalid = errors.New("holdpolicy: invalid policy")
 
 // Validate mirrors the CHECK constraints of hold_policy_profiles (migration
-// 0225). Seconds must be whole, the poll interval whole milliseconds.
+// 0226). Seconds must be whole, the poll interval whole milliseconds.
 func (p Policy) Validate() error {
 	bad := func(field string, v any) error {
 		return fmt.Errorf("%w: %s = %v", ErrInvalid, field, v)

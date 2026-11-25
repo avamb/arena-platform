@@ -1,4 +1,4 @@
--- 0225_seat_hold_on_click.sql — seat hold at the moment of the click
+-- 0226_seat_hold_on_click.sql — seat hold at the moment of the click
 -- (spec 08_architecture/67, sections 3.2 and 7.1).
 --
 --   reservations.*                 the hold key, the visitor hashes, the two

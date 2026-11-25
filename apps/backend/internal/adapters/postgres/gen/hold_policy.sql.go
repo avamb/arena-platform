@@ -15,7 +15,7 @@ const holdPolicyProfileColumns = `name, select_seconds, payment_seconds, extend_
        max_seats_per_hold, max_active_per_device, max_active_per_ip, rehold_pause_seconds,
        poll_interval_ms, updated_at, updated_by`
 
-// HoldPolicyProfile is one row of hold_policy_profiles (migration 0225,
+// HoldPolicyProfile is one row of hold_policy_profiles (migration 0226,
 // spec 67 section 7.1): the seat hold times and limits of one profile.
 type HoldPolicyProfile struct {
 	Name               string     `json:"name"`
@@ -129,7 +129,7 @@ type UpdateHoldPolicyProfileParams struct {
 
 // UpdateHoldPolicyProfile replaces the values of one profile and returns the
 // new row; pgx.ErrNoRows when the profile does not exist, a 23514 when a
-// value breaks a CHECK of migration 0225.
+// value breaks a CHECK of migration 0226.
 func (q *Queries) UpdateHoldPolicyProfile(ctx context.Context, arg UpdateHoldPolicyProfileParams) (HoldPolicyProfile, error) {
 	return scanHoldPolicyProfile(q.db.QueryRow(ctx, updateHoldPolicyProfile,
 		arg.Name, arg.SelectSeconds, arg.PaymentSeconds, arg.ExtendSeconds, arg.ExtendCount,

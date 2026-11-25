@@ -3,7 +3,7 @@
 // answer of every hold route. The routes live in holds_create.go and
 // holds_manage.go.
 //
-// A hold is one reservations row with hold_token_hash set (migration 0225).
+// A hold is one reservations row with hold_token_hash set (migration 0226).
 // The hold token is HMAC-SHA256(HOLD_VISITOR_KEY, "hold_token:" + hold id),
 // base64url: 32 bytes the client cannot guess, derived rather than stored, so
 // a device that lost the token (second tab, lost answer) gets the token of its

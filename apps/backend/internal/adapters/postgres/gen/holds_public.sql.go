@@ -12,7 +12,7 @@ import (
 )
 
 // PublicHoldRow is a reservations row read as a public seat hold (spec 67,
-// migration 0225): the columns of the hold at the click on top of the plain
+// migration 0226): the columns of the hold at the click on top of the plain
 // reservation state.
 type PublicHoldRow struct {
 	ID                uuid.UUID  `json:"id"`

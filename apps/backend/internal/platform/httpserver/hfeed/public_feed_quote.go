@@ -38,6 +38,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/conversions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
@@ -52,6 +53,13 @@ type PublicFeedCheckoutQuoteRequest struct {
 	// MarketingConsent is the buyer's tick on the organizer's mailings
 	// (spec 51-1); ticked, it may earn the organizer's reward code.
 	MarketingConsent *PublicMarketingConsent `json:"marketing_consent,omitempty"`
+	// BuyerContext, AddToCartID and SeatsConsidered feed the cart's AddToCart
+	// for Meta / GA4 (cart_conversions.go): queued only when buyer_context
+	// says tracking_consent true and add_to_cart_id is usable. They are read
+	// leniently: a wrong value drops the event, never the quote.
+	BuyerContext    json.RawMessage `json:"buyer_context,omitempty"`
+	AddToCartID     json.RawMessage `json:"add_to_cart_id,omitempty"`
+	SeatsConsidered json.RawMessage `json:"seats_considered,omitempty"`
 }
 
 // PublicFeedCheckoutQuoteResponse is the 200 body.
@@ -337,4 +345,18 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 		PromoApplied:             promoApplied,
 		MarketingDiscountApplied: rewardWon && discount > 0,
 	})
+	h.queueQuoteAddToCart(r, checkCtx.OrgID, sessionID, req, bd)
+}
+
+// queueQuoteAddToCart queues the cart's AddToCart once per add_to_cart_id
+// (the event id dedups repeats), only with the buyer's explicit yes.
+func (h *Handler) queueQuoteAddToCart(r *http.Request, orgID, sessionID uuid.UUID,
+	req PublicFeedCheckoutQuoteRequest, bd hcheckout.PricingBreakdown) {
+	id := parseAddToCartID(req.AddToCartID)
+	if id == "" || h.cartConversions == nil || !buyerContextConsents(req.BuyerContext) {
+		return
+	}
+	cleaned := conversions.CleanBuyerContext(req.BuyerContext, httputil.TrustedClientIP(r, 0), r.UserAgent())
+	h.queueCartEvent(r.Context(), orgID, conversions.KindAddToCart, addToCartEventIDPfx+id,
+		sessionID, bd, cleaned, parseSeatsConsidered(req.SeatsConsidered))
 }

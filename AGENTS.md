@@ -508,7 +508,7 @@ Places, categories, hold and quota lock order, plan geometry, seat layouts, venu
 * A category has ONE colour for the organizer and the buyer: tier colour, else the home plan category's, else the palette
 * The bot's "Split seats by price" fills an EMPTY open category of the same price before creating a new one (loEmptyOpen)
 * A category of a plan-bound session that owns no place is never offered or sold (feed, gate, gateway, widget)
-* A seated hold at the click (spec 67, 0225) is a reservations row with hold_token_hash; token = HMAC of the id, seats in hold_policy->'seat_keys'
+* A seated hold at the click (spec 67, 0226) is a reservations row with hold_token_hash; token = HMAC of the id, seats in hold_policy->'seat_keys'
 * One lock order for an existing click hold: reservations, checkouts, orders, payment_intents, then sessions, seats, ledger
 * hold.close_payment expires the Stripe page before freeing seats; page expiry is written with the attempt
 * A private seating plan is read only by its owner organization and a platform superadmin (planReadAccess)
