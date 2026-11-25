@@ -107,7 +107,9 @@ ORDER  BY s.start_at, s.id;
 -- (utm pair of the checkout's attribution, sales link, currency). The steps
 -- count BUYERS, not attempts: a buyer who retries checkout/start twice is one
 -- buyer, otherwise a share of the previous step could pass 100 %. A buyer is
--- (customer, or the e-mail on the order, or the order itself) x session x day
+-- (customer of the order, else of its hold — a second open order of one
+-- customer carries no customer_id, see hfeed supersedeOpenOrder — else the
+-- e-mail on the order, else the order itself) x session x day
 -- in the venue's zone $5.
 --   started       a checkout took its hold
 --   payment_open  a payment page was opened (a payment intent exists), or the
@@ -117,7 +119,10 @@ ORDER  BY s.start_at, s.id;
 --                 in minor units (a refund reaches its order by the order, the
 --                 ticket it names or the payment intent, like the session
 --                 summary)
--- Invitations (source 'complimentary') are not sales and are left out. The
+-- Invitations (source 'complimentary') are not sales and are left out, and so
+-- is a prepared widget order no buyer was attached to (spec 65 early order:
+-- public_feed, buyer_email NULL, never paid) — its checkout_start is counted
+-- at attach. The
 -- created_at bounds on both sides are slack by a day each way so that
 -- orders_org_created_idx can be used; the zone-aware date test is the exact one.
 WITH x AS (
@@ -125,7 +130,7 @@ WITH x AS (
            COALESCE(cs.attribution ->> 'utm_campaign', '') AS utm_campaign,
            o.sales_link_id,
            o.currency::text AS currency,
-           COALESCE(o.customer_id::text, lower(btrim(o.buyer_email)), o.id::text)
+           COALESCE(o.customer_id::text, (SELECT rv.customer_id::text FROM reservations rv WHERE rv.id = o.reservation_id), lower(btrim(o.buyer_email)), o.id::text)
                || '|' || o.session_id::text
                || '|' || ((o.created_at AT TIME ZONE $5::text)::date)::text AS buyer,
            (o.status IN ('paid', 'partially_refunded', 'refunded')) AS paid,
@@ -149,6 +154,8 @@ WITH x AS (
     ) rf ON true
     WHERE  o.event_id = $1 AND o.org_id = $2
       AND  o.source <> 'complimentary'
+      AND  NOT (o.source = 'public_feed' AND o.buyer_email IS NULL
+                AND o.status IN ('pending_payment', 'expired', 'cancelled', 'abandoned'))
       AND  o.created_at >= $3::date - 1 AND o.created_at < $4::date + 2
       AND  (o.created_at AT TIME ZONE $5::text)::date BETWEEN $3 AND $4
       AND  ($6::uuid IS NULL OR o.session_id = $6::uuid)
@@ -176,7 +183,7 @@ GROUP BY 1, 2, 3, 4, 5, 6;
 -- ONCE over the whole window: summing the grouped rows would count a buyer
 -- again for every source, link and currency they appear under.
 WITH x AS (
-    SELECT COALESCE(o.customer_id::text, lower(btrim(o.buyer_email)), o.id::text)
+    SELECT COALESCE(o.customer_id::text, (SELECT rv.customer_id::text FROM reservations rv WHERE rv.id = o.reservation_id), lower(btrim(o.buyer_email)), o.id::text)
                || '|' || o.session_id::text
                || '|' || ((o.created_at AT TIME ZONE $5::text)::date)::text AS buyer,
            (o.status IN ('paid', 'partially_refunded', 'refunded')) AS paid,
@@ -185,6 +192,8 @@ WITH x AS (
     FROM   orders o
     WHERE  o.event_id = $1 AND o.org_id = $2
       AND  o.source <> 'complimentary'
+      AND  NOT (o.source = 'public_feed' AND o.buyer_email IS NULL
+                AND o.status IN ('pending_payment', 'expired', 'cancelled', 'abandoned'))
       AND  o.created_at >= $3::date - 1 AND o.created_at < $4::date + 2
       AND  (o.created_at AT TIME ZONE $5::text)::date BETWEEN $3 AND $4
       AND  ($6::uuid IS NULL OR o.session_id = $6::uuid)

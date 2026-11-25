@@ -99,7 +99,21 @@ func FulfillCompletedCheckoutTx(
 	case ordErr != nil:
 		return out, fmt.Errorf("order lookup: %w", ordErr)
 	default:
-		if _, paidErr := ordering.MarkPaid(ctx, txq, ordering.PaidInput{
+		// An order closed by a new checkout of the same buyer while its own
+		// payment page stayed open is revived (cancelled → paid): the caller
+		// (the payment webhook) has checked that its hold is still active.
+		// Any other cancelled order still refuses through MarkPaid.
+		markPaid := ordering.MarkPaid
+		if ord.Status == ordering.StatusCancelled {
+			events, evErr := txq.ListOrderEventsByOrder(ctx, ord.ID)
+			if evErr != nil {
+				return out, fmt.Errorf("order events lookup: %w", evErr)
+			}
+			if ordering.LastCancelReason(events) == ordering.ReasonSupersededByNewCheckout {
+				markPaid = ordering.MarkPaidAfterSupersede
+			}
+		}
+		if _, paidErr := markPaid(ctx, txq, ordering.PaidInput{
 			OrderID: ord.ID,
 			OrgID:   ord.OrgID,
 			Actor:   ordering.ActorSystem,
@@ -108,6 +122,19 @@ func FulfillCompletedCheckoutTx(
 			return out, fmt.Errorf("mark order paid: %w", paidErr)
 		}
 		out.OrderMarkedPaid = true
+
+		// A second open order of one customer is minted without customer_id
+		// (hfeed supersedeOpenOrder); once paid it takes the customer of its
+		// hold, so the customer card shows it. Best effort, behind a savepoint.
+		if ord.CustomerID == nil {
+			_ = savepoint(ctx, tx, func(sp pgx.Tx) error {
+				_, err := sp.Exec(ctx, `UPDATE orders o SET customer_id = r.customer_id
+					FROM reservations r
+					WHERE o.id = $1 AND o.customer_id IS NULL
+					  AND r.id = o.reservation_id AND r.customer_id IS NOT NULL`, ord.ID)
+				return err
+			})
+		}
 
 		// ── 2b. Promo redemption (bookkeeping) ───────────────────────────────
 		// The money has moved, so an over-limit code is recorded, not refused

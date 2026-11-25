@@ -3,7 +3,17 @@ package cartreminder
 import (
 	"testing"
 	"time"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
 )
+
+// The sweep counts a prepared order from the attach event the buyer route
+// writes; the two must name the same order_events.type.
+func TestSweepCountsFromTheBuyerAttachedEvent(t *testing.T) {
+	if ordering.EventBuyerAttached != "buyer_attached" {
+		t.Fatalf("EventBuyerAttached = %q; the sweep and the attach must agree on it", ordering.EventBuyerAttached)
+	}
+}
 
 func TestDecide(t *testing.T) {
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)

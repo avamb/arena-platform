@@ -87,6 +87,10 @@ type CreateHostedCheckoutRequest struct {
 	// CancelURL is where the provider sends the buyer if they abandon the
 	// hosted page. Required.
 	CancelURL string
+	// ReturnURL is used by an EMBEDDED session only
+	// (EmbeddedCheckoutProvider): where the provider sends the buyer when
+	// the bank needs its own page. A hosted session ignores it.
+	ReturnURL string
 	// ExpiresAtUnix is the Unix timestamp at which the hosted session must
 	// stop accepting payment. Zero leaves the provider's own default.
 	// Stripe requires this to be at least 30 minutes in the future.

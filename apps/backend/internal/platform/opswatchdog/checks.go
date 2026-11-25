@@ -220,19 +220,21 @@ func (r *runner) checkPaymentNotCompleted(ctx context.Context) error {
 
 func (r *runner) checkManualReview(ctx context.Context) error {
 	const q = `
-		SELECT 'checkout_session' AS kind, cs.id::text, org.name, cs.total, cs.currency
+		SELECT 'checkout_session' AS kind, cs.id::text, org.name, cs.total, cs.currency, '' AS reason
 		  FROM checkout_sessions cs JOIN organizations org ON org.id = cs.org_id
 		 WHERE cs.state = 'manual_review'
 		UNION ALL
-		SELECT 'order' AS kind, o.id::text, org.name, o.total, o.currency
+		SELECT 'order' AS kind, o.id::text, org.name, o.total, o.currency, ''
 		  FROM orders o JOIN organizations org ON org.id = o.org_id
 		 WHERE o.status = 'manual_review'
 		UNION ALL
-		SELECT 'shop_order' AS kind, so.id::text, org.name, so.total, so.currency
+		SELECT 'shop_order' AS kind, so.id::text, org.name, so.total, so.currency, ''
 		  FROM shop_orders so JOIN organizations org ON org.id = so.org_id
 		 WHERE so.status = 'manual_review'
 		UNION ALL
-		SELECT 'payment_intent' AS kind, pi.id::text, org.name, pi.amount, pi.currency
+		SELECT 'payment_intent' AS kind, pi.id::text, org.name, pi.amount, pi.currency,
+		       -- double_payment, paid_amount_mismatch: what the operator must do.
+		       COALESCE(pi.failure_code, '')
 		  FROM payment_intents pi JOIN organizations org ON org.id = pi.org_id
 		 WHERE pi.state = 'manual_review'
 		LIMIT $1
@@ -245,12 +247,15 @@ func (r *runner) checkManualReview(ctx context.Context) error {
 
 	var current []AlertInput
 	for rows.Next() {
-		var kind, id, orgName, currency string
+		var kind, id, orgName, currency, reason string
 		var amount *int64
-		if err := rows.Scan(&kind, &id, &orgName, &amount, &currency); err != nil {
+		if err := rows.Scan(&kind, &id, &orgName, &amount, &currency, &reason); err != nil {
 			return fmt.Errorf("manual_review: scan: %w", err)
 		}
 		details := map[string]any{"kind": kind, "org": orgName}
+		if reason != "" {
+			details["reason"] = reason
+		}
 		if amount != nil {
 			details["amount"] = opsalert.FormatMinorUnits(*amount, currency)
 		}

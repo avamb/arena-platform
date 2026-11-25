@@ -181,7 +181,7 @@ const listFunnelServerRows = `WITH x AS (
            COALESCE(cs.attribution ->> 'utm_campaign', '') AS utm_campaign,
            o.sales_link_id,
            o.currency::text AS currency,
-           COALESCE(o.customer_id::text, lower(btrim(o.buyer_email)), o.id::text)
+           COALESCE(o.customer_id::text, (SELECT rv.customer_id::text FROM reservations rv WHERE rv.id = o.reservation_id), lower(btrim(o.buyer_email)), o.id::text)
                || '|' || o.session_id::text
                || '|' || ((o.created_at AT TIME ZONE $5::text)::date)::text AS buyer,
            (o.status IN ('paid', 'partially_refunded', 'refunded')) AS paid,
@@ -205,6 +205,8 @@ const listFunnelServerRows = `WITH x AS (
     ) rf ON true
     WHERE  o.event_id = $1 AND o.org_id = $2
       AND  o.source <> 'complimentary'
+      AND  NOT (o.source = 'public_feed' AND o.buyer_email IS NULL
+                AND o.status IN ('pending_payment', 'expired', 'cancelled', 'abandoned'))
       AND  o.created_at >= $3::date - 1 AND o.created_at < $4::date + 2
       AND  (o.created_at AT TIME ZONE $5::text)::date BETWEEN $3 AND $4
       AND  ($6::uuid IS NULL OR o.session_id = $6::uuid)
@@ -276,7 +278,7 @@ func (q *Queries) ListFunnelServerRows(ctx context.Context, w FunnelWindow) ([]F
 }
 
 const getFunnelServerTotals = `WITH x AS (
-    SELECT COALESCE(o.customer_id::text, lower(btrim(o.buyer_email)), o.id::text)
+    SELECT COALESCE(o.customer_id::text, (SELECT rv.customer_id::text FROM reservations rv WHERE rv.id = o.reservation_id), lower(btrim(o.buyer_email)), o.id::text)
                || '|' || o.session_id::text
                || '|' || ((o.created_at AT TIME ZONE $5::text)::date)::text AS buyer,
            (o.status IN ('paid', 'partially_refunded', 'refunded')) AS paid,
@@ -285,6 +287,8 @@ const getFunnelServerTotals = `WITH x AS (
     FROM   orders o
     WHERE  o.event_id = $1 AND o.org_id = $2
       AND  o.source <> 'complimentary'
+      AND  NOT (o.source = 'public_feed' AND o.buyer_email IS NULL
+                AND o.status IN ('pending_payment', 'expired', 'cancelled', 'abandoned'))
       AND  o.created_at >= $3::date - 1 AND o.created_at < $4::date + 2
       AND  (o.created_at AT TIME ZONE $5::text)::date BETWEEN $3 AND $4
       AND  ($6::uuid IS NULL OR o.session_id = $6::uuid)

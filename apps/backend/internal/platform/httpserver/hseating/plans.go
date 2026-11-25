@@ -32,10 +32,10 @@ const bodyLimit = 64 * 1024
 // GET /v1/venues/{venue_id}/seating-plans
 // ─────────────────────────────────────────────────────────────────────────────
 
-// HandleListSeatingPlansByVenue serves the list-by-venue endpoint. Visibility
-// filtering is deliberately deferred to a follow-up wave; every plan attached
-// to the venue is returned so the current org's UI can present its own drafts
-// side-by-side with any shared / public plans.
+// HandleListSeatingPlansByVenue serves the list-by-venue endpoint. It returns
+// the venue's plans the caller may read (see planReadAccess): every plan that
+// is not private, plus the private plans of the caller's own organizations.
+// A platform superadmin sees every plan.
 func (h *Handler) HandleListSeatingPlansByVenue(w http.ResponseWriter, r *http.Request) {
 	if h.queries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
@@ -56,8 +56,20 @@ func (h *Handler) HandleListSeatingPlansByVenue(w http.ResponseWriter, r *http.R
 		))
 		return
 	}
+	access := newPlanReadAccess(ctx, h.queries)
 	result := make([]SeatingPlanResponse, 0, len(rows))
 	for _, p := range rows {
+		visible, err := access.canRead(p)
+		if err != nil {
+			h.logger.Error("seating_plan: list access check failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"seating_plan.list_failed", "failed to list seating plans", r,
+			))
+			return
+		}
+		if !visible {
+			continue
+		}
 		result = append(result, SeatingPlanFromRow(p))
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"seating_plans": result})
@@ -210,8 +222,9 @@ func (h *Handler) HandleCreateSeatingPlan(w http.ResponseWriter, r *http.Request
 // GET /v1/seating-plans/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
-// HandleGetSeatingPlan serves the read-one endpoint. Visibility gating is
-// deferred to a follow-up wave — the RBAC middleware guards the entry point.
+// HandleGetSeatingPlan serves the read-one endpoint. A plan the caller may
+// not read (see planReadAccess) answers 404 seating_plan.not_found, the same
+// as a plan that does not exist.
 func (h *Handler) HandleGetSeatingPlan(w http.ResponseWriter, r *http.Request) {
 	if h.queries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
@@ -235,6 +248,20 @@ func (h *Handler) HandleGetSeatingPlan(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("seating_plan: get failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"seating_plan.get_failed", "failed to get seating plan", r,
+		))
+		return
+	}
+	visible, err := newPlanReadAccess(ctx, h.queries).canRead(row)
+	if err != nil {
+		h.logger.Error("seating_plan: get access check failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"seating_plan.get_failed", "failed to get seating plan", r,
+		))
+		return
+	}
+	if !visible {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+			"seating_plan.not_found", "seating plan not found", r,
 		))
 		return
 	}

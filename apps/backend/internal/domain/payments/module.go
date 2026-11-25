@@ -121,6 +121,15 @@ type Capabilities struct {
 	// (spec 62 П-3) is not applied to such a provider: the deployment-wide
 	// widget window stays its floor. Zero means no floor.
 	MinPageLifetimeSeconds int
+	// EmbeddedCheckout: the module can also create a checkout session the
+	// buyer pays inside arena's own page (EmbeddedCheckoutProvider, spec 65).
+	// It is used only when the config holds the public browser key named by
+	// EmbeddedCheckoutKey.
+	EmbeddedCheckout bool
+	// EmbeddedCheckoutKey is the secrets key of the PUBLIC browser key the
+	// provider's SDK is initialised with (Stripe publishable_key). Empty
+	// when EmbeddedCheckout is false.
+	EmbeddedCheckoutKey string
 	// Currencies lists the ISO 4217 codes (upper case) the provider can
 	// charge in. Empty means the provider states no limit, so arena refuses
 	// nothing on its behalf (the provider's own answer is the verdict).
