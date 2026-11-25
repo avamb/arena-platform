@@ -104,10 +104,15 @@ export function StripeQuickPay({ orgId, config, canWrite }: { orgId: string; con
   );
 }
 
-function QuickPayError({ error }: { error: unknown }) {
+export function QuickPayError({ error }: { error: unknown }) {
   const { t } = useI18n();
   if (error instanceof ApiError) {
-    const text = error.code === "payment_config.publishable_key_refused" ? t("orgData.quickPay.err.refused") : error.message;
+    const text =
+      error.code === "payment_config.publishable_key_refused"
+        ? t("orgData.quickPay.err.refused")
+        : error.code === "payment_config.publishable_key_account_mismatch"
+          ? t("orgData.quickPay.err.mismatch")
+          : error.message;
     return (
       <p className="notice notice-bad" role="alert" data-testid="quick-pay-error">
         {text}

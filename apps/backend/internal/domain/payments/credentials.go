@@ -28,6 +28,9 @@ import (
 var (
 	ErrCredentialRefused   = errors.New("payments: provider refused the credential")
 	ErrProviderUnreachable = errors.New("payments: provider could not be reached")
+	// ErrBrowserKeyAccountMismatch means the browser-side key belongs to
+	// another provider account than the secret key.
+	ErrBrowserKeyAccountMismatch = errors.New("payments: browser key belongs to another account than the secret key")
 )
 
 // CredentialVerifier is implemented by providers that can confirm a stored
@@ -48,9 +51,12 @@ type CredentialVerifier interface {
 // key can be checked before it is saved. Advisory: only an error wrapping
 // ErrCredentialRefused is a verdict; a check that could not be made returns
 // nil, so it never blocks a save. The key is the one named by
-// Capabilities.EmbeddedCheckoutKey.
+// Capabilities.EmbeddedCheckoutKey. secrets are the merged (stored plus
+// patched) secrets: with the secret key among them the prober also checks
+// that both keys belong to the same account and returns an error wrapping
+// ErrBrowserKeyAccountMismatch when they do not.
 type BrowserKeyProber interface {
-	ProbeBrowserKey(ctx context.Context, key string) error
+	ProbeBrowserKey(ctx context.Context, browserKey string, secrets map[string]string) error
 }
 
 // WebhookSubscription is what a provider reports about the endpoint that

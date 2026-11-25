@@ -4051,6 +4051,7 @@ export const en = {
   "orgData.quickPay.err.prefixLive": "For live mode the key starts with pk_live_.",
   "orgData.quickPay.err.prefixTest": "For test mode the key starts with pk_test_.",
   "orgData.quickPay.err.refused": "Stripe does not recognize this key. Copy it again from Stripe → Developers → API keys.",
+  "orgData.quickPay.err.mismatch": "This key is from another Stripe account than the secret key. Copy the publishable key from the same account.",
   "orgData.quickPay.mode.live": "live mode",
   "orgData.quickPay.mode.test": "test mode",
   "promoters.brandNote": "A brand is the name under which the event is sold. We called it a promoter before.",

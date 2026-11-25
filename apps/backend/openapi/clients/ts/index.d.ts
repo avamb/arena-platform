@@ -54108,8 +54108,13 @@ export interface operations {
              *
              *     `payment_config.publishable_key_refused`: Stripe answered 401 to
              *     the supplied `publishable_key`, so it does not exist or was
-             *     revoked; nothing is saved. A check that could not be made
-             *     (timeout, network error, any other answer) never blocks a save.
+             *     revoked; nothing is saved.
+             *
+             *     `payment_config.publishable_key_account_mismatch`: the
+             *     `publishable_key` belongs to another Stripe account than the
+             *     secret key (stored or supplied); nothing is saved. A check that
+             *     could not be made (timeout, network error, restricted key, any
+             *     other answer) never blocks a save.
              */
             422: {
                 headers: {
@@ -54500,8 +54505,13 @@ export interface operations {
              *
              *     `payment_config.publishable_key_refused`: Stripe answered 401 to
              *     the supplied `publishable_key`, so it does not exist or was
-             *     revoked; nothing is saved. A check that could not be made
-             *     (timeout, network error, any other answer) never blocks a save.
+             *     revoked; nothing is saved.
+             *
+             *     `payment_config.publishable_key_account_mismatch`: the
+             *     `publishable_key` belongs to another Stripe account than the
+             *     secret key (stored or supplied); nothing is saved. A check that
+             *     could not be made (timeout, network error, restricted key, any
+             *     other answer) never blocks a save.
              */
             422: {
                 headers: {

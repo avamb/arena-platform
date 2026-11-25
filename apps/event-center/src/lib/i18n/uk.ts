@@ -3993,6 +3993,7 @@ export const uk: Record<MessageKey, string> = {
   "orgData.quickPay.err.prefixLive": "Для бойового режиму ключ починається з pk_live_.",
   "orgData.quickPay.err.prefixTest": "Для тестового режиму ключ починається з pk_test_.",
   "orgData.quickPay.err.refused": "Stripe не впізнає цей ключ. Скопіюйте його ще раз у Stripe → Developers → API keys.",
+  "orgData.quickPay.err.mismatch": "Цей ключ від іншого акаунта Stripe, ніж секретний ключ. Скопіюйте публікований ключ із того самого акаунта.",
   "orgData.quickPay.mode.live": "бойовий режим",
   "orgData.quickPay.mode.test": "тестовий режим",
   "promoters.brandNote": "Бренд — це назва, під якою продається захід. Раніше ми називали його промоутером.",

@@ -4051,6 +4051,7 @@ export const es: Record<MessageKey, string> = {
   "orgData.quickPay.err.prefixLive": "En modo real la clave empieza por pk_live_.",
   "orgData.quickPay.err.prefixTest": "En modo de prueba la clave empieza por pk_test_.",
   "orgData.quickPay.err.refused": "Stripe no reconoce esta clave. Cópiala otra vez desde Stripe → Developers → API keys.",
+  "orgData.quickPay.err.mismatch": "Esta clave es de otra cuenta de Stripe distinta a la de la clave secreta. Copia la clave publicable de la misma cuenta.",
   "orgData.quickPay.mode.live": "modo real",
   "orgData.quickPay.mode.test": "modo de prueba",
   "screenHelp.link": "¿Qué hay aquí?",

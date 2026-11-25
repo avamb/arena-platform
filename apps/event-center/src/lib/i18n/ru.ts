@@ -4051,6 +4051,7 @@ export const ru: Record<MessageKey, string> = {
   "orgData.quickPay.err.prefixLive": "Для боевого режима ключ начинается с pk_live_.",
   "orgData.quickPay.err.prefixTest": "Для тестового режима ключ начинается с pk_test_.",
   "orgData.quickPay.err.refused": "Stripe не узнаёт этот ключ. Скопируйте его ещё раз в Stripe → Developers → API keys.",
+  "orgData.quickPay.err.mismatch": "Этот ключ от другого аккаунта Stripe, чем секретный ключ. Скопируйте публикуемый ключ из того же аккаунта.",
   "orgData.quickPay.mode.live": "боевой режим",
   "orgData.quickPay.mode.test": "тестовый режим",
   "screenHelp.link": "Что здесь?",

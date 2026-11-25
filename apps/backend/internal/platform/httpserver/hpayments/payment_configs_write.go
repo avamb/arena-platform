@@ -148,7 +148,7 @@ func (h *Handler) HandleCreatePaymentConfig(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if h.rejectUnknownBrowserKey(w, r, req.Provider, req.Mode, req.Secrets) {
+	if h.rejectUnknownBrowserKey(w, r, req.Provider, req.Mode, req.Secrets, nil) {
 		return
 	}
 
@@ -305,7 +305,7 @@ func (h *Handler) HandleUpdatePaymentConfig(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if h.rejectUnknownBrowserKey(w, r, existing.Provider, existing.Mode, req.Secrets) {
+	if h.rejectUnknownBrowserKey(w, r, existing.Provider, existing.Mode, req.Secrets, existing.Secrets) {
 		return
 	}
 

@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { StripeQuickPay } from "@/components/StripeQuickPay";
+import { QuickPayError, StripeQuickPay } from "@/components/StripeQuickPay";
+import { ApiError } from "@/lib/api/http";
 import { I18nProvider, LOCALES, type Locale } from "@/lib/i18n";
 import { hasPublishableKey, publishableKeyProblem, stripeQuickPayConfigs } from "@/lib/orgData";
 import { PaymentsSection } from "@/screens/OrgDataScreen";
@@ -77,6 +78,21 @@ describe("StripeQuickPay", () => {
       expect(render(<StripeQuickPay orgId="o" config={cfg()} canWrite />, locale)).not.toContain("orgData.");
     });
   }
+});
+
+describe("QuickPayError", () => {
+  it("maps the account mismatch code to its own text in every language", () => {
+    const err = new ApiError(422, "payment_config.publishable_key_account_mismatch", "raw server text");
+    const ru = render(<QuickPayError error={err} />, "ru");
+    expect(ru).toContain("Этот ключ от другого аккаунта Stripe, чем секретный ключ.");
+    for (const locale of LOCALES) {
+      const html = render(<QuickPayError error={err} />, locale);
+      expect(html).not.toContain("orgData.");
+      expect(html).not.toContain("raw server text");
+    }
+    const other = new ApiError(422, "payment_config.other", "raw server text");
+    expect(render(<QuickPayError error={other} />)).toContain("raw server text");
+  });
 });
 
 describe("PaymentsSection", () => {
