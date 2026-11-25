@@ -28,8 +28,12 @@ export default defineConfig({
     // so it can be served from a CDN as a single script tag.
     rollupOptions: {
       external: [],
+      preserveEntrySignatures: 'allow-extension',
       output: {
         format: 'es',
+        // The thank-you blocks load by dynamic import from the paid view; the
+        // chunk lands next to arena-tickets.js and is found relative to it.
+        chunkFileNames: 'arena-tickets-[name]-[hash].js',
       },
     },
     // Inline all assets (fonts, tiny SVGs) so the output is truly one file.

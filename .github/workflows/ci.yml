@@ -1278,7 +1278,7 @@ jobs:
           prerelease: false
           make_latest: false
           files: |
-            dist/v1/arena-tickets.js
+            dist/v1/*.js
             dist/v1/iframe.html
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
