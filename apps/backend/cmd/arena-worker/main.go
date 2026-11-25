@@ -304,11 +304,14 @@ func run() error {
 	registerOpsWatchdogHandler(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerEventWatchHandler(registry, pool.Pool, cfg, salesNotifier, logger)
 	registerSalesAlertWatch(registry, pool.Pool, salesNotifier, logger)
+	metaInsights := buildMetaInsights(pool.Pool, cfg, salesNotifier, logger)
+	registerMetaInsights(registry, metaInsights, cfg, logger)
 	registerContactFormHandler(registry, pool.Pool, cfg, salesNotifier, opsNotifier, logger)
 	registerOnboardingHandlers(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerRefundSweepHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
 	registerReferralHandlers(registry, pool.Pool, cfg, metrics, salesNotifier, logger)
 	registerDisputeHandlers(registry, pool.Pool, cfg, salesNotifier, opsNotifier, buildEmailSender(cfg, logger), logger)
+	registerPaymentDomainsHandlers(registry, pool.Pool, cfg, logger)
 	registerPaymentReceiptHandler(registry, pool.Pool, cfg, mediaRepo, logger)
 	registerVenuePlanGenerateHandler(registry, pool.Pool, cfg, mediaRepo, logger)
 	registerContentTranslateHandler(registry, pool.Pool, cfg, logger)
@@ -370,6 +373,7 @@ func run() error {
 		logger.Warn("could not schedule initial cart reminder sweep job", "error", err.Error())
 	}
 	scheduleDisputeWatch(rootCtx, pool.Pool, logger)
+	schedulePaymentDomainsSweep(rootCtx, pool.Pool, cfg, logger)
 	scheduleShopSweep(rootCtx, pool.Pool, logger)
 
 	// billing.collect writes the billable events the rate job turns into
@@ -412,6 +416,7 @@ func run() error {
 		// Non-fatal: the organizer hears about a sell-out a little later.
 		logger.Warn("could not schedule initial sales state watch job", "error", err.Error())
 	}
+	scheduleMetaInsights(rootCtx, pool.Pool, metaInsights, logger)
 	if err := guestlist.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: the first guest list goes out a minute later.
 		logger.Warn("could not schedule initial guest list job", "error", err.Error())

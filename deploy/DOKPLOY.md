@@ -333,6 +333,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `PUBLIC_FEED_TOKEN_RATE_LIMIT`, `PUBLIC_CHECKOUT_TOKEN_RATE_LIMIT`, `PUBLIC_API_IP_RATE_LIMIT`, `PUBLIC_PROMO_FAIL_TOKEN_RATE_LIMIT`, `PUBLIC_PROMO_FAIL_IP_RATE_LIMIT`, `PUBLIC_PAGE_TRACK_EVENT_RATE_LIMIT`, `PUBLIC_PAGE_TRACK_IP_RATE_LIMIT` | ● | — | — | — |
 | `WIDGET_PAYMENT_WINDOW_SECONDS`, `WIDGET_PAYMENT_GRACE_SECONDS` | ● | — | — | — |
 | `STRIPE_WEBHOOK_SECRET` | ✅ | — | — | — |
+| `STRIPE_ELEMENTS_ENABLED` (embedded Stripe checkout, spec 65; default `true`. `false` sends every new payment to the hosted Stripe page without a deploy) | ● | — | — | — |
 | `ALLPAY_WEBHOOK_SECRET` (deprecated, verifies nothing) | ● | — | — | — |
 | `BIL24_COMPAT_ENABLED`, `BIL24_REQUIRE_TOKEN`, `BIL24_TOKEN_CACHE_TTL` | ● | — | — | — |
 | `BREVO_WEBHOOK_TOKEN`, `BREVO_WEBHOOK_TOKEN_PREVIOUS` (≥ 32 random chars) | ● | — | — | — |
@@ -343,6 +344,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `EVENT_CENTER_PUBLIC_URL` (`https://` when set) | ● | ● | ● | — |
 | `BOT_SCHEME_BUTTON` (`off` default, `url` or `web_app`: the «Схема» button on the card of a seated date; needs `EVENT_CENTER_PUBLIC_URL` on the bot; turn it on only after the `/tg` screen of the event center is live; `web_app` opens `<EVENT_CENTER_PUBLIC_URL>/tg?next=<seats path>` and also needs `POST /v1/auth/telegram-miniapp` with `TELEGRAM_MINIAPP_SECRET_KEY` on the API) | — | — | ● | — |
 | `PUBLIC_TICKETS_BASE_URL` | ● | ● | ● | — |
+| `STRIPE_WALLET_DOMAINS` (comma-separated hosts registered as Apple Pay and Google Pay domains in each organization's Stripe account; empty = the host of `PUBLIC_TICKETS_BASE_URL`) | ● | ● | — | — |
 | `SHOP_PUBLIC_BASE_URL` (`https://` when set, the platform storefront origin; the shop order e-mail links `<this>/<org slug>/checkout/<token>` for an organization without its own `shop_domain`; empty = no status link) | — | ● | — | — |
 | `SHOP_DELIVERY_BUTTONS_ENABLED` (`true` sends the delivery group's order card with the step buttons, spec 61 section 7b; default off = a plain text message as before the buttons. Turn it on only when `arena-bot` runs with `SALES_TELEGRAM_BOT_TOKEN` and `BOT_SERVICE_TOKEN`, they are what receive the presses) | — | ● | — | — |
 | `SHORT_LINK_BASE_URL` (`https://`, host only, default `https://go.arenasoldout.com`, the host printed under a QR code; setup: `docs/ops/sales_links_ru.md`) | ● | — | — | — |
@@ -392,6 +394,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `META_APP_ID` (empty = the Meta connection is off; when set in production the next three are required, and on the api an `https://` `META_OAUTH_REDIRECT_URL`), `META_APP_SECRET` (secret), `META_LOGIN_CONFIG_ID`, `META_TOKEN_ENC_KEY` (secret; `v2:<base64 32 bytes>,v1:<base64 32 bytes>`, first = current key, the others only open old values; same value on api and worker) | ● | ● | — | — |
 | `META_GRAPH_VERSION` (default `v25.0`), `META_OAUTH_REDIRECT_URL` (`https://` in production), `META_ASSET_EDGES` (optional override, empty = built-in list), `META_DATA_DELETION_STATUS_URL` (default `https://arenasoldout.com/legal/data-deletion`; the data-deletion callback adds `?code=`) | ● | ● | — | — |
 | `META_WEBHOOK_VERIFY_TOKEN` (secret; the verify token entered in the Meta app under Webhooks → Application for `business_integration_uninstall`, callback `https://<api>/v1/integrations/meta/webhook`; empty = the GET verification is refused, POST is still checked by the `X-Hub-Signature-256` of `META_APP_SECRET`) | ● | — | — | — |
+| `META_INSIGHTS_EVERY` (optional Go duration, at least `15m`; empty = the Meta ad spend of every connected organization is read once a night, 03:00-07:00 Madrid time; set = also this often, for the pilot's Marketing API call volume) | — | ● | — | — |
 | `ENABLE_DEV_AUTH`, `DB_LOG_QUERIES`, `DEBUG_ROUTES_ENABLED`, `FAULT_INJECT_OUTBOX_AFTER_AUDIT` (leave unset; `true` is refused in production) | — | — | — | — |
 | `STRIPE_API_BASE_URL`, `FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL`, `PAYPLUS_API_BASE_URL`, `META_GRAPH_BASE_URL` (test seams; refused in production) | — | — | — | — |
 | `REDIS_URL`, `IDEMPOTENCY_TTL`, `IDEMPOTENCY_KEY_MAX_LENGTH`, `WORKER_CONCURRENCY`, `WORKER_JOB_TIMEOUT`, `WORKER_RETRY_BACKOFF_BASE`, `WORKER_RETRY_BACKOFF_MAX`, `OUTBOX_BATCH_SIZE` (parsed, but no binary uses them today) | — | — | — | — |

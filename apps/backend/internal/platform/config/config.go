@@ -215,6 +215,13 @@ type Config struct {
 	// carry a valid return_url is refused with checkout.invalid_return_url.
 	PublicTicketsBaseURL string `env:"PUBLIC_TICKETS_BASE_URL" required:"false" default:""`
 
+	// StripeWalletDomains are the platform hosts registered as Payment method
+	// domains in every organization's Stripe account, so Apple Pay and Google
+	// Pay show on them (spec 65 section 5). STRIPE_WALLET_DOMAINS, comma
+	// separated hosts. Empty falls back to the host of PUBLIC_TICKETS_BASE_URL
+	// (see WalletPlatformDomains). Each subdomain is its own entry.
+	StripeWalletDomains []string `env:"STRIPE_WALLET_DOMAINS" required:"false" default:""`
+
 	// ShopPublicBaseURL is the platform's storefront origin for the
 	// merchandise shop (e.g. https://shop.arenasoldout.com). A shop order's
 	// e-mail links its status page as <this>/<organization slug>/checkout/<token>
@@ -255,6 +262,15 @@ type Config struct {
 	// somebody else's endpoint would hand that endpoint the organizer's
 	// Stripe key and every buyer who followed the returned URL.
 	StripeAPIBaseURL string `env:"STRIPE_API_BASE_URL" required:"false" default:""`
+
+	// StripeElementsEnabled is the deployment switch of the embedded Stripe
+	// checkout (spec 65 §3.5). On (the default), a widget that announces
+	// capabilities ["stripe_elements"] on a channel whose
+	// settings.checkout.stripe_ui is not "hosted" and whose Stripe config
+	// holds a publishable_key pays inside the widget. Off returns every NEW
+	// payment of every channel to the hosted page without a deploy; existing
+	// embedded sessions keep working.
+	StripeElementsEnabled bool `env:"STRIPE_ELEMENTS_ENABLED" required:"false" default:"true"`
 
 	// FlittAPIBaseURL is the same seam for Flitt (default
 	// https://pay.flitt.com/api). TEST AND DEVELOPMENT ONLY: Validate()
@@ -741,6 +757,12 @@ type Config struct {
 	// /v1/integrations/meta/webhook is refused; POST is still checked by the
 	// X-Hub-Signature-256 of META_APP_SECRET.
 	MetaWebhookVerifyToken string `env:"META_WEBHOOK_VERIFY_TOKEN" required:"false" default:""`
+	// MetaInsightsEvery optionally runs the Meta insights sync of every
+	// connected organization this often (Go duration, at least
+	// MinMetaInsightsEvery), on top of the nightly run: the pilot's call
+	// volume for the Marketing API Access Tier. 0 (unset) = nightly only.
+	// Worker only.
+	MetaInsightsEvery time.Duration `env:"META_INSIGHTS_EVERY" required:"false" default:""`
 
 	// -------------------------------------------------------------------------
 	// Metrics endpoint authentication
@@ -863,6 +885,51 @@ func (c *Config) ShortLinkFallback() string {
 		}
 	}
 	return ""
+}
+
+// parseHostList splits a comma-separated list of hosts: lower-cased, trimmed,
+// a scheme or path tolerated and dropped, duplicates removed, order kept.
+func parseHostList(raw string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, part := range strings.Split(raw, ",") {
+		h := hostOf(part)
+		if h == "" || seen[h] {
+			continue
+		}
+		seen[h] = true
+		out = append(out, h)
+	}
+	return out
+}
+
+// hostOf returns the lower-case host (no port) of a URL or a bare host, or "".
+func hostOf(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return ""
+	}
+	if !strings.Contains(s, "://") {
+		s = "https://" + s
+	}
+	u, err := url.Parse(s)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
+}
+
+// WalletPlatformDomains returns the platform hosts to register for wallets in
+// each organization's Stripe account: STRIPE_WALLET_DOMAINS when set,
+// otherwise the host of PUBLIC_TICKETS_BASE_URL, otherwise none.
+func (c *Config) WalletPlatformDomains() []string {
+	if len(c.StripeWalletDomains) > 0 {
+		return append([]string(nil), c.StripeWalletDomains...)
+	}
+	if h := hostOf(c.PublicTicketsBaseURL); h != "" {
+		return []string{h}
+	}
+	return nil
 }
 
 // APIPublicBaseURL returns the canonical public origin of the HTTP API with
@@ -1154,6 +1221,7 @@ func LoadFor(role Role) (*Config, error) {
 	// PUBLIC_TICKETS_BASE_URL / WIDGET_PAYMENT_WINDOW_SECONDS /
 	// WIDGET_PAYMENT_GRACE_SECONDS — widget hosted-payment redirect flow.
 	cfg.PublicTicketsBaseURL = strings.TrimRight(strings.TrimSpace(getenv("PUBLIC_TICKETS_BASE_URL", "")), "/")
+	cfg.StripeWalletDomains = parseHostList(getenv("STRIPE_WALLET_DOMAINS", ""))
 	cfg.ShopPublicBaseURL = strings.TrimRight(strings.TrimSpace(getenv("SHOP_PUBLIC_BASE_URL", "")), "/")
 	cfg.ShortLinkBaseURL = strings.TrimRight(strings.TrimSpace(getenv("SHORT_LINK_BASE_URL", "https://go.arenasoldout.com")), "/")
 	cfg.ShortLinkFallbackURL = strings.TrimRight(strings.TrimSpace(getenv("SHORT_LINK_FALLBACK_URL", "")), "/")
@@ -1172,6 +1240,12 @@ func LoadFor(role Role) (*Config, error) {
 
 	// STRIPE_API_BASE_URL — test/dev only, rejected in production by Validate.
 	cfg.StripeAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("STRIPE_API_BASE_URL", "")), "/")
+	// STRIPE_ELEMENTS_ENABLED — the embedded checkout's switch, on by default.
+	if elements, err := getenvBool("STRIPE_ELEMENTS_ENABLED", true); err != nil {
+		parseErrs = append(parseErrs, err)
+	} else {
+		cfg.StripeElementsEnabled = elements
+	}
 	// FLITT_API_BASE_URL — test/dev only, rejected in production by Validate.
 	cfg.FlittAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("FLITT_API_BASE_URL", "")), "/")
 	// ALLPAY_API_BASE_URL — test/dev only, rejected in production by Validate.
@@ -1335,6 +1409,12 @@ func LoadFor(role Role) (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.SenderVerificationPollInterval = d
+
+	d, err = getenvDuration("META_INSIGHTS_EVERY", 0, false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.MetaInsightsEvery = d
 
 	d, err = getenvDuration("WORKER_JOB_TIMEOUT", 5*time.Minute, false)
 	if err != nil {
@@ -1644,6 +1724,13 @@ func (c *Config) Validate() error {
 	if c.uses(capMeta) && c.MetaGraphVersion != "" && !metaGraphVersionPattern.MatchString(c.MetaGraphVersion) {
 		errs = append(errs, fmt.Errorf(
 			"META_GRAPH_VERSION must look like v25.0 (got %q)", c.MetaGraphVersion,
+		))
+	}
+
+	// --- Meta insights sync (worker) ----------------------------------------
+	if c.uses(capMetaInsights) && c.MetaInsightsEvery != 0 && c.MetaInsightsEvery < MinMetaInsightsEvery {
+		errs = append(errs, fmt.Errorf(
+			"META_INSIGHTS_EVERY must be empty or at least %s (got %s)", MinMetaInsightsEvery, c.MetaInsightsEvery,
 		))
 	}
 
@@ -2171,6 +2258,9 @@ const DefaultMetaGraphVersion = "v25.0"
 const DefaultMetaDataDeletionStatusURL = "https://arenasoldout.com/legal/data-deletion"
 
 var metaGraphVersionPattern = regexp.MustCompile(`^v\d+\.\d+$`)
+
+// MinMetaInsightsEvery is the shortest META_INSIGHTS_EVERY the worker accepts.
+const MinMetaInsightsEvery = 15 * time.Minute
 
 // MetaEnabled reports whether the Meta connection is switched on: the app id,
 // the app secret, the login configuration id and the token key are all set

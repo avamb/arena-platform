@@ -6,6 +6,7 @@ import { ApiError, fetchPromoterPage } from './lib/api.ts';
 import { renderSeriesPage, resolveEventOrSeries, seriesDescriptionPlain } from './lib/series.ts';
 import { renderSellerFooter } from './lib/seller.ts';
 import { contactFallbackURL, openContactFromHash, renderContactFooter } from './lib/contact.ts';
+import { initTracking } from './lib/tracking.ts';
 import { trackFunnelView, trackPageView, trackPartnerClick, trackVideoPlay } from './lib/track.ts';
 
 /** Resolved at build time by Vite from the VITE_API_BASE_URL build arg
@@ -81,6 +82,7 @@ async function main(): Promise<void> {
           openEventID: eventIDWithOpenCheckout(data.events, safeSessionStorage()),
         });
         openContactFromHash(contactCtx);
+        initTracking({ enabled: data.org.tracking_enabled, locale: pageLocale, privacyUrl: data.contact_form?.privacy_url });
       } catch (err) {
         if (err instanceof ApiError && err.status === 404) {
           renderNotFound(mainEl, locale);
@@ -122,6 +124,7 @@ async function main(): Promise<void> {
         };
         renderContactFooter(seriesContact);
         openContactFromHash(seriesContact);
+        initTracking({ enabled: sdata.org.tracking_enabled, locale: seriesLocale, privacyUrl: sdata.contact_form?.privacy_url });
         return;
       }
       const data = resolved.data;
@@ -155,6 +158,7 @@ async function main(): Promise<void> {
       };
       renderContactFooter(contactCtx);
       openContactFromHash(contactCtx);
+      initTracking({ enabled: data.org.tracking_enabled, locale: pageLocale, privacyUrl: data.contact_form?.privacy_url });
       // Page statistics (HP-2a): one anonymous page view per shown event page.
       // Coming back from the payment page is not a new view.
       if (!resumingCheckout) {

@@ -520,6 +520,14 @@ const (
 	MembershipItemStatusSuspended MembershipItemStatus = "suspended"
 )
 
+// Defines values for MetaAdsSyncStatus.
+const (
+	MetaAdsSyncStatusError        MetaAdsSyncStatus = "error"
+	MetaAdsSyncStatusNoAdAccount  MetaAdsSyncStatus = "no_ad_account"
+	MetaAdsSyncStatusNotConnected MetaAdsSyncStatus = "not_connected"
+	MetaAdsSyncStatusOk           MetaAdsSyncStatus = "ok"
+)
+
 // Defines values for MetaAssetKind.
 const (
 	AdAccount MetaAssetKind = "ad_account"
@@ -624,6 +632,12 @@ const (
 	PaymentIntentWebhookRequestTargetStateProcessing     PaymentIntentWebhookRequestTargetState = "processing"
 	PaymentIntentWebhookRequestTargetStateRequiresAction PaymentIntentWebhookRequestTargetState = "requires_action"
 	PaymentIntentWebhookRequestTargetStateSucceeded      PaymentIntentWebhookRequestTargetState = "succeeded"
+)
+
+// Defines values for PaymentMethodDomainItemSource.
+const (
+	Platform PaymentMethodDomainItemSource = "platform"
+	Site     PaymentMethodDomainItemSource = "site"
 )
 
 // Defines values for PaymentProviderConfigItemMode.
@@ -966,10 +980,10 @@ const (
 
 // Defines values for GetV1AdminCustomerImportsIdRowsParamsAction.
 const (
-	Created        GetV1AdminCustomerImportsIdRowsParamsAction = "created"
-	Matched        GetV1AdminCustomerImportsIdRowsParamsAction = "matched"
-	MergeCandidate GetV1AdminCustomerImportsIdRowsParamsAction = "merge_candidate"
-	Skipped        GetV1AdminCustomerImportsIdRowsParamsAction = "skipped"
+	GetV1AdminCustomerImportsIdRowsParamsActionCreated        GetV1AdminCustomerImportsIdRowsParamsAction = "created"
+	GetV1AdminCustomerImportsIdRowsParamsActionMatched        GetV1AdminCustomerImportsIdRowsParamsAction = "matched"
+	GetV1AdminCustomerImportsIdRowsParamsActionMergeCandidate GetV1AdminCustomerImportsIdRowsParamsAction = "merge_candidate"
+	GetV1AdminCustomerImportsIdRowsParamsActionSkipped        GetV1AdminCustomerImportsIdRowsParamsAction = "skipped"
 )
 
 // Defines values for ListEventsParamsVisibility.
@@ -5747,6 +5761,16 @@ type ChannelGatewayCredentialSummary struct {
 	RotatedAt string `json:"rotated_at"`
 }
 
+// ChannelSiteDomains The site hosts of one sales channel. They are registered as wallet
+// domains in the organization's Stripe account (spec 65 section 5).
+type ChannelSiteDomains struct {
+	// Domains Lower-case hosts without scheme, port or path, at most 10. A PUT
+	// accepts bare hosts or URLs and stores the host; an IP address,
+	// `localhost`, a name without a dot and an invalid label are refused.
+	// Repeats are stored once.
+	Domains []string `json:"domains"`
+}
+
 // ChannelWPWebhookRegistered One-shot response of `PUT /v1/organizations/{org_id}/channels/{id}/wp-webhook`
 // (feature #507, spec §9.2). Includes the signing secret exactly as
 // supplied by the caller; subsequent `GET`/`DELETE` calls never expose it.
@@ -5857,6 +5881,35 @@ type CheckoutAttributionFirst struct {
 	UtmSource *string `json:"utm_source,omitempty"`
 }
 
+// CheckoutBuyerAttachRequest Body of `POST /v1/public/checkout/{checkout_token}/buyer`: the buyer
+// of a prepared order (spec 65), checked with the rules of
+// `checkout/start`.
+type CheckoutBuyerAttachRequest struct {
+	// Buyer The buyer's e-mail address (required), name and phone.
+	Buyer PublicBuyerInfo `json:"buyer"`
+
+	// Consent The tick on the sale terms, as in `checkout/start`.
+	Consent *PublicCheckoutConsent `json:"consent,omitempty"`
+
+	// Locale The buyer's language, as in `checkout/start`; an unknown value is ignored.
+	Locale *string `json:"locale,omitempty"`
+}
+
+// CheckoutBuyerAttachResponse Response of `POST /v1/public/checkout/{checkout_token}/buyer`.
+type CheckoutBuyerAttachResponse struct {
+	// CheckoutToken The checkout token, echoed.
+	CheckoutToken string `json:"checkout_token"`
+
+	// ExpiresAt Hold expiry (RFC 3339 UTC), unchanged by the attach.
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// PaymentExpiresAt When the provider's form stops taking the payment (RFC 3339 UTC).
+	PaymentExpiresAt time.Time `json:"payment_expires_at"`
+
+	// Status Always `pending`.
+	Status string `json:"status"`
+}
+
 // CheckoutCancelResponse Response of `POST /v1/public/checkout/{checkout_token}/cancel`.
 type CheckoutCancelResponse struct {
 	// Cancelled True when the order is cancelled (now or by an earlier call).
@@ -5872,6 +5925,19 @@ type CheckoutCancelResponse struct {
 	// window had already closed), `needs_help` (an operator holds the
 	// order) or `refunded`.
 	Status string `json:"status"`
+}
+
+// CheckoutHostedFallbackResponse Response of `POST /v1/public/checkout/{checkout_token}/hosted`: the
+// provider-hosted page that replaces the embedded payment form.
+type CheckoutHostedFallbackResponse struct {
+	// CheckoutToken The checkout token of the order.
+	CheckoutToken string `json:"checkout_token"`
+
+	// PaymentExpiresAt When the hosted page stops taking the payment (RFC 3339 UTC), the same deadline as before.
+	PaymentExpiresAt time.Time `json:"payment_expires_at"`
+
+	// RedirectUrl Absolute URL of the provider's hosted payment page; the widget navigates to it.
+	RedirectUrl string `json:"redirect_url"`
 }
 
 // CheckoutRecoverResponse Response body for `POST /v1/public/checkout/{checkout_token}/recover`
@@ -6120,6 +6186,17 @@ type CheckoutStatusResponse struct {
 	// (`orders.system_id`). Present once the order exists for this
 	// checkout (always for a paid one); omitted before that.
 	OrderNumber *int64 `json:"order_number"`
+
+	// Payment The embedded payment form of the order (spec 65 §3.7), present
+	// only while the order is `pending`, its hold has not expired and
+	// its newest payment is an open embedded session, and only when the
+	// request asks for it with `?include=payment` (without it the
+	// status makes no provider call). The client secret is read back
+	// from the provider on every such request and never stored; the
+	// answer is sent with `Cache-Control: no-store`. Omitted after the
+	// payment, after the hold expired and once the form was replaced
+	// by a hosted page (`payment_url`).
+	Payment *EmbeddedCheckoutPayment `json:"payment,omitempty"`
 
 	// PaymentExpiresAt When the provider's page stops taking the payment (the sales
 	// channel's payment window, spec 62 П-3): `expires_at` minus the
@@ -8368,6 +8445,32 @@ type EchoResponse struct {
 	TraceId string `json:"trace_id"`
 }
 
+// EmbeddedCheckoutPayment What the widget initialises the provider's browser SDK with for an
+// embedded payment (spec 65 §3.4, Stripe Checkout Session with
+// `ui_mode=elements`, Stripe.js `initCheckoutElementsSdk`). The card
+// fields live in the provider's iframe; no card data reaches arena.
+// Only the provider's "session completed and paid" webhook pays the
+// order: the widget polls the order status after `confirm()`.
+type EmbeddedCheckoutPayment struct {
+	// ClientSecret The Checkout Session's client secret. Handed to the buyer's
+	// browser only; arena never stores or logs it, and reads it back
+	// from the provider for the order status. Not to be put in a URL.
+	// Empty in an answer replayed for a repeated `Idempotency-Key`
+	// (the stored copy never holds it): read it from
+	// `GET /v1/public/checkout/{checkout_token}`.
+	ClientSecret string `json:"client_secret"`
+
+	// Mode Always `elements` (the embedded mode).
+	Mode string `json:"mode"`
+
+	// Provider The payment provider (`stripe`).
+	Provider string `json:"provider"`
+
+	// PublishableKey The organizer's public Stripe key (`pk_test_…` / `pk_live_…`) of
+	// the account the session was created on.
+	PublishableKey string `json:"publishable_key"`
+}
+
 // EndOrgModuleRequest Sets the last day of a module period.
 type EndOrgModuleRequest struct {
 	// EndsOn The last day (UTC, inclusive). Never later than the current end; the day before the period starts ends it before it began.
@@ -10335,6 +10438,12 @@ type HostedPageOrg struct {
 
 	// Slug Organization slug, unique among active organizations.
 	Slug string `json:"slug"`
+
+	// TrackingEnabled True when the organizer measures ads (Meta, Google): an active Meta
+	// connection with a selected dataset, or manual Meta or GA4
+	// conversion credentials. The page then shows a cookie banner and
+	// sets no cookie before the visitor chooses; false means no banner.
+	TrackingEnabled *bool `json:"tracking_enabled,omitempty"`
 }
 
 // HostedPagePromoter The promoter an event is shown under (a partner or brand named as the
@@ -12264,6 +12373,253 @@ type MembershipItemRole string
 
 // MembershipItemStatus Lifecycle state of the membership. active = in force, revoked = soft-removed by an admin, suspended = paused.
 type MembershipItemStatus string
+
+// MetaAdsApiVolume How many Meta calls the platform made for the organization in the last 15 days.
+type MetaAdsApiVolume struct {
+	// Calls15d Calls made.
+	Calls15d int64 `json:"calls_15d"`
+
+	// Errors15d Calls that failed.
+	Errors15d int64 `json:"errors_15d"`
+}
+
+// MetaAdsCampaign One campaign with Meta's numbers and ours.
+type MetaAdsCampaign struct {
+	// CampaignId The Meta campaign id, the same value as `utm_campaign` in the link.
+	CampaignId string `json:"campaign_id"`
+
+	// CampaignName Name of the campaign.
+	CampaignName string `json:"campaign_name"`
+
+	// Clicks Number of clicks of any kind.
+	Clicks int64 `json:"clicks"`
+
+	// Currency ISO 4217 currency of the ad account, null when unknown.
+	Currency *string `json:"currency"`
+
+	// EffectiveStatus Meta's effective status of the campaign, null when unknown.
+	EffectiveStatus *string `json:"effective_status"`
+
+	// Events The events the campaign is linked to.
+	Events []MetaAdsEventRef `json:"events"`
+
+	// Impressions Number of impressions.
+	Impressions int64 `json:"impressions"`
+
+	// LinkClicks Number of clicks on the link.
+	LinkClicks int64 `json:"link_clicks"`
+
+	// MetaPurchaseValueMinor Value of the purchases Meta counted, in minor units of `currency`.
+	MetaPurchaseValueMinor int64 `json:"meta_purchase_value_minor"`
+
+	// MetaPurchases Purchases Meta counted.
+	MetaPurchases int64 `json:"meta_purchases"`
+
+	// PaidOrders Our paid orders that carry this campaign id.
+	PaidOrders int64 `json:"paid_orders"`
+
+	// RevenueCurrency ISO 4217 currency of the orders, null when there are none.
+	RevenueCurrency *string `json:"revenue_currency"`
+
+	// RevenueNetMinor Our net revenue from those orders, in minor units of `revenue_currency`.
+	RevenueNetMinor int64 `json:"revenue_net_minor"`
+
+	// Shared The campaign is linked to more than one event; its spend is not split between them.
+	Shared bool `json:"shared"`
+
+	// SpendMinor Spend in minor units of `currency`.
+	SpendMinor int64 `json:"spend_minor"`
+}
+
+// MetaAdsEventRef An event a campaign is linked to.
+type MetaAdsEventRef struct {
+	// EventId UUID of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Name Name of the event.
+	Name string `json:"name"`
+}
+
+// MetaAdsEventReport The Meta ads report of one event.
+type MetaAdsEventReport struct {
+	// Campaigns Campaigns linked to the event.
+	Campaigns []MetaAdsCampaign `json:"campaigns"`
+
+	// Mer Net revenue divided by spend. Null when the currencies differ or spend is zero.
+	Mer *float32 `json:"mer"`
+
+	// Meta Meta's numbers for the campaigns linked to the event.
+	Meta MetaAdsMetaTotals `json:"meta"`
+
+	// Ours Our numbers for the event's orders from those campaigns.
+	Ours MetaAdsOurTotals `json:"ours"`
+
+	// Period The reported period.
+	Period MetaAdsPeriod `json:"period"`
+
+	// SharedSpend At least one linked campaign is also linked to another event, so spend may include other events.
+	SharedSpend bool `json:"shared_spend"`
+
+	// Sync State of the daily read of ad spend.
+	Sync MetaAdsSync `json:"sync"`
+
+	// Untagged Share of the event's paid orders without a campaign id.
+	Untagged MetaAdsUntagged `json:"untagged"`
+
+	// UrlParametersTemplate The URL parameters to set on the ad so orders can be linked to it.
+	UrlParametersTemplate string `json:"url_parameters_template"`
+}
+
+// MetaAdsEventRow One event line of the organization summary.
+type MetaAdsEventRow struct {
+	// Currency ISO 4217 currency of the ad account, null when unknown.
+	Currency *string `json:"currency"`
+
+	// EventId UUID of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Mer Net revenue divided by spend. Null when the currencies differ or spend is zero.
+	Mer *float32 `json:"mer"`
+
+	// Name Name of the event.
+	Name string `json:"name"`
+
+	// PaidOrders Paid orders of the event from Meta campaigns.
+	PaidOrders int64 `json:"paid_orders"`
+
+	// RevenueCurrency ISO 4217 currency of the orders, null when there are none.
+	RevenueCurrency *string `json:"revenue_currency"`
+
+	// RevenueNetMinor Net revenue of those orders in minor units of `revenue_currency`.
+	RevenueNetMinor int64 `json:"revenue_net_minor"`
+
+	// SpendMinor Spend of the linked campaigns in minor units of `currency`.
+	SpendMinor int64 `json:"spend_minor"`
+}
+
+// MetaAdsMetaTotals What Meta reports for the period, summed.
+type MetaAdsMetaTotals struct {
+	// Clicks Number of clicks of any kind.
+	Clicks int64 `json:"clicks"`
+
+	// Currency ISO 4217 currency of the ad account, null when unknown.
+	Currency *string `json:"currency"`
+
+	// Impressions Number of impressions.
+	Impressions int64 `json:"impressions"`
+
+	// LinkClicks Number of clicks on the link.
+	LinkClicks int64 `json:"link_clicks"`
+
+	// PurchaseValueMinor Value of the purchases Meta counted, in minor units of `currency`.
+	PurchaseValueMinor int64 `json:"purchase_value_minor"`
+
+	// Purchases Purchases Meta counted.
+	Purchases int64 `json:"purchases"`
+
+	// SpendMinor Spend in minor units of `currency`.
+	SpendMinor int64 `json:"spend_minor"`
+}
+
+// MetaAdsOrgSummary The Meta ads summary of the whole organization.
+type MetaAdsOrgSummary struct {
+	// ApiVolume Meta call volume of the last 15 days.
+	ApiVolume MetaAdsApiVolume `json:"api_volume"`
+
+	// Campaigns Every campaign with spend in the period.
+	Campaigns []MetaAdsCampaign `json:"campaigns"`
+
+	// Events Events linked to at least one campaign.
+	Events []MetaAdsEventRow `json:"events"`
+
+	// Meta Meta's numbers for all campaigns of the ad account.
+	Meta MetaAdsMetaTotals `json:"meta"`
+
+	// Period The reported period.
+	Period MetaAdsPeriod `json:"period"`
+
+	// Sync State of the daily read of ad spend.
+	Sync MetaAdsSync `json:"sync"`
+
+	// UrlParametersTemplate The URL parameters to set on the ad so orders can be linked to it.
+	UrlParametersTemplate string `json:"url_parameters_template"`
+}
+
+// MetaAdsOurTotals Our own numbers for orders that came from Meta ads in the period.
+type MetaAdsOurTotals struct {
+	// CheckoutsStarted Checkouts started whose link carried a known campaign id.
+	CheckoutsStarted int64 `json:"checkouts_started"`
+
+	// Currency ISO 4217 currency of the orders, null when there are none.
+	Currency *string `json:"currency"`
+
+	// PaidOrders Paid orders from those campaigns, complimentary excluded.
+	PaidOrders int64 `json:"paid_orders"`
+
+	// RevenueNetMinor Order totals minus succeeded refunds, in minor units of `currency`.
+	RevenueNetMinor int64 `json:"revenue_net_minor"`
+}
+
+// MetaAdsPeriod The reported period, both days included, in the ad account's time zone.
+type MetaAdsPeriod struct {
+	// From First day of the period.
+	From openapi_types.Date `json:"from"`
+
+	// To Last day of the period.
+	To openapi_types.Date `json:"to"`
+}
+
+// MetaAdsRefreshResult Answer to a request to read ad spend now.
+type MetaAdsRefreshResult struct {
+	// NotBefore The earliest time the next manual read is accepted, null when not limited.
+	NotBefore *time.Time `json:"not_before"`
+
+	// Queued A read was queued; false when one was asked for less than 10 minutes ago.
+	Queued bool `json:"queued"`
+}
+
+// MetaAdsSync State of the daily read of Meta ad spend for the organization.
+type MetaAdsSync struct {
+	// AdAccountId The meta_id of the selected ad account, null when none is selected.
+	AdAccountId *string `json:"ad_account_id"`
+
+	// AdAccountName Name of the selected ad account, null when none is selected.
+	AdAccountName *string `json:"ad_account_name"`
+
+	// BackfillDone The first read of the past days has finished.
+	BackfillDone bool `json:"backfill_done"`
+
+	// Currency ISO 4217 currency of the ad account, null when unknown.
+	Currency *string `json:"currency"`
+
+	// LastError Short code of the last read problem, null when there is none.
+	LastError *string `json:"last_error"`
+
+	// LastSuccessAt When spend was last read without error, null when never.
+	LastSuccessAt *time.Time `json:"last_success_at"`
+
+	// Status not_connected = no active Meta connection; no_ad_account = connected
+	// but no ad account selected; ok = the last read worked; error = the
+	// last read failed (see `last_error`).
+	Status MetaAdsSyncStatus `json:"status"`
+
+	// Timezone Time zone name of the ad account, null when unknown.
+	Timezone *string `json:"timezone"`
+}
+
+// MetaAdsSyncStatus not_connected = no active Meta connection; no_ad_account = connected
+// but no ad account selected; ok = the last read worked; error = the
+// last read failed (see `last_error`).
+type MetaAdsSyncStatus string
+
+// MetaAdsUntagged How many paid orders carry no campaign id in their link.
+type MetaAdsUntagged struct {
+	// PaidOrders All paid orders in the period.
+	PaidOrders int64 `json:"paid_orders"`
+
+	// UntaggedOrders Paid orders without a campaign id.
+	UntaggedOrders int64 `json:"untagged_orders"`
+}
 
 // MetaAsset A dataset (pixel), ad account or page the organizer shared with the platform.
 type MetaAsset struct {
@@ -15854,6 +16210,46 @@ type PaymentIntentWebhookRequest struct {
 // `event_type` → state mapping.
 type PaymentIntentWebhookRequestTargetState string
 
+// PaymentMethodDomainItem One wallet domain (Apple Pay, Google Pay, Link) of a Stripe payment
+// configuration: the host arena registered in the organization's Stripe
+// account and what Stripe answered about it (spec 65 section 5).
+type PaymentMethodDomainItem struct {
+	// ApplePayStatus Stripe's Apple Pay status for the domain (`active` or `inactive`). Null while unknown.
+	ApplePayStatus *string `json:"apple_pay_status"`
+
+	// CheckedAt When arena last asked Stripe about the domain. Null if it never has.
+	CheckedAt *time.Time `json:"checked_at"`
+
+	// Domain Lower-case host without scheme or port.
+	Domain string `json:"domain"`
+
+	// Enabled Whether Stripe has the domain enabled. Null while Stripe has not answered yet.
+	Enabled *bool `json:"enabled"`
+
+	// GooglePayStatus Stripe's Google Pay status for the domain (`active` or `inactive`). Null while unknown.
+	GooglePayStatus *string `json:"google_pay_status"`
+
+	// LastError Stripe's wording of the last failure to register the domain. Null
+	// when the last attempt succeeded. Operator-facing only.
+	LastError *string `json:"last_error"`
+
+	// LinkStatus Stripe's Link status for the domain (`active` or `inactive`). Null while unknown.
+	LinkStatus *string `json:"link_status"`
+
+	// Source `platform` - a host of the platform itself (STRIPE_WALLET_DOMAINS).
+	// `site` - a site host listed on one of the organization's Stripe
+	// sales channels.
+	Source PaymentMethodDomainItemSource `json:"source"`
+
+	// StatusDetail Stripe's own explanation when a wallet is not active. Null otherwise.
+	StatusDetail *string `json:"status_detail"`
+}
+
+// PaymentMethodDomainItemSource `platform` - a host of the platform itself (STRIPE_WALLET_DOMAINS).
+// `site` - a site host listed on one of the organization's Stripe
+// sales channels.
+type PaymentMethodDomainItemSource string
+
 // PaymentProviderConfigItem A single payment provider config row for the owning organization.
 //
 // Secret values are NEVER returned. `secret_fields_set` lists the
@@ -16699,8 +17095,24 @@ type PublicEventVenue struct {
 
 // PublicFeedCheckoutQuoteRequest The cart to price, in the shape of `PublicFeedCheckoutStartRequest`
 // (seated `seats`, general-admission `ga_items`, or both) plus the
-// optional promo code. The quote takes no buyer details.
+// optional promo code. The quote takes no buyer details; the optional
+// tracking fields only feed the cart's AddToCart event.
 type PublicFeedCheckoutQuoteRequest struct {
+	// AddToCartId The widget's id of this cart, optional. It is the dedup key of
+	// the AddToCart event (`atc:<id>`): quotes that repeat the same id
+	// queue the event once. A value outside the pattern or longer than
+	// 64 characters sends no event and never fails the quote.
+	AddToCartId *string `json:"add_to_cart_id,omitempty"`
+
+	// BuyerContext The browser's tracking context, the object `checkout/start` takes,
+	// optional. Only when its `tracking_consent` is true (with
+	// `tracking_consent_text_version`) and `add_to_cart_id` is usable
+	// does the quote queue the cart's AddToCart for the organization's
+	// server-side Meta CAPI and GA4; the server adds the client IP and
+	// User-Agent itself. Nothing of it is stored with the quote. A
+	// malformed object is ignored, never an error.
+	BuyerContext *PublicCheckoutBuyerContext `json:"buyer_context,omitempty"`
+
 	// GaItems GA items for GA or hybrid sessions.
 	GaItems *[]PublicGAItem `json:"ga_items,omitempty"`
 
@@ -16715,6 +17127,12 @@ type PublicFeedCheckoutQuoteRequest struct {
 
 	// Seats Seat keys for seated or hybrid sessions.
 	Seats *[]string `json:"seats,omitempty"`
+
+	// SeatsConsidered How many distinct seats the buyer selected in this cart, including
+	// ones they removed again, optional. Sent with AddToCart as
+	// `seats_considered` when above zero. A value outside 0..1000 is
+	// ignored, never an error.
+	SeatsConsidered *int `json:"seats_considered,omitempty"`
 
 	// SessionId UUID of the event session the cart belongs to.
 	SessionId openapi_types.UUID `json:"session_id"`
@@ -16762,8 +17180,21 @@ type PublicFeedCheckoutStartRequest struct {
 	// are NOT kept in the context: they are stored on the checkout (the
 	// same place `PATCH /v1/public/checkout/{checkout_token}/consent`
 	// updates) and read from there at send time. Without an explicit yes
-	// stored at send time no conversion leaves the platform.
+	// stored at send time no conversion leaves the platform. With an
+	// explicit `tracking_consent: true` the created checkout is also
+	// queued as InitiateCheckout (event id `ic:<checkout session id>`).
 	BuyerContext *PublicCheckoutBuyerContext `json:"buyer_context,omitempty"`
+
+	// Capabilities What the widget can do with the payment (spec 65 §3.5), optional.
+	// `stripe_elements`: it can run the embedded Stripe payment form.
+	// The answer then carries a `payment` block and an empty
+	// `redirect_url` when the deployment (`STRIPE_ELEMENTS_ENABLED`),
+	// the sales channel (`settings.checkout.stripe_ui` is not `hosted`)
+	// and the organization's Stripe configuration (a `publishable_key`)
+	// all allow it; otherwise the hosted page as before. Absent (an
+	// older widget) always gets the hosted page; unknown values are
+	// ignored.
+	Capabilities *[]string `json:"capabilities,omitempty"`
 
 	// Consent The buyer's tick on "I accept the sale terms (seller: <legal
 	// name>) and the privacy policy" (P2). Required (with
@@ -16814,6 +17245,23 @@ type PublicFeedCheckoutStartRequest struct {
 	// it is ignored and nothing is stored. Ticked, it may earn the
 	// organizer's reward code (see `PublicMarketingConsent`).
 	MarketingConsent *PublicMarketingConsent `json:"marketing_consent,omitempty"`
+
+	// Prepare Spec 65 early order, optional. `true`: the hold, the order and
+	// the embedded Stripe session are created now, WITHOUT the buyer
+	// (the widget opens its order sheet); the buyer is attached at
+	// "Pay" with `POST /v1/public/checkout/{checkout_token}/buyer`.
+	// Requires `capabilities` to contain `stripe_elements`. The body
+	// must not carry `buyer`, `holder_email`, `promo_code`,
+	// `marketing_consent` or `consent` (422
+	// `checkout.prepare_unavailable`); the channel must give the
+	// embedded form (409 `checkout.prepare_unavailable` before any
+	// hold); a zero total is refused the same way and its hold
+	// released; when the embedded session cannot be created there is
+	// no hosted page: the order is cancelled, the hold released, 409
+	// `checkout.prepare_unavailable`. Required name, phone and consent
+	// are checked at attach. The 201 is the embedded answer plus
+	// `prepared: true`.
+	Prepare *bool `json:"prepare,omitempty"`
 
 	// PromoCode Optional promotional code to apply.
 	PromoCode *string `json:"promo_code"`
@@ -16893,10 +17341,23 @@ type PublicFeedCheckoutStartResponse struct {
 	// MarketingDiscountApplied True when the cart's discount is the reward for the marketing consent tick.
 	MarketingDiscountApplied *bool `json:"marketing_discount_applied,omitempty"`
 
+	// Payment The embedded payment form (spec 65 §3.4), present only when the
+	// request announced `capabilities: ["stripe_elements"]` and the
+	// payment is embedded; `redirect_url` is then empty. Absent for a
+	// hosted page, a zero-total cart and every provider without an
+	// embedded mode.
+	Payment *EmbeddedCheckoutPayment `json:"payment,omitempty"`
+
 	// PaymentExpiresAt When the provider's page stops taking the payment (RFC 3339 UTC):
 	// the channel's payment window from now. This is what a site counts
 	// down to; `expires_at` is a grace later. Present for a paid cart.
 	PaymentExpiresAt *time.Time `json:"payment_expires_at,omitempty"`
+
+	// Prepared True for a prepared order (`prepare: true`, spec 65): it has no
+	// buyer yet; attach one with
+	// `POST /v1/public/checkout/{checkout_token}/buyer` before the
+	// payment is confirmed. Absent otherwise.
+	Prepared *bool `json:"prepared,omitempty"`
 
 	// Pricing Itemized result of running the deterministic pricing pipeline
 	// (`ComputePricing`, feature #129). Every monetary field is
@@ -16919,6 +17380,9 @@ type PublicFeedCheckoutStartResponse struct {
 	// empty string when the deployment has no return URL configured, in
 	// which case the caller should simply show the order status for the
 	// returned `checkout_token`.
+	//
+	// An empty string also when the payment is embedded (`payment` is
+	// set, spec 65): the buyer pays on this page and does not leave it.
 	RedirectUrl string `json:"redirect_url"`
 }
 
@@ -18134,7 +18598,7 @@ type SalesChat struct {
 	// Id The chat row.
 	Id openapi_types.UUID `json:"id"`
 
-	// Kinds What the chat hears: `tickets` (ticket sales and refunds), `shop_sale` (the fact of a shop sale, no buyer data), `shop_delivery` (the full shop order card with the step buttons, for a delivery group).
+	// Kinds What the chat hears: `tickets` (ticket sales and refunds), `shop_sale` (the fact of a shop sale, no buyer data), `shop_delivery` (the full shop order card with the step buttons, for a delivery group), `ads` (the daily Meta advertising summary).
 	Kinds []string `json:"kinds"`
 
 	// LastError The last delivery error reported by Telegram, null after a success.
@@ -18179,7 +18643,7 @@ type SalesChatConnectCode struct {
 
 // SalesChatConnectCodeRequest The chat a connection code will bind.
 type SalesChatConnectCodeRequest struct {
-	// Kinds What it will hear: one or more of `tickets`, `shop_sale`, `shop_delivery`.
+	// Kinds What it will hear: one or more of `tickets`, `shop_sale`, `shop_delivery`, `ads`.
 	Kinds []string `json:"kinds"`
 
 	// Name The chat's name in the admin screen, 1-200 characters.
@@ -19664,10 +20128,15 @@ type SeatingPlanVersion struct {
 	// CreatedAt RFC 3339 UTC timestamp of row creation.
 	CreatedAt time.Time `json:"created_at"`
 
-	// Geometry Canonical geometry blob (see §5.3 of the seating backlog).
+	// Geometry Canonical geometry blob (see §5.3 of the seating backlog). Its
+	// `decor_svg` holds drawing only: a version written from SVG or from
+	// geometry JSON stores it through the decor allowlist, and decor
+	// stored earlier is served through the same allowlist.
 	Geometry map[string]interface{} `json:"geometry"`
 
-	// GeometryChecksum Lowercase hex sha256 of the canonical JSON encoding of `geometry`.
+	// GeometryChecksum Lowercase hex sha256 of the canonical JSON encoding of the STORED
+	// geometry. It is not recomputed when the served `decor_svg` differs
+	// from the stored one.
 	GeometryChecksum string `json:"geometry_checksum"`
 
 	// Id UUIDv7 primary key of the seating_plan_versions row.
@@ -19721,7 +20190,7 @@ type SeatingSchemaResponse struct {
 	// Geometry Canonical geometry JSON per seating_backlog.md §5.3. Opaque schema — clients render it directly.
 	Geometry map[string]interface{} `json:"geometry"`
 
-	// GeometryChecksum sha256 hex digest of the canonicalised geometry JSON. Doubles as the strong ETag for this endpoint.
+	// GeometryChecksum sha256 hex digest of the canonicalised STORED geometry JSON. Doubles as the strong ETag for this endpoint. It is not recomputed when the served `geometry.decor_svg` differs from the stored one (decor is served drawing only).
 	GeometryChecksum string `json:"geometry_checksum"`
 
 	// SeatCategoryIndex Per-seat category truth (S1a). Maps `seat_key` to the category
@@ -26344,6 +26813,15 @@ type ArchiveOperatorNetworkParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// GetOrgMetaAdsSummaryParams defines parameters for GetOrgMetaAdsSummary.
+type GetOrgMetaAdsSummaryParams struct {
+	// From First day of the period, YYYY-MM-DD.
+	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day of the period, YYYY-MM-DD.
+	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
+}
+
 // ListOrganizationApiKeysParams defines parameters for ListOrganizationApiKeys.
 type ListOrganizationApiKeysParams struct {
 	// XAdminReason Human-readable business reason for the admin read (audit trail).
@@ -26555,6 +27033,15 @@ type GetV1OrganizationsOrgIdEventsSalesSummaryParams struct {
 	// 50. Repeating the parameter (`ids=a&ids=b`) is not supported: only
 	// the first value is read.
 	Ids string `form:"ids" json:"ids"`
+}
+
+// GetEventMetaAdsParams defines parameters for GetEventMetaAds.
+type GetEventMetaAdsParams struct {
+	// From First day of the period, YYYY-MM-DD.
+	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day of the period, YYYY-MM-DD.
+	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
 }
 
 // GetV1OrganizationsOrgIdEventsEventIdFunnelParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdFunnel.
@@ -27309,6 +27796,17 @@ type CreatePaymentIntentParams struct {
 	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
 }
 
+// GetPublicCheckoutStatusParams defines parameters for GetPublicCheckoutStatus.
+type GetPublicCheckoutStatusParams struct {
+	// Include Comma-separated optional parts of the answer. `payment` asks for
+	// the embedded payment form (`payment`, spec 65 §3.7), which costs
+	// a call to the payment provider to read the client secret back.
+	// Without it the answer carries no `payment` object and no provider
+	// is called, so status polling stays cheap. Unknown values are
+	// ignored.
+	Include *string `form:"include,omitempty" json:"include,omitempty"`
+}
+
 // ResumePublicCheckoutParams defines parameters for ResumePublicCheckout.
 type ResumePublicCheckoutParams struct {
 	// Src Where the link was clicked (`reminder`). Informational only.
@@ -28000,6 +28498,9 @@ type UpdateSellerDisplayJSONRequestBody = UpdateSellerDisplayRequest
 // UpdateChannelJSONRequestBody defines body for UpdateChannel for application/json ContentType.
 type UpdateChannelJSONRequestBody = UpdateChannelRequest
 
+// PutChannelSiteDomainsJSONRequestBody defines body for PutChannelSiteDomains for application/json ContentType.
+type PutChannelSiteDomainsJSONRequestBody = ChannelSiteDomains
+
 // PutChannelWPWebhookJSONRequestBody defines body for PutChannelWPWebhook for application/json ContentType.
 type PutChannelWPWebhookJSONRequestBody PutChannelWPWebhookJSONBody
 
@@ -28359,6 +28860,9 @@ type PaymentIntentWebhookForConfigJSONRequestBody = PaymentIntentWebhookRequest
 
 // TransitionPaymentIntentJSONRequestBody defines body for TransitionPaymentIntent for application/json ContentType.
 type TransitionPaymentIntentJSONRequestBody = TransitionPaymentIntentRequest
+
+// AttachPublicCheckoutBuyerJSONRequestBody defines body for AttachPublicCheckoutBuyer for application/json ContentType.
+type AttachPublicCheckoutBuyerJSONRequestBody = CheckoutBuyerAttachRequest
 
 // UpdatePublicCheckoutTrackingConsentJSONRequestBody defines body for UpdatePublicCheckoutTrackingConsent for application/json ContentType.
 type UpdatePublicCheckoutTrackingConsentJSONRequestBody = TrackingConsent

@@ -511,6 +511,9 @@ other = "продажі в магазині (без даних покупців)
 ["salesnotify.bot.kind.shop_delivery"]
 other = "замовлення магазину для доставки"
 
+["salesnotify.bot.kind.ads"]
+other = "щоденне зведення реклами Meta"
+
 # --- bot.* (uk) ---
 # Telegram-бот ивент-центру (eventbot, спека 28). Ключі — eventbot.MessageKeys та решта bot.* з ru.toml.
 

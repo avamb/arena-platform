@@ -59,11 +59,14 @@ const (
 	// capMetaLogin: META_OAUTH_REDIRECT_URL (only the api runs the Meta login
 	// and its code exchange; the worker never needs it).
 	capMetaLogin
+	// capMetaInsights: META_INSIGHTS_EVERY (only the worker runs the Meta
+	// insights sync, spec 66 section 5).
+	capMetaInsights
 )
 
 var roleCapabilities = map[Role][]capability{
 	RoleAPI:     {capJWT, capEdge, capMedia, capPublicURL, capMeta, capMetaLogin},
-	RoleWorker:  {capMail, capOutbox, capMedia, capPublicURL, capVenueGen, capMeta},
+	RoleWorker:  {capMail, capOutbox, capMedia, capPublicURL, capVenueGen, capMeta, capMetaInsights},
 	RoleBot:     {capJWT, capEventsBot},
 	RoleMigrate: nil,
 }

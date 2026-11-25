@@ -304,8 +304,11 @@ describe('helpers and CSP', () => {
     expect(/img-src [^;]*__API_ORIGIN__/.test(csp)).toBe(true);
     // Media pictures come from the platform's own https address.
     expect(/img-src [^;]*https:/.test(csp)).toBe(true);
-    // No third-party script host was added for the materials.
-    expect(/script-src ([^;]+);/.exec(csp)?.[1]).toBe("'self' https://challenges.cloudflare.com");
+    // No third-party script host was added for the materials; Stripe.js is the
+    // embedded payment form (spec 65 section 7).
+    expect(/script-src ([^;]+);/.exec(csp)?.[1]).toBe(
+      "'self' https://challenges.cloudflare.com https://js.stripe.com https://*.js.stripe.com",
+    );
   });
 });
 

@@ -85,6 +85,68 @@ type stubStripe struct {
 	refundReadKeys map[string]string
 	// expiredSessions records every POST /v1/checkout/sessions/{id}/expire.
 	expiredSessions []string
+
+	// elements holds every ui_mode=elements session (spec 65), by id: it is
+	// read back by GET /v1/checkout/sessions/{id} and refuses /expire once
+	// it is no longer open, as Stripe does.
+	elements map[string]*stubElementsSession
+	// elementsVersions records the Stripe-Version of every elements call.
+	elementsVersions []string
+	// elementsReads counts GET /v1/checkout/sessions/{id} of embedded sessions.
+	elementsReads int
+	// failHostedCreates makes the next N hosted (non-elements) session
+	// creations answer 500, as a Stripe outage would.
+	failHostedCreates int
+	// failElementsCreates makes the next N embedded (ui_mode=elements)
+	// session creations answer 400, as a Stripe refusal would.
+	failElementsCreates int
+}
+
+// failNextElementsCreates makes the next n embedded session creations fail.
+func (s *stubStripe) failNextElementsCreates(n int) {
+	s.refundMu.Lock()
+	defer s.refundMu.Unlock()
+	s.failElementsCreates = n
+}
+
+// failNextHostedCreates makes the next n hosted session creations fail.
+func (s *stubStripe) failNextHostedCreates(n int) {
+	s.refundMu.Lock()
+	defer s.refundMu.Unlock()
+	s.failHostedCreates = n
+}
+
+// embeddedReads is how many times an embedded session was read back.
+func (s *stubStripe) embeddedReads() int {
+	s.refundMu.Lock()
+	defer s.refundMu.Unlock()
+	return s.elementsReads
+}
+
+// stubElementsSession is the stub's state of one embedded session.
+type stubElementsSession struct {
+	status, paymentStatus, secret string
+}
+
+// markElements sets an embedded session's status ("complete" + "paid" for a
+// paid one, "open" for one a payment is being processed on).
+func (s *stubStripe) markElements(id, status, paymentStatus string) {
+	s.refundMu.Lock()
+	defer s.refundMu.Unlock()
+	if e := s.elements[id]; e != nil {
+		e.status, e.paymentStatus = status, paymentStatus
+	}
+}
+
+// elementsSession returns a copy of the stub's state of an embedded session.
+func (s *stubStripe) elementsSession(id string) (stubElementsSession, bool) {
+	s.refundMu.Lock()
+	defer s.refundMu.Unlock()
+	e, ok := s.elements[id]
+	if !ok {
+		return stubElementsSession{}, false
+	}
+	return *e, true
 }
 
 // expired is the list of checkout sessions the server asked Stripe to close.
@@ -122,6 +184,17 @@ func newStubStripe(t *testing.T) *stubStripe {
 			id = id[strings.LastIndex(id, "/")+1:]
 			s.refundMu.Lock()
 			s.expiredSessions = append(s.expiredSessions, id)
+			if e := s.elements[id]; e != nil {
+				s.elementsVersions = append(s.elementsVersions, r.Header.Get("Stripe-Version"))
+				if e.status != "open" {
+					s.refundMu.Unlock()
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusBadRequest)
+					_, _ = fmt.Fprint(w, `{"error":{"type":"invalid_request_error","message":"Only Checkout Sessions with a status in [\"open\"] can be expired."}}`)
+					return
+				}
+				e.status = "expired"
+			}
 			s.refundMu.Unlock()
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprintf(w, `{"id":%q,"status":"expired"}`, id)
@@ -148,6 +221,17 @@ func newStubStripe(t *testing.T) *stubStripe {
 				_, _ = fmt.Fprint(w, body)
 			}
 			return
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/checkout/sessions/") && s.isElements(r.URL.Path):
+			id := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
+			s.refundMu.Lock()
+			e := *s.elements[id]
+			s.elementsReads++
+			s.elementsVersions = append(s.elementsVersions, r.Header.Get("Stripe-Version"))
+			s.refundMu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w, `{"id":%q,"object":"checkout.session","ui_mode":"elements","status":%q,"payment_status":%q,"client_secret":%q}`,
+				id, e.status, e.paymentStatus, e.secret)
+			return
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/checkout/sessions/") && s.sessionPI != "":
 			id := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
 			w.Header().Set("Content-Type", "application/json")
@@ -163,12 +247,53 @@ func newStubStripe(t *testing.T) *stubStripe {
 		if err != nil {
 			t.Errorf("stub stripe: body is not form-encoded: %v", err)
 		}
+		if form.Get("ui_mode") != "elements" {
+			s.refundMu.Lock()
+			fail := s.failHostedCreates > 0
+			if fail {
+				s.failHostedCreates--
+			}
+			s.refundMu.Unlock()
+			if fail {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = fmt.Fprint(w, `{"error":{"type":"api_error","message":"stub outage"}}`)
+				return
+			}
+		}
+		if form.Get("ui_mode") == "elements" {
+			s.refundMu.Lock()
+			fail := s.failElementsCreates > 0
+			if fail {
+				s.failElementsCreates--
+			}
+			s.refundMu.Unlock()
+			if fail {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = fmt.Fprint(w, `{"error":{"type":"invalid_request_error","message":"stub refusal"}}`)
+				return
+			}
+		}
 		s.sessions = append(s.sessions, form)
 		id := "cs_test_" + strings.ReplaceAll(uuid.New().String(), "-", "")[:20]
 		amount, _ := strconv.ParseInt(form.Get("line_items[0][price_data][unit_amount]"), 10, 64)
 		qty, _ := strconv.ParseInt(form.Get("line_items[0][quantity]"), 10, 64)
 		stubSessionCharges.Store(id, stubCharge{amount: amount * qty, currency: form.Get("line_items[0][price_data][currency]")})
 		w.Header().Set("Content-Type", "application/json")
+		if form.Get("ui_mode") == "elements" {
+			secret := id + "_secret_" + strings.ReplaceAll(uuid.New().String(), "-", "")[:12]
+			s.refundMu.Lock()
+			if s.elements == nil {
+				s.elements = map[string]*stubElementsSession{}
+			}
+			s.elements[id] = &stubElementsSession{status: "open", paymentStatus: "unpaid", secret: secret}
+			s.elementsVersions = append(s.elementsVersions, r.Header.Get("Stripe-Version"))
+			s.refundMu.Unlock()
+			_, _ = fmt.Fprintf(w, `{"id":%q,"object":"checkout.session","ui_mode":"elements","url":null,"client_secret":%q,"status":"open","payment_status":"unpaid","payment_intent":null,"expires_at":%d}`,
+				id, secret, time.Now().Add(31*time.Minute).Unix())
+			return
+		}
 		_, _ = fmt.Fprintf(w, `{"id":%q,"url":"https://checkout.stripe.test/c/pay/%s","payment_intent":null,"expires_at":%d}`,
 			id, id, time.Now().Add(31*time.Minute).Unix())
 	}))
@@ -177,6 +302,15 @@ func newStubStripe(t *testing.T) *stubStripe {
 }
 
 func (s *stubStripe) baseURL() string { return s.server.URL + "/v1" }
+
+// isElements reports whether a GET path names an embedded session the stub created.
+func (s *stubStripe) isElements(path string) bool {
+	id := path[strings.LastIndex(path, "/")+1:]
+	s.refundMu.Lock()
+	defer s.refundMu.Unlock()
+	_, ok := s.elements[id]
+	return ok
+}
 
 func (s *stubStripe) lastForm(t *testing.T) url.Values {
 	t.Helper()

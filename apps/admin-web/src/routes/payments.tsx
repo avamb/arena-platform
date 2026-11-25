@@ -59,6 +59,7 @@ import { config as appConfig } from "@/lib/config";
 import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useScope } from "@/lib/auth/ScopeContext";
+import { WalletDomainsBlock, walletDomainsQueryKey, type WalletDomainsEnvelope } from "@/components/WalletDomains";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
 import { orgContextFromLocation } from "@/lib/routing/orgContext";
 import {
@@ -303,6 +304,26 @@ export const PROVIDER_REQUIRED_SECRETS: Readonly<
   manual: [],
 };
 
+/**
+ * Optional secret field names per provider, with their operator-facing
+ * labels (en / ru). Never required: a config without them stays valid.
+ * Mirrors the optional fields of the Go payment-module descriptors.
+ */
+export const PROVIDER_OPTIONAL_SECRETS: Readonly<
+  Partial<Record<PaymentProvider, readonly string[]>>
+> = {
+  stripe: ["publishable_key"],
+};
+
+export const OPTIONAL_SECRET_LABELS: Readonly<
+  Record<string, { readonly en: string; readonly ru: string }>
+> = {
+  publishable_key: {
+    en: "Stripe publishable key (Developers → API keys → Publishable key). Optional, used by the embedded checkout.",
+    ru: "Публичный ключ Stripe (Developers → API keys → Publishable key). Необязательно, нужен для встроенной оплаты.",
+  },
+};
+
 export interface PaymentConfig {
   readonly id: string;
   readonly org_id: string;
@@ -362,6 +383,7 @@ interface PaymentConfigEnvelope {
   readonly payment_config: PaymentConfig;
   /** Advisory findings of the verify route about the webhook endpoint. */
   readonly webhook_warnings?: readonly string[];
+  readonly payment_method_domains?: WalletDomainsEnvelope["payment_method_domains"];
 }
 
 // ---------------------------------------------------------------------------
@@ -1146,11 +1168,14 @@ function PaymentsBody({
       id: "connection",
       header: "Connection",
       renderCell: (c) => (
+        <>
         <VerificationBadge
           status={c.verification_status}
           error={c.verification_error}
           verifiedAt={c.verified_at}
         />
+        {c.provider === "stripe" ? <WalletDomainsBlock orgId={c.org_id} configId={c.id} /> : null}
+        </>
       ),
     },
     {
@@ -1310,6 +1335,11 @@ function VerifyButton({ config }: { config: PaymentConfig }) {
     onSuccess: (data) => {
       setError(null);
       setWarnings(data.webhook_warnings ?? []);
+      if (data.payment_method_domains) {
+        queryClient.setQueryData<WalletDomainsEnvelope>(walletDomainsQueryKey(config.org_id, config.id), {
+          payment_method_domains: data.payment_method_domains,
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["payment_configs"] });
     },
     // A failed REQUEST is not a failed credential: the verdict lives on the
@@ -1593,6 +1623,9 @@ export function PaymentConfigFormDialog({
   // edit secrets the backend remembers even if our catalogue evolves.
   const allKnownKeys = useMemo(() => {
     const set = new Set<string>(requiredSecrets);
+    for (const k of PROVIDER_OPTIONAL_SECRETS[provider] ?? []) {
+      set.add(k);
+    }
     for (const k of storedKeys) {
       set.add(k);
     }
@@ -1909,6 +1942,15 @@ export function PaymentConfigFormDialog({
                         <span style={requiredMarkStyle} title="Required">
                           {" "}
                           *
+                        </span>
+                      ) : null}
+                      {OPTIONAL_SECRET_LABELS[key] ? (
+                        <span
+                          style={mutedHintStyle}
+                          title={`${OPTIONAL_SECRET_LABELS[key].en}\n${OPTIONAL_SECRET_LABELS[key].ru}`}
+                        >
+                          {" "}
+                          (optional)
                         </span>
                       ) : null}
                     </label>

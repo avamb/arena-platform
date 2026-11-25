@@ -207,11 +207,21 @@ describe("disconnect", () => {
     expect(id(el, "meta-disconnect-confirm")).toBeNull();
     expect(disconnectMeta).not.toHaveBeenCalled();
     await click(id(el, "meta-disconnect"));
+    // The refetch after a disconnect answers the disconnected state.
+    vi.mocked(fetchMetaIntegration).mockResolvedValue(integration(true, conn({ status: "revoked" })));
     await click(id(el, "meta-disconnect-confirm-submit"));
     expect(disconnectMeta).toHaveBeenCalledTimes(1);
     expect(disconnectMeta).toHaveBeenCalledWith("org1");
     expect(id(el, "meta-disconnect-confirm")).toBeNull();
     expect(id(el, "meta-status")?.getAttribute("data-status")).toBe("revoked");
+    expect(id(el, "meta-revoked")?.textContent).toBe(en["meta.revokedText"]);
+    expect(id(el, "meta-connect")?.textContent).toBe("Connect again");
+    expect(id(el, "meta-disconnect")).toBeNull();
+    expect(id(el, "meta-scopes")).toBeNull();
+    expect(id(el, "meta-business")).toBeNull();
+    expect(id(el, "meta-assets-dataset")).toBeNull();
+    expect(id(el, "meta-page-card")).toBeNull();
+    expect(el.textContent).not.toContain("ads_read, business_management");
   });
 });
 

@@ -206,6 +206,69 @@ export interface CheckoutStartPayload {
    * checkout/recover.
    */
   attribution?: import('./attribution.js').AttributionPayload;
+  /**
+   * What this widget can do beyond the redirect. `stripe_elements` says it can
+   * pay inside its own page; a server that knows it may then answer with a
+   * `payment` block instead of a hosted `redirect_url`. A widget that does not
+   * send it always gets the hosted page (spec 65 §3.5).
+   */
+  capabilities?: string[];
+  /**
+   * Browser tracking context for server-side Meta CAPI / GA4. Present only
+   * when the host page set `tracking-consent` to granted or denied.
+   */
+  buyer_context?: import('./buyerContext.js').BuyerContextPayload;
+}
+
+/**
+ * Payload of checkout/start with `prepare: true` (preload-payment="checkout"):
+ * the order, the hold and the embedded Stripe session are created when the
+ * order sheet opens, WITHOUT a buyer. No buyer, promo code, marketing tick or
+ * consent may ride along (422 `checkout.prepare_unavailable`); the buyer comes
+ * later through POST /v1/public/checkout/{token}/buyer.
+ */
+export interface CheckoutPreparePayload {
+  session_id: string;
+  seats?: string[];
+  ga_items?: PublicGAItem[];
+  return_url?: string;
+  locale?: string;
+  attribution?: import('./attribution.js').AttributionPayload;
+  /** Must contain `stripe_elements`. */
+  capabilities: string[];
+  buyer_context?: import('./buyerContext.js').BuyerContextPayload;
+  prepare: true;
+}
+
+/** Body of POST /v1/public/checkout/{token}/buyer (attach the buyer to a prepared checkout). */
+export interface CheckoutBuyerPayload {
+  buyer: {
+    email: string;
+    name?: string | null;
+    phone?: string | null;
+  };
+  consent?: import('./consent.js').CheckoutConsentPayload;
+  locale?: string;
+}
+
+/** 200 answer of POST /v1/public/checkout/{token}/buyer. */
+export interface CheckoutBuyerResponse {
+  checkout_token: string;
+  status: 'pending';
+  expires_at: string;
+  payment_expires_at?: string;
+}
+
+/**
+ * The block that lets the widget pay on its own page (spec 65 §3.4). Held in
+ * memory only: `client_secret` is never logged, never put in storage and never
+ * in a URL (§3.7).
+ */
+export interface PaymentBlock {
+  provider: 'stripe';
+  mode: 'elements';
+  client_secret: string;
+  publishable_key: string;
 }
 
 /**
@@ -219,6 +282,15 @@ export interface CheckoutQuotePayload {
   promo_code?: string;
   /** The mailing tick (spec 51-1); ticked, it may earn the organizer's reward code. */
   marketing_consent?: import('./marketing.js').MarketingConsentPayload;
+  /**
+   * AddToCart for server-side Meta / GA4 (lib/addToCart.ts): sent only with
+   * a `buyer_context` whose `tracking_consent` is true.
+   */
+  buyer_context?: import('./buyerContext.js').BuyerContextPayload;
+  /** This cart's id, the AddToCart dedup key ([A-Za-z0-9_-], at most 64). */
+  add_to_cart_id?: string;
+  /** Distinct seats toggled in this cart plus the GA tickets in it (0..1000). */
+  seats_considered?: number;
 }
 
 /**
@@ -255,6 +327,23 @@ export interface CheckoutStartResponse {
   redirect_url: string;
   checkout_token: string;
   expires_at: string;
+  /**
+   * Present when the platform wants the widget to pay on its own page. Absent
+   * means "redirect_url" is the way, as before.
+   */
+  payment?: PaymentBlock;
+  /** The moment the payment form stops taking money (the hold ends a grace later). */
+  payment_expires_at?: string;
+  /** True on the answer to a `prepare: true` start (no buyer yet). */
+  prepared?: boolean;
+  /** What the order costs, in minor units, as the payment screen's summary shows it. */
+  pricing?: {
+    subtotal?: number;
+    discount?: number;
+    platform_fee?: number;
+    total: number;
+    currency: string;
+  };
 }
 
 /** A single cart item in the anonymous order-status response. */
@@ -297,6 +386,11 @@ export interface CheckoutStatusResponse {
    */
   order_number?: number | null;
   expires_at?: string | null;
+  /**
+   * When the payment form stops taking money. `expires_at` is the HOLD, a grace
+   * later: the payment screen's clock counts down to this one.
+   */
+  payment_expires_at?: string | null;
   subtotal?: number | null;
   discount?: number | null;
   platform_fee?: number | null;
@@ -310,6 +404,11 @@ export interface CheckoutStatusResponse {
    * order is paid, expired or failed.
    */
   payment_url?: string | null;
+  /**
+   * The embedded-payment block, re-supplied by `?include=payment` while the
+   * order is pending and its hold is alive; absent otherwise (spec 65 §3.7).
+   */
+  payment?: PaymentBlock | null;
   items: CheckoutStatusItem[];
   tickets: CheckoutStatusTicketItem[];
 }
@@ -565,6 +664,22 @@ export function buildCheckoutPayload(
   const promo = (promoCode ?? '').trim();
   if (promo) payload.promo_code = promo;
 
+  return payload;
+}
+
+/**
+ * Build the body of `POST checkout/{token}/buyer` from the sheet's values: the
+ * same buyer object as checkout/start, plus the ticked consent and the locale.
+ */
+export function buildBuyerPayload(
+  values: BuyerFormValues,
+  buyerFields: BuyerFieldConfig[],
+  extra: { consent?: import('./consent.js').CheckoutConsentPayload; locale?: string } = {},
+): CheckoutBuyerPayload {
+  const start = buildCheckoutPayload('', values, [], [], buyerFields);
+  const payload: CheckoutBuyerPayload = { buyer: start.buyer! };
+  if (extra.consent) payload.consent = extra.consent;
+  if (extra.locale) payload.locale = extra.locale;
   return payload;
 }
 

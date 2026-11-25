@@ -50,6 +50,7 @@ export const CARD_HELP: Record<Exclude<ItemId, "status">, { label: MessageKey; t
   csv: { label: "event.csvSales", text: "screenHelp.action.csv" },
   guests: { label: "guestList.downloadEvent", text: "screenHelp.action.guests" },
   funnel: { label: "funnel.button", text: "screenHelp.action.funnel" },
+  ads: { label: "ads.button", text: "screenHelp.action.ads" },
   edit: { label: "event.edit", text: "screenHelp.action.edit" },
   translations: { label: "tr.title", text: "screenHelp.action.translations" },
   sample: { label: "event.sample", text: "screenHelp.action.sample" },

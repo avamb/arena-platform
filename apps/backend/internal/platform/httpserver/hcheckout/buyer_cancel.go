@@ -108,7 +108,7 @@ func CancelUnpaidCheckout(ctx context.Context, pool TxStarter, q *gen.Queries, a
 			return fmt.Errorf("hcheckout: begin buyer cancel tx: %w", err)
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
-		res, write, err := cancelUnpaidCheckoutTx(ctx, tx, q.WithTx(tx), auditW, in)
+		res, write, err := CancelUnpaidCheckoutTx(ctx, tx, q.WithTx(tx), auditW, in)
 		if err != nil {
 			return err
 		}
@@ -123,9 +123,13 @@ func CancelUnpaidCheckout(ctx context.Context, pool TxStarter, q *gen.Queries, a
 	return out, err
 }
 
-// cancelUnpaidCheckoutTx is the transaction body; write reports whether
-// anything must be committed.
-func cancelUnpaidCheckoutTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, auditW audit.Writer, in BuyerCancelInput) (BuyerCancelResult, bool, error) {
+// CancelUnpaidCheckoutTx is the transaction body, on the caller's
+// transaction; write reports whether anything must be committed. Besides
+// CancelUnpaidCheckout, hfeed runs it when a new checkout of the same buyer
+// closes an older one that can no longer be paid (reason
+// ordering.ReasonSupersededByNewCheckout). It locks the checkout first, then
+// the order, the same order the payment webhook takes them in.
+func CancelUnpaidCheckoutTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, auditW audit.Writer, in BuyerCancelInput) (BuyerCancelResult, bool, error) {
 	var state string
 	var reservationID, orgID uuid.UUID
 	if err := tx.QueryRow(ctx, `SELECT state, reservation_id, org_id FROM checkout_sessions WHERE id = $1 FOR UPDATE`,
@@ -154,13 +158,18 @@ func cancelUnpaidCheckoutTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, au
 	case state == "completed" || (ord != nil && ord.Status == ordering.StatusPaid):
 		res.Outcome = BuyerCancelPaid
 		return res, false, nil
-	case state == "abandoned" || (ord != nil && ord.Status == ordering.StatusCancelled):
+	// An order cancelled while its checkout stayed open (superseded before the
+	// 2026-11-25 fix) falls through: its hold is released and the checkout
+	// abandoned; ordering.Cancel below is a no-op on it.
+	case state == "abandoned" || (ord != nil && ord.Status == ordering.StatusCancelled &&
+		state != "pricing_confirmed" && state != "created"):
 		res.Outcome = BuyerCancelAlreadyCancelled
 		return res, false, nil
 	case state == "expired" || (ord != nil && ord.Status == ordering.StatusExpired):
 		res.Outcome = BuyerCancelExpired
 		return res, false, nil
-	case state == "manual_review" || (ord != nil && ord.Status != ordering.StatusPendingPayment):
+	case state == "manual_review" || (ord != nil && ord.Status != ordering.StatusPendingPayment &&
+		ord.Status != ordering.StatusCancelled):
 		res.Outcome = BuyerCancelUnderReview
 		return res, false, nil
 	}

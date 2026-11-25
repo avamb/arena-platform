@@ -319,7 +319,13 @@ func (h *Handler) checkArenaReferences(ctx context.Context, q *gen.Queries, tx p
 	if matched {
 		f.newSession = match.SessionID == uuid.Nil
 		seatedNew := f.newSession && trimSpace(req.ActionEvent.ArenaSeatingPlanVersionID) != ""
-		if f.newSession && !seatedNew && req.TotalAvailability() <= 0 {
+		// A partner-sold session owns no category, so it needs no capacity
+		// (the import itself gives it capacity_total 1, import_arena.go).
+		externalNew := false
+		if kind, _, _ := req.ActionEvent.ParseExternalSale(); kind == bil24compat.ExternalSaleObject {
+			externalNew = true
+		}
+		if f.newSession && !seatedNew && !externalNew && req.TotalAvailability() <= 0 {
 			issues.add(errCapacityRequired())
 		}
 		// Task S1b: the seating plan version, read only — the existing

@@ -19,6 +19,7 @@ import { EventsScreen } from "@/screens/EventsScreen";
 import { EventScreen } from "@/screens/EventScreen";
 import { EventEditScreen } from "@/screens/EventEditScreen";
 import { TranslationsScreen } from "@/screens/TranslationsScreen";
+import { EventAdsScreen } from "@/screens/EventAdsScreen";
 import { EventFunnelScreen } from "@/screens/EventFunnelScreen";
 import { SessionScreen } from "@/screens/SessionScreen";
 import { SessionInvitationsScreen } from "@/screens/SessionInvitationsScreen";
@@ -170,6 +171,13 @@ const eventFunnelRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/events/$eventId/funnel",
   component: EventFunnelScreen,
+});
+
+// Spec 66, M2: the Meta ads report of an event (spend, clicks, orders, MER). Reached from the event's page.
+const eventAdsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/events/$eventId/ads",
+  component: EventAdsScreen,
 });
 
 // The "Edit" button of the event card: name, description, poster and the text of the buyer letters.
@@ -472,6 +480,7 @@ export const routeTree = rootRoute.addChildren([
     eventsRoute,
     eventRoute,
     eventFunnelRoute,
+    eventAdsRoute,
     eventEditRoute,
     eventTranslationsRoute,
     sessionRoute,

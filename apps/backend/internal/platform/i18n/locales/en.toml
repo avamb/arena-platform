@@ -6883,6 +6883,9 @@ other = "shop sales (no buyer data)"
 ["salesnotify.bot.kind.shop_delivery"]
 other = "shop orders to deliver"
 
+["salesnotify.bot.kind.ads"]
+other = "the daily Meta ads summary"
+
 ["bot.reissue.btn"]
 other = "🔁 Replace tickets"
 

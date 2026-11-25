@@ -3,7 +3,7 @@
 //
 //   - The sweep (JobTypeSweep, every minute) picks orders of the widget and
 //     the tickets page (source public_feed) that are unpaid DueAfter after
-//     checkout/start, still have at least MinLeftAtPick of their payment
+//     checkout/start (after the buyer attach for a prepared order), still have at least MinLeftAtPick of their payment
 //     window, carry a buyer e-mail and an amount, and whose organization has
 //     not switched reminders off. One transaction inserts the order into
 //     checkout_reminders and queues JobTypeEmail; the primary key on order_id
@@ -27,6 +27,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
 )
 
 // Worker jobs.
@@ -79,11 +81,18 @@ func Sweep(ctx context.Context, pool *pgxpool.Pool, now time.Time) (int, error) 
 // use it so a pass never claims another package's orders in a shared database.
 func SweepOrgs(ctx context.Context, pool *pgxpool.Pool, now time.Time, orgs []uuid.UUID) (int, error) {
 	now = now.UTC()
+	// A prepared order (spec 65 early order) is created when the order sheet
+	// opens and gets its buyer later, at "Pay" (order_events buyer_attached).
+	// Its DueAfter counts from that moment, the latest of created_at and the
+	// attach: the person started paying then, not when the sheet opened.
 	rows, err := pool.Query(ctx, `
 		SELECT o.id, o.org_id, o.checkout_session_id
 		FROM   orders o
 		WHERE  o.status = 'pending_payment' AND o.source = 'public_feed'
-		  AND  o.created_at <= $1 AND o.created_at > $2
+		  AND  o.created_at > $2
+		  AND  GREATEST(o.created_at,
+		                COALESCE((SELECT max(e.created_at) FROM order_events e
+		                          WHERE e.order_id = o.id AND e.type = $6), o.created_at)) <= $1
 		  AND  o.total > 0 AND COALESCE(btrim(o.buyer_email), '') <> ''
 		  AND  o.expires_at >= $3
 		  AND  NOT EXISTS (SELECT 1 FROM checkout_reminders r WHERE r.order_id = o.id)
@@ -91,7 +100,7 @@ func SweepOrgs(ctx context.Context, pool *pgxpool.Pool, now time.Time, orgs []uu
 		  AND  ($5::uuid[] IS NULL OR o.org_id = ANY($5::uuid[]))
 		ORDER  BY o.created_at
 		LIMIT  $4`,
-		now.Add(-DueAfter), now.Add(-lookback), now.Add(MinLeftAtPick), batch, orgs)
+		now.Add(-DueAfter), now.Add(-lookback), now.Add(MinLeftAtPick), batch, orgs, ordering.EventBuyerAttached)
 	if err != nil {
 		return 0, err
 	}
@@ -214,6 +223,10 @@ func LoadOrder(ctx context.Context, db interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }, orderID uuid.UUID) (Order, error) {
 	var o Order
+	// "A newer order" compares the moment each order got its buyer, the
+	// latest of created_at and the buyer_attached event, as SweepOrgs does: a
+	// prepared order (spec 65) attached later is the newer one even when its
+	// sheet opened first.
 	err := db.QueryRow(ctx, `
 		SELECT o.id, o.org_id, o.session_id, o.checkout_session_id, o.system_id, o.status,
 		       COALESCE(o.buyer_email, ''), COALESCE(cs.buyer_locale, ''), o.expires_at, o.created_at,
@@ -225,13 +238,19 @@ func LoadOrder(ctx context.Context, db interface {
 		                   AND COALESCE(pi.hosted_checkout_url, '') <> ''
 		                 ORDER BY pi.created_at DESC LIMIT 1), ''),
 		       EXISTS (SELECT 1 FROM orders n
-		               WHERE n.session_id = o.session_id AND n.id <> o.id AND n.created_at > o.created_at
+		               WHERE n.session_id = o.session_id AND n.id <> o.id
+		                 AND GREATEST(n.created_at,
+		                              COALESCE((SELECT max(e.created_at) FROM order_events e
+		                                        WHERE e.order_id = n.id AND e.type = $2), n.created_at))
+		                   > GREATEST(o.created_at,
+		                              COALESCE((SELECT max(e.created_at) FROM order_events e
+		                                        WHERE e.order_id = o.id AND e.type = $2), o.created_at))
 		                 AND lower(btrim(n.buyer_email)) = lower(btrim(o.buyer_email))
 		                 AND n.status IN ('pending_payment', 'paid', 'partially_refunded')),
 		       COALESCE((SELECT g.cart_reminder_enabled FROM org_growth_settings g WHERE g.org_id = o.org_id), true)
 		FROM   orders o
 		JOIN   checkout_sessions cs ON cs.id = o.checkout_session_id
-		WHERE  o.id = $1`, orderID).Scan(
+		WHERE  o.id = $1`, orderID, ordering.EventBuyerAttached).Scan(
 		&o.ID, &o.OrgID, &o.SessionID, &o.CheckoutID, &o.SystemID, &o.Status,
 		&o.BuyerEmail, &o.Locale, &o.ExpiresAt, &o.CreatedAt, &o.Total, &o.Currency, &o.Tickets,
 		&o.CheckoutToken, &o.ReturnURL, &o.PaymentURL, &o.NewerOrder, &o.ReminderOn)

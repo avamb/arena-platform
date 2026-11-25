@@ -446,6 +446,11 @@ var orgIsolationAuditedSafe = map[string]string{
 	// GetEventPageStatsHeader(event, org) gate, 404 event.not_found for a
 	// foreign event; every click query is keyed by (event, org).
 	"GET /v1/organizations/{org_id}/events/{event_id}/outbound-clicks": "hsalesfunnel",
+	// hmetainsights (spec 66 M2): metainsights.EventName is keyed by (event,
+	// org) and answers the route's own 404 event.not_found for a foreign event;
+	// every report query filters by the path organization.
+	// TestMetaAdsRoutes_IsolationAndRoles drives a foreign event.
+	"GET /v1/organizations/{org_id}/events/{event_id}/ads/meta": "hmetainsights",
 	// himports.HandleEventBundleRead (task 3-2): GetEventRaw, then the event's
 	// organization must equal the path organization (404 event.not_found).
 	// TestEventBundleRead_OrganizationBoundary drives a foreign, unknown and
@@ -511,6 +516,9 @@ var orgIsolationAuditedSafe = map[string]string{
 	"PATCH /v1/organizations/{org_id}/channels/{id}":                     "channels",
 	"PUT /v1/organizations/{org_id}/channels/{id}/gateway-credential":    "channels",
 	"PUT /v1/organizations/{org_id}/channels/{id}/wp-webhook":            "channels",
+	// Site hosts of a channel (spec 65 E3): GetSalesChannelByID(id, org_id) answers 404 first, then the replace is keyed by (channel_id, org_id).
+	"GET /v1/organizations/{org_id}/channels/{id}/site-domains": "channels",
+	"PUT /v1/organizations/{org_id}/channels/{id}/site-domains": "channels",
 	// hseller: the channel is looked up among the PATH organization's hosted-page
 	// channels only (covered by TestSellerProfile_StaysInsideTheOrganization).
 	"PATCH /v1/organizations/{org_id}/channels/{channel_id}/seller-display": "hseller",
@@ -590,6 +598,8 @@ var orgIsolationAuditedSafe = map[string]string{
 	"PATCH /v1/organizations/{org_id}/promo-codes/{id}":                          "promo",
 	"POST /v1/organizations/{org_id}/bot-invitations/{id}/resend":                "hbot",
 	"POST /v1/organizations/{org_id}/payment-configs/{id}/verify":                "hpayments",
+	// Wallet domains of a config (spec 65 E3): GetPaymentProviderConfigByID(id, org_id) answers 404, the list is keyed by (config, org).
+	"GET /v1/organizations/{org_id}/payment-configs/{id}/payment-method-domains": "hpayments",
 
 	// hiam membership routes: the {org_id} is ignored by the handlers (H1/H2 of the
 	// audit). Owned by SEC-1, covered by its memberships_cross_org_integration_test.go.

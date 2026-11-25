@@ -358,6 +358,10 @@ export const API = {
   metaConnect: { method: "POST", path: "/v1/organizations/{org_id}/integrations/meta/connect" },
   metaFinish: { method: "POST", path: "/v1/organizations/{org_id}/integrations/meta/finish" },
   metaPage: { method: "GET", path: "/v1/organizations/{org_id}/integrations/meta/page" },
+  // Meta advertising, spend and payback (spec 66, M2): the event's report, the organization's summary, the refresh.
+  eventMetaAds: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/ads/meta" },
+  orgMetaAdsSummary: { method: "GET", path: "/v1/organizations/{org_id}/ads/meta/summary" },
+  orgMetaAdsRefresh: { method: "POST", path: "/v1/organizations/{org_id}/ads/meta/refresh" },
   channels: { method: "GET", path: "/v1/organizations/{org_id}/channels" },
   shopSettings: { method: "GET", path: "/v1/organizations/{org_id}/shop/settings" },
   shopSettingsPut: { method: "PUT", path: "/v1/organizations/{org_id}/shop/settings" },

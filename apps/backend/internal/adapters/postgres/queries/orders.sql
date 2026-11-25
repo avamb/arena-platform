@@ -179,6 +179,11 @@ WHERE  org_id = $1
   AND  ($4::uuid IS NULL OR session_id = $4)
   AND  ($5::timestamptz IS NULL OR created_at >= $5)
   AND  ($6::timestamptz IS NULL OR created_at <= $6)
+  -- A prepared widget order nobody attached a buyer to (spec 65 early
+  -- order) is not a started checkout: left out until it has a buyer or
+  -- was paid.
+  AND  NOT (source = 'public_feed' AND buyer_email IS NULL
+            AND status IN ('pending_payment', 'expired', 'cancelled', 'abandoned'))
 ORDER  BY created_at DESC, id DESC
 LIMIT  $7 OFFSET $8;
 
@@ -370,6 +375,8 @@ WHERE  o.org_id = $1
   AND  ($5::uuid IS NULL OR o.event_id = $5)
   AND  ($6::timestamptz IS NULL OR o.created_at >= $6)
   AND  ($7::timestamptz IS NULL OR o.created_at <= $7)
+  AND  NOT (o.source = 'public_feed' AND o.buyer_email IS NULL
+            AND o.status IN ('pending_payment', 'expired', 'cancelled', 'abandoned'))
   AND  (
         ($8 = '' AND $9::bigint IS NULL AND $10::bigint IS NULL AND $11 = '' AND $12 = '' AND $13 = '')
      OR ($8 <> '' AND o.id IN (
@@ -420,6 +427,8 @@ WHERE  o.org_id = $1
   AND  ($5::uuid IS NULL OR o.event_id = $5)
   AND  ($6::timestamptz IS NULL OR o.created_at >= $6)
   AND  ($7::timestamptz IS NULL OR o.created_at <= $7)
+  AND  NOT (o.source = 'public_feed' AND o.buyer_email IS NULL
+            AND o.status IN ('pending_payment', 'expired', 'cancelled', 'abandoned'))
   AND  (
         ($8 = '' AND $9::bigint IS NULL AND $10::bigint IS NULL AND $11 = '' AND $12 = '' AND $13 = '')
      OR ($8 <> '' AND o.id IN (

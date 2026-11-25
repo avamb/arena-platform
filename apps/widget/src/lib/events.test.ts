@@ -26,7 +26,7 @@ import {
 // ─── ARENA_EVENTS constant ────────────────────────────────────────────────────
 
 describe('ARENA_EVENTS', () => {
-  it('defines all seven event names', () => {
+  it('defines all eight event names', () => {
     expect(ARENA_EVENTS.SEAT_SELECTED).toBe('arena:seat_selected');
     expect(ARENA_EVENTS.SEAT_RELEASED).toBe('arena:seat_released');
     expect(ARENA_EVENTS.PAYMENT_STARTED).toBe('arena:payment_started');
@@ -35,6 +35,8 @@ describe('ARENA_EVENTS', () => {
     // WID-T2 additions:
     expect(ARENA_EVENTS.CART_OPENED).toBe('arena:cart_opened');
     expect(ARENA_EVENTS.RECOVERY).toBe('arena:recovery');
+    // Spec 65 E6a: a step of the on-page payment screen.
+    expect(ARENA_EVENTS.CHECKOUT).toBe('arena:checkout');
   });
 
   it('all names are namespaced with "arena:" prefix', () => {
@@ -43,8 +45,8 @@ describe('ARENA_EVENTS', () => {
     }
   });
 
-  it('has exactly seven event names', () => {
-    expect(Object.keys(ARENA_EVENTS)).toHaveLength(7);
+  it('has exactly eight event names', () => {
+    expect(Object.keys(ARENA_EVENTS)).toHaveLength(8);
   });
 });
 
