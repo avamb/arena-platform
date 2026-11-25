@@ -31,8 +31,9 @@ import (
 // the embedded checkout goes live on any channel. A live test-mode probe
 // (2026-11-22) showed that 2025-09-30.clover REFUSES ui_mode=elements, while
 // 2026-03-25.dahlia accepts ui_mode=elements together with
-// allowed_payment_method_types[card,link] and returns client_secret on both
-// create and retrieve. If Stripe rejects the version or a parameter, every
+// allowed_payment_method_types[card] (card only; Link hidden by owner decision
+// 2026-11-25, Apple Pay and Google Pay ride on card) and returns client_secret
+// on both create and retrieve. If Stripe rejects the version or a parameter, every
 // creation is refused and checkout/start falls back to the hosted page
 // (hfeed), so a wrong pin costs the embedded form, never a sale.
 const stripeElementsAPIVersion = "2026-03-25.dahlia"
@@ -95,11 +96,13 @@ func (e *stripeExpandableID) UnmarshalJSON(b []byte) error {
 //   - return_url: where Stripe sends the buyer if the bank opens its own
 //     3-D Secure page. The caller routes it through arena's
 //     /v1/public/payment-return hop with the checkout_token (spec 65 §3.2).
-//   - allowed_payment_method_types[]=card and link, NOT payment_method_types
-//     (not a create parameter of this mode). Card only plus Link, for the
-//     same reason as the hosted flow: an asynchronous method could
-//     "complete" after the hold is gone. Apple Pay and Google Pay are
-//     wallets on top of the card type and need no type of their own.
+//   - allowed_payment_method_types[0]=card, NOT payment_method_types
+//     (not a create parameter of this mode). Card only, for the same reason
+//     as the hosted flow: an asynchronous method could "complete" after the
+//     hold is gone. Link is hidden (wallet_options[link][display]=never) by
+//     owner decision 2026-11-25: ticket buyers rarely repeat and the Link
+//     opt-in block covered the Pay button. Apple Pay and Google Pay ride on
+//     card per Stripe docs and need no type of their own.
 //   - the same single line item, customer_email, receipt e-mail, expires_at,
 //     locale, metadata on the session AND its PaymentIntent, and
 //     client_reference_id.
@@ -116,7 +119,7 @@ func (a *Adapter) CreateEmbeddedCheckoutSession(ctx context.Context, req payment
 	form.Set("mode", "payment")
 	form.Set("ui_mode", stripeUIModeElements)
 	form.Set("allowed_payment_method_types[0]", "card")
-	form.Set("allowed_payment_method_types[1]", "link")
+	form.Set("wallet_options[link][display]", "never")
 	form.Set("line_items[0][quantity]", "1")
 	form.Set("line_items[0][price_data][currency]", strings.ToLower(req.Currency))
 	form.Set("line_items[0][price_data][unit_amount]", strconv.FormatInt(req.Amount, 10))

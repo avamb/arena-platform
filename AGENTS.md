@@ -511,6 +511,8 @@ Places, categories, hold and quota lock order, plan geometry, seat layouts, venu
 * A seated hold at the click (spec 67, 0225) is a reservations row with hold_token_hash; token = HMAC of the id, seats in hold_policy->'seat_keys'
 * One lock order for an existing click hold: reservations, checkouts, orders, payment_intents, then sessions, seats, ledger
 * hold.close_payment expires the Stripe page before freeing seats; page expiry is written with the attempt
+* A private seating plan is read only by its owner organization and a platform superadmin (planReadAccess)
+* Plan decor is an allowlist of drawing, on every write and on read (SanitizeDecorSVG, cache, stored checksum, SetPlanSVGHeaders)
 
 ### [Events, sessions, promoters and sales channels](docs/agents/catalog-sessions-channels.md)
 

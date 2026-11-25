@@ -49,6 +49,47 @@ func requireOrgMembership(w http.ResponseWriter, r *http.Request, q *gen.Queries
 	return actorIsMemberOfOrg(r.Context(), q, orgID)
 }
 
+// planReadAccess decides which seating plans the caller may read on the
+// GET routes (list by venue, read one, versions list, one version). A plan
+// is readable when its visibility is not private, when the caller is a
+// platform superadmin (a read needs no X-Admin-Reason), or when the caller
+// is a member of the plan's owner organization with the route's permission
+// there (an organization API key counts for its own organization). The
+// membership answer is kept per owner organization, so a list of many plans
+// of one organization asks the database once.
+type planReadAccess struct {
+	ctx        context.Context
+	q          *gen.Queries
+	superadmin bool
+	owners     map[uuid.UUID]bool
+}
+
+func newPlanReadAccess(ctx context.Context, q *gen.Queries) *planReadAccess {
+	return &planReadAccess{
+		ctx:        ctx,
+		q:          q,
+		superadmin: auth.HasSuperadminOrgAccess(ctx),
+		owners:     map[uuid.UUID]bool{},
+	}
+}
+
+// canRead reports whether the caller may read plan p. A non-nil error is an
+// infrastructure failure and must surface as a 5xx.
+func (a *planReadAccess) canRead(p gen.SeatingPlanRow) (bool, error) {
+	if p.Visibility != VisibilityPrivate || a.superadmin {
+		return true, nil
+	}
+	if member, ok := a.owners[p.OwnerOrgID]; ok {
+		return member, nil
+	}
+	member, err := actorIsMemberOfOrg(a.ctx, a.q, p.OwnerOrgID)
+	if err != nil {
+		return false, err
+	}
+	a.owners[p.OwnerOrgID] = member
+	return member, nil
+}
+
 // actorIsMemberOfOrg reports whether the authenticated actor holds an
 // active membership in orgID. An unauthenticated request, an actor whose
 // subject is not a UUID, or an actor with no matching membership all
