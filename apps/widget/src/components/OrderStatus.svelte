@@ -23,7 +23,7 @@
   } from '../lib/checkout.js';
   import { countdownSeconds, isTwoMinWarning, formatCountdown } from '../lib/cart.js';
   import ReferralInvite from './ReferralInvite.svelte';
-  import ThankYouBlocks from './thankyou/ThankYouBlocks.svelte';
+  import type { Component } from 'svelte';
 
   interface Props {
     status: CheckoutStatusResponse;
@@ -76,6 +76,22 @@
   }: Props = $props();
 
   const t = $derived(getCheckoutI18n(locale));
+
+  // The thank-you blocks live in their own chunk, fetched only when the paid
+  // view shows. A failed load leaves the blocks out, with no error UI.
+  let ThankYou = $state<Component<any> | null>(null);
+  $effect(() => {
+    if (status.status !== 'paid' || ThankYou) return;
+    let alive = true;
+    import('./thankyou/ThankYouBlocks.svelte')
+      .then((m) => {
+        if (alive) ThankYou = m.default as Component<any>;
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  });
 
   // Hold countdown timer driven by server-side expires_at (WID-T3)
   let secondsLeft = $state(0);
@@ -230,14 +246,16 @@
         </button>
       {/if}
 
-      <ThankYouBlocks
-        {locale}
-        {apiBase}
-        {feedToken}
-        {checkoutToken}
-        {event}
-        marketingOffer={status.marketing_offer ?? null}
-      />
+      {#if ThankYou}
+        <ThankYou
+          {locale}
+          {apiBase}
+          {feedToken}
+          {checkoutToken}
+          {event}
+          marketingOffer={status.marketing_offer ?? null}
+        />
+      {/if}
     </div>
 
   {:else if status.status === 'expired'}
