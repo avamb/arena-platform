@@ -43,6 +43,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/paymentreceipts"
 )
 
@@ -733,6 +734,11 @@ type webhookPaymentIntentRequest struct {
 	// always names what was charged on a payment event: a paid one that
 	// names no amount is not trusted (D-01). The flat mock shape has none.
 	StripeEnvelope bool `json:"-"`
+	// BuyerEmail is the e-mail address a Stripe checkout.session event says
+	// the buyer paid with (customer_details.email, else customer_email). It
+	// fills the order of a prepared checkout that never got its buyer
+	// (spec 65 early order); an order with an address keeps it.
+	BuyerEmail string `json:"-"`
 }
 
 // providerChargeRef returns the pi_… this event carries, or nil when it
@@ -776,6 +782,13 @@ type stripeEventEnvelope struct {
 			AmountTotal    *int64 `json:"amount_total"`
 			AmountReceived *int64 `json:"amount_received"`
 			Currency       string `json:"currency"`
+			// checkout.session.* only: the e-mail address Stripe collected
+			// (customer_details.email), or the one the session was created
+			// with (customer_email).
+			CustomerEmail   string `json:"customer_email"`
+			CustomerDetails *struct {
+				Email string `json:"email"`
+			} `json:"customer_details"`
 		} `json:"object"`
 	} `json:"data"`
 }
@@ -829,6 +842,10 @@ func parseWebhookPaymentIntentRequest(body []byte) (webhookPaymentIntentRequest,
 		HostedPaymentID:   env.Data.Object.PaymentIntent,
 		PaidCurrency:      env.Data.Object.Currency,
 		StripeEnvelope:    true,
+		BuyerEmail:        strings.TrimSpace(env.Data.Object.CustomerEmail),
+	}
+	if d := env.Data.Object.CustomerDetails; d != nil && strings.TrimSpace(d.Email) != "" {
+		req.BuyerEmail = strings.TrimSpace(d.Email)
 	}
 	switch {
 	case env.Data.Object.AmountTotal != nil:
@@ -1138,6 +1155,7 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 			req.StripeEnvelope = true
 			if env, err := parseWebhookPaymentIntentRequest(body); err == nil {
 				req.PaidAmountMinor, req.PaidCurrency = env.PaidAmountMinor, env.PaidCurrency
+				req.BuyerEmail = env.BuyerEmail
 			}
 		}
 	} else {
@@ -1305,6 +1323,26 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
+	// Explicit rule (spec 65 §3.6): a payment_intents row created from a
+	// Checkout Session (hosted OR embedded, keyed by its cs_… id) is moved
+	// ONLY by checkout.session.completed / .expired / .async_payment_*. A
+	// payment_intent.* event never changes it — above all a
+	// payment_intent.payment_failed: a declined card leaves the session open
+	// for another card, and a terminal intent would swallow the later
+	// checkout.session.completed (a paid order lost). Today such an event
+	// carries the pi_… and finds no row by provider_payment_id anyway; this
+	// guard keeps it so if a lookup by pi_… is ever added.
+	if paymentIntentEventOnCheckoutSession(req.EventType, pi) {
+		h.recordWebhookEvent(req.EventType, webhookOutcomeIgnored)
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
+			"acknowledged": true,
+			"event_type":   req.EventType,
+			"processed":    false,
+			"reason":       "payment_intent events never move a checkout session payment",
+		})
+		return
+	}
+
 	// Apply state transition if the target state is reachable from the current state.
 	currentState := pi.State
 	if isTerminalPaymentIntentState(currentState) {
@@ -1388,9 +1426,12 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 	// InsertPaymentIntentEvent uses ON CONFLICT (provider_payment_id, event_type)
 	// DO NOTHING. If the event was already committed by a prior successful run,
 	// pgx.ErrNoRows is returned and the caller must return 204.
+	// The raw body is stored for audit WITHOUT any client_secret: an
+	// embedded (ui_mode=elements) checkout.session.* event carries the
+	// session's client secret, which is never stored (spec 65 §3.7).
 	var eventPayload []byte
 	if req.EventPayload != nil {
-		eventPayload, _ = json.Marshal(req.EventPayload)
+		eventPayload, _ = json.Marshal(stripClientSecrets(req.EventPayload))
 	}
 	_, evtErr := txQ.InsertPaymentIntentEvent(ctx,
 		pi.ID, req.ProviderPaymentID, req.EventType, eventPayload, &targetState,
@@ -1466,6 +1507,15 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
+	// Step 2a': a prepared widget order whose buyer was never attached (spec
+	// 65 early order, a tampered client) takes the e-mail address the
+	// provider collected, before anything below reads the order's address
+	// (the ticket letter, a late-payment notice). Behind a SAVEPOINT: it
+	// must never cost the payment.
+	if updated.State == "succeeded" && updated.CheckoutSessionID != nil {
+		h.fillMissingBuyerEmailTx(ctx, tx, *updated.CheckoutSessionID, req.BuyerEmail)
+	}
+
 	// Step 2b (HIGH-severity fix, 2026-09-13): complete the linked checkout
 	// session in the SAME transaction as the intent's succeeded transition.
 	// Before this fix checkout_sessions.state never left 'pricing_confirmed'
@@ -1492,10 +1542,33 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 	// mark-paid step, and reservation conversion are all gated on
 	// checkoutCompleted so a parked session never silently ships tickets for
 	// seats that may no longer be held.
+	//
+	// A checkout still in 'pricing_confirmed' whose ORDER was cancelled
+	// (orderClosedForPayment) is not completed either: completing it would
+	// end in MarkPaid refusing cancelled → paid, a 500 the provider retries
+	// forever. It takes the late-payment path below (full refund) — except
+	// an order superseded by the same buyer's new checkout whose hold is
+	// still active, which completes and is revived by the fulfilment tail.
 	checkoutCompleted := false
 	if updated.State == "succeeded" && updated.CheckoutSessionID != nil {
 		csID := *updated.CheckoutSessionID
-		_, compErr := txQ.CompleteCheckoutSession(ctx, csID, pi.ID.String(), pi.Provider)
+		closed, closedErr := orderClosedForPayment(ctx, tx, txQ, csID)
+		if closedErr != nil {
+			h.logger.Error("webhook: order state check before checkout completion failed",
+				slog.String("checkout_session_id", csID.String()),
+				slog.String("error", closedErr.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("webhook.checkout_completion_failed", "failed to complete checkout session", r))
+			return
+		}
+		var compErr error
+		if closed {
+			// Same branch as a guard miss: the checkout is re-read and the
+			// late-payment classification sees the cancelled order.
+			compErr = pgx.ErrNoRows
+		} else {
+			_, compErr = txQ.CompleteCheckoutSession(ctx, csID, pi.ID.String(), pi.Provider)
+		}
 		switch {
 		case compErr == nil:
 			checkoutCompleted = true
@@ -1506,6 +1579,33 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 				h.logger.Error("webhook: checkout session reload failed after complete guard miss",
 					slog.String("checkout_session_id", csID.String()),
 					slog.String("error", curErr.Error()),
+				)
+			case cur.State == "completed" && completedByAnotherPayment(cur, pi.ID):
+				// A SECOND payment for one checkout (spec 65 §3.5): the buyer
+				// paid on two provider sessions of the same hold (an embedded
+				// session and its hosted fallback). The order was paid once by
+				// the other intent; this money is parked for an operator to
+				// return (no automatic refund yet), and nothing is fulfilled a
+				// second time. manual_review is what the ops watchdog alerts
+				// on (opswatchdog checkManualReview), with this failure code.
+				parked, parkErr := parkDoublePaymentTx(ctx, txQ, pi.ID)
+				if parkErr != nil {
+					h.logger.Error("webhook: parking a double payment failed; rolling back so the provider redelivers",
+						slog.String("payment_intent_id", pi.ID.String()),
+						slog.String("checkout_session_id", csID.String()),
+						slog.String("error", parkErr.Error()),
+					)
+					httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+						"webhook.state_update_failed", "failed to update payment intent state", r))
+					return
+				}
+				updated = parked
+				h.logger.Error("DOUBLE PAYMENT: a checkout was paid twice; the second payment is parked in manual_review for a manual refund",
+					slog.String("payment_intent_id", pi.ID.String()),
+					slog.String("checkout_session_id", csID.String()),
+					slog.String("paid_by_payment_intent_id", derefStr(cur.PaymentIntentID)),
+					slog.Int64("amount", pi.Amount),
+					slog.String("currency", pi.Currency),
 				)
 			case cur.State == "completed":
 				// Replayed event, or a completion that raced this one home
@@ -1646,6 +1746,13 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 			)
 		}
 	}
+	// The checkout is paid: any OTHER page of the same hold that is still
+	// open (an embedded session and its hosted fallback, spec 65 §3.5) is
+	// closed at once, so the buyer cannot pay a second time. Best effort and
+	// after the commit; a second payment that still lands is parked above.
+	if checkoutCompleted {
+		h.expireOtherPaymentPages(ctx, *updated.CheckoutSessionID, pi.ID)
+	}
 	// NOTE: Ticket issuance is now handled exclusively by the checkout.issue_tickets
 	// worker job enqueued atomically above (feature #363). The inline h.issueTickets
 	// call was removed from this webhook handler to prevent a partial failure from
@@ -1684,6 +1791,67 @@ func (h *Handler) writeNotOurPayment(w http.ResponseWriter, _ *http.Request, eve
 		"processed":    false,
 		"reason":       "not an arena payment",
 	})
+}
+
+// orderClosedForPayment reports whether a succeeded payment must NOT complete
+// checkout csID because its order was already cancelled while the checkout
+// itself stayed open ('pricing_confirmed'). It locks the checkout row first
+// (the order buyer_cancel and hfeed's supersede take: checkout, then order),
+// so a concurrent cancel cannot slip in between this check and the
+// completion.
+//
+// One cancelled order is still payable: the newest cancelled event says
+// ordering.ReasonSupersededByNewCheckout and the checkout's reservation is
+// still live ('draft' or 'active') — the buyer started a new checkout but paid on the old page,
+// and the places are still theirs (orders closed that way before the
+// supersede fix, and races). Such an order is completed as usual and revived
+// by FulfillCompletedCheckoutTx.
+//
+// Every other state answers false and leaves the decision to the existing
+// completion logic. A read error is returned: the transaction is aborted and
+// the caller answers 500 so the provider redelivers.
+func orderClosedForPayment(ctx context.Context, tx pgx.Tx, txQ *gen.Queries, csID uuid.UUID) (bool, error) {
+	var state string
+	var reservationID uuid.UUID
+	err := tx.QueryRow(ctx, `SELECT state, reservation_id FROM checkout_sessions WHERE id = $1 FOR UPDATE`, csID).
+		Scan(&state, &reservationID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("lock checkout session: %w", err)
+	}
+	if state != "pricing_confirmed" {
+		return false, nil
+	}
+	ord, err := txQ.GetOrderByCheckoutSession(ctx, csID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("order lookup: %w", err)
+	}
+	if ord.Status != ordering.StatusCancelled {
+		return false, nil
+	}
+	events, err := txQ.ListOrderEventsByOrder(ctx, ord.ID)
+	if err != nil {
+		return false, fmt.Errorf("order events lookup: %w", err)
+	}
+	if ordering.LastCancelReason(events) != ordering.ReasonSupersededByNewCheckout {
+		return true, nil
+	}
+	var resState string
+	err = tx.QueryRow(ctx, `SELECT state FROM reservations WHERE id = $1`, reservationID).Scan(&resState)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return true, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("reservation lookup: %w", err)
+	}
+	// A live hold is 'draft' (a widget hold never leaves it before the sale)
+	// or 'active' — the same pair every hold query treats as live.
+	return resState != "draft" && resState != "active", nil
 }
 
 // parkCheckoutForManualReview moves a checkout session (and its order, when

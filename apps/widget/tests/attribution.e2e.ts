@@ -101,7 +101,7 @@ async function mockPlatform(page: Page): Promise<Seen> {
   });
   // Coming back from the payment page: the status answers 401 once, the widget
   // recovers silently and reads the refreshed token.
-  await page.route(`**/v1/public/checkout/${RETURN_TOKEN}`, (route) =>
+  await page.route(new RegExp(`/v1/public/checkout/${RETURN_TOKEN}([?].*)?$`), (route) =>
     route.fulfill({
       status: 401,
       contentType: 'application/json',
@@ -120,7 +120,7 @@ async function mockPlatform(page: Page): Promise<Seen> {
       }),
     });
   });
-  await page.route(`**/v1/public/checkout/${RETURN_TOKEN_REFRESHED}`, (route) =>
+  await page.route(new RegExp(`/v1/public/checkout/${RETURN_TOKEN_REFRESHED}([?].*)?$`), (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',

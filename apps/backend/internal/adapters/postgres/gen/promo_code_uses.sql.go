@@ -35,8 +35,12 @@ WITH pc AS (
             OR (o.status = 'pending_payment' AND o.expires_at > now()
                 AND o.reservation_id IS DISTINCT FROM $3::uuid
                 AND NOT (o.session_id IS NOT DISTINCT FROM $4::uuid
-                         AND (COALESCE(o.customer_id = $5::uuid, false)
-                              OR COALESCE($6::text <> '' AND lower(o.buyer_email) = lower($6::text), false)))))
+                         AND $6::text <> '' AND lower(btrim(o.buyer_email)) = lower(btrim($6::text))
+                         AND EXISTS (SELECT 1 FROM payment_intents pi
+                                     WHERE pi.checkout_session_id = o.checkout_session_id)
+                         AND NOT EXISTS (SELECT 1 FROM payment_intents pi
+                                         WHERE pi.checkout_session_id = o.checkout_session_id
+                                           AND pi.state <> 'failed'))))
 ), redeemed AS (
     SELECT r.customer_id AS redemption_customer_id, o.customer_id, o.buyer_email
     FROM   promo_code_redemptions r

@@ -73,7 +73,7 @@ const (
 	KindTickets      = "tickets"
 	KindShopSale     = "shop_sale"
 	KindShopDelivery = "shop_delivery"
-	// KindAds is the daily Meta ad summary (spec 66 M2, migration 0224, which
+	// KindAds is the daily Meta ad summary (spec 66 M2, migration 0226, which
 	// gave it to every organization subscription with 'tickets').
 	KindAds = "ads"
 )

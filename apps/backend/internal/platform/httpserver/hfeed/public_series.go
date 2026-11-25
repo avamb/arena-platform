@@ -508,7 +508,7 @@ func (h *Handler) HandlePublicSeriesPage(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	resp := hostedSeriesPageResponse{
-		Org:           hostedPageOrgResponse{Slug: org.OrgSlug, Name: org.OrgName},
+		Org:           hostedPageOrgResponse{Slug: org.OrgSlug, Name: org.OrgName, TrackingEnabled: h.trackingEnabled(ctx, org.OrgID)},
 		DefaultLocale: org.OrgDefaultLocale,
 		Series:        h.seriesResponse(ctx, series, eventIDs, sums[series.ID]),
 		Events:        h.hostedPageEventItems(ctx, orgSlug, events),

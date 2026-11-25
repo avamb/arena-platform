@@ -4354,11 +4354,18 @@ components:
           description: 1-based positional version number scoped to the plan.
         geometry:
           type: object
-          description: Canonical geometry blob (see §5.3 of the seating backlog).
+          description: |
+            Canonical geometry blob (see §5.3 of the seating backlog). Its
+            `decor_svg` holds drawing only: a version written from SVG or from
+            geometry JSON stores it through the decor allowlist, and decor
+            stored earlier is served through the same allowlist.
           additionalProperties: true
         geometry_checksum:
           type: string
-          description: Lowercase hex sha256 of the canonical JSON encoding of `geometry`.
+          description: |
+            Lowercase hex sha256 of the canonical JSON encoding of the STORED
+            geometry. It is not recomputed when the served `decor_svg` differs
+            from the stored one.
         svg_asset_media_id:
           type: [string, "null"]
           format: uuid
@@ -10062,6 +10069,77 @@ components:
             unauthenticated route.
           example: "stripe: API error (status 401, type invalid_request_error, code ): Invalid API Key provided: sk_test_****abcd"
 
+    PaymentMethodDomainItem:
+      type: object
+      required: [domain, source, enabled, apple_pay_status, google_pay_status, link_status, status_detail, last_error, checked_at]
+      description: |
+        One wallet domain (Apple Pay, Google Pay, Link) of a Stripe payment
+        configuration: the host arena registered in the organization's Stripe
+        account and what Stripe answered about it (spec 65 section 5).
+      properties:
+        domain:
+          type: string
+          description: Lower-case host without scheme or port.
+          example: "tickets.arenasoldout.com"
+        source:
+          type: string
+          enum: [platform, site]
+          description: |
+            `platform` - a host of the platform itself (STRIPE_WALLET_DOMAINS).
+            `site` - a site host listed on one of the organization's Stripe
+            sales channels.
+          example: "platform"
+        enabled:
+          type: [boolean, "null"]
+          description: Whether Stripe has the domain enabled. Null while Stripe has not answered yet.
+          example: true
+        apple_pay_status:
+          type: [string, "null"]
+          description: Stripe's Apple Pay status for the domain (`active` or `inactive`). Null while unknown.
+          example: "active"
+        google_pay_status:
+          type: [string, "null"]
+          description: Stripe's Google Pay status for the domain (`active` or `inactive`). Null while unknown.
+          example: "active"
+        link_status:
+          type: [string, "null"]
+          description: Stripe's Link status for the domain (`active` or `inactive`). Null while unknown.
+          example: "active"
+        status_detail:
+          type: [string, "null"]
+          description: Stripe's own explanation when a wallet is not active. Null otherwise.
+          example: null
+        last_error:
+          type: [string, "null"]
+          description: |
+            Stripe's wording of the last failure to register the domain. Null
+            when the last attempt succeeded. Operator-facing only.
+          example: null
+        checked_at:
+          type: [string, "null"]
+          format: date-time
+          description: When arena last asked Stripe about the domain. Null if it never has.
+          example: "2026-11-22T12:00:00Z"
+
+    ChannelSiteDomains:
+      type: object
+      required: [domains]
+      description: |
+        The site hosts of one sales channel. They are registered as wallet
+        domains in the organization's Stripe account (spec 65 section 5).
+      properties:
+        domains:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+          description: |
+            Lower-case hosts without scheme, port or path, at most 10. A PUT
+            accepts bare hosts or URLs and stores the host; an IP address,
+            `localhost`, a name without a dot and an invalid label are refused.
+            Repeats are stored once.
+          example: ["www.example.com"]
+
     CreatePaymentProviderConfigRequest:
       type: object
       required: [provider]
@@ -11636,6 +11714,14 @@ components:
           type: [string, "null"]
           description: Public URL of the organization logo, or null when none is set.
           example: "https://api.arenasoldout.com/v1/media-files/01929d0e-0e47-7000-8000-000000000099"
+        tracking_enabled:
+          type: boolean
+          description: |
+            True when the organizer measures ads (Meta, Google): an active Meta
+            connection with a selected dataset, or manual Meta or GA4
+            conversion credentials. The page then shows a cookie banner and
+            sets no cookie before the visitor chooses; false means no banner.
+          example: false
 
     HostedPageEvent:
       type: object
@@ -19456,6 +19542,39 @@ components:
             anything is held; a free (0) cart is compared too. The refusal is
             never stored for the `Idempotency-Key`: repeat with the new total
             (normally under a new key).
+        capabilities:
+          type: array
+          description: |
+            What the widget can do with the payment (spec 65 §3.5), optional.
+            `stripe_elements`: it can run the embedded Stripe payment form.
+            The answer then carries a `payment` block and an empty
+            `redirect_url` when the deployment (`STRIPE_ELEMENTS_ENABLED`),
+            the sales channel (`settings.checkout.stripe_ui` is not `hosted`)
+            and the organization's Stripe configuration (a `publishable_key`)
+            all allow it; otherwise the hosted page as before. Absent (an
+            older widget) always gets the hosted page; unknown values are
+            ignored.
+          items:
+            type: string
+            description: A capability name, e.g. `stripe_elements`.
+        prepare:
+          type: boolean
+          description: |
+            Spec 65 early order, optional. `true`: the hold, the order and
+            the embedded Stripe session are created now, WITHOUT the buyer
+            (the widget opens its order sheet); the buyer is attached at
+            "Pay" with `POST /v1/public/checkout/{checkout_token}/buyer`.
+            Requires `capabilities` to contain `stripe_elements`. The body
+            must not carry `buyer`, `holder_email`, `promo_code`,
+            `marketing_consent` or `consent` (422
+            `checkout.prepare_unavailable`); the channel must give the
+            embedded form (409 `checkout.prepare_unavailable` before any
+            hold); a zero total is refused the same way and its hold
+            released; when the embedded session cannot be created there is
+            no hosted page: the order is cancelled, the hold released, 409
+            `checkout.prepare_unavailable`. Required name, phone and consent
+            are checked at attach. The 201 is the embedded answer plus
+            `prepared: true`.
         tracking_consent:
           deprecated: true
           description: |
@@ -20768,6 +20887,9 @@ components:
             empty string when the deployment has no return URL configured, in
             which case the caller should simply show the order status for the
             returned `checkout_token`.
+
+            An empty string also when the payment is embedded (`payment` is
+            set, spec 65): the buyer pays on this page and does not leave it.
         checkout_token:
           type: string
           description: Opaque high-entropy token for WID-0b anonymous order lookup.
@@ -20790,9 +20912,115 @@ components:
             When the provider's page stops taking the payment (RFC 3339 UTC):
             the channel's payment window from now. This is what a site counts
             down to; `expires_at` is a grace later. Present for a paid cart.
+        payment:
+          description: |
+            The embedded payment form (spec 65 §3.4), present only when the
+            request announced `capabilities: ["stripe_elements"]` and the
+            payment is embedded; `redirect_url` is then empty. Absent for a
+            hosted page, a zero-total cart and every provider without an
+            embedded mode.
+          allOf:
+            - $ref: "#/components/schemas/EmbeddedCheckoutPayment"
         marketing_discount_applied:
           type: boolean
           description: True when the cart's discount is the reward for the marketing consent tick.
+        prepared:
+          type: boolean
+          description: |
+            True for a prepared order (`prepare: true`, spec 65): it has no
+            buyer yet; attach one with
+            `POST /v1/public/checkout/{checkout_token}/buyer` before the
+            payment is confirmed. Absent otherwise.
+
+    CheckoutBuyerAttachRequest:
+      type: object
+      required: [buyer]
+      description: |
+        Body of `POST /v1/public/checkout/{checkout_token}/buyer`: the buyer
+        of a prepared order (spec 65), checked with the rules of
+        `checkout/start`.
+      properties:
+        buyer:
+          description: The buyer's e-mail address (required), name and phone.
+          allOf:
+            - $ref: "#/components/schemas/PublicBuyerInfo"
+        consent:
+          description: The tick on the sale terms, as in `checkout/start`.
+          allOf:
+            - $ref: "#/components/schemas/PublicCheckoutConsent"
+        locale:
+          type: string
+          description: The buyer's language, as in `checkout/start`; an unknown value is ignored.
+
+    CheckoutBuyerAttachResponse:
+      type: object
+      required: [checkout_token, status, expires_at, payment_expires_at]
+      description: Response of `POST /v1/public/checkout/{checkout_token}/buyer`.
+      properties:
+        checkout_token:
+          type: string
+          description: The checkout token, echoed.
+        status:
+          type: string
+          description: Always `pending`.
+        expires_at:
+          type: string
+          format: date-time
+          description: Hold expiry (RFC 3339 UTC), unchanged by the attach.
+        payment_expires_at:
+          type: string
+          format: date-time
+          description: When the provider's form stops taking the payment (RFC 3339 UTC).
+
+    EmbeddedCheckoutPayment:
+      type: object
+      required: [provider, mode, client_secret, publishable_key]
+      description: |
+        What the widget initialises the provider's browser SDK with for an
+        embedded payment (spec 65 §3.4, Stripe Checkout Session with
+        `ui_mode=elements`, Stripe.js `initCheckoutElementsSdk`). The card
+        fields live in the provider's iframe; no card data reaches arena.
+        Only the provider's "session completed and paid" webhook pays the
+        order: the widget polls the order status after `confirm()`.
+      properties:
+        provider:
+          type: string
+          description: The payment provider (`stripe`).
+        mode:
+          type: string
+          description: Always `elements` (the embedded mode).
+        client_secret:
+          type: string
+          description: |
+            The Checkout Session's client secret. Handed to the buyer's
+            browser only; arena never stores or logs it, and reads it back
+            from the provider for the order status. Not to be put in a URL.
+            Empty in an answer replayed for a repeated `Idempotency-Key`
+            (the stored copy never holds it): read it from
+            `GET /v1/public/checkout/{checkout_token}`.
+        publishable_key:
+          type: string
+          description: |
+            The organizer's public Stripe key (`pk_test_…` / `pk_live_…`) of
+            the account the session was created on.
+
+    CheckoutHostedFallbackResponse:
+      type: object
+      required: [checkout_token, redirect_url, payment_expires_at]
+      description: |
+        Response of `POST /v1/public/checkout/{checkout_token}/hosted`: the
+        provider-hosted page that replaces the embedded payment form.
+      properties:
+        checkout_token:
+          type: string
+          description: The checkout token of the order.
+        redirect_url:
+          type: string
+          description: Absolute URL of the provider's hosted payment page; the widget navigates to it.
+        payment_expires_at:
+          type: string
+          format: date-time
+          description: When the hosted page stops taking the payment (RFC 3339 UTC), the same deadline as before.
 
     PublicFeedCheckoutQuoteRequest:
       type: object
@@ -21028,6 +21256,19 @@ components:
             of rebuilding their cart. Omitted once the order is paid, expired
             or failed, and omitted once the hosted session's own expiry has
             passed.
+        payment:
+          description: |
+            The embedded payment form of the order (spec 65 §3.7), present
+            only while the order is `pending`, its hold has not expired and
+            its newest payment is an open embedded session, and only when the
+            request asks for it with `?include=payment` (without it the
+            status makes no provider call). The client secret is read back
+            from the provider on every such request and never stored; the
+            answer is sent with `Cache-Control: no-store`. Omitted after the
+            payment, after the hold expired and once the form was replaced
+            by a hosted page (`payment_url`).
+          allOf:
+            - $ref: "#/components/schemas/EmbeddedCheckoutPayment"
         event:
           description: |
             What the order is for: event name and slug, the session start
@@ -23027,7 +23268,7 @@ components:
           description: Session-scoped monotonic version cursor for seat status. Also returned by seat-status endpoints so the client can resume with `since_version`.
         geometry_checksum:
           type: string
-          description: sha256 hex digest of the canonicalised geometry JSON. Doubles as the strong ETag for this endpoint.
+          description: sha256 hex digest of the canonicalised STORED geometry JSON. Doubles as the strong ETag for this endpoint. It is not recomputed when the served `geometry.decor_svg` differs from the stored one (decor is served drawing only).
         capacity_seated:
           type: integer
           description: Seated capacity of the plan version (informational).
@@ -32468,6 +32709,15 @@ paths:
         `Cache-Control: no-cache`: the seat map turns over on every
         reservation, so caches MUST revalidate. A matching
         `If-None-Match` short-circuits with 304.
+
+        The plan's decor is drawing only: it keeps an allowlist of SVG
+        drawing elements and attributes plus Inkscape and Sodipodi
+        metadata; scripts, style elements, HTML, event attributes and
+        references outside the document (other than embedded PNG, JPEG,
+        GIF and WebP pictures) are left out. The ETag describes the stored
+        geometry. The answer carries `Content-Security-Policy: default-src
+        'none'; img-src data:; style-src 'unsafe-inline'; font-src data:;
+        sandbox` and `X-Content-Type-Options: nosniff`.
       tags: [compat]
       parameters:
         - name: type
@@ -41515,9 +41765,13 @@ paths:
       operationId: listSeatingPlansByVenue
       summary: List seating plans attached to a venue
       description: |
-        Returns every non-deleted seating plan whose venue_id matches the
-        path parameter, newest first. Requires JWT authentication and the
-        seating_plan.read permission on the seating scope.
+        Returns the non-deleted seating plans whose venue_id matches the
+        path parameter, newest first, that the caller may read: every plan
+        whose visibility is not private, and the private plans of the
+        caller's own organizations (an organization API key reads those of
+        its organization). A platform superadmin reads every plan. Requires
+        JWT authentication and the seating_plan.read permission on the
+        seating scope.
       tags: [v1, seating]
       security:
         - bearerAuth: []
@@ -41649,8 +41903,10 @@ paths:
       operationId: getSeatingPlan
       summary: Get a single seating plan by ID
       description: |
-        Returns a single active seating plan regardless of owning organization.
-        Requires JWT authentication and the seating_plan.read permission.
+        Returns a single seating plan. A private plan is read only by its
+        owner organization and by a platform superadmin; for any other
+        caller it answers 404 seating_plan.not_found. Requires JWT
+        authentication and the seating_plan.read permission.
       tags: [v1, seating]
       security:
         - bearerAuth: []
@@ -42438,7 +42694,10 @@ paths:
         (version_number descending), so the admin drawer can render a version
         history table. The plan's current version is identified by matching
         each row's `id` against the parent plan's `current_version_id`.
-        Requires JWT authentication and the seating_plan.read permission.
+        A private plan is read only by its owner organization and by a
+        platform superadmin; for any other caller it answers 404
+        seating_plan.not_found. Requires JWT authentication and the
+        seating_plan.read permission.
       tags: [v1, seating]
       security:
         - bearerAuth: []
@@ -42509,7 +42768,9 @@ paths:
         + checksums the result; validation errors are returned with 422
         including per-element details. The plan's current_version_id is
         atomically bumped to the newly-created version in the same
-        transaction. Requires JWT authentication and the
+        transaction. The decor of either input is stored through the decor
+        allowlist (drawing only), and the checksum is computed over the
+        stored geometry. Requires JWT authentication and the
         seating_plan.update.own permission. A plan that a platform
         superadmin verified (`visibility` `operator_verified`) is a template
         and must not change without a new verification: when the OWNER
@@ -42602,8 +42863,11 @@ paths:
       summary: Get a single seating plan version by positional version number
       description: |
         Reads a single seating_plan_versions row identified by its plan-scoped
-        1-based version_number (not the version UUID). Requires JWT
-        authentication and the seating_plan.read permission.
+        1-based version_number (not the version UUID). A version of a
+        private plan is read only by the plan's owner organization and by a
+        platform superadmin; for any other caller it answers 404
+        seating_plan.version_not_found. Requires JWT authentication and the
+        seating_plan.read permission.
       tags: [v1, seating]
       security:
         - bearerAuth: []
@@ -43023,6 +43287,15 @@ paths:
         every reservation, so edge caches MUST NOT store the payload
         without revalidation. Matching `If-None-Match` short-circuits
         with a 304.
+
+        The plan's decor is drawing only: it keeps an allowlist of SVG
+        drawing elements and attributes plus Inkscape and Sodipodi
+        metadata; scripts, style elements, HTML, event attributes and
+        references outside the document (other than embedded PNG, JPEG,
+        GIF and WebP pictures) are left out. The ETag describes the stored
+        geometry. The answer carries `Content-Security-Policy: default-src
+        'none'; img-src data:; style-src 'unsafe-inline'; font-src data:;
+        sandbox` and `X-Content-Type-Options: nosniff`.
       tags: [v1, seating]
       parameters:
         - name: id
@@ -43302,6 +43575,79 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/payment-configs/{id}/payment-method-domains:
+    get:
+      operationId: listPaymentMethodDomains
+      summary: List the wallet domains of a payment config
+      description: |
+        Returns the hosts registered for Apple Pay and Google Pay in the
+        Stripe account of this config, with the status Stripe gave each one
+        and the last error, if any. The platform hosts come first. Empty for
+        a config that is not Stripe or has not been synced yet. Requires
+        `payment_config.read`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the payment config.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The wallet domains of the config
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [payment_method_domains]
+                properties:
+                  payment_method_domains:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PaymentMethodDomainItem"
+                    description: One entry per registered wallet domain.
+        "400":
+          description: Malformed org_id or id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks payment_config.read or is not a member of the organization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found or owned by another org
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not wired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{org_id}/payment-configs/{id}/verify:
     post:
       operationId: verifyPaymentProviderConfig
@@ -43348,10 +43694,20 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [payment_config, webhook_warnings]
+                required: [payment_config, webhook_warnings, payment_method_domains]
                 properties:
                   payment_config:
                     $ref: "#/components/schemas/PaymentProviderConfigItem"
+                  payment_method_domains:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PaymentMethodDomainItem"
+                    description: |
+                      The wallet domains of a Stripe config after this check
+                      registered the wanted hosts in the Stripe account. Empty
+                      for other providers and when the credential was not
+                      accepted. A Stripe failure shows as `last_error` on the
+                      domain and never fails this request.
                   webhook_warnings:
                     type: array
                     items:
@@ -61183,7 +61539,11 @@ paths:
             used with a different body (also while that first request is
             still running), or `checkout.price_changed` when `expected_total`
             differs from the computed total (`details.expected_total`,
-            `details.actual_total`, `details.currency`; nothing was held).
+            `details.actual_total`, `details.currency`; nothing was held),
+            or `checkout.prepare_unavailable` for `prepare: true` when the
+            channel has no embedded form, the total is zero or the embedded
+            session could not be created (`details.reason`; nothing stays
+            held).
           content:
             application/json:
               schema:
@@ -61209,6 +61569,10 @@ paths:
             `checkout.consent_required` when the session's `consent.required`
             is true and the body carries no `consent` with `accepted: true`;
             refused before any hold is taken.
+
+            `checkout.prepare_unavailable` for `prepare: true` without the
+            `stripe_elements` capability or with a buyer, a promo code, a
+            marketing tick or a consent (`details.reason`).
           content:
             application/json:
               schema:
@@ -62382,6 +62746,18 @@ paths:
           description: |
             Opaque high-entropy hex token minted at checkout session creation.
             64 lowercase hex characters (32 random bytes).
+        - name: include
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            Comma-separated optional parts of the answer. `payment` asks for
+            the embedded payment form (`payment`, spec 65 §3.7), which costs
+            a call to the payment provider to read the client secret back.
+            Without it the answer carries no `payment` object and no provider
+            is called, so status polling stays cheap. Unknown values are
+            ignored.
       responses:
         "200":
           description: Checkout status returned successfully.
@@ -63043,9 +63419,15 @@ paths:
         * unpaid, unknown, or no answer from the provider: the order is
           cancelled. A payment the provider confirms later is refunded in
           full (`late_payment: refund_requested` on the order status);
-        * a provider whose payment cannot be read back (Stripe) whose page
-          was handed out: 409 `checkout.payment_in_progress`; its page
-          expires by itself.
+        * a provider whose hosted page cannot be read back (Stripe) and was
+          handed out: 409 `checkout.payment_in_progress`; its page expires
+          by itself;
+        * an open embedded payment (spec 65, also a prepared order the
+          widget cancels when its sheet closes): it is expired at the
+          provider first. Expired: the cancel goes on (order cancelled,
+          places released). The provider refuses because it is paid or a
+          payment is being processed, or does not answer: 409
+          `checkout.payment_in_progress`, nothing is cancelled.
 
         Idempotent: a repeat answers `cancelled: true` again and writes
         nothing. No JWT: the `checkout_token` is the credential.
@@ -63091,6 +63473,178 @@ paths:
             Database unavailable (`dependency.database_unavailable`), the
             checkout could not be read (`checkout.lookup_failed`) or the
             cancel could not be written (`checkout.cancel_failed`); retry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/checkout/{checkout_token}/hosted:
+    post:
+      operationId: switchPublicCheckoutToHostedPage
+      summary: Replace the embedded payment form with the hosted page
+      description: |
+        Spec 65 §3.5. The widget could not run the embedded Stripe form
+        (Stripe.js did not load within 5 seconds, the host's CSP refused it,
+        or initialisation failed) and asks for the provider's hosted page on
+        the SAME hold.
+
+        The embedded session is expired first. If the provider refuses
+        because it is already paid or a payment on it is being processed,
+        nothing is created and the answer is 409
+        `checkout.payment_in_progress`; the widget polls the order status.
+        Otherwise the hosted page is created with a new payment record, and
+        the embedded one is marked superseded: if it is paid after all, that
+        payment still pays the order, the hosted page is closed, and a
+        second payment of both pages goes to an operator as a double
+        charge. A repeated call while the hosted page is open answers the
+        same page.
+
+        The page must not outlive the hold and the provider refuses a page
+        that lives less than 30 minutes, so the switch is possible only
+        early in the payment window; later it answers 409
+        `checkout.hosted_fallback_unavailable` without touching the embedded
+        form. No body, no JWT: the `checkout_token` is the credential. Sent
+        with `Cache-Control: no-store`.
+      tags: [v1]
+      parameters:
+        - name: checkout_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Opaque checkout token from `checkout/start`.
+      responses:
+        "200":
+          description: The hosted page to send the buyer to.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutHostedFallbackResponse"
+        "404":
+          description: No checkout for this token (`checkout.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            `checkout.payment_in_progress`: the embedded session is paid or
+            being paid, nothing was created; poll the order status.
+            `checkout.hosted_fallback_unavailable`: too little of the payment
+            window is left for a hosted page; the embedded form stays.
+            `checkout.not_payable`: the order is paid, expired or cancelled,
+            or has no embedded payment to replace
+            (`details.status` is the order status).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limit exceeded (`checkout.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            The provider did not answer or did not create the page
+            (`checkout.payment_start_failed`), online payment is not set up
+            (`checkout.payment_not_configured`), or the database is
+            unavailable (`dependency.database_unavailable`); retry. Never
+            502: the route sits behind Cloudflare.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/checkout/{checkout_token}/buyer:
+    post:
+      operationId: attachPublicCheckoutBuyer
+      summary: Attach the buyer to a prepared order
+      description: |
+        Spec 65 early order. `checkout/start` with `prepare: true` created
+        the hold, the order and the embedded Stripe session without the
+        buyer; the widget sends the buyer here when the buyer presses
+        "Pay", then gives the e-mail address to Stripe and confirms. This
+        route does not call Stripe.
+
+        The checks are those of `checkout/start`: a valid e-mail address,
+        the name and phone the channel requires, the sale-terms consent the
+        channel asks for. In one transaction the order's buyer is written,
+        the customer resolved, the buyer's previous unpaid order on the
+        same session closed and the consent recorded.
+
+        The same e-mail address again answers 200 and writes nothing;
+        another address is 409 `checkout.buyer_already_set`. No JWT: the
+        `checkout_token` is the credential. Sent with
+        `Cache-Control: no-store`.
+      tags: [v1]
+      parameters:
+        - name: checkout_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Opaque checkout token from `checkout/start`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutBuyerAttachRequest"
+      responses:
+        "200":
+          description: The buyer is attached (now or by an earlier call).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutBuyerAttachResponse"
+        "400":
+          description: |
+            The body is not JSON (`checkout.invalid_json`,
+            `checkout.invalid_body`), has no e-mail address
+            (`checkout.missing_holder_email`) or a malformed one
+            (`checkout.invalid_email`, the envelope of `checkout/start`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No checkout for this token (`checkout.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            `checkout.not_payable`: the order is paid, expired or cancelled,
+            or its payment window is over (`details.status` is the order
+            status). `checkout.buyer_already_set`: the order already has
+            another e-mail address.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            `checkout.buyer_name_required`, `checkout.buyer_phone_required`
+            or `checkout.consent_required`, with the rules of
+            `checkout/start`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limit exceeded (`checkout.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            The database is unavailable (`dependency.database_unavailable`)
+            or the buyer could not be saved (`checkout.unavailable`); retry.
+            Never 502: the route sits behind Cloudflare.
           content:
             application/json:
               schema:
@@ -63716,6 +64270,136 @@ paths:
                 $ref: "#/components/schemas/ChannelGatewayCredentialSummary"
         "400":
           description: X-Admin-Reason header missing or empty.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor is not a member of the target organization or lacks `channel.update`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Sales channel not found in the given organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/channels/{id}/site-domains:
+    get:
+      operationId: getChannelSiteDomains
+      summary: Get the site hosts of a sales channel
+      description: |
+        Returns the hosts of the organizer's own sites that sell through this
+        channel. They are registered for Apple Pay and Google Pay in the
+        organization's Stripe account. Requires `channel.update`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: Organization UUID that scopes this request (tenant isolation).
+          schema: { type: string, format: uuid }
+        - name: id
+          in: path
+          required: true
+          description: Sales channel UUID.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The site hosts of the channel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelSiteDomains"
+        "400":
+          description: Malformed org_id or id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor is not a member of the target organization or lacks `channel.update`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Sales channel not found in the given organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      operationId: putChannelSiteDomains
+      summary: Replace the site hosts of a sales channel
+      description: |
+        Replaces the whole list. Each entry may be a bare host or a URL; the
+        lower-case host is stored, without scheme, port or path. Repeats are
+        stored once. An IP address, `localhost`, a name without a dot and an
+        invalid label are refused with `channel.invalid_site_domain` and
+        details (`index`, `value`, `reason`); more than 10 hosts are refused
+        with `channel.too_many_site_domains`. After a change arena queues a
+        job that registers the hosts in the organization's Stripe account.
+        Emits the audit action `v1.channel.site_domains.update`. Requires
+        `channel.update`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: Organization UUID that scopes this request (tenant isolation).
+          schema: { type: string, format: uuid }
+        - name: id
+          in: path
+          required: true
+          description: Sales channel UUID.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelSiteDomains"
+      responses:
+        "200":
+          description: The stored site hosts, normalized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelSiteDomains"
+        "400":
+          description: Malformed body, an invalid host or more than 10 hosts.
           content:
             application/json:
               schema:

@@ -1,4 +1,4 @@
--- 0224_meta_ad_insights.sql — the organizer's Meta ad spend, read from the
+-- 0226_meta_ad_insights.sql — the organizer's Meta ad spend, read from the
 -- Marketing API with the token of the Meta connection (spec
 -- 08_architecture/66 section 5, stage M2, package internal/platform/metainsights).
 --

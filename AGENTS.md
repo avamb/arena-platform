@@ -387,6 +387,9 @@ Stripe, Flitt and AllPay hosted checkout, payment modules, webhook state machine
 * PayPlus (internal/adapters/payplus, spec 47 §3, do…
 * A buyer e-mail is checked by emailaddr.Valid befor…
 * The legacy webhook routes bind an event to the organization whose secret verified it
+* Wallet domains are registered in EACH organizer's Stripe account by arena (platform hosts + channel site domains, never CORS_ALLOWED_ORIGINS)
+* A prepared checkout has no buyer until Pay (prepare:true, POST .../buyer, plain carts only, unattached orders hidden)
+* A new checkout never cancels a payable order; a payment for a cancelled order never answers 500 (supersede)
 
 ### [Meta integration](docs/agents/meta-integration.md)
 
@@ -405,7 +408,7 @@ Connection of an organizer's Meta business, the encrypted BISU token, CAPI throu
 * Meta's app webhook is GET|POST /v1/integrations/meta/webhook: verify token, X-Hub-Signature-256, only business_integration_uninstall deletes
 * Meta's deauthorize deletes the connection at once, like data deletion; only the owner's disconnect leaves revoked
 * The Page preview GET .../integrations/meta/page is read live and never stored; the picture comes as a data: URL
-* Meta spend lives in ad_spend_daily (0224), one upserted row per org + ad + day, account timezone and currency
+* Meta spend lives in ad_spend_daily (0226), one upserted row per org + ad + day, account timezone and currency
 * The sync is meta.insights_sweep (10 min, DB only) queuing meta.insights_sync: backfill 90 d, scheduled, interval, manual
 * Every M2 Graph call is counted in meta_graph_calls (Access Tier: 500 calls / 15 days, errors < 15 %)
 * Orders are tied to Meta ads by ids in the attribution only; a shared campaign is not split, MER only in one currency
@@ -510,6 +513,8 @@ Places, categories, hold and quota lock order, plan geometry, seat layouts, venu
 * A category has ONE colour for the organizer and the buyer: tier colour, else the home plan category's, else the palette
 * The bot's "Split seats by price" fills an EMPTY open category of the same price before creating a new one (loEmptyOpen)
 * A category of a plan-bound session that owns no place is never offered or sold (feed, gate, gateway, widget)
+* A private seating plan is read only by its owner organization and a platform superadmin (planReadAccess)
+* Plan decor is an allowlist of drawing, on every write and on read (SanitizeDecorSVG, cache, stored checksum, SetPlanSVGHeaders)
 
 ### [Events, sessions, promoters and sales channels](docs/agents/catalog-sessions-channels.md)
 

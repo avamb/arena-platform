@@ -18,6 +18,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/paymentdomains"
 )
 
 const pgUniqueViolation = "23505"
@@ -43,6 +44,8 @@ type Handler struct {
 	// callbackBase is the public API origin providers post events to; it
 	// builds the per-config webhook URL the subscription check looks for.
 	callbackBase string
+	// domainSyncer registers wallet domains after a Stripe save (E3); nil off.
+	domainSyncer *paymentdomains.Syncer
 }
 
 // New constructs a Handler from the caller's dependencies. Nil queries and a

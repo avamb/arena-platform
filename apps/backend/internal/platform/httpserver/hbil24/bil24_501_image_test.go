@@ -91,6 +91,12 @@ func TestBil24_501_Image_ServesSBT10Plan(t *testing.T) {
 	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
 		t.Errorf("Cache-Control = %q, want no-cache", cc)
 	}
+	if csp := rec.Header().Get("Content-Security-Policy"); csp != "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; sandbox" {
+		t.Errorf("Content-Security-Policy = %q", csp)
+	}
+	if nosniff := rec.Header().Get("X-Content-Type-Options"); nosniff != "nosniff" {
+		t.Errorf("X-Content-Type-Options = %q, want nosniff", nosniff)
+	}
 	// Both halves are load-bearing: geometry alone would keep serving a
 	// stale free/taken bitmap after every reservation.
 	wantETag := `"` + checksum + `:11"`

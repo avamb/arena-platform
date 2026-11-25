@@ -48,6 +48,7 @@ import {
 } from "react";
 import { Route as RootRoute } from "./__root";
 import { ApiError, authedFetch } from "@/lib/api/client";
+import { SiteDomainsEditor } from "@/components/SiteDomainsEditor";
 import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useScope } from "@/lib/auth/ScopeContext";
@@ -1293,6 +1294,13 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
           <GatewayCredentialSection
             orgId={mode.channel.org_id}
             channelId={mode.channel.id}
+          />
+        ) : null}
+        {isEdit ? (
+          <SiteDomainsEditor
+            orgId={mode.channel.org_id}
+            channelId={mode.channel.id}
+            canUpdate
           />
         ) : null}
         {isEdit ? (

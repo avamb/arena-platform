@@ -13,6 +13,9 @@
       materials: { type: 'String', attribute: 'materials' },
       funnel: { type: 'String', attribute: 'funnel' },
       promo: { type: 'String', attribute: 'promo' },
+      trackingConsent: { type: 'String', attribute: 'tracking-consent' },
+      trackingConsentVersion: { type: 'String', attribute: 'tracking-consent-version' },
+      preloadPayment: { type: 'String', attribute: 'preload-payment' },
     },
   }}
 />
@@ -26,10 +29,18 @@
    */
   import { onMount, untrack } from 'svelte';
   import { parseLocale, parseFeedToken, parseSessionId, isRtlLocale } from './utils.js';
-  import { fetchFeedEvent, fetchFeedEvents, postCheckoutStart, postCheckoutQuote, getCheckoutStatus, postCheckoutRecover, ApiError } from './api.js';
+  import { fetchFeedEvent, fetchFeedEvents, postCheckoutStart, postCheckoutQuote, getCheckoutStatus, postCheckoutRecover, postCheckoutPrepare, postCheckoutBuyer, postCheckoutCancel, ApiError } from './api.js';
   import type { FeedSession, FeedEvent, Geometry, CategoryPrice, SeatStatusValue } from './types.js';
-  import type { BuyerFormValues } from './lib/checkout.js';
-  import { buildCheckoutPayload, buildQuotePayload, getCheckoutI18n, parseConflictsFromApiError, conflictKeySet, filterCartWithoutConflicts } from './lib/checkout.js';
+  import type { BuyerFormValues, CheckoutPreparePayload } from './lib/checkout.js';
+  import { buildBuyerPayload, buildCheckoutPayload, buildQuotePayload, getCheckoutI18n, parseConflictsFromApiError, conflictKeySet, filterCartWithoutConflicts } from './lib/checkout.js';
+  import { cartTotal } from './lib/cart.js';
+  import {
+    createPreparedCheckout,
+    isPlainCart,
+    loadsStripeEarly,
+    preloadMode,
+    type PreparedCheckout,
+  } from './lib/preparedCheckout.js';
   import { cartQuoteKey, promoErrorMessage, isPromoErrorCode } from './lib/promo.js';
   import {
     afterCheckoutErrorChange,
@@ -51,6 +62,7 @@
   import { consentErrorMessage, consentPayload, forceConsent } from './lib/consent.js';
   import { isMarketingRewardRefusal, marketingErrorMessage, marketingPayload } from './lib/marketing.js';
   import { captureAttribution, type AttributionPayload } from './lib/attribution.js';
+  import { buildBuyerContext, captureClickIds, isTrackingGranted, persistClickIds, readBrowserCookies, type ClickIds } from './lib/buyerContext.js';
   import { createFunnel, parseFunnelHost, type Funnel, type FunnelStep } from './lib/funnel.js';
   import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
   import { dispatchWidgetEvent, ARENA_EVENTS } from './lib/events.js';
@@ -89,6 +101,10 @@
   import SeatedTierCard from './components/SeatedTierCard.svelte';
   import GaAreaPopover from './components/GaAreaPopover.svelte';
   import OrderStatus from './components/OrderStatus.svelte';
+  import PaymentScreen from './components/PaymentScreen.svelte';
+  import { loadStripeJs } from './lib/stripeElements.js';
+  import { createPaymentStepsRegistry } from './lib/paymentSteps.js';
+  import type { PaymentBlock } from './lib/checkout.js';
   import Materials from './components/Materials.svelte';
   import { PLATFORM_BADGE_URL, getPlatformBadgeStrings, showPlatformBadge } from './lib/platformBadge.js';
 
@@ -140,9 +156,22 @@
      * page hands over the `?promo=` of its address). Without it the widget
      * reads `?promo=` from the page address itself. */
     promo?: string;
+    /** 'granted' or 'denied': the host page's tracking-consent answer. Absent
+     * or anything else: no buyer_context is sent. Read when checkout starts. */
+    trackingConsent?: string;
+    /** Version of the consent text the host showed (sent with the answer). */
+    trackingConsentVersion?: string;
+    /** 'stripe': the host knows its channel pays through embedded Stripe, so
+     * the widget loads Stripe.js as soon as the checkout sheet opens, while
+     * the buyer types the e-mail, instead of after "Pay". 'checkout' does
+     * that AND prepares the order and the Stripe session when the sheet opens
+     * with a plain cart, so the card form loads hidden while the buyer types
+     * (lib/preparedCheckout.ts). Anything else (or absent) loads Stripe.js
+     * only when the platform answers with it. */
+    preloadPayment?: string;
   }
 
-  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '', frame = '', materials = '', funnel = '', promo: promoAttribute = '' }: Props = $props();
+  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '', frame = '', materials = '', funnel = '', promo: promoAttribute = '', trackingConsent = '', trackingConsentVersion = '', preloadPayment = '' }: Props = $props();
 
   /**
    * Host element reference for CustomEvent dispatch (WID-S5).
@@ -233,6 +262,18 @@
 
   let stage = $state<WidgetStage>('selecting');
   let cartSheetOpen = $state(false);
+
+  // Stripe.js takes ~0.3 s plus its own connections; loaded after "Pay" it sat
+  // on the critical path to the card form. With preload-payment="stripe" it
+  // starts when the sheet opens. loadStripeJs is one shared promise, so the
+  // payment screen reuses it; a failure here is ignored and retried there.
+  // preload-payment="checkout" implies it.
+  const preload = $derived(preloadMode(preloadPayment));
+  $effect(() => {
+    if (cartSheetOpen && loadsStripeEarly(preload)) {
+      loadStripeJs().catch(() => {});
+    }
+  });
 
   // ── Selection state ────────────────────────────────────────────────────────
 
@@ -328,6 +369,7 @@
   // Spec 43: the sales link / utm touch that brought the buyer, read from the
   // page address on mount (kept 7 days per feed token). Sent with checkout/start.
   let attribution: AttributionPayload | null = null;
+  let clickIds: ClickIds = {};
   // Spec 50 A7: the anonymous buyer-funnel beacon (view, session_open,
   // seats_chosen). It reads its utm from the same stored touch as the checkout.
   // Built on first use, when the props are known; a step is sent once per
@@ -357,6 +399,28 @@
    */
   let conflictKeys = $state<ReadonlySet<string>>(new Set());
   let orderStatus = $state<CheckoutStatusResponse | null>(null);
+
+  // Spec 65 E4: the on-page payment screen. The block carries the Stripe
+  // client secret, so it lives in memory only (never in a storage or a URL)
+  // and is dropped the moment the screen is left.
+  let paymentBlock = $state<PaymentBlock | null>(null);
+  let paymentExpiresAt = $state<string | null>(null);
+  let paymentTotal = $state<number | null>(null);
+  let paymentCurrency = $state('');
+  // True when the buyer came back from a bank's own page (the URL carries the
+  // token): the platform is asked first, the form shows only if still unpaid.
+  let paymentAwaitReturn = $state(false);
+  // Spec 65 E6a: the screen reports its steps here; the only listener turns
+  // them into the `arena:checkout` CustomEvent for the host page. Nothing is
+  // sent to any analytics system from the widget.
+  // One bus per checkout token, so a second purchase in this tab reports again.
+  const paymentSteps = createPaymentStepsRegistry(({ step, ...rest }) => {
+    dispatchWidgetEvent(host, ARENA_EVENTS.CHECKOUT, { step, ...rest });
+  });
+  function clearPaymentBlock(): void {
+    paymentBlock = null;
+    paymentAwaitReturn = false;
+  }
   let orderActionLoading = $state(false);
   let orderActionError = $state<string | null>(null);
 
@@ -486,6 +550,126 @@
     untrack(() => void marketingQuoter.refresh(ticked));
   });
 
+  // ── Early order (preload-payment="checkout") ───────────────────────────────
+  //
+  // A plain cart (no promo code, no marketing tick, total > 0) is prepared when
+  // the sheet opens: order, hold and Stripe session without a buyer, and the
+  // payment screen loads HIDDEN below. "Pay" attaches the buyer and reveals it.
+  // Everything else, and every failure, goes the classic way at "Pay".
+
+  // The prepared, unattached checkout (its block carries the client secret:
+  // memory only, like paymentBlock).
+  let preparedView = $state.raw<PreparedCheckout | null>(null);
+
+  const prepareWanted = $derived(
+    preload === 'checkout' &&
+      cartSheetOpen &&
+      stage === 'selecting' &&
+      !checkoutToken &&
+      !!selectedSession &&
+      !!normFeedToken &&
+      isPlainCart({
+        promoCode: promo.code,
+        promoBusy: promo.busy,
+        marketingTicked,
+        lineCount: cart.lines.length,
+        total: cartTotal(cart.lines).amount,
+      }),
+  );
+
+  /** checkout/start with prepare:true for the cart as it is now (no buyer, promo, marketing or consent). */
+  function buildPreparePayload(): CheckoutPreparePayload {
+    const payload: CheckoutPreparePayload = {
+      session_id: selectedSession?.id ?? '',
+      capabilities: ['stripe_elements'],
+      prepare: true,
+    };
+    const seats = [...selectedSeatKeys];
+    const gaItems = buildGaItems(gaQuantities);
+    if (seats.length > 0) payload.seats = seats;
+    if (gaItems.length > 0) payload.ga_items = gaItems;
+    const returnUrl = buildReturnUrl();
+    if (returnUrl) payload.return_url = returnUrl;
+    if (typeof normLocale === 'string' && normLocale.length > 0) payload.locale = normLocale;
+    const ctx = buildBuyerContext({
+      consent: trackingConsent,
+      consentVersion: trackingConsentVersion,
+      clickIds,
+      cookies: readBrowserCookies(),
+      pageUrl: window.location.origin + window.location.pathname,
+    });
+    if (ctx) payload.buyer_context = ctx;
+    // Spec 43: the same sales link / utm touch as the classic start.
+    return attribution ? { ...payload, attribution } : payload;
+  }
+
+  const preparedCtl = createPreparedCheckout({
+    prepare: (idempotencyKey) =>
+      postCheckoutPrepare(normFeedToken, buildPreparePayload(), resolvedApiBase, idempotencyKey),
+    attach: (token, body) => postCheckoutBuyer(token, body, resolvedApiBase),
+    cancel: (token) => postCheckoutCancel(token, resolvedApiBase, { keepalive: true }),
+    onChange: (p) => {
+      preparedView = p;
+      // The sheet's countdown runs on the prepared hold.
+      if (!checkoutToken) holdExpiresAt = p ? p.expiresAt : null;
+    },
+  });
+
+  $effect(() => {
+    // The sheet opened or closed, the cart, the promo code or the tick changed.
+    const want = prepareWanted;
+    const key = cartKey;
+    untrack(() => preparedCtl.update(want, key));
+  });
+
+  onMount(() => {
+    // The page is left: cancel what was prepared (keepalive), so the places
+    // are free at once instead of when the hold runs out.
+    const onPageHide = (): void => preparedCtl.pageHide();
+    const onPageShow = (e: PageTransitionEvent): void => {
+      if (e.persisted) preparedCtl.update(prepareWanted, cartKey);
+    };
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('pageshow', onPageShow);
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('pageshow', onPageShow);
+      preparedCtl.destroy();
+    };
+  });
+
+  /**
+   * The one payment screen: shown for a checkout on stage 'paying', HIDDEN for
+   * a prepared one. Both have the same place in the DOM and the same key (the
+   * checkout token), so "Pay" on a prepared checkout reveals the very screen
+   * that loaded Stripe: its iframes are never moved or mounted again.
+   */
+  const payView = $derived.by(() => {
+    if (stage === 'paying' && paymentBlock && checkoutToken) {
+      return {
+        token: checkoutToken,
+        block: paymentBlock,
+        shown: true,
+        deferred: false,
+        expiresAt: paymentExpiresAt,
+        total: paymentTotal,
+        currency: paymentCurrency,
+      };
+    }
+    if (preparedView && stage === 'selecting') {
+      return {
+        token: preparedView.token,
+        block: preparedView.block,
+        shown: false,
+        deferred: true,
+        expiresAt: preparedView.paymentExpiresAt,
+        total: preparedView.total,
+        currency: preparedView.currency,
+      };
+    }
+    return null;
+  });
+
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   // ── Feed loading ────────────────────────────────────────────────────────────
@@ -512,6 +696,13 @@
     // Spec 43: remember which sales link or utm label brought the buyer. The
     // address is only read, never changed (its query also carries checkout_token).
     attribution = captureAttribution(normFeedToken, window.location.search);
+    // Storage is read and written only after the host granted tracking; the
+    // ids of this page view are kept in memory either way.
+    const consentGranted = isTrackingGranted(trackingConsent);
+    clickIds = captureClickIds(normFeedToken, window.location.search, {
+      storage: consentGranted ? undefined : null,
+      persist: consentGranted,
+    });
     wantedPromo = resolveWantedPromo(normFeedToken, promoAttribute, window.location.search);
 
     // Check for checkout_token in URL or sessionStorage first.
@@ -523,7 +714,7 @@
       // Restore order status view.
       checkoutToken = resumeToken;
       stage = 'order-status';
-      loadOrderStatus(resumeToken);
+      void loadOrderStatus(resumeToken, true, urlToken !== null);
       return;
     }
 
@@ -781,8 +972,72 @@
     }
   }
 
+  /**
+   * "Pay" with a prepared checkout: attach the buyer, reveal the hidden screen.
+   * Returns false when the classic checkout/start must run instead.
+   */
+  async function payPrepared(values: BuyerFormValues): Promise<boolean> {
+    if (!selectedSession) return false;
+    const session = selectedSession;
+    promoCtl.cancelPending();
+    checkoutSubmitting = true;
+    checkoutError = null;
+    const outcome = await preparedCtl.pay({
+      plain: prepareWanted && values.marketingAccepted !== true,
+      cartKey,
+      email: values.email.trim(),
+      body: buildBuyerPayload(
+        values,
+        session.buyer_fields as import('./lib/checkout.js').BuyerFieldConfig[],
+        {
+          consent: consentPayload(values.consentAccepted === true, normLocale) ?? undefined,
+          locale: typeof normLocale === 'string' && normLocale.length > 0 ? normLocale : undefined,
+        },
+      ),
+    });
+    // A second press while the first is running: nothing to do.
+    if (outcome.kind === 'busy') return true;
+    checkoutSubmitting = false;
+    if (outcome.kind === 'classic') return false;
+    if (outcome.kind === 'refused') {
+      showCheckoutError(outcome.error, values);
+      return true;
+    }
+    const p = outcome.prepared;
+    // All in one synchronous step: the payment screen keeps its key (the token)
+    // while it turns from hidden to shown, so Stripe is not mounted again.
+    preparedCtl.consume(p.token);
+    rememberCheckoutToken(p.token);
+    checkoutToken = p.token;
+    holdExpiresAt = outcome.attach?.expires_at ?? p.expiresAt;
+    dispatchWidgetEvent(host, ARENA_EVENTS.PAYMENT_STARTED, {
+      checkoutToken: p.token,
+      sessionId: session.id,
+    });
+    paymentBlock = p.block;
+    paymentAwaitReturn = false;
+    paymentExpiresAt = outcome.attach?.payment_expires_at ?? p.paymentExpiresAt;
+    paymentTotal = p.total;
+    paymentCurrency = p.currency;
+    cartSheetOpen = false;
+    stage = 'paying';
+    return true;
+  }
+
   async function handleCheckout(values: BuyerFormValues): Promise<void> {
     if (!selectedSession || !normFeedToken) return;
+    // preload-payment="checkout": a prepared checkout is used when it can be;
+    // otherwise (or after any failure) the classic path below runs unchanged.
+    if (preload === 'checkout') {
+      let handled = false;
+      try {
+        handled = await payPrepared(values);
+      } catch {
+        handled = false;
+        checkoutSubmitting = false;
+      }
+      if (handled) return;
+    }
     // An applied code whose quote is not for this very cart must not ride
     // along: the sheet would show one total and the payment page another.
     // An Apply still waiting when the buyer pays is dropped: the order goes
@@ -811,6 +1066,22 @@
       // string or hash we sent along would be dropped or would collide.
       const returnUrl = buildReturnUrl();
       if (returnUrl) payload.return_url = returnUrl;
+      // Spec 65: say the widget can pay on its own page. A platform that does
+      // not know the word answers with the hosted page as before.
+      payload.capabilities = ['stripe_elements'];
+      // Tracking context for server-side Meta / GA4: only when the host page
+      // answered granted or denied; read now, the attribute may change later.
+      const cookies = readBrowserCookies();
+      // Consent given after mount: the ids seen on this page are kept now.
+      if (isTrackingGranted(trackingConsent)) persistClickIds(normFeedToken, clickIds);
+      const buyerCtx = buildBuyerContext({
+        consent: trackingConsent,
+        consentVersion: trackingConsentVersion,
+        clickIds,
+        cookies,
+        pageUrl: window.location.origin + window.location.pathname,
+      });
+      if (buyerCtx) payload.buyer_context = buyerCtx;
       // Spec 43: the sales link / utm touch, when there is one. The platform
       // cleans it and never refuses a purchase over it.
       if (attribution) payload.attribution = attribution;
@@ -842,6 +1113,24 @@
         checkoutToken: response.checkout_token,
         sessionId: selectedSession.id,
       });
+      // An embedded payment: pay on this page. No `payment` key means the
+      // classic hosted redirect below.
+      const embedded = response.payment;
+      if (
+        embedded &&
+        embedded.mode === 'elements' &&
+        embedded.client_secret &&
+        embedded.publishable_key
+      ) {
+        paymentBlock = embedded;
+        paymentAwaitReturn = false;
+        paymentExpiresAt = response.payment_expires_at ?? response.expires_at ?? null;
+        paymentTotal = response.pricing?.total ?? null;
+        paymentCurrency = response.pricing?.currency ?? '';
+        cartSheetOpen = false;
+        stage = 'paying';
+        return;
+      }
       const redirectUrl = (response.redirect_url ?? '').trim();
       if (!redirectUrl) {
         // No hosted payment page to send the buyer to (e.g. no return URL is
@@ -855,6 +1144,15 @@
       // Redirect to payment provider.
       window.location.href = redirectUrl;
     } catch (err) {
+      showCheckoutError(err, values);
+    } finally {
+      checkoutSubmitting = false;
+    }
+  }
+
+  /** The sheet's message after checkout/start (or the prepared attach) refused. */
+  function showCheckoutError(err: unknown, values: BuyerFormValues): void {
+    {
       // WID-S2: parse nested envelope 409 seat conflicts and surface them on
       // the seat map via the conflictKeys prop (SeatMapView → applyConflictHighlight).
       const conflicts = parseConflictsFromApiError(err);
@@ -898,18 +1196,47 @@
         conflictKeys = new Set();
         checkoutError = makeCheckoutError('other', buyerErrorText(err, normLocale, t.error_checkout));
       }
-    } finally {
-      checkoutSubmitting = false;
     }
   }
 
   // ── Order status ───────────────────────────────────────────────────────────
 
-  async function loadOrderStatus(token: string): Promise<void> {
+  /**
+   * @param resume  The page was (re)opened on an unfinished checkout: ask the
+   *                platform to re-supply the embedded payment block, and if it
+   *                does, show the payment screen instead of a bare "pending".
+   * @param fromBank The address carried the token, i.e. the buyer returned from
+   *                 a bank's own page.
+   */
+  async function loadOrderStatus(token: string, resume = false, fromBank = false): Promise<void> {
     try {
-      orderStatus = await getCheckoutStatus(token, resolvedApiBase);
+      orderStatus = resume
+        ? await getCheckoutStatus(token, resolvedApiBase, { includePayment: true })
+        : await getCheckoutStatus(token, resolvedApiBase);
       // WID-T3: use server-side expires_at from order-status to drive countdown.
       holdExpiresAt = orderStatus.expires_at ?? null;
+      const resumed = orderStatus.payment;
+      if (
+        resume &&
+        orderStatus.status === 'pending' &&
+        resumed &&
+        resumed.mode === 'elements' &&
+        resumed.client_secret &&
+        resumed.publishable_key
+      ) {
+        paymentBlock = resumed;
+        // The secret now lives in paymentBlock only: take it off the status
+        // object that other views read.
+        orderStatus.payment = null;
+        paymentAwaitReturn = fromBank;
+        // The clock counts to the end of the payment window, not to the hold
+        // (which ends a grace later).
+        paymentExpiresAt = orderStatus.payment_expires_at ?? orderStatus.expires_at ?? null;
+        paymentTotal = orderStatus.total ?? null;
+        paymentCurrency = orderStatus.currency ?? '';
+        stage = 'paying';
+        return;
+      }
       // WID-S5: notify host page about terminal order outcomes.
       const status = orderStatus.status;
       // A finished order must not follow the buyer around. The stored token
@@ -950,7 +1277,7 @@
             expiresAt: recovered.expires_at,
           });
           // Reload status with the refreshed token.
-          await loadOrderStatus(newToken);
+          await loadOrderStatus(newToken, resume, fromBank);
           return;
         } catch (recoveryErr) {
           // Recovery also failed — clear token, set visible error, fall back
@@ -1028,7 +1355,38 @@
     checkoutError = null;
   }
 
+  /**
+   * The payment screen is done: the order is paid or reached a final state.
+   * The status is read once more through the ordinary path so the host-page
+   * events (order paid / failed) and the token clean-up stay in ONE place.
+   */
+  async function finishPayment(): Promise<void> {
+    clearPaymentBlock();
+    stage = 'order-status';
+    if (checkoutToken) await loadOrderStatus(checkoutToken);
+  }
+
+  /**
+   * "Back" from the payment screen to the contacts screen. The cart (seats and
+   * tickets) stays as it is and the hold keeps running on the server; pressing
+   * "continue" there starts the checkout again, which replaces the open order.
+   * The Stripe secret is dropped.
+   */
+  function backToContacts(): void {
+    clearPaymentBlock();
+    checkoutError = null;
+    stage = 'selecting';
+    cartSheetOpen = true;
+  }
+
+  /** "Start again" on the payment screen: the order cannot be paid here any more. */
+  function restartPayment(): void {
+    handleRetry();
+  }
+
   function handleRetry(): void {
+    // The Stripe client secret never outlives the screen that used it.
+    clearPaymentBlock();
     // Clear token and return to selecting stage.
     forgetCheckoutToken();
     checkoutToken = null;
@@ -1054,6 +1412,7 @@
    * the seats just sold are not offered again.
    */
   function handleDone(): void {
+    clearPaymentBlock();
     checkoutToken = null;
     orderStatus = null;
     selectedSeatKeys = new Set();
@@ -1100,6 +1459,10 @@
         actionError={orderActionError}
       />
     </div>
+
+  {:else if stage === 'paying' && paymentBlock && checkoutToken}
+    <!-- Pay on this page: the payment screen below, outside this chain, so a
+         prepared (hidden) screen is the same instance once shown. -->
 
   {:else if stage === 'redirecting'}
     <!-- ── Redirecting to payment ─────────────────────────────────────────── -->
@@ -1325,6 +1688,47 @@
       <!-- No feed-token provided -->
     </div>
   {/if}
+
+  <!-- ── Pay on this page (Stripe Checkout Elements, spec 65 E4) ───────────
+       Shown on stage 'paying'. With preload-payment="checkout" the screen of a
+       prepared checkout is rendered here HIDDEN (laid out off-screen, invisible,
+       aria-hidden, inert; never display:none, Stripe must be able to measure it)
+       at the very place it is shown later: "Pay" only flips the class. -->
+  {#if payView}
+    {#key payView.token}
+      <div
+        class="arena-pay-slot"
+        class:arena-pay-slot--hidden={!payView.shown}
+        aria-hidden={payView.shown ? undefined : 'true'}
+        inert={!payView.shown}
+        data-testid="payment-slot"
+        data-shown={payView.shown ? 'true' : 'false'}
+      >
+        <div class="arena-tickets-frame">
+          <PaymentScreen
+            payment={payView.block}
+            checkoutToken={payView.token}
+            apiBase={resolvedApiBase}
+            locale={normLocale}
+            expiresAt={payView.expiresAt}
+            total={payView.total}
+            currency={payView.currency}
+            organizerName={selectedSession?.consent?.seller_legal_name ?? ''}
+            awaitReturn={payView.shown && paymentAwaitReturn}
+            steps={paymentSteps.forToken(payView.token)}
+            deferred={payView.deferred}
+            shown={payView.shown}
+            onHandle={preparedCtl.setHandle}
+            onDeferredFailure={preparedCtl.markFailed}
+            onPaid={finishPayment}
+            onTerminal={finishPayment}
+            onRestart={restartPayment}
+            onBack={cart.lines.length > 0 ? backToContacts : undefined}
+          />
+        </div>
+      </div>
+    {/key}
+  {/if}
 </div>
 
 <style>
@@ -1480,6 +1884,22 @@
 
   .arena-tickets-placeholder {
     display: none;
+  }
+
+  /* A prepared payment screen loading while the buyer types: laid out (Stripe
+     measures its mount points) but off-screen and invisible. Never
+     display:none, and never moved: showing it only drops this class. */
+  .arena-pay-slot {
+    display: block;
+    height: 100%;
+  }
+  .arena-pay-slot--hidden {
+    position: fixed;
+    top: 0;
+    left: -10000px;
+    width: min(100vw, 520px);
+    visibility: hidden;
+    pointer-events: none;
   }
 
   .arena-tickets-platform {

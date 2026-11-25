@@ -5,7 +5,7 @@ import type { Geometry, CategoryPrice, Tier, FeedSession, FeedEvent } from '../t
 import type { PublicGAItem } from './checkout.js';
 import { buildSeatedLines, buildGaLine, emptyCart, type CartState } from './cart.js';
 
-export type WidgetStage = 'selecting' | 'buyer-form' | 'redirecting' | 'order-status';
+export type WidgetStage = 'selecting' | 'buyer-form' | 'redirecting' | 'paying' | 'order-status';
 
 const CHECKOUT_TOKEN_KEY = 'arena_checkout_token';
 
