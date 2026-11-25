@@ -95,6 +95,38 @@ func TestEventStatusHTTP_PublishGateKeepsSessionsDraft(t *testing.T) {
 	}
 }
 
+// A session a partner sells owns no categories, and publishing its event must
+// not demand one (staging 2026-11-25: the event center could create such an
+// event but not publish it). A platform session of the same event without a
+// category still blocks the publication.
+func TestEventStatusHTTP_PublishAcceptsPartnerSoldSessionWithoutTiers(t *testing.T) {
+	f := newEvStatusFixture(t)
+	eventID, sessionID := f.event("draft")
+	f.exec(`UPDATE sessions SET status='draft' WHERE id=$1`, sessionID)
+	f.exec(`DELETE FROM ticket_tiers WHERE session_id=$1`, sessionID)
+	f.exec(`UPDATE sessions SET sales_mode='external', external_ticket_url='https://www.eventim.de/event/1',
+	  external_seller_name='Eventim' WHERE id=$1`, sessionID)
+
+	platform := uuid.New()
+	f.exec(`INSERT INTO sessions (id,event_id,venue_id,start_at,end_at,capacity_total,status,currency,currency_source)
+	 SELECT $1,event_id,venue_id,start_at,end_at,capacity_total,'draft',currency,currency_source FROM sessions WHERE id=$2`, platform, sessionID)
+	st, body := f.do(f.key, http.MethodPost, f.base(eventID)+"/status", `{"status":"published"}`)
+	if st != http.StatusUnprocessableEntity || evCode(body) != "event.publish_requires_priced_tier" {
+		t.Fatalf("platform session without a category: %d %v", st, body)
+	}
+
+	f.exec(`DELETE FROM sessions WHERE id=$1`, platform)
+	if st, body := f.do(f.key, http.MethodPost, f.base(eventID)+"/status", `{"status":"published"}`); st != http.StatusOK {
+		t.Fatalf("publish partner-sold session: %d %v", st, body)
+	}
+	if f.status(eventID) != "published" || publicationSessionStatus(t, f, sessionID) != "scheduled" {
+		t.Fatalf("event %q session %q", f.status(eventID), publicationSessionStatus(t, f, sessionID))
+	}
+	if !f.feedHas(eventID) {
+		t.Error("the published partner-sold event must be in its feed")
+	}
+}
+
 func TestEventStatusHTTP_SessionFailureRollsBackPublish(t *testing.T) {
 	f := newEvStatusFixture(t)
 	eventID, sessionID := f.event("draft")
