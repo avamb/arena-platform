@@ -82,6 +82,65 @@ func TestMarkPaid_RefusesDeadOrder(t *testing.T) {
 	}
 }
 
+// A superseded order whose own payment still arrived is revived: cancelled →
+// paid, and the paid event says where it came from.
+func TestMarkPaidAfterSupersede_RevivesACancelledOrder(t *testing.T) {
+	f, row := storeWithOrder(StatusCancelled)
+	now := time.Date(2026, 11, 24, 10, 0, 0, 0, time.UTC)
+
+	got, err := MarkPaidAfterSupersede(context.Background(), f, PaidInput{
+		OrderID: row.ID, OrgID: row.OrgID,
+		Payload: map[string]any{"payment_intent_id": "pi_9"}, Now: now,
+	})
+	if err != nil {
+		t.Fatalf("MarkPaidAfterSupersede: %v", err)
+	}
+	if got.Status != StatusPaid || got.PaidAt == nil || !got.PaidAt.Equal(now) {
+		t.Fatalf("order = %+v, want paid at %v", got, now)
+	}
+	if len(f.events) != 1 || f.events[0].Type != EventPaid {
+		t.Fatalf("events = %+v, want one paid event", f.events)
+	}
+	p := string(f.events[0].Payload)
+	if !strings.Contains(p, "pi_9") || !strings.Contains(p, `"revived_from":"`+ReasonSupersededByNewCheckout+`"`) {
+		t.Fatalf("payload = %s, want the payment and revived_from", p)
+	}
+}
+
+func TestMarkPaidAfterSupersede_PendingAndPaidBehaveLikeMarkPaid(t *testing.T) {
+	f, row := storeWithOrder(StatusPendingPayment)
+	if got, err := MarkPaidAfterSupersede(context.Background(), f, PaidInput{OrderID: row.ID, OrgID: row.OrgID}); err != nil || got.Status != StatusPaid {
+		t.Fatalf("pending: %+v %v; want paid", got, err)
+	}
+	if strings.Contains(string(f.events[0].Payload), "revived_from") {
+		t.Fatalf("a pending order was marked revived: %s", f.events[0].Payload)
+	}
+	if _, err := MarkPaidAfterSupersede(context.Background(), f, PaidInput{OrderID: row.ID, OrgID: row.OrgID}); err != nil || len(f.events) != 1 {
+		t.Fatalf("replay: err %v, events %d; want a no-op", err, len(f.events))
+	}
+	f2, expired := storeWithOrder(StatusExpired)
+	if _, err := MarkPaidAfterSupersede(context.Background(), f2, PaidInput{OrderID: expired.ID, OrgID: expired.OrgID}); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("expired: err = %v, want ErrInvalidTransition", err)
+	}
+}
+
+func TestLastCancelReason_ReadsTheNewestCancelledEvent(t *testing.T) {
+	ev := func(typ, payload string) gen.OrderEventRow {
+		return gen.OrderEventRow{Type: typ, Payload: []byte(payload)}
+	}
+	if got := LastCancelReason(nil); got != "" {
+		t.Fatalf("no events = %q", got)
+	}
+	got := LastCancelReason([]gen.OrderEventRow{
+		ev(EventCancelled, `{"reason":"buyer_cancelled"}`),
+		ev(EventCancelled, `{"reason":"`+ReasonSupersededByNewCheckout+`"}`),
+		ev(EventPaid, `{}`),
+	})
+	if got != ReasonSupersededByNewCheckout {
+		t.Fatalf("reason = %q, want the newest cancelled reason", got)
+	}
+}
+
 func TestCancel_StampsCancelledAtWithReason(t *testing.T) {
 	f, row := storeWithOrder(StatusPendingPayment)
 	now := time.Date(2026, 9, 5, 11, 0, 0, 0, time.UTC)

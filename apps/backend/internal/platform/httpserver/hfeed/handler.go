@@ -128,6 +128,11 @@ type Handler struct {
 	// dies FIRST (window), the seats are released only after the grace.
 	paymentWindow time.Duration
 	paymentGrace  time.Duration
+	// embeddedCheckout is the deployment switch of the embedded checkout
+	// (STRIPE_ELEMENTS_ENABLED, spec 65 §3.5, WithEmbeddedCheckout). Off:
+	// every new payment gets the hosted page, whatever the widget and the
+	// channel allow. Existing embedded sessions keep working.
+	embeddedCheckout bool
 	// eventQueries resolves the event title used as the hosted page's line
 	// item label. Optional: a lookup failure degrades to a generic label
 	// rather than failing the sale.
@@ -202,6 +207,13 @@ func (h *Handler) WithPayments(
 	h.paymentWindow = window
 	h.paymentGrace = grace
 	h.eventQueries = eventQ
+	return h
+}
+
+// WithEmbeddedCheckout sets the deployment switch of the embedded checkout
+// (STRIPE_ELEMENTS_ENABLED). Returns the receiver for chaining.
+func (h *Handler) WithEmbeddedCheckout(enabled bool) *Handler {
+	h.embeddedCheckout = enabled
 	return h
 }
 

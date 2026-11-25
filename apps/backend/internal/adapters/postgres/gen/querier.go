@@ -257,6 +257,11 @@ type Querier interface {
 	InsertHostedPaymentAttempt(ctx context.Context, checkoutSessionID *uuid.UUID, orgID uuid.UUID, provider string, providerPaymentID string, amount int64, currency string) (PaymentIntentRow, error)
 	SetPaymentIntentHostedURL(ctx context.Context, id uuid.UUID, hostedCheckoutURL string) (bool, error)
 	ListStalledHostedPaymentAttempts(ctx context.Context, provider string, createdBefore time.Time, limit int32) ([]StalledHostedPaymentAttemptRow, error)
+	// Spec 65: an embedded checkout session, its hosted fallback and the
+	// checkout a new payment page is created for.
+	InsertEmbeddedPaymentIntent(ctx context.Context, checkoutSessionID *uuid.UUID, orgID uuid.UUID, provider string, providerPaymentID string, amount int64, currency string) (PaymentIntentRow, error)
+	MarkPaymentIntentSuperseded(ctx context.Context, id uuid.UUID) (bool, error)
+	GetCheckoutPaymentContext(ctx context.Context, checkoutSessionID uuid.UUID) (CheckoutPaymentContextRow, error)
 	GetPaymentIntentByID(ctx context.Context, id uuid.UUID) (PaymentIntentRow, error)
 	// GetPaymentIntentByIDForUpdate is the row-locking variant; call inside a tx (feature #361).
 	GetPaymentIntentByIDForUpdate(ctx context.Context, id uuid.UUID) (PaymentIntentRow, error)

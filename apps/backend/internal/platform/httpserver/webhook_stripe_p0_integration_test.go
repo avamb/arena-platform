@@ -236,10 +236,14 @@ func TestStripeWebhookP0_PaidEventMustNameWhatWasCharged(t *testing.T) {
 		{"session, underpaid, legacy route", "checkout.session.completed", legacy, "eur", -100, "manual_review"},
 		{"session, no amount", "checkout.session.completed", "config", "eur", -1 << 40, "manual_review"},
 		{"session, no amount, legacy route", "checkout.session.completed", legacy, "eur", -1 << 40, "manual_review"},
-		{"payment_intent, underpaid", "payment_intent.succeeded", "config", "eur", -100, "manual_review"},
-		{"payment_intent, no amount", "payment_intent.succeeded", "config", "eur", -1 << 40, "manual_review"},
-		{"payment_intent, no currency", "payment_intent.succeeded", "config", "", 0, "manual_review"},
-		{"payment_intent, the total", "payment_intent.succeeded", "config", "eur", 0, "succeeded"},
+		// Spec 65 §3.6: a payment keyed by a Checkout Session (cs_…) is moved
+		// ONLY by checkout.session.* events; a payment_intent.* event for it is
+		// acknowledged and ignored, whatever amount it names — it can neither
+		// pay the order nor park it.
+		{"payment_intent, underpaid", "payment_intent.succeeded", "config", "eur", -100, "ignored"},
+		{"payment_intent, no amount", "payment_intent.succeeded", "config", "eur", -1 << 40, "ignored"},
+		{"payment_intent, no currency", "payment_intent.succeeded", "config", "", 0, "ignored"},
+		{"payment_intent, the total", "payment_intent.succeeded", "config", "eur", 0, "ignored"},
 		{"session, the total, legacy route", "checkout.session.completed", legacy, "EUR", 0, "succeeded"},
 	}
 	for _, tc := range cases {
@@ -253,6 +257,20 @@ func TestStripeWebhookP0_PaidEventMustNameWhatWasCharged(t *testing.T) {
 			path = f.configWebhookPath()
 		}
 		code, body := postSignedWebhookTo(t, srv, path, stripePaidEvent(tc.eventType, providerID, amount, tc.currency), f.webhookSecret)
+		if tc.want == "ignored" {
+			if code != http.StatusOK || processed(t, body) {
+				t.Errorf("%s: webhook = %d processed=%v; want 200 and not processed; body: %s", tc.name, code, processed(t, body), body)
+			}
+			pi, err := q.GetPaymentIntentByProviderID(ctx, providerID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fl := fulfilmentOf(t, ctx, pool, csID, providerID)
+			if pi.State == "succeeded" || pi.State == "manual_review" || fl.IssueJobs != 0 {
+				t.Errorf("%s: intent %q with %d issue jobs; a payment_intent event must not move a checkout session payment", tc.name, pi.State, fl.IssueJobs)
+			}
+			continue
+		}
 		if code != http.StatusOK || !processed(t, body) {
 			t.Errorf("%s: webhook = %d processed=%v; body: %s", tc.name, code, processed(t, body), body)
 			continue

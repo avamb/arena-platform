@@ -246,6 +246,10 @@ type HostedCheckoutRequest struct {
 	// it: a page asked again for a recorded attempt must come from the
 	// provider the attempt is filed under.
 	ExpectProvider string
+	// IdempotencyKey, when set, replaces the reference as the provider
+	// idempotency key. The hosted fallback of an embedded session sets it:
+	// the reference alone already named the embedded session.
+	IdempotencyKey string
 }
 
 // PaymentAttempt is a hosted payment recorded before the provider call.
@@ -263,6 +267,15 @@ func (r HostedCheckoutRequest) reference() string {
 		return r.ShopOrderID.String()
 	}
 	return r.CheckoutSessionID.String()
+}
+
+// idempotencyKey is the provider idempotency key of the request: the
+// override when set, else the reference.
+func (r HostedCheckoutRequest) idempotencyKey() string {
+	if k := strings.TrimSpace(r.IdempotencyKey); k != "" {
+		return k
+	}
+	return r.reference()
 }
 
 // HostedCheckoutResult is the provider's answer: where to send the buyer and
@@ -397,6 +410,9 @@ type hostedPaymentConfig struct {
 	// itself said about the credential the last time arena asked ("ok",
 	// "failed" or "unverified").
 	verification string
+	// channelSettings is sales_channels.settings of the channel the payment
+	// is taken on (settings.checkout.stripe_ui, payment_embedded.go).
+	channelSettings []byte
 }
 
 // resolveConfig is the ONE implementation of "can this org take money on this
@@ -455,11 +471,12 @@ func (s *StripePaymentStarter) resolveConfig(ctx context.Context, orgID, channel
 		}
 	}
 	return hostedPaymentConfig{
-		entry:        entry,
-		secrets:      payments.SecretsFromJSON(cfg.Secrets),
-		configID:     cfg.ID.String(),
-		mode:         cfg.Mode,
-		verification: cfg.VerificationStatus,
+		entry:           entry,
+		secrets:         payments.SecretsFromJSON(cfg.Secrets),
+		configID:        cfg.ID.String(),
+		mode:            cfg.Mode,
+		verification:    cfg.VerificationStatus,
+		channelSettings: ch.Settings,
 	}, nil
 }
 
@@ -614,7 +631,7 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 		CallbackURL:   callbackURL,
 		// One hosted session per arena checkout: a retry of this call for the
 		// same checkout must return the SAME cs_ id, never charge twice.
-		IdempotencyKey: req.reference(),
+		IdempotencyKey: req.idempotencyKey(),
 	})
 	if err != nil {
 		// Name the config the key came from. An org keeps one row per

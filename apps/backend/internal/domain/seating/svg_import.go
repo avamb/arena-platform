@@ -742,13 +742,30 @@ type xmlChild struct {
 // declaration and processing instructions the importer does not care
 // about).
 func parseXMLTree(raw []byte) (*xmlNode, error) {
+	return parseXMLTreeTokens(raw, false)
+}
+
+// parseXMLTreeTokens is parseXMLTree with a choice of tokenizer. With
+// rawPrefixes the names keep the prefix written in the document and the
+// known prefixes are mapped back to their namespace (see
+// SanitizeDecorSVG); without it the decoder resolves namespaces.
+func parseXMLTreeTokens(raw []byte, rawPrefixes bool) (*xmlNode, error) {
 	dec := xml.NewDecoder(bytes.NewReader(raw))
 	dec.Strict = false
 	dec.Entity = xml.HTMLEntity
 	var root *xmlNode
 	stack := []*xmlNode{}
 	for {
-		tok, err := dec.Token()
+		var tok xml.Token
+		var err error
+		if rawPrefixes {
+			tok, err = dec.RawToken()
+			if se, ok := tok.(xml.StartElement); ok {
+				tok = resolveKnownPrefixes(se)
+			}
+		} else {
+			tok, err = dec.Token()
+		}
 		if err == io.EOF {
 			break
 		}
@@ -950,7 +967,7 @@ func normalizeKey(s string) string {
 // any subtree rooted at a node in skip.
 func writeChild(buf *bytes.Buffer, ch xmlChild, skip map[*xmlNode]bool) {
 	if ch.element != nil {
-		if skip[ch.element] {
+		if skip[ch.element] || decorElementDropped(ch.element) {
 			return
 		}
 		writeElement(buf, ch.element, skip)
@@ -962,11 +979,15 @@ func writeChild(buf *bytes.Buffer, ch xmlChild, skip map[*xmlNode]bool) {
 
 // writeElement serialises a single element (recursively) into buf, in
 // canonical form: attribute order is preserved, self-closing when the
-// element has no children.
+// element has no children. Elements and attributes outside the decor
+// allowlist (see svg_sanitize.go) are left out.
 func writeElement(buf *bytes.Buffer, n *xmlNode, skip map[*xmlNode]bool) {
 	buf.WriteByte('<')
 	buf.WriteString(qname(n.Name))
 	for _, a := range n.Attrs {
+		if decorAttrDropped(n, a) {
+			continue
+		}
 		buf.WriteByte(' ')
 		buf.WriteString(qname(a.Name))
 		buf.WriteString(`="`)

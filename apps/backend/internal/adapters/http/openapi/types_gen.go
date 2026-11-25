@@ -626,6 +626,12 @@ const (
 	PaymentIntentWebhookRequestTargetStateSucceeded      PaymentIntentWebhookRequestTargetState = "succeeded"
 )
 
+// Defines values for PaymentMethodDomainItemSource.
+const (
+	Platform PaymentMethodDomainItemSource = "platform"
+	Site     PaymentMethodDomainItemSource = "site"
+)
+
 // Defines values for PaymentProviderConfigItemMode.
 const (
 	PaymentProviderConfigItemModeLive PaymentProviderConfigItemMode = "live"
@@ -5747,6 +5753,16 @@ type ChannelGatewayCredentialSummary struct {
 	RotatedAt string `json:"rotated_at"`
 }
 
+// ChannelSiteDomains The site hosts of one sales channel. They are registered as wallet
+// domains in the organization's Stripe account (spec 65 section 5).
+type ChannelSiteDomains struct {
+	// Domains Lower-case hosts without scheme, port or path, at most 10. A PUT
+	// accepts bare hosts or URLs and stores the host; an IP address,
+	// `localhost`, a name without a dot and an invalid label are refused.
+	// Repeats are stored once.
+	Domains []string `json:"domains"`
+}
+
 // ChannelWPWebhookRegistered One-shot response of `PUT /v1/organizations/{org_id}/channels/{id}/wp-webhook`
 // (feature #507, spec §9.2). Includes the signing secret exactly as
 // supplied by the caller; subsequent `GET`/`DELETE` calls never expose it.
@@ -5857,6 +5873,35 @@ type CheckoutAttributionFirst struct {
 	UtmSource *string `json:"utm_source,omitempty"`
 }
 
+// CheckoutBuyerAttachRequest Body of `POST /v1/public/checkout/{checkout_token}/buyer`: the buyer
+// of a prepared order (spec 65), checked with the rules of
+// `checkout/start`.
+type CheckoutBuyerAttachRequest struct {
+	// Buyer The buyer's e-mail address (required), name and phone.
+	Buyer PublicBuyerInfo `json:"buyer"`
+
+	// Consent The tick on the sale terms, as in `checkout/start`.
+	Consent *PublicCheckoutConsent `json:"consent,omitempty"`
+
+	// Locale The buyer's language, as in `checkout/start`; an unknown value is ignored.
+	Locale *string `json:"locale,omitempty"`
+}
+
+// CheckoutBuyerAttachResponse Response of `POST /v1/public/checkout/{checkout_token}/buyer`.
+type CheckoutBuyerAttachResponse struct {
+	// CheckoutToken The checkout token, echoed.
+	CheckoutToken string `json:"checkout_token"`
+
+	// ExpiresAt Hold expiry (RFC 3339 UTC), unchanged by the attach.
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// PaymentExpiresAt When the provider's form stops taking the payment (RFC 3339 UTC).
+	PaymentExpiresAt time.Time `json:"payment_expires_at"`
+
+	// Status Always `pending`.
+	Status string `json:"status"`
+}
+
 // CheckoutCancelResponse Response of `POST /v1/public/checkout/{checkout_token}/cancel`.
 type CheckoutCancelResponse struct {
 	// Cancelled True when the order is cancelled (now or by an earlier call).
@@ -5872,6 +5917,19 @@ type CheckoutCancelResponse struct {
 	// window had already closed), `needs_help` (an operator holds the
 	// order) or `refunded`.
 	Status string `json:"status"`
+}
+
+// CheckoutHostedFallbackResponse Response of `POST /v1/public/checkout/{checkout_token}/hosted`: the
+// provider-hosted page that replaces the embedded payment form.
+type CheckoutHostedFallbackResponse struct {
+	// CheckoutToken The checkout token of the order.
+	CheckoutToken string `json:"checkout_token"`
+
+	// PaymentExpiresAt When the hosted page stops taking the payment (RFC 3339 UTC), the same deadline as before.
+	PaymentExpiresAt time.Time `json:"payment_expires_at"`
+
+	// RedirectUrl Absolute URL of the provider's hosted payment page; the widget navigates to it.
+	RedirectUrl string `json:"redirect_url"`
 }
 
 // CheckoutRecoverResponse Response body for `POST /v1/public/checkout/{checkout_token}/recover`
@@ -6120,6 +6178,17 @@ type CheckoutStatusResponse struct {
 	// (`orders.system_id`). Present once the order exists for this
 	// checkout (always for a paid one); omitted before that.
 	OrderNumber *int64 `json:"order_number"`
+
+	// Payment The embedded payment form of the order (spec 65 §3.7), present
+	// only while the order is `pending`, its hold has not expired and
+	// its newest payment is an open embedded session, and only when the
+	// request asks for it with `?include=payment` (without it the
+	// status makes no provider call). The client secret is read back
+	// from the provider on every such request and never stored; the
+	// answer is sent with `Cache-Control: no-store`. Omitted after the
+	// payment, after the hold expired and once the form was replaced
+	// by a hosted page (`payment_url`).
+	Payment *EmbeddedCheckoutPayment `json:"payment,omitempty"`
 
 	// PaymentExpiresAt When the provider's page stops taking the payment (the sales
 	// channel's payment window, spec 62 П-3): `expires_at` minus the
@@ -8366,6 +8435,32 @@ type EchoResponse struct {
 
 	// TraceId Distributed trace ID
 	TraceId string `json:"trace_id"`
+}
+
+// EmbeddedCheckoutPayment What the widget initialises the provider's browser SDK with for an
+// embedded payment (spec 65 §3.4, Stripe Checkout Session with
+// `ui_mode=elements`, Stripe.js `initCheckoutElementsSdk`). The card
+// fields live in the provider's iframe; no card data reaches arena.
+// Only the provider's "session completed and paid" webhook pays the
+// order: the widget polls the order status after `confirm()`.
+type EmbeddedCheckoutPayment struct {
+	// ClientSecret The Checkout Session's client secret. Handed to the buyer's
+	// browser only; arena never stores or logs it, and reads it back
+	// from the provider for the order status. Not to be put in a URL.
+	// Empty in an answer replayed for a repeated `Idempotency-Key`
+	// (the stored copy never holds it): read it from
+	// `GET /v1/public/checkout/{checkout_token}`.
+	ClientSecret string `json:"client_secret"`
+
+	// Mode Always `elements` (the embedded mode).
+	Mode string `json:"mode"`
+
+	// Provider The payment provider (`stripe`).
+	Provider string `json:"provider"`
+
+	// PublishableKey The organizer's public Stripe key (`pk_test_…` / `pk_live_…`) of
+	// the account the session was created on.
+	PublishableKey string `json:"publishable_key"`
 }
 
 // EndOrgModuleRequest Sets the last day of a module period.
@@ -15860,6 +15955,46 @@ type PaymentIntentWebhookRequest struct {
 // `event_type` → state mapping.
 type PaymentIntentWebhookRequestTargetState string
 
+// PaymentMethodDomainItem One wallet domain (Apple Pay, Google Pay, Link) of a Stripe payment
+// configuration: the host arena registered in the organization's Stripe
+// account and what Stripe answered about it (spec 65 section 5).
+type PaymentMethodDomainItem struct {
+	// ApplePayStatus Stripe's Apple Pay status for the domain (`active` or `inactive`). Null while unknown.
+	ApplePayStatus *string `json:"apple_pay_status"`
+
+	// CheckedAt When arena last asked Stripe about the domain. Null if it never has.
+	CheckedAt *time.Time `json:"checked_at"`
+
+	// Domain Lower-case host without scheme or port.
+	Domain string `json:"domain"`
+
+	// Enabled Whether Stripe has the domain enabled. Null while Stripe has not answered yet.
+	Enabled *bool `json:"enabled"`
+
+	// GooglePayStatus Stripe's Google Pay status for the domain (`active` or `inactive`). Null while unknown.
+	GooglePayStatus *string `json:"google_pay_status"`
+
+	// LastError Stripe's wording of the last failure to register the domain. Null
+	// when the last attempt succeeded. Operator-facing only.
+	LastError *string `json:"last_error"`
+
+	// LinkStatus Stripe's Link status for the domain (`active` or `inactive`). Null while unknown.
+	LinkStatus *string `json:"link_status"`
+
+	// Source `platform` - a host of the platform itself (STRIPE_WALLET_DOMAINS).
+	// `site` - a site host listed on one of the organization's Stripe
+	// sales channels.
+	Source PaymentMethodDomainItemSource `json:"source"`
+
+	// StatusDetail Stripe's own explanation when a wallet is not active. Null otherwise.
+	StatusDetail *string `json:"status_detail"`
+}
+
+// PaymentMethodDomainItemSource `platform` - a host of the platform itself (STRIPE_WALLET_DOMAINS).
+// `site` - a site host listed on one of the organization's Stripe
+// sales channels.
+type PaymentMethodDomainItemSource string
+
 // PaymentProviderConfigItem A single payment provider config row for the owning organization.
 //
 // Secret values are NEVER returned. `secret_fields_set` lists the
@@ -16795,6 +16930,17 @@ type PublicFeedCheckoutStartRequest struct {
 	// queued as InitiateCheckout (event id `ic:<checkout session id>`).
 	BuyerContext *PublicCheckoutBuyerContext `json:"buyer_context,omitempty"`
 
+	// Capabilities What the widget can do with the payment (spec 65 §3.5), optional.
+	// `stripe_elements`: it can run the embedded Stripe payment form.
+	// The answer then carries a `payment` block and an empty
+	// `redirect_url` when the deployment (`STRIPE_ELEMENTS_ENABLED`),
+	// the sales channel (`settings.checkout.stripe_ui` is not `hosted`)
+	// and the organization's Stripe configuration (a `publishable_key`)
+	// all allow it; otherwise the hosted page as before. Absent (an
+	// older widget) always gets the hosted page; unknown values are
+	// ignored.
+	Capabilities *[]string `json:"capabilities,omitempty"`
+
 	// Consent The buyer's tick on "I accept the sale terms (seller: <legal
 	// name>) and the privacy policy" (P2). Required (with
 	// `accepted: true`) when the feed session's `consent.required` is
@@ -16844,6 +16990,23 @@ type PublicFeedCheckoutStartRequest struct {
 	// it is ignored and nothing is stored. Ticked, it may earn the
 	// organizer's reward code (see `PublicMarketingConsent`).
 	MarketingConsent *PublicMarketingConsent `json:"marketing_consent,omitempty"`
+
+	// Prepare Spec 65 early order, optional. `true`: the hold, the order and
+	// the embedded Stripe session are created now, WITHOUT the buyer
+	// (the widget opens its order sheet); the buyer is attached at
+	// "Pay" with `POST /v1/public/checkout/{checkout_token}/buyer`.
+	// Requires `capabilities` to contain `stripe_elements`. The body
+	// must not carry `buyer`, `holder_email`, `promo_code`,
+	// `marketing_consent` or `consent` (422
+	// `checkout.prepare_unavailable`); the channel must give the
+	// embedded form (409 `checkout.prepare_unavailable` before any
+	// hold); a zero total is refused the same way and its hold
+	// released; when the embedded session cannot be created there is
+	// no hosted page: the order is cancelled, the hold released, 409
+	// `checkout.prepare_unavailable`. Required name, phone and consent
+	// are checked at attach. The 201 is the embedded answer plus
+	// `prepared: true`.
+	Prepare *bool `json:"prepare,omitempty"`
 
 	// PromoCode Optional promotional code to apply.
 	PromoCode *string `json:"promo_code"`
@@ -16923,10 +17086,23 @@ type PublicFeedCheckoutStartResponse struct {
 	// MarketingDiscountApplied True when the cart's discount is the reward for the marketing consent tick.
 	MarketingDiscountApplied *bool `json:"marketing_discount_applied,omitempty"`
 
+	// Payment The embedded payment form (spec 65 §3.4), present only when the
+	// request announced `capabilities: ["stripe_elements"]` and the
+	// payment is embedded; `redirect_url` is then empty. Absent for a
+	// hosted page, a zero-total cart and every provider without an
+	// embedded mode.
+	Payment *EmbeddedCheckoutPayment `json:"payment,omitempty"`
+
 	// PaymentExpiresAt When the provider's page stops taking the payment (RFC 3339 UTC):
 	// the channel's payment window from now. This is what a site counts
 	// down to; `expires_at` is a grace later. Present for a paid cart.
 	PaymentExpiresAt *time.Time `json:"payment_expires_at,omitempty"`
+
+	// Prepared True for a prepared order (`prepare: true`, spec 65): it has no
+	// buyer yet; attach one with
+	// `POST /v1/public/checkout/{checkout_token}/buyer` before the
+	// payment is confirmed. Absent otherwise.
+	Prepared *bool `json:"prepared,omitempty"`
 
 	// Pricing Itemized result of running the deterministic pricing pipeline
 	// (`ComputePricing`, feature #129). Every monetary field is
@@ -16949,6 +17125,9 @@ type PublicFeedCheckoutStartResponse struct {
 	// empty string when the deployment has no return URL configured, in
 	// which case the caller should simply show the order status for the
 	// returned `checkout_token`.
+	//
+	// An empty string also when the payment is embedded (`payment` is
+	// set, spec 65): the buyer pays on this page and does not leave it.
 	RedirectUrl string `json:"redirect_url"`
 }
 
@@ -19694,10 +19873,15 @@ type SeatingPlanVersion struct {
 	// CreatedAt RFC 3339 UTC timestamp of row creation.
 	CreatedAt time.Time `json:"created_at"`
 
-	// Geometry Canonical geometry blob (see §5.3 of the seating backlog).
+	// Geometry Canonical geometry blob (see §5.3 of the seating backlog). Its
+	// `decor_svg` holds drawing only: a version written from SVG or from
+	// geometry JSON stores it through the decor allowlist, and decor
+	// stored earlier is served through the same allowlist.
 	Geometry map[string]interface{} `json:"geometry"`
 
-	// GeometryChecksum Lowercase hex sha256 of the canonical JSON encoding of `geometry`.
+	// GeometryChecksum Lowercase hex sha256 of the canonical JSON encoding of the STORED
+	// geometry. It is not recomputed when the served `decor_svg` differs
+	// from the stored one.
 	GeometryChecksum string `json:"geometry_checksum"`
 
 	// Id UUIDv7 primary key of the seating_plan_versions row.
@@ -19751,7 +19935,7 @@ type SeatingSchemaResponse struct {
 	// Geometry Canonical geometry JSON per seating_backlog.md §5.3. Opaque schema — clients render it directly.
 	Geometry map[string]interface{} `json:"geometry"`
 
-	// GeometryChecksum sha256 hex digest of the canonicalised geometry JSON. Doubles as the strong ETag for this endpoint.
+	// GeometryChecksum sha256 hex digest of the canonicalised STORED geometry JSON. Doubles as the strong ETag for this endpoint. It is not recomputed when the served `geometry.decor_svg` differs from the stored one (decor is served drawing only).
 	GeometryChecksum string `json:"geometry_checksum"`
 
 	// SeatCategoryIndex Per-seat category truth (S1a). Maps `seat_key` to the category
@@ -27339,6 +27523,17 @@ type CreatePaymentIntentParams struct {
 	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
 }
 
+// GetPublicCheckoutStatusParams defines parameters for GetPublicCheckoutStatus.
+type GetPublicCheckoutStatusParams struct {
+	// Include Comma-separated optional parts of the answer. `payment` asks for
+	// the embedded payment form (`payment`, spec 65 §3.7), which costs
+	// a call to the payment provider to read the client secret back.
+	// Without it the answer carries no `payment` object and no provider
+	// is called, so status polling stays cheap. Unknown values are
+	// ignored.
+	Include *string `form:"include,omitempty" json:"include,omitempty"`
+}
+
 // ResumePublicCheckoutParams defines parameters for ResumePublicCheckout.
 type ResumePublicCheckoutParams struct {
 	// Src Where the link was clicked (`reminder`). Informational only.
@@ -28030,6 +28225,9 @@ type UpdateSellerDisplayJSONRequestBody = UpdateSellerDisplayRequest
 // UpdateChannelJSONRequestBody defines body for UpdateChannel for application/json ContentType.
 type UpdateChannelJSONRequestBody = UpdateChannelRequest
 
+// PutChannelSiteDomainsJSONRequestBody defines body for PutChannelSiteDomains for application/json ContentType.
+type PutChannelSiteDomainsJSONRequestBody = ChannelSiteDomains
+
 // PutChannelWPWebhookJSONRequestBody defines body for PutChannelWPWebhook for application/json ContentType.
 type PutChannelWPWebhookJSONRequestBody PutChannelWPWebhookJSONBody
 
@@ -28389,6 +28587,9 @@ type PaymentIntentWebhookForConfigJSONRequestBody = PaymentIntentWebhookRequest
 
 // TransitionPaymentIntentJSONRequestBody defines body for TransitionPaymentIntent for application/json ContentType.
 type TransitionPaymentIntentJSONRequestBody = TransitionPaymentIntentRequest
+
+// AttachPublicCheckoutBuyerJSONRequestBody defines body for AttachPublicCheckoutBuyer for application/json ContentType.
+type AttachPublicCheckoutBuyerJSONRequestBody = CheckoutBuyerAttachRequest
 
 // UpdatePublicCheckoutTrackingConsentJSONRequestBody defines body for UpdatePublicCheckoutTrackingConsent for application/json ContentType.
 type UpdatePublicCheckoutTrackingConsentJSONRequestBody = TrackingConsent

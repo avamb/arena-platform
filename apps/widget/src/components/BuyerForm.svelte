@@ -158,6 +158,26 @@
   const phoneField = $derived(buyerFields.find((f) => f.key === 'phone'));
   const showName = $derived(nameField?.enabled === true);
   const showPhone = $derived(phoneField?.enabled === true);
+
+  // Phone keyboard: the key label follows what comes next, and Enter walks
+  // to the next visible field; only the last one submits.
+  const emailHint = $derived(showName || showPhone ? 'next' : 'go');
+  const nameHint = $derived(showPhone ? 'next' : 'go');
+
+  function nextFieldId(from: 'email' | 'name' | 'phone'): string | null {
+    if (from === 'email') return showName ? 'bf-name' : showPhone ? 'bf-phone' : null;
+    if (from === 'name') return showPhone ? 'bf-phone' : null;
+    return null;
+  }
+
+  function onFieldKeydown(e: KeyboardEvent, from: 'email' | 'name' | 'phone'): void {
+    if (e.key !== 'Enter' || e.isComposing) return;
+    const nextId = nextFieldId(from);
+    if (!nextId) return; // last field: native implicit submit runs handleSubmit
+    e.preventDefault();
+    const root = (e.currentTarget as HTMLElement).getRootNode() as Document | ShadowRoot;
+    (root.getElementById?.(nextId) as HTMLInputElement | null)?.focus();
+  }
 </script>
 
 <form class="buyer-form" onsubmit={handleSubmit} novalidate>
@@ -172,6 +192,11 @@
       value={email}
       oninput={onEmailInput}
       autocomplete="email"
+      inputmode="email"
+      autocapitalize="off"
+      spellcheck="false"
+      enterkeyhint={emailHint}
+      onkeydown={(e) => onFieldKeydown(e, 'email')}
       aria-invalid={!!errors.email}
       aria-describedby={errors.email ? 'bf-email-err' : cartReminder ? 'bf-email-reminder' : undefined}
       disabled={submitting}
@@ -206,6 +231,8 @@
         placeholder={t.name_placeholder}
         bind:value={name}
         autocomplete="name"
+        enterkeyhint={nameHint}
+        onkeydown={(e) => onFieldKeydown(e, 'name')}
         aria-invalid={!!errors.name}
         aria-describedby={errors.name ? 'bf-name-err' : undefined}
         disabled={submitting}
@@ -230,6 +257,8 @@
         placeholder={t.phone_placeholder}
         bind:value={phone}
         autocomplete="tel"
+        enterkeyhint="go"
+        onkeydown={(e) => onFieldKeydown(e, 'phone')}
         aria-invalid={!!errors.phone}
         aria-describedby={errors.phone ? 'bf-phone-err' : undefined}
         disabled={submitting}
@@ -297,12 +326,14 @@
     <p class="withdrawal-notice" data-testid="withdrawal-notice">{commit.withdrawal_notice}</p>
   {/if}
 
-  <button type="submit" class="submit-btn" disabled={submitting || payWaitsForConsent} aria-busy={submitting}>
-    {#if submitting}
-      <span class="spinner" aria-hidden="true"></span>
-    {/if}
-    {submitText ?? t.submit_label}
-  </button>
+  <div class="submit-bar">
+    <button type="submit" class="submit-btn" disabled={submitting || payWaitsForConsent} aria-busy={submitting}>
+      {#if submitting}
+        <span class="spinner" aria-hidden="true"></span>
+      {/if}
+      {submitText ?? t.submit_label}
+    </button>
+  </div>
 </form>
 
 <style>
@@ -442,6 +473,20 @@
     line-height: 1.4;
     color: var(--arena-color-secondary, #6b7280);
     text-align: start;
+  }
+
+  /* The pay button stays at the bottom of the scrolling sheet body, so it is
+     reachable while the phone keyboard is open. The strip is opaque so the
+     text under it does not show through; it cancels the body's 1rem padding. */
+  .submit-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    background: var(--arena-bg, #fff);
+    padding-block: 0.5rem 1rem;
+    margin-block-end: -1rem;
   }
 
   /* The pay button — the primary CTA of the whole widget. Yellow fill, dark

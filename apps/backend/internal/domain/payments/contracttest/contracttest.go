@@ -96,6 +96,14 @@ func Run(t *testing.T, c Case) {
 				t.Error("Capabilities.HostedCheckout is true but the module is not a HostedCheckoutProvider")
 			}
 		}
+		if d.Capabilities.EmbeddedCheckout {
+			if _, ok := c.Module.(payments.EmbeddedCheckoutProvider); !ok {
+				t.Error("Capabilities.EmbeddedCheckout is true but the module is not an EmbeddedCheckoutProvider")
+			}
+			if f, ok := d.Secret(d.Capabilities.EmbeddedCheckoutKey); !ok || f.Hidden || f.Credential {
+				t.Error("Capabilities.EmbeddedCheckoutKey must name a declared secret field that is neither Hidden nor a Credential (it is handed to the browser)")
+			}
+		}
 		if d.Capabilities.Refund {
 			if _, ok := c.Module.(payments.Refunder); !ok {
 				t.Error("Capabilities.Refund is true but the module is not a Refunder")

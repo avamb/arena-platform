@@ -36,8 +36,9 @@ import (
 
 // compile-time interface guards
 var (
-	_ payments.PaymentProvider        = (*Adapter)(nil)
-	_ payments.HostedCheckoutProvider = (*Adapter)(nil)
+	_ payments.PaymentProvider          = (*Adapter)(nil)
+	_ payments.HostedCheckoutProvider   = (*Adapter)(nil)
+	_ payments.EmbeddedCheckoutProvider = (*Adapter)(nil)
 )
 
 const (
@@ -186,6 +187,13 @@ type stripeOAuthTokenResponse struct {
 // envelope and returns a descriptive error. The raw body bytes and status code
 // are returned on success.
 func (a *Adapter) doRequest(ctx context.Context, method, endpoint string, form url.Values, idempotencyKey string) ([]byte, int, error) {
+	return a.doRequestVersion(ctx, method, endpoint, form, idempotencyKey, stripeAPIVersion)
+}
+
+// doRequestVersion is doRequest with an explicit Stripe-Version header. Only
+// the embedded checkout (embedded.go) asks for another version than
+// stripeAPIVersion; every other call goes through doRequest unchanged.
+func (a *Adapter) doRequestVersion(ctx context.Context, method, endpoint string, form url.Values, idempotencyKey, apiVersion string) ([]byte, int, error) {
 	var bodyReader io.Reader
 	if form != nil {
 		bodyReader = strings.NewReader(form.Encode())
@@ -197,7 +205,7 @@ func (a *Adapter) doRequest(ctx context.Context, method, endpoint string, form u
 	}
 
 	req.Header.Set("Authorization", "Bearer "+a.cfg.SecretKey)
-	req.Header.Set("Stripe-Version", stripeAPIVersion)
+	req.Header.Set("Stripe-Version", apiVersion)
 	if form != nil {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}

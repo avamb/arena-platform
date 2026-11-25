@@ -165,7 +165,7 @@ async function mockPlatform(
       }),
     });
   });
-  await page.route('**/v1/public/checkout/ckout-promo-001', (route) =>
+  await page.route(new RegExp('/v1/public/checkout/ckout-promo-001([?].*)?$'), (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -706,7 +706,7 @@ test.describe('promo code in the cart sheet', () => {
   // The referrer's side: a paid order shows the personal code, a 404 shows nothing.
   async function mockPaidOrder(page: Page, referral: { status: number; body: object }): Promise<void> {
     await mockPlatform(page);
-    await page.route('**/v1/public/checkout/ckout-paid-001', (route) =>
+    await page.route(new RegExp('/v1/public/checkout/ckout-paid-001([?].*)?$'), (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',

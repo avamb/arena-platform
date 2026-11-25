@@ -93,6 +93,9 @@ func (s *Server) mountChannelRoutes(r chi.Router) {
 		pr.Get("/organizations/{org_id}/channels/{id}/gateway-credential", s.handleGetChannelGatewayCredential)
 		pr.Put("/organizations/{org_id}/channels/{id}/gateway-credential", s.handlePutChannelGatewayCredential)
 		pr.Delete("/organizations/{org_id}/channels/{id}/gateway-credential", s.handleDeleteChannelGatewayCredential)
+		// Site hosts of the channel for the Stripe wallet domains (spec 65 E3).
+		pr.Get("/organizations/{org_id}/channels/{id}/site-domains", s.handleGetChannelSiteDomains)
+		pr.Put("/organizations/{org_id}/channels/{id}/site-domains", s.handlePutChannelSiteDomains)
 	})
 	r.Group(func(pr chi.Router) {
 		// Bil24-compat WordPress webhook admin surface (feature #507, spec
@@ -122,6 +125,7 @@ func (s *Server) mountPaymentConfigRoutes(r chi.Router) {
 		s.applyAuth(pr, "payment_config.read", "payments")
 		pr.Get("/organizations/{org_id}/payment-configs", s.handleListPaymentConfigs)
 		pr.Get("/organizations/{org_id}/payment-configs/{id}", s.handleGetPaymentConfig)
+		pr.Get("/organizations/{org_id}/payment-configs/{id}/payment-method-domains", s.handleListPaymentMethodDomains)
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "payment_config.write", "payments")
