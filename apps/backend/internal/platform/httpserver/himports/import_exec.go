@@ -52,8 +52,15 @@ type importPlan struct {
 	Source      string
 	ExternalRef string
 	Request     bil24compat.ImportSessionRequest
-	Currency    string
-	StartAt     time.Time
+	// CategoriesDeferred is set for an arena bundle that addresses an existing
+	// session (arenaSessionId), carries no categoryList and leaves
+	// externalSale absent: whether that is allowed depends on the session (a
+	// partner-sold one keeps its mode and needs none), so the check
+	// import.categories_required runs once the session is known
+	// (executeArenaImport) instead of in the pure validation.
+	CategoriesDeferred bool
+	Currency           string
+	StartAt            time.Time
 	// EndAt is the parsed actionEvent.endTime, nil when the payload carried
 	// none — the session then keeps defaultSessionDuration.
 	EndAt *time.Time

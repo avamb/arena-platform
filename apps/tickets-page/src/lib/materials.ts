@@ -306,6 +306,17 @@ function renderVideo(video: HostedPageVideo, index: number, strings: PageStrings
   return li;
 }
 
+/** One video as a press-to-play block (the same privacy rules as the
+ * materials block: nothing loads before the press), or null when the address
+ * is not one the page trusts. */
+export function renderSingleVideo(video: HostedPageVideo, locale: PageLocale, hooks: MaterialsHooks = {}): HTMLElement | null {
+  const li = renderVideo(video, 0, t(locale), hooks);
+  if (!li) return null;
+  const box = el('ul', 'asa-videos asa-series-video');
+  box.appendChild(li);
+  return box;
+}
+
 function renderVideos(videos: HostedPageVideo[], strings: PageStrings, hooks: MaterialsHooks): HTMLElement | null {
   const items = videos.map((v, i) => renderVideo(v, i, strings, hooks)).filter((x): x is HTMLElement => x !== null);
   if (items.length === 0) return null;

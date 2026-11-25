@@ -1618,7 +1618,7 @@ other = "Archivo · {{.N}}"
 other = "<b>Eventos: {{.Org}}</b>\n{{.Filter}}. Página {{.Page}} de {{.Pages}}.{{.Search}}\n{{.Legend}}\nPulsa un evento para abrir su ficha. Para buscar por nombre, escribe unas letras."
 
 ["bot.ec.legend"]
-other = "● a la venta  ○ pronto  ✕ agotado  ✓ archivo"
+other = "● a la venta  ○ pronto  ✕ agotado  ↗ lo vende un socio  ✓ archivo"
 
 ["bot.ec.search_line"]
 other = "Búsqueda: «{{.Query}}» — encontrados {{.N}}."
@@ -6998,6 +6998,18 @@ other = "<b>Promoción</b>\nEstas herramientas te ayudan a vender más entradas.
 ["bot.mn.door_title"]
 other = "<b>Entrada al evento</b>\nComprueba las entradas en la puerta y mira la lista de invitados."
 
+["bot.mn.meta_ok"]
+other = "Meta: conectado"
+
+["bot.mn.meta_off"]
+other = "Meta: no conectado"
+
+["bot.mn.meta_error"]
+other = "Meta: error de conexión"
+
+["bot.mn.meta_btn"]
+other = "Anuncios de Meta en el navegador"
+
 ["bot.mn.settings_title"]
 other = "<b>Ajustes</b>\nTu organización, los pagos, el equipo y tus propios ajustes."
 
@@ -7293,3 +7305,207 @@ other = "Muestra los ajustes de tu tienda."
 
 ["bot.hp.i.sh.web"]
 other = "Abre la tienda en el navegador."
+
+["bot.tr.btn"]
+other = "🌐 Traducciones"
+
+["bot.tr.list_title"]
+other = "<b>Traducciones</b> · {{.Name}}"
+
+["bot.tr.list_about"]
+other = "Elige un idioma para leer su traducción de la descripción o para enviar la tuya. La máquina nunca sustituye un texto que envíes."
+
+["bot.tr.lang_btn"]
+other = "{{.Lang}} · {{.State}}"
+
+["bot.tr.lang_label"]
+other = "Idioma"
+
+["bot.tr.state_none"]
+other = "no hay"
+
+["bot.tr.state_manual"]
+other = "manual"
+
+["bot.tr.state_machine"]
+other = "automática"
+
+["bot.tr.state_manual_stale"]
+other = "manual, desactualizada"
+
+["bot.tr.state_machine_stale"]
+other = "automática, desactualizada"
+
+["bot.tr.machine_btn"]
+other = "🤖 Traducir con la máquina"
+
+["bot.tr.machine_queued"]
+other = "Listo. La máquina traduce a estos idiomas: {{.Langs}}. Los textos aparecen en unos minutos. Un texto que escribiste nunca se sustituye."
+
+["bot.tr.machine_none"]
+other = "Todos los idiomas ya tienen traducción. La máquina nunca sustituye un texto que escribiste."
+
+["bot.tr.machine_off"]
+other = "La traducción automática está desactivada ahora. Puedes escribir la traducción tú mismo."
+
+["bot.tr.machine_failed"]
+other = "No pudimos iniciar la traducción automática. Inténtalo de nuevo en un minuto."
+
+["bot.tr.lang_title"]
+other = "<b>{{.Lang}}</b> · {{.Name}}"
+
+["bot.tr.lang_current"]
+other = "La traducción actual:\n\n{{.Text}}"
+
+["bot.tr.lang_original"]
+other = "Todavía no hay traducción. El texto original:\n\n{{.Text}}"
+
+["bot.tr.lang_empty"]
+other = "El evento todavía no tiene descripción, así que no hay nada que traducir."
+
+["bot.tr.lang_ask"]
+other = "Envía tu traducción de la descripción en un mensaje. La guardo como tu propio texto. La máquina nunca lo sustituye."
+
+["bot.tr.to_list_btn"]
+other = "Idiomas"
+
+["bot.tr.saved"]
+other = "Listo, la traducción al idioma «{{.Lang}}» está guardada."
+
+["bot.tr.save_failed"]
+other = "No pudimos guardar la traducción. Envía el texto otra vez."
+
+["bot.tr.expired"]
+other = "Se acabó el tiempo para esta respuesta. Abre el idioma de nuevo."
+
+["bot.hp.i.ge.translations"]
+other = "Abre los idiomas de la página del evento. Allí escribes la traducción de la descripción."
+
+["bot.hp.i.tr.lang"]
+other = "Muestra la traducción a este idioma y recibe tu propio texto."
+
+["bot.hp.i.tr.machine"]
+other = "Traduce los idiomas que no tienen traducción. Tus textos se quedan como están."
+
+["bot.wz.ask_seller"]
+other = "¿Quién vende las entradas?\n\nSi las vende usted, los compradores las consiguen en su página y en el widget. Si las vende un socio, la página del evento tendrá un botón a la taquilla del socio."
+
+["bot.wz.seller_platform_btn"]
+other = "Nosotros, en la web y en el widget"
+
+["bot.wz.seller_partner_btn"]
+other = "Un socio"
+
+["bot.wz.err_seller_first"]
+other = "Primero elija quién vende las entradas: pulse uno de los botones."
+
+["bot.wz.ask_ext_url"]
+other = "Envíe el enlace a la taquilla del socio: la página donde se compran las entradas de este evento. La dirección empieza por https://.{{if .Value}}\n\nAhora: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_url"]
+other = "Necesito el enlace a la taquilla del socio. Empieza por https://, lleva a la web del socio por su nombre (no a una dirección IP) y no a nuestra web."
+
+["bot.wz.ask_ext_name"]
+other = "¿Cómo se llama la taquilla? Los compradores verán este nombre en el botón, por ejemplo «Eventim».{{if .Value}}\n\nAhora: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_name"]
+other = "Indique el nombre de la taquilla, hasta 80 caracteres."
+
+["bot.wz.ask_ext_price"]
+other = "Un precio «desde» para la página del evento, por ejemplo 25 o 39,90. Es una referencia para los compradores: las entradas las vende el socio. La moneda es la del evento, se la preguntaré más tarde.\n\n¿Sin precio? Pulse «Omitir».{{if .Value}}\n\nAhora: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_price"]
+other = "No he podido leer el precio. Escriba un número, por ejemplo 25 o 39,90, o pulse «Omitir»."
+
+["bot.wz.ack_seller"]
+other = "Vende"
+
+["bot.wz.ack_seller_us"]
+other = "nosotros, en la web y en el widget"
+
+["bot.wz.ack_seller_partner"]
+other = "un socio"
+
+["bot.wz.ack_ext_url"]
+other = "Enlace a la taquilla"
+
+["bot.wz.ack_ext_name"]
+other = "Taquilla"
+
+["bot.wz.ack_ext_price"]
+other = "Precio desde"
+
+["bot.wz.summary_external"]
+other = "Vende un socio: {{.Name}}, {{.Url}}{{.Price}}"
+
+["bot.wz.summary_external_price"]
+other = ", desde {{.Price}}"
+
+["bot.wz.summary_session_ext"]
+other = "{{.When}} {{.Venue}}"
+
+["bot.wz.session_external"]
+other = "Vende un socio: {{.Name}}\n{{.Url}}"
+
+["bot.wz.edit_field_external"]
+other = "Taquilla del socio"
+
+["bot.wz.edit_b_external"]
+other = "Taquilla del socio"
+
+["bot.wz.edit_ext_btn"]
+other = "Cambiar la taquilla"
+
+["bot.wz.edit_chg_date_ext"]
+other = "Nueva fecha {{.When}} · {{.Venue}}. {{.List}}"
+
+["bot.wz.preview_new_date_ext"]
+other = "Nueva fecha {{.When}} · {{.Venue}}. {{.List}}"
+
+["bot.ser.wz_ask"]
+other = "¿Este evento forma parte de una gira? Una gira agrupa eventos con un nombre común, por ejemplo funciones en distintas ciudades. Elija una gira u omita este paso."
+
+["bot.ser.wz_label"]
+other = "Gira"
+
+["bot.ser.warn_not_linked"]
+other = "El evento está creado, pero no se pudo añadir a la gira. Añada la gira en la ficha del evento."
+
+["bot.ser.event_line"]
+other = "🧭 Gira: <b>{{.Name}}</b>"
+
+["bot.ser.event_btn"]
+other = "🧭 Gira"
+
+["bot.ser.list_now"]
+other = "🧭 Gira de este evento: <b>{{.Name}}</b>"
+
+["bot.ser.list_none_now"]
+other = "🧭 Este evento no está en ninguna gira."
+
+["bot.ser.list_hint"]
+other = "Pulse una gira para añadir este evento a ella."
+
+["bot.ser.empty"]
+other = "Todavía no hay giras. Cree una gira en el centro web de eventos y aparecerá aquí."
+
+["bot.ser.unbind_btn"]
+other = "Quitar de la gira"
+
+["bot.ser.back_btn"]
+other = "‹ Al evento"
+
+["bot.ser.saved"]
+other = "El evento se ha añadido a la gira «{{.Name}}»."
+
+["bot.ser.unbound"]
+other = "El evento se ha quitado de la gira."
+
+["bot.ser.refused"]
+other = "Esta gira no está disponible: está archivada o eliminada. Aquí tiene la lista tal como es ahora."
+
+["bot.ser.gone"]
+other = "Esta gira ya no está en la lista. Aquí tiene la lista tal como es ahora."
+
+["bot.hp.i.ge.series"]
+other = "Añade el evento a una gira o lo quita de ella."

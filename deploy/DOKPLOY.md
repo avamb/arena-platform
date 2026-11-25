@@ -380,6 +380,8 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `BOT_MINIAPP_EDITOR_ENABLED` (`true` shows the «Править в редакторе» web_app button in the bot, spec 44 RT-12a; default off. Needs `EVENT_CENTER_PUBLIC_URL` with https on the API and the `/tg/` nginx location of the event center. Until RT-12b the page is a placeholder, so leave it off in production. To roll back, turn it off and redeploy the bot FIRST, then roll back the API image, the migration last: docs/ops/event_center_rollout_ru.md section 4) | — | — | ● | — |
 | `POSTER_LLM_API_KEY` (secret), `POSTER_LLM_MODEL` | ● | — | — | — |
 | `POSTER_LLM_BASE_URL` (production: unset or `https://api.anthropic.com`) | ● | — | — | — |
+| `TRANSLATE_LLM_API_KEY` (secret; machine translation of event texts, spec 63 section 16.4: the api answers 503 `translation.not_configured` without it, the worker translates with it), `TRANSLATE_LLM_MODEL` (default `claude-sonnet-5-5`) | ● | ● | — | — |
+| `TRANSLATE_LLM_BASE_URL` (production: unset or `https://api.anthropic.com`) | ● | ● | — | — |
 | `POSTER_LLM_PROVIDER` (`anthropic` default or `gemini`; the vision provider that reads posters), `POSTER_LLM_FALLBACK_PROVIDER` (empty = none, else the other provider, tried once when the first fails or times out) | ● | — | — | — |
 | `GEMINI_API_KEY` (secret; the key of the `gemini` provider), `POSTER_GEMINI_MODEL` (default `gemini-3.8-flash`) | ● | — | — | — |
 | `POSTER_GEMINI_BASE_URL` (test seam; production: unset or `https://generativelanguage.googleapis.com`) | ● | — | — | — |
@@ -387,14 +389,17 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `TEXT_FORMAT_LLM_MODEL` (default `claude-haiku-5-5`; the key and the base URL are the poster ones: `POSTER_LLM_API_KEY`, `POSTER_LLM_BASE_URL`) | ● | — | — | — |
 | `TEXT_FORMATS_PER_USER_PER_DAY` (default 100, `0` = no cap), `TEXT_FORMATS_PER_ORG_PER_DAY` (default 500, `0` = no cap) | ● | — | — | — |
 | `EVENT_PAGE_READS_PER_ORG_PER_DAY` (default 30, `0` = no cap; model readings of an organizer's event page, spec 59 — the model and key are `TEXT_FORMAT_LLM_MODEL` and `POSTER_LLM_API_KEY`) | ● | — | — | — |
+| `META_APP_ID` (empty = the Meta connection is off; when set in production the next three are required, and on the api an `https://` `META_OAUTH_REDIRECT_URL`), `META_APP_SECRET` (secret), `META_LOGIN_CONFIG_ID`, `META_TOKEN_ENC_KEY` (secret; `v2:<base64 32 bytes>,v1:<base64 32 bytes>`, first = current key, the others only open old values; same value on api and worker) | ● | ● | — | — |
+| `META_GRAPH_VERSION` (default `v25.0`), `META_OAUTH_REDIRECT_URL` (`https://` in production), `META_ASSET_EDGES` (optional override, empty = built-in list), `META_DATA_DELETION_STATUS_URL` (default `https://arenasoldout.com/legal/data-deletion`; the data-deletion callback adds `?code=`) | ● | ● | — | — |
+| `META_WEBHOOK_VERIFY_TOKEN` (secret; the verify token entered in the Meta app under Webhooks → Application for `business_integration_uninstall`, callback `https://<api>/v1/integrations/meta/webhook`; empty = the GET verification is refused, POST is still checked by the `X-Hub-Signature-256` of `META_APP_SECRET`) | ● | — | — | — |
 | `ENABLE_DEV_AUTH`, `DB_LOG_QUERIES`, `DEBUG_ROUTES_ENABLED`, `FAULT_INJECT_OUTBOX_AFTER_AUDIT` (leave unset; `true` is refused in production) | — | — | — | — |
-| `STRIPE_API_BASE_URL`, `FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL`, `PAYPLUS_API_BASE_URL` (test seams; refused in production) | — | — | — | — |
+| `STRIPE_API_BASE_URL`, `FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL`, `PAYPLUS_API_BASE_URL`, `META_GRAPH_BASE_URL` (test seams; refused in production) | — | — | — | — |
 | `REDIS_URL`, `IDEMPOTENCY_TTL`, `IDEMPOTENCY_KEY_MAX_LENGTH`, `WORKER_CONCURRENCY`, `WORKER_JOB_TIMEOUT`, `WORKER_RETRY_BACKOFF_BASE`, `WORKER_RETRY_BACKOFF_MAX`, `OUTBOX_BATCH_SIZE` (parsed, but no binary uses them today) | — | — | — | — |
 
 Never set in production, on any service: `ENABLE_DEV_AUTH=true`,
 `DB_LOG_QUERIES=true`, `DEBUG_ROUTES_ENABLED=true`,
 `FAULT_INJECT_OUTBOX_AFTER_AUDIT=true`, `STRIPE_API_BASE_URL`,
-`FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL`, `PAYPLUS_API_BASE_URL`, and `BREVO_API_BASE_URL` /
+`FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL`, `PAYPLUS_API_BASE_URL`, `META_GRAPH_BASE_URL`, and `BREVO_API_BASE_URL` /
 `POSTER_LLM_BASE_URL` / `POSTER_GEMINI_BASE_URL` with anything but their default (every role refuses
 to start: a changed host would receive the API key).
 

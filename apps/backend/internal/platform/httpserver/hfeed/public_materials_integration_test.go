@@ -311,7 +311,7 @@ func TestPublicMaterials_DeletedMediaAndNonPublishedEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	if raw, _ := json.Marshal(h.loadPublicMaterials(ctx, f.eventID, time.Now())); string(raw) !=
-		`{"gallery":[],"videos":[],"partner_links":[],"map_point":null,"report_photos":[]}` {
+		`{"gallery":[],"videos":[],"partner_links":[],"map_point":null,"report_photos":[],"report_text_html":null}` {
 		t.Errorf("a draft event must show empty materials, got %s", raw)
 	}
 	// A deleted one too.
@@ -324,7 +324,7 @@ func TestPublicMaterials_DeletedMediaAndNonPublishedEvents(t *testing.T) {
 	// An event with no material rows: empty lists, null point.
 	empty := newPublicPageFixture(t, ctx, pool, true)
 	body := (&materialsFixture{publicPageFixture: empty}).pageBody(t)
-	if got := string(body["materials"]); got != `{"gallery":[],"videos":[],"partner_links":[],"map_point":null,"report_photos":[]}` {
+	if got := string(body["materials"]); got != `{"gallery":[],"videos":[],"partner_links":[],"map_point":null,"report_photos":[],"report_text_html":null}` {
 		t.Errorf("empty event materials = %s", got)
 	}
 }
@@ -350,7 +350,7 @@ func TestPublicMaterials_ExistingFieldsUnchanged(t *testing.T) {
 	if err := json.Unmarshal(page["event"], &event); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := strings.Join(sortedKeys(org), ","), "logo_url,name,slug"; got != want {
+	if got, want := strings.Join(sortedKeys(org), ","), "logo_url,name,slug,tracking_enabled"; got != want {
 		t.Errorf("page org keys = %s, want %s", got, want)
 	}
 	const wantEvent = "age_rating,description,description_html,description_text,first_session_at,first_session_doors_at,first_session_timezone,id,image_url," +
@@ -360,8 +360,8 @@ func TestPublicMaterials_ExistingFieldsUnchanged(t *testing.T) {
 	}
 
 	feed := f.feedBody(t)
-	const wantFeed = "age_rating,created_at,description,description_html,description_text,display_number,first_session_at,id,image_url,last_session_at,materials,name,org_id," +
-		"poster_media_id,poster_url,sessions,short_description,slug,status,updated_at,venue_names,venues,visibility"
+	const wantFeed = "age_rating,available_locales,content_locale,created_at,description,description_html,description_text,display_number,first_session_at,id,image_url,last_session_at,materials,name,org_id," +
+		"poster_media_id,poster_url,sessions,short_description,slug,status,translation_stale,updated_at,venue_names,venues,visibility"
 	if got := strings.Join(sortedKeys(feed), ","); got != wantFeed {
 		t.Errorf("feed event keys = %s, want %s", got, wantFeed)
 	}

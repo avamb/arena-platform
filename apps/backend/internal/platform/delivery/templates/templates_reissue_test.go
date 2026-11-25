@@ -15,6 +15,13 @@ var reissueWords = map[string][4]string{
 	"cs": {"Vaše nové vstupenky — ", "Při nákupu byl v e-mailové adrese překlep", "Na vaši žádost jsme vystavili nové vstupenky", "Místa a platba se nezměnily."},
 	"de": {"Ihre neuen Tickets — ", "Beim Kauf enthielt die E-Mail-Adresse einen Tippfehler", "Auf Ihren Wunsch haben wir neue Tickets", "Plätze und Zahlung bleiben unverändert."},
 	"es": {"Tus nuevas entradas — ", "Al comprar, la dirección de correo electrónico tenía un error tipográfico", "A petición tuya, hemos emitido nuevas entradas", "Tus asientos y tu pago no han cambiado."},
+	"et": {"Teie uued piletid — ", "Ostul antud e-posti aadressis oli kirjaviga", "Teie soovil oleme varasemate piletite asemel väljastanud uued piletid", "Teie kohad ja makse ei ole muutunud."},
+	"fi": {"Uudet lippunne — ", "Ostoksen yhteydessä annetussa sähköpostiosoitteessa oli kirjoitusvirhe", "Pyynnöstänne olemme myöntäneet uudet liput aiempien tilalle", "Paikkanne ja maksunne eivät ole muuttuneet."},
+	"hu": {"Új jegyei — ", "A vásárláskor megadott e-mail-címben elírás volt", "Kérésére új jegyeket állítottunk ki a korábbiak helyett", "Az ülőhelyei és a fizetése nem változtak."},
+	"lt": {"Jūsų nauji bilietai — ", "Pirkdami nurodėte el. pašto adresą su klaida", "Jūsų prašymu išdavėme naujus bilietus vietoj ankstesnių", "Jūsų vietos ir apmokėjimas nepasikeitė."},
+	"lv": {"Jūsu jaunās biļetes — ", "Pirkuma brīdī norādītajā e-pasta adresē bija drukas kļūda", "Pēc jūsu pieprasījuma mēs esam izsnieguši jaunas biļetes", "Jūsu vietas un maksājums nav mainījušies."},
+	"pl": {"Nowe bilety — ", "W adresie e-mail podanym przy zakupie była literówka", "Na Państwa prośbę wystawiliśmy nowe bilety", "Państwa miejsca i płatność pozostają bez zmian."},
+	"uk": {"Ваші нові квитки — ", "Під час покупки було допущено помилку в адресі електронної пошти", "За Вашим запитом ми видали нові квитки", "Ваші місця й оплата не змінилися."},
 	"fr": {"Vos nouveaux billets — ", "Lors de l'achat, l'adresse e-mail contenait une faute de frappe", "À votre demande, nous avons émis de nouveaux billets", "Vos places et votre paiement n'ont pas changé."},
 	"he": {"הכרטיסים החדשים שלך — ", "בעת הרכישה הייתה שגיאת הקלדה בכתובת הדוא״ל", "לבקשתך הנפקנו כרטיסים חדשים", "המקומות והתשלום לא השתנו."},
 }
@@ -85,6 +92,13 @@ var invitationReissueSubjects = map[string]string{
 	"de": "Ihre neue Einladung — ",
 	"es": "Tu nueva invitación — ",
 	"fr": "Votre nouvelle invitation — ",
+	"et": "Teie uus kutse — ",
+	"fi": "Uusi kutsunne — ",
+	"hu": "Új meghívója — ",
+	"lt": "Jūsų naujas kvietimas — ",
+	"lv": "Jūsu jaunais ielūgums — ",
+	"pl": "Nowe zaproszenie — ",
+	"uk": "Ваше нове запрошення — ",
 	"he": "ההזמנה החדשה שלך — ",
 }
 

@@ -13,6 +13,8 @@
       materials: { type: 'String', attribute: 'materials' },
       funnel: { type: 'String', attribute: 'funnel' },
       promo: { type: 'String', attribute: 'promo' },
+      trackingConsent: { type: 'String', attribute: 'tracking-consent' },
+      trackingConsentVersion: { type: 'String', attribute: 'tracking-consent-version' },
     },
   }}
 />
@@ -51,6 +53,7 @@
   import { consentErrorMessage, consentPayload, forceConsent } from './lib/consent.js';
   import { isMarketingRewardRefusal, marketingErrorMessage, marketingPayload } from './lib/marketing.js';
   import { captureAttribution, type AttributionPayload } from './lib/attribution.js';
+  import { buildBuyerContext, captureClickIds, isTrackingGranted, persistClickIds, readBrowserCookies, type ClickIds } from './lib/buyerContext.js';
   import { createFunnel, parseFunnelHost, type Funnel, type FunnelStep } from './lib/funnel.js';
   import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
   import { dispatchWidgetEvent, ARENA_EVENTS } from './lib/events.js';
@@ -84,6 +87,8 @@
   import CartSheet from './components/CartSheet.svelte';
   import GaTierCard from './components/GaTierCard.svelte';
   import SaleStateNotice from './components/SaleStateNotice.svelte';
+  import ExternalSaleNotice from './components/ExternalSaleNotice.svelte';
+  import { externalSaleOf } from './lib/externalSale.js';
   import SeatedTierCard from './components/SeatedTierCard.svelte';
   import GaAreaPopover from './components/GaAreaPopover.svelte';
   import OrderStatus from './components/OrderStatus.svelte';
@@ -138,9 +143,14 @@
      * page hands over the `?promo=` of its address). Without it the widget
      * reads `?promo=` from the page address itself. */
     promo?: string;
+    /** 'granted' or 'denied': the host page's tracking-consent answer. Absent
+     * or anything else: no buyer_context is sent. Read when checkout starts. */
+    trackingConsent?: string;
+    /** Version of the consent text the host showed (sent with the answer). */
+    trackingConsentVersion?: string;
   }
 
-  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '', frame = '', materials = '', funnel = '', promo: promoAttribute = '' }: Props = $props();
+  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '', frame = '', materials = '', funnel = '', promo: promoAttribute = '', trackingConsent = '', trackingConsentVersion = '' }: Props = $props();
 
   /**
    * Host element reference for CustomEvent dispatch (WID-S5).
@@ -222,6 +232,10 @@
   // and the steppers. A buyer who already holds seats keeps the cart bar. A
   // missing or unknown `sales_state` (older API) is not paused.
   const salesPaused = $derived(!salesClosed && selectedSession !== null && pausedSalesState(selectedSession) !== null);
+
+  // A date sold by a partner box office (sales_state "external") has no tiers
+  // here: the map, steppers and cart give way to a button to the partner's site.
+  const salesExternal = $derived(!salesClosed && externalSaleOf(selectedSession) !== null);
 
   // ── Widget stage ───────────────────────────────────────────────────────────
 
@@ -322,6 +336,7 @@
   // Spec 43: the sales link / utm touch that brought the buyer, read from the
   // page address on mount (kept 7 days per feed token). Sent with checkout/start.
   let attribution: AttributionPayload | null = null;
+  let clickIds: ClickIds = {};
   // Spec 50 A7: the anonymous buyer-funnel beacon (view, session_open,
   // seats_chosen). It reads its utm from the same stored touch as the checkout.
   // Built on first use, when the props are known; a step is sent once per
@@ -506,6 +521,13 @@
     // Spec 43: remember which sales link or utm label brought the buyer. The
     // address is only read, never changed (its query also carries checkout_token).
     attribution = captureAttribution(normFeedToken, window.location.search);
+    // Storage is read and written only after the host granted tracking; the
+    // ids of this page view are kept in memory either way.
+    const consentGranted = isTrackingGranted(trackingConsent);
+    clickIds = captureClickIds(normFeedToken, window.location.search, {
+      storage: consentGranted ? undefined : null,
+      persist: consentGranted,
+    });
     wantedPromo = resolveWantedPromo(normFeedToken, promoAttribute, window.location.search);
 
     // Check for checkout_token in URL or sessionStorage first.
@@ -805,6 +827,19 @@
       // string or hash we sent along would be dropped or would collide.
       const returnUrl = buildReturnUrl();
       if (returnUrl) payload.return_url = returnUrl;
+      // Tracking context for server-side Meta / GA4: only when the host page
+      // answered granted or denied; read now, the attribute may change later.
+      const cookies = readBrowserCookies();
+      // Consent given after mount: the ids seen on this page are kept now.
+      if (isTrackingGranted(trackingConsent)) persistClickIds(normFeedToken, clickIds);
+      const buyerCtx = buildBuyerContext({
+        consent: trackingConsent,
+        consentVersion: trackingConsentVersion,
+        clickIds,
+        cookies,
+        pageUrl: window.location.origin + window.location.pathname,
+      });
+      if (buyerCtx) payload.buyer_context = buyerCtx;
       // Spec 43: the sales link / utm touch, when there is one. The platform
       // cleans it and never refuses a purchase over it.
       if (attribution) payload.attribution = attribution;
@@ -1178,6 +1213,11 @@
         {#if cartLimitNotice}
           <p class="arena-tickets-limit" role="status">{cartLimitNotice}</p>
         {/if}
+        <!-- A date sold by a partner box office: no map, no steppers, no cart; one button to the partner's site. -->
+        {#if salesExternal && selectedSession}
+          <ExternalSaleNotice session={selectedSession} locale={normLocale} />
+        {/if}
+        {#if !salesExternal}
         <!-- The seated category has no stepper, so it gets a card of the same kind that says where it is taken. -->
         {#if !salesClosed && !salesPaused && selectedSession?.schema_url && seatedTiers.length > 0}
           <div class="ga-tiers-section">
@@ -1237,6 +1277,7 @@
             onOpen={openCartSheet}
             cta={t.continue_to_payment}
           />
+        {/if}
         {/if}
 
         <!-- Event materials (task 2-2): gallery, videos, map, partner links,

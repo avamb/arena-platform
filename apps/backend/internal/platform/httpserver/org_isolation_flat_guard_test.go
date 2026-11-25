@@ -48,9 +48,6 @@ const (
 	flatSharedRead flatHow = "shared read"
 	// flatNoOrgData: touches no organization data.
 	flatNoOrgData flatHow = "no organization data"
-	// flatScannerFamily: the barcode batch import routes, which are reviewed
-	// together with the scanner integration.
-	flatScannerFamily flatHow = "scanner family"
 )
 
 type flatFamily struct {
@@ -58,8 +55,8 @@ type flatFamily struct {
 	method string
 	// path is a chi route with parameter names, listed EXACTLY: a new route
 	// under an existing prefix is not covered until somebody reads its handler
-	// and adds it. (A trailing "*" still matches a prefix, but only the barcode
-	// batch family uses it.) Parameter names are ignored when matching.
+	// and adds it. (A trailing "*" still matches a prefix, but no entry uses
+	// it.) Parameter names are ignored when matching.
 	path string
 	how  flatHow
 	// note names the guard or the credential.
@@ -116,6 +113,9 @@ var flatRouteFamilies = []flatFamily{
 	{"GET", "/v1/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf", flatPublic, "feed token or checkout token in the URL"},
 	{"GET", "/v1/public/feeds/{feed_token}/events", flatPublic, "feed token or checkout token in the URL"},
 	{"GET", "/v1/public/feeds/{feed_token}/events/{event_id}", flatPublic, "feed token or checkout token in the URL"},
+	{"GET", "/v1/public/feeds/{feed_token}/series", flatPublic, "feed token or checkout token in the URL"},
+	{"GET", "/v1/public/feeds/{feed_token}/series/{series_id}", flatPublic, "feed token or checkout token in the URL"},
+	{"GET", "/v1/public/pages/{org_slug}/series/{series_slug}", flatPublic, "public page slugs; a tour of the organization on its hosted page"},
 	{"GET", "/v1/public/pages/{org_slug}", flatPublic, "feed token or checkout token in the URL"},
 	{"GET", "/v1/public/pages/{org_slug}/{event_slug}", flatPublic, "feed token or checkout token in the URL"},
 	{"GET", "/v1/public/pages/{org_slug}/terms", flatPublic, "public page slug; the organizer's published terms, a feed token of another organization answers 404 (hlegal)"},
@@ -143,6 +143,7 @@ var flatRouteFamilies = []flatFamily{
 	{"POST", "/v1/public/payment-return", flatPublic, "feed token or checkout token in the URL"},
 	{"POST", "/v1/public/feeds/{feed_token}/sessions/{session_id}/sale-subscriptions", flatPublic, "feed token in the URL, the session must be on that feed"},
 	{"GET", "/v1/public/sale-subscriptions/confirm", flatPublic, "one-time token from the confirmation letter"},
+	{"POST", "/v1/public/feeds/{feed_token}/track", flatPublic, "feed token in the URL, the organization is the token's channel; counts only an event published to that token (hsite, spec 63 L-10)"},
 	{"POST", "/v1/public/feeds/{feed_token}/organizer-contact", flatPublic, "feed token in the URL, the organization is the token's channel; never answers an address (hsite, spec 62 P-17)"},
 	{"POST", "/v1/public/feeds/{feed_token}/marketing-subscriptions", flatPublic, "feed token in the URL, the grant is written for the token's channel organization only (hsite, spec 62 P-10)"},
 	{"POST", "/v1/public/feeds/{feed_token}/my-tickets/link", flatPublic, "feed token in the URL, the organization is the token's channel (mytickets, spec 62 §7)"},
@@ -184,6 +185,11 @@ var flatRouteFamilies = []flatFamily{
 	{"POST", "/v1/macs/scan-events", flatPublic, "HMAC of the MACS subscriber named in X-MACS-Subscriber-Id; tickets resolved only inside that subscriber's organization, any other ticket rejected per scan as not found"},
 	{"POST", "/v1/webhooks/brevo", flatPublic, "BREVO_WEBHOOK_TOKEN as a bearer header; letters matched by the tracking header or the message id"},
 	{"POST", "/v1/webhooks/brevo/{token}", flatPublic, "BREVO_WEBHOOK_TOKEN in the path; letters matched by the tracking header or the message id"},
+	{"GET", "/v1/integrations/meta/callback", flatPublic, "HMAC-signed state names the organization and the person; metaconnect.UserCanConnect re-checks org.update in that organization (hmetaconnect integration test)"},
+	{"POST", "/v1/integrations/meta/deauthorize", flatPublic, "Meta signed_request (HMAC of META_APP_SECRET); connections found by the signed app-scoped user id only"},
+	{"POST", "/v1/integrations/meta/data-deletion", flatPublic, "Meta signed_request (HMAC of META_APP_SECRET); connections found by the signed app-scoped user id only"},
+	{"GET", "/v1/integrations/meta/webhook", flatPublic, "Meta subscription check: hub.verify_token compared in constant time with META_WEBHOOK_VERIFY_TOKEN; reads and changes nothing"},
+	{"POST", "/v1/integrations/meta/webhook", flatPublic, "X-Hub-Signature-256 (HMAC of the raw body with META_APP_SECRET); business_integration_uninstall revokes only the connections to the signed business id"},
 
 	// ── platform operators, service tokens ──────────────────────────────────
 	{"GET", "/v1/admin/tickets", flatPlatform, "superadmin.read"},
@@ -337,8 +343,14 @@ var flatRouteFamilies = []flatFamily{
 	{"PATCH", "/v1/reconciliation/reports/{id}/lines/{line_id}", flatPlatform, "reconciliation.review"},
 	{"POST", "/v1/billing/tariffs", flatPlatform, "billing.admin"},
 	{"POST", "/v1/billing/invoices/generate", flatPlatform, "billing.admin"},
-	{"POST", "/v1/barcode-batches/{id}/approve", flatPlatform, "barcode_batch.approve"},
-	{"POST", "/v1/barcode-batches/{id}/reject", flatPlatform, "barcode_batch.approve"},
+	// /v1/barcode-batches* and POST /v1/barcodes/authorities  (flatPlatform):
+	// platform superadmin only (requireBarcodeSuperadmin, mount_scanning.go).
+	{"GET", "/v1/barcode-batches", flatPlatform, "requirePlatformSuperadmin: requireBarcodeSuperadmin"},
+	{"POST", "/v1/barcode-batches", flatPlatform, "requirePlatformSuperadmin: requireBarcodeSuperadmin"},
+	{"GET", "/v1/barcode-batches/{id}", flatPlatform, "requirePlatformSuperadmin: requireBarcodeSuperadmin"},
+	{"POST", "/v1/barcode-batches/{id}/approve", flatPlatform, "requirePlatformSuperadmin: requireBarcodeSuperadmin"},
+	{"POST", "/v1/barcode-batches/{id}/reject", flatPlatform, "requirePlatformSuperadmin: requireBarcodeSuperadmin"},
+	{"POST", "/v1/barcodes/authorities", flatPlatform, "requirePlatformSuperadmin: requireBarcodeSuperadmin"},
 
 	// ── rows of one organization behind a row guard ─────────────────────────
 	{"GET", "/v1/checkout/{id}/tickets", flatRowGuard, "htickets.RowOrgAccess"},
@@ -403,10 +415,10 @@ var flatRouteFamilies = []flatFamily{
 	// ── catalog shared for reading ──────────────────────────────────────────
 	{"GET", "/v1/venues", flatSharedRead, "contacts of other organizations removed"},
 	{"GET", "/v1/venues/{id}", flatSharedRead, "contacts of other organizations removed"},
-	{"GET", "/v1/venues/{venue_id}/seating-plans", flatSharedRead, "plans are shared for reading"},
-	{"GET", "/v1/seating-plans/{id}", flatSharedRead, "plans are shared for reading"},
-	{"GET", "/v1/seating-plans/{id}/versions", flatSharedRead, "plans are shared for reading"},
-	{"GET", "/v1/seating-plans/{id}/versions/{n}", flatSharedRead, "plans are shared for reading"},
+	{"GET", "/v1/venues/{venue_id}/seating-plans", flatRowGuard, "hseating planReadAccess: a private plan only for its owner organization or a superadmin, others left out"},
+	{"GET", "/v1/seating-plans/{id}", flatRowGuard, "hseating planReadAccess: a private plan only for its owner organization or a superadmin, else 404"},
+	{"GET", "/v1/seating-plans/{id}/versions", flatRowGuard, "hseating planReadAccess: a private plan only for its owner organization or a superadmin, else 404"},
+	{"GET", "/v1/seating-plans/{id}/versions/{n}", flatRowGuard, "hseating planReadAccess: a private plan only for its owner organization or a superadmin, else 404"},
 
 	// ── nothing of an organization ──────────────────────────────────────────
 	{"POST", "/v1/organizations", flatOwnAccount, "creates a new organization, touches no existing one"},
@@ -418,10 +430,9 @@ var flatRouteFamilies = []flatFamily{
 	// ── barcode inventory and door scanner ──────────────────────────────────
 	// The flat single-barcode, scan and scanner snapshot/validate routes were
 	// retired on 2026-11-21 (TestBarcode142_RetiredFlatRoutesNotMounted).
+	// POST /v1/barcodes/authorities and /v1/barcode-batches* are listed with
+	// the platform-only routes above.
 	{"GET", "/v1/barcodes/authorities", flatNoOrgData, "barcode.read; the platform-wide authority list (type and label), no organization data"},
-	{"POST", "/v1/barcodes/authorities", flatNoOrgData, "barcode.create; adds a platform-wide authority (type and label), touches no organization's data"},
-	{"*", "/v1/barcode-batches", flatScannerFamily, "barcode and scanner family"},
-	{"*", "/v1/barcode-batches/*", flatScannerFamily, "barcode and scanner family"},
 	{"POST", "/v1/scanner/scan-events", flatPublic, "agent_feed_tokens bearer in Authorization; every stored scan_events row carries the token's organization"},
 }
 

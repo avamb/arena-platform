@@ -18,6 +18,8 @@ func TestRender_DirectionsLine(t *testing.T) {
 	}
 	labels := map[string]string{
 		"en": "Directions", "ru": "Как добраться", "cs": "Jak se tam dostat",
+		"et": "Teekond", "fi": "Reittiohjeet", "hu": "Útvonal", "lt": "Kaip nuvykti",
+		"lv": "Norādes", "pl": "Dojazd", "uk": "Як дістатися",
 		"de": "Anfahrt", "es": "Cómo llegar", "fr": "Itinéraire", "he": "הוראות הגעה",
 	}
 	links := directions.Build(nil, nil, "Dizengoff 5", "Tel Aviv")

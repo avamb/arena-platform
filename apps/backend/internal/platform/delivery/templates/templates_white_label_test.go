@@ -25,6 +25,41 @@ func platformLineFor(kind string) string {
 	return platformLine
 }
 
+// siteLocalePlatformLines is the platform line of the seven languages added in
+// L-4: their templates say it in the letter's language (the older languages
+// keep the English line).
+var siteLocalePlatformLines = map[string]string{
+	"et": "Piletite töötlemine: arenasoldout.com",
+	"fi": "Lippujen käsittely: arenasoldout.com",
+	"hu": "Jegykezelés: arenasoldout.com",
+	"lt": "Bilietus apdoroja arenasoldout.com",
+	"lv": "Biļešu apstrādi nodrošina arenasoldout.com",
+	"pl": "Obsługa biletów: arenasoldout.com",
+	"uk": "Обробка квитків: arenasoldout.com",
+}
+
+// platformLineIn is the platform line a letter of the kind prints in the
+// locale; a kind without a template for the locale is the English fallback.
+func platformLineIn(kind, loc string) string {
+	if line, ok := siteLocalePlatformLines[loc]; ok && hasSiteLocaleTemplate(kind, loc) {
+		return line
+	}
+	return platformLineFor(kind)
+}
+
+// isPlatformLine reports whether the text holds the platform line in any language.
+func isPlatformLine(s string) bool {
+	if strings.Contains(s, platformLine) || strings.Contains(s, legacyPlatformLine) {
+		return true
+	}
+	for _, line := range siteLocalePlatformLines {
+		if strings.Contains(s, line) {
+			return true
+		}
+	}
+	return false
+}
+
 // platformLink is the address the HTML part links the line to.
 const platformLink = `href="https://arenasoldout.com"`
 
@@ -44,7 +79,7 @@ func TestRender_WhiteLabelDropsThePlatformLine(t *testing.T) {
 				t.Fatalf("%s/%s: %v", kind, loc, err)
 			}
 			for _, body := range []string{plain.TextBody, plain.HTMLBody} {
-				if !strings.Contains(body, platformLineFor(kind)) {
+				if !strings.Contains(body, platformLineIn(kind, loc)) {
 					t.Errorf("%s/%s: the platform line is missing without white label", kind, loc)
 				}
 			}
@@ -55,7 +90,7 @@ func TestRender_WhiteLabelDropsThePlatformLine(t *testing.T) {
 				t.Fatalf("%s/%s white label: %v", kind, loc, err)
 			}
 			for _, body := range []string{wl.TextBody, wl.HTMLBody} {
-				if strings.Contains(body, platformLineFor(kind)) {
+				if strings.Contains(body, platformLineIn(kind, loc)) {
 					t.Errorf("%s/%s: the platform line is printed under white label", kind, loc)
 				}
 			}
@@ -80,7 +115,7 @@ func TestTemplates_EveryBuyerPlatformLineFollowsWhiteLabel(t *testing.T) {
 			t.Fatal(err)
 		}
 		s := string(raw)
-		if !strings.Contains(s, platformLine) && !strings.Contains(s, legacyPlatformLine) {
+		if !isPlatformLine(s) {
 			continue
 		}
 		isOrganizer := false
@@ -94,7 +129,7 @@ func TestTemplates_EveryBuyerPlatformLineFollowsWhiteLabel(t *testing.T) {
 		}
 		lines := strings.Split(s, "\n")
 		for i, line := range lines {
-			if (strings.Contains(line, platformLine) || strings.Contains(line, legacyPlatformLine)) && !strings.Contains(line, "{{if not .WhiteLabel}}") {
+			if isPlatformLine(line) && !strings.Contains(line, "{{if not .WhiteLabel}}") {
 				t.Errorf("%s:%d: the platform line is not inside {{if not .WhiteLabel}}", f, i+1)
 			}
 		}

@@ -406,6 +406,54 @@ a {
   margin: 8px 0 0;
 }
 
+.asa-footer__cookies {
+  margin: 8px 0 0;
+}
+
+.asa-cookie {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  background: #fff;
+  color: #1f2937;
+  border-top: 1px solid #e5e7eb;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.asa-cookie__text {
+  margin: 0;
+  flex: 1 1 320px;
+}
+
+.asa-cookie__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.asa-cookie__btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--asa-accent, #4f46e5);
+  background: #fff;
+  color: var(--asa-accent, #4f46e5);
+  font: inherit;
+  cursor: pointer;
+}
+
+.asa-cookie__btn--accept {
+  background: var(--asa-accent, #4f46e5);
+  color: #fff;
+}
+
 .asa-contact-btn {
   padding: 0;
   border: 0;
@@ -1221,4 +1269,22 @@ a {
 .asa-venue__dates {
   font-size: 0.9em;
   opacity: 0.85;
+}
+
+/* Tour (event series) page */
+.asa-series-hero__image,
+.asa-series-poster {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+.asa-series-poster {
+  margin: 1rem 0;
+}
+.asa-series-summary {
+  font-weight: 600;
+}
+.asa-series-partners {
+  margin-top: 2rem;
 }

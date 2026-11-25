@@ -84,7 +84,9 @@ func TestRender_Refund_MarksOnlyTheVoidTickets(t *testing.T) {
 		t.Fatal(err)
 	}
 	marks := map[string]string{"en": "no longer valid", "ru": "больше не действует", "cs": "již neplatí",
-		"de": "nicht mehr gültig", "es": "ya no es válida", "fr": "n'est plus valable", "he": "אינו תקף עוד"}
+		"de": "nicht mehr gültig", "es": "ya no es válida", "fr": "n'est plus valable", "he": "אינו תקף עוד",
+		"et": "ei kehti enam", "fi": "ei enää voimassa", "hu": "már nem érvényes", "lt": "nebegalioja",
+		"lv": "vairs nav derīga", "pl": "już nieważny", "uk": "більше не дійсний"}
 	for _, loc := range SupportedLocales {
 		mark, ok := marks[loc]
 		if !ok {

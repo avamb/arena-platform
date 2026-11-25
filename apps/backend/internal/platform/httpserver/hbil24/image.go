@@ -170,14 +170,15 @@ func (h *Handler) HandleBil24Image(w http.ResponseWriter, r *http.Request) {
 	// hseating.xmlAttrString) and emits no request-derived text at all — the
 	// document is built purely from stored geometry, seat and tier rows — so
 	// there is no reflected-input path into the body. nosniff plus the exact
-	// image/svg+xml type keeps a browser from re-interpreting it as HTML.
+	// image/svg+xml type keeps a browser from re-interpreting it as HTML, and
+	// the Content-Security-Policy keeps the document inert when opened as a
+	// page.
 	body := hseating.RenderSBT10SVG(
 		geom, seats, tiers,
 		h.imageCategoryIDs(ctx, geom, seats, tiers),
 		schemaRow.SeatStatusVersion,
 	)
-	w.Header().Set("Content-Type", hseating.SBT10ContentType)
-	w.Header().Set("X-Content-Type-Options", "nosniff")
+	hseating.SetPlanSVGHeaders(w.Header())
 	w.WriteHeader(http.StatusOK)
 	//nolint:gosec // G705: gosec's taint analysis flags this only because the
 	// session id entered through r.URL.Query(). The query value is parsed into

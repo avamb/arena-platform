@@ -68,6 +68,9 @@ type publicMaterials struct {
 	PartnerLinks []publicMaterialPartnerLink `json:"partner_links"`
 	MapPoint     *publicMaterialMapPoint     `json:"map_point"`
 	ReportPhotos []publicMaterialPhoto       `json:"report_photos"`
+	// ReportTextHTML is the photo-report text (translated when ?locale= names a
+	// translation), null until the event is over or when there is none.
+	ReportTextHTML *string `json:"report_text_html"`
 }
 
 func emptyPublicMaterials() publicMaterials {

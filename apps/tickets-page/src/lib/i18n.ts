@@ -12,6 +12,12 @@ export interface PageStrings {
   errorBody: string;
   errorRetry: string;
   footerRights: string;
+  /** Cookie banner shown when the organizer measures ads (Meta, Google). */
+  cookieText: string;
+  cookieAccept: string;
+  cookieDecline: string;
+  cookiePrivacy: string;
+  cookieSettings: string;
   /** Promoter landing page (GET /v1/public/pages/{org_slug}): org has a
    * hosted-page channel but zero currently-visible events. */
   promoterEmptyTitle: string;
@@ -94,7 +100,18 @@ export interface PageStrings {
   lightboxPrev: string;
   lightboxNext: string;
   partnerOpen: string;
+  /** Tour (event series) page: heading over the list of its events, the
+   * partners block, "from {price}" and the plural forms of the summary line
+   * ("{n}" is replaced by the number). */
+  seriesEvents: string;
+  seriesPartners: string;
+  seriesFrom: string;
+  seriesCities: PluralForms;
+  seriesOnSale: PluralForms;
 }
+
+/** Texts by Intl.PluralRules category; `other` is the fallback. */
+export type PluralForms = Partial<Record<Intl.LDMLPluralRule, string>> & { other: string };
 
 const STRINGS: Record<PageLocale, PageStrings> = {
   en: {
@@ -106,6 +123,11 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     errorBody: 'We could not load this event right now. Please try again in a moment.',
     errorRetry: 'Retry',
     footerRights: 'Arena Sold Out. All rights reserved.',
+    cookieText: 'The organizer uses cookies to measure how its ads (Meta, Google) perform. Nothing is set until you choose.',
+    cookieAccept: 'Accept',
+    cookieDecline: 'Decline',
+    cookiePrivacy: 'Privacy policy',
+    cookieSettings: 'Cookie settings',
     promoterEmptyTitle: 'No upcoming dates yet',
     promoterEmptyBody: 'This organizer has not published any events right now. Please check back later.',
     promoterPickDate: 'Choose a date',
@@ -164,6 +186,11 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     lightboxPrev: "Previous photo",
     lightboxNext: "Next photo",
     partnerOpen: "Buy there",
+    seriesEvents: "Dates and cities",
+    seriesPartners: "Partners",
+    seriesFrom: "from {price}",
+    seriesCities: { one: "{n} city", other: "{n} cities" },
+    seriesOnSale: { one: "on sale in {n} city", other: "on sale in {n} cities" },
   },
   ru: {
     loading: 'Загрузка события…',
@@ -174,6 +201,11 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     errorBody: 'Не удалось загрузить событие. Пожалуйста, попробуйте ещё раз через момент.',
     errorRetry: 'Повторить',
     footerRights: 'Arena Sold Out. Все права защищены.',
+    cookieText: 'Организатор использует cookie, чтобы измерять эффективность своей рекламы (Meta, Google). Пока вы не выберете, ничего не сохраняется.',
+    cookieAccept: 'Принять',
+    cookieDecline: 'Отклонить',
+    cookiePrivacy: 'Политика конфиденциальности',
+    cookieSettings: 'Настройки cookie',
     promoterEmptyTitle: 'Пока нет ближайших дат',
     promoterEmptyBody: 'Этот организатор пока не опубликовал ни одного события. Загляните позже.',
     promoterPickDate: 'Выберите дату',
@@ -232,6 +264,11 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     lightboxPrev: "Предыдущее фото",
     lightboxNext: "Следующее фото",
     partnerOpen: "Купить там",
+    seriesEvents: "Даты и города",
+    seriesPartners: "Партнёры",
+    seriesFrom: "от {price}",
+    seriesCities: { one: "{n} город", few: "{n} города", many: "{n} городов", other: "{n} города" },
+    seriesOnSale: { one: "в продаже в {n} городе", few: "в продаже в {n} городах", many: "в продаже в {n} городах", other: "в продаже в {n} городах" },
   },
   cs: {
     loading: 'Načítání akce…',
@@ -242,6 +279,11 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     errorBody: 'Akci se nepodařilo načíst. Zkuste to prosím za chvíli znovu.',
     errorRetry: 'Zkusit znovu',
     footerRights: 'Arena Sold Out. Všechna práva vyhrazena.',
+    cookieText: 'Pořadatel používá soubory cookie k měření výkonu své reklamy (Meta, Google). Dokud nevyberete, nic se neukládá.',
+    cookieAccept: 'Přijmout',
+    cookieDecline: 'Odmítnout',
+    cookiePrivacy: 'Zásady ochrany osobních údajů',
+    cookieSettings: 'Nastavení cookies',
     promoterEmptyTitle: 'Zatím žádné nadcházející termíny',
     promoterEmptyBody: 'Tento pořadatel zatím nezveřejnil žádnou akci. Zkuste to prosím později.',
     promoterPickDate: 'Vyberte termín',
@@ -300,6 +342,11 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     lightboxPrev: "Předchozí fotka",
     lightboxNext: "Další fotka",
     partnerOpen: "Koupit tam",
+    seriesEvents: "Termíny a města",
+    seriesPartners: "Partneři",
+    seriesFrom: "od {price}",
+    seriesCities: { one: "{n} město", few: "{n} města", many: "{n} města", other: "{n} měst" },
+    seriesOnSale: { one: "v prodeji v {n} městě", few: "v prodeji v {n} městech", many: "v prodeji v {n} městech", other: "v prodeji v {n} městech" },
   },
   he: {
     loading: 'טוען את האירוע…',
@@ -310,6 +357,11 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     errorBody: 'לא הצלחנו לטעון את האירוע כרגע. נסו שוב בעוד רגע.',
     errorRetry: 'נסו שוב',
     footerRights: 'Arena Sold Out. כל הזכויות שמורות.',
+    cookieText: 'המארגן משתמש בעוגיות כדי למדוד את ביצועי הפרסום שלו (Meta, Google). שום דבר לא נשמר עד שתבחרו.',
+    cookieAccept: 'אישור',
+    cookieDecline: 'דחייה',
+    cookiePrivacy: 'מדיניות פרטיות',
+    cookieSettings: 'הגדרות עוגיות',
     promoterEmptyTitle: 'אין עדיין תאריכים קרובים',
     promoterEmptyBody: 'המפיק הזה עדיין לא פרסם אירועים. נסו שוב בקרוב.',
     promoterPickDate: 'בחרו תאריך',
@@ -368,6 +420,11 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     lightboxPrev: "התמונה הקודמת",
     lightboxNext: "התמונה הבאה",
     partnerOpen: "לקנות שם",
+    seriesEvents: "תאריכים וערים",
+    seriesPartners: "שותפים",
+    seriesFrom: "החל מ-{price}",
+    seriesCities: { one: "עיר אחת", two: "שתי ערים", other: "{n} ערים" },
+    seriesOnSale: { one: "במכירה בעיר אחת", two: "במכירה בשתי ערים", other: "במכירה ב-{n} ערים" },
   },
   es: {
     loading: 'Cargando evento…',
@@ -378,6 +435,11 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     errorBody: 'No pudimos cargar este evento en este momento. Inténtalo de nuevo en un momento.',
     errorRetry: 'Reintentar',
     footerRights: 'Arena Sold Out. Todos los derechos reservados.',
+    cookieText: 'El organizador usa cookies para medir el rendimiento de su publicidad (Meta, Google). No se guarda nada hasta que elijas.',
+    cookieAccept: 'Aceptar',
+    cookieDecline: 'Rechazar',
+    cookiePrivacy: 'Política de privacidad',
+    cookieSettings: 'Configuración de cookies',
     promoterEmptyTitle: 'Aún no hay fechas próximas',
     promoterEmptyBody: 'Este organizador todavía no ha publicado ningún evento. Vuelve a consultarlo más tarde.',
     promoterPickDate: 'Elige una fecha',
@@ -436,6 +498,11 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     lightboxPrev: "Foto anterior",
     lightboxNext: "Foto siguiente",
     partnerOpen: "Comprar allí",
+    seriesEvents: "Fechas y ciudades",
+    seriesPartners: "Socios",
+    seriesFrom: "desde {price}",
+    seriesCities: { one: "{n} ciudad", other: "{n} ciudades" },
+    seriesOnSale: { one: "a la venta en {n} ciudad", other: "a la venta en {n} ciudades" },
   },
 };
 

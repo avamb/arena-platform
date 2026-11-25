@@ -50,7 +50,7 @@ type Expect struct {
 
 // ScopedVerifier checks a token against an Expect chosen per request. The
 // static sites' forms (spec 62 section 10.2) differ by action (club, contact,
-// private_event, my_tickets) and by the hosts of the channel's site.
+// private_event, partnership, my_tickets) and by the hosts of the channel's site.
 type ScopedVerifier interface {
 	VerifyScoped(ctx context.Context, token, remoteIP string, want Expect) (bool, error)
 }

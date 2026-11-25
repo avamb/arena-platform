@@ -30,9 +30,11 @@ export const ITEM_HELP: Record<string, MessageKey> = {
   "nav-scanner": "screenHelp.item.scanner",
   "nav-guest-list": "screenHelp.item.guestList",
   "nav-shop": "screenHelp.item.shop",
+  "nav-ads-meta": "screenHelp.item.adsMeta",
   "nav-org-data": "screenHelp.item.orgData",
   "nav-payments": "screenHelp.item.payments",
   "nav-team": "screenHelp.item.team",
+  "nav-series": "screenHelp.item.series",
   "nav-promoters": "screenHelp.item.promoters",
   "nav-venues": "screenHelp.item.venues",
   "nav-notifications": "screenHelp.item.notifications",
@@ -49,6 +51,7 @@ export const CARD_HELP: Record<Exclude<ItemId, "status">, { label: MessageKey; t
   guests: { label: "guestList.downloadEvent", text: "screenHelp.action.guests" },
   funnel: { label: "funnel.button", text: "screenHelp.action.funnel" },
   edit: { label: "event.edit", text: "screenHelp.action.edit" },
+  translations: { label: "tr.title", text: "screenHelp.action.translations" },
   sample: { label: "event.sample", text: "screenHelp.action.sample" },
   promo: { label: "nav.promo", text: "screenHelp.action.promo" },
   invitations: { label: "nav.invitations", text: "screenHelp.action.invitations" },
@@ -91,9 +94,11 @@ export type ScreenId =
   | "growth"
   | "entrance"
   | "shop"
+  | "adsMeta"
   | "orgData"
   | "team"
   | "promoters"
+  | "series"
   | "venues"
   | "notifications"
   | "billing";
@@ -106,7 +111,7 @@ interface ScreenDef {
 }
 
 const SCREENS: Record<Exclude<ScreenId, "event">, ScreenDef> = {
-  events: { primary: "menu-events", items: ["nav-new-event", "menu-events", "nav-summary"] },
+  events: { primary: "menu-events", items: ["nav-new-event", "menu-events", "nav-summary", "nav-series"] },
   orders: { primary: "menu-orders", items: ["menu-orders", "menu-refunds"] },
   refunds: { primary: "menu-refunds", items: ["menu-refunds"] },
   promo: { primary: "nav-promo", items: "promotion" },
@@ -115,9 +120,11 @@ const SCREENS: Record<Exclude<ScreenId, "event">, ScreenDef> = {
   growth: { primary: "nav-growth", items: "promotion" },
   entrance: { primary: "nav-scanner", items: ["nav-scanner", "nav-guest-list"] },
   shop: { primary: "nav-shop", items: ["nav-shop"] },
+  adsMeta: { primary: "nav-ads-meta", items: ["nav-ads-meta"] },
   orgData: { primary: "nav-org-data", items: ["nav-org-data", "nav-payments"] },
   team: { primary: "nav-team", items: ["nav-team"] },
   promoters: { primary: "nav-promoters", items: ["nav-promoters"] },
+  series: { primary: "nav-series", items: ["nav-series"] },
   venues: { primary: "nav-venues", items: ["nav-venues"] },
   notifications: { primary: "nav-notifications", items: ["nav-notifications"] },
   billing: { primary: "nav-billing", items: ["nav-billing"] },

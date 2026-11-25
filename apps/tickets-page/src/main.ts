@@ -2,9 +2,11 @@ import { parsePath } from './lib/route.ts';
 import { hasExplicitLocale, resolveLocale, withOrgDefault } from './lib/locale.ts';
 import { descriptionPlain } from './lib/richtext.ts';
 import { applyDocumentChrome, consumeCheckoutTokenFromURL, eventIDWithOpenCheckout, renderError, renderEvent, renderLoading, renderNotFound, renderPromoterPage } from './lib/render.ts';
-import { ApiError, fetchHostedPage, fetchPromoterPage } from './lib/api.ts';
+import { ApiError, fetchPromoterPage } from './lib/api.ts';
+import { renderSeriesPage, resolveEventOrSeries, seriesDescriptionPlain } from './lib/series.ts';
 import { renderSellerFooter } from './lib/seller.ts';
 import { contactFallbackURL, openContactFromHash, renderContactFooter } from './lib/contact.ts';
+import { initTracking } from './lib/tracking.ts';
 import { trackFunnelView, trackPageView, trackPartnerClick, trackVideoPlay } from './lib/track.ts';
 
 /** Resolved at build time by Vite from the VITE_API_BASE_URL build arg
@@ -80,6 +82,7 @@ async function main(): Promise<void> {
           openEventID: eventIDWithOpenCheckout(data.events, safeSessionStorage()),
         });
         openContactFromHash(contactCtx);
+        initTracking({ enabled: data.org.tracking_enabled, locale: pageLocale, privacyUrl: data.contact_form?.privacy_url });
       } catch (err) {
         if (err instanceof ApiError && err.status === 404) {
           renderNotFound(mainEl, locale);
@@ -101,7 +104,30 @@ async function main(): Promise<void> {
   const loadEvent = async (): Promise<void> => {
     renderLoading(mainEl, locale);
     try {
-      const data = await fetchHostedPage(API_BASE, route.orgSlug, route.eventSlug);
+      const resolved = await resolveEventOrSeries(API_BASE, route.orgSlug, route.eventSlug);
+      if (resolved.kind === 'series') {
+        // A tour lives at the same address shape as an event: /{org}/{slug}.
+        const sdata = resolved.data;
+        const seriesLocale = withOrgDefault(locale, explicitLocale, sdata.default_locale);
+        applyDocumentChrome(seriesLocale, {
+          title: sdata.series.name,
+          descriptionPlain: seriesDescriptionPlain(sdata.series.description_html),
+        });
+        renderSeriesPage(mainEl, sdata, seriesLocale, { orgSlug: route.orgSlug });
+        renderSellerFooter(sdata.seller, seriesLocale);
+        const seriesContact = {
+          apiBase: API_BASE,
+          slug: route.orgSlug,
+          locale: seriesLocale,
+          form: sdata.contact_form,
+          phone: sdata.seller?.public_contact?.phone ?? undefined,
+        };
+        renderContactFooter(seriesContact);
+        openContactFromHash(seriesContact);
+        initTracking({ enabled: sdata.org.tracking_enabled, locale: seriesLocale, privacyUrl: sdata.contact_form?.privacy_url });
+        return;
+      }
+      const data = resolved.data;
       const pageLocale = withOrgDefault(locale, explicitLocale, data.default_locale);
       // The teaser leads; else the plain text of the description (the server's
       // description_text, or the old plainText of the raw one on an older backend).
@@ -132,6 +158,7 @@ async function main(): Promise<void> {
       };
       renderContactFooter(contactCtx);
       openContactFromHash(contactCtx);
+      initTracking({ enabled: data.org.tracking_enabled, locale: pageLocale, privacyUrl: data.contact_form?.privacy_url });
       // Page statistics (HP-2a): one anonymous page view per shown event page.
       // Coming back from the payment page is not a new view.
       if (!resumingCheckout) {

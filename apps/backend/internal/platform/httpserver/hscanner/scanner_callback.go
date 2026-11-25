@@ -256,6 +256,10 @@ func (h *Handler) processScannerScan(ctx context.Context, orgID uuid.UUID, in sc
 	)
 	resolved, lookupErr := h.feedTokenQueries.ResolveScanCredentialByTicketQR(ctx, in.CredentialCode)
 	switch {
+	case lookupErr == nil && resolved.OrgID != orgID:
+		// A ticket of another organization is treated like an unknown
+		// credential: the scan is kept without ticket lineage, and the
+		// ticket is neither marked used nor described in the answer.
 	case lookupErr == nil:
 		// AB-50d status gate: cancelled/revoked tickets are rejected at the scan
 		// callback before any scan_event row is inserted. These endpoints are

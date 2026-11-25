@@ -174,8 +174,7 @@ func (h *Handler) HandleGetPublicSessionLayoutSVG(w http.ResponseWriter, r *http
 
 	body := RenderBSSLayoutSVG(geom, seats, tiers, schemaRow.SeatStatusVersion)
 
-	w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
+	SetPlanSVGHeaders(w.Header())
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
 }
@@ -281,12 +280,12 @@ func RenderBSSLayoutSVG(
 		seatStatusVersion,
 	)
 
-	// Decor first so it renders under the seats. The importer already
-	// canonicalised the fragment, so we can splice it in as-is inside a
-	// <g id="Decor"> wrapper.
-	if strings.TrimSpace(g.DecorSVG) != "" {
+	// Decor first so it renders under the seats. The stored fragment is
+	// read back through the decor writer (seating.SanitizeDecorSVG), so it
+	// holds drawing only, and spliced in inside a <g id="Decor"> wrapper.
+	if decorSVG := sanitizeDecorCached(g.DecorSVG); strings.TrimSpace(decorSVG) != "" {
 		buf.WriteString(`  <g id="Decor">`)
-		buf.WriteString(g.DecorSVG)
+		buf.WriteString(decorSVG)
 		buf.WriteString(`</g>` + "\n")
 	}
 

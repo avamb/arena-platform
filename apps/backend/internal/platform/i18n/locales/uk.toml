@@ -2126,7 +2126,7 @@ other = "Архів · {{.N}}"
 other = "<b>Заходи: {{.Org}}</b>\n{{.Filter}}. Сторінка {{.Page}} з {{.Pages}}.{{.Search}}\n{{.Legend}}\nНатисніть на захід, щоб відкрити картку. Щоб знайти за назвою, просто напишіть кілька літер."
 
 ["bot.ec.legend"]
-other = "● тривають  ○ незабаром  ✕ розпродано  ✓ архів"
+other = "● тривають  ○ незабаром  ✕ розпродано  ↗ продає партнер  ✓ архів"
 
 ["bot.ec.search_line"]
 other = "Пошук: «{{.Query}}» — знайдено {{.N}}."
@@ -7177,6 +7177,18 @@ other = "<b>Просування</b>\nЦі інструменти допомаг
 ["bot.mn.door_title"]
 other = "<b>Вхід на захід</b>\nПеревіряйте квитки на вході та переглядайте список гостей."
 
+["bot.mn.meta_ok"]
+other = "Meta: підключено"
+
+["bot.mn.meta_off"]
+other = "Meta: не підключено"
+
+["bot.mn.meta_error"]
+other = "Meta: помилка підключення"
+
+["bot.mn.meta_btn"]
+other = "Реклама Meta в браузері"
+
 ["bot.mn.settings_title"]
 other = "<b>Налаштування</b>\nВаша організація, приймання оплати, команда й ваші особисті налаштування."
 
@@ -7472,3 +7484,207 @@ other = "Показує налаштування магазину."
 
 ["bot.hp.i.sh.web"]
 other = "Відкриває магазин у браузері."
+
+["bot.tr.btn"]
+other = "🌐 Переклади"
+
+["bot.tr.list_title"]
+other = "<b>Переклади</b> · {{.Name}}"
+
+["bot.tr.list_about"]
+other = "Оберіть мову, щоб прочитати переклад опису або надіслати свій. Текст, який ви надішлете, машинний переклад не замінить."
+
+["bot.tr.lang_btn"]
+other = "{{.Lang}} · {{.State}}"
+
+["bot.tr.lang_label"]
+other = "Мова"
+
+["bot.tr.state_none"]
+other = "немає"
+
+["bot.tr.state_manual"]
+other = "вручну"
+
+["bot.tr.state_machine"]
+other = "машинний"
+
+["bot.tr.state_manual_stale"]
+other = "вручну, застарів"
+
+["bot.tr.state_machine_stale"]
+other = "машинний, застарів"
+
+["bot.tr.machine_btn"]
+other = "🤖 Перекласти машинно"
+
+["bot.tr.machine_queued"]
+other = "Готово. Машинний переклад запущено для мов: {{.Langs}}. Тексти з'являться за кілька хвилин. Текст, написаний вручну, не замінюється."
+
+["bot.tr.machine_none"]
+other = "У всіх мов уже є переклад. Текст, написаний вручну, машинний переклад не замінює."
+
+["bot.tr.machine_off"]
+other = "Машинний переклад зараз вимкнений. Ви можете написати переклад самі."
+
+["bot.tr.machine_failed"]
+other = "Не вдалося запустити машинний переклад. Спробуйте ще раз за хвилину."
+
+["bot.tr.lang_title"]
+other = "<b>{{.Lang}}</b> · {{.Name}}"
+
+["bot.tr.lang_current"]
+other = "Зараз переклад такий:\n\n{{.Text}}"
+
+["bot.tr.lang_original"]
+other = "Перекладу ще немає. Оригінал:\n\n{{.Text}}"
+
+["bot.tr.lang_empty"]
+other = "У заходу ще немає опису, перекладати нічого."
+
+["bot.tr.lang_ask"]
+other = "Надішліть повідомленням свій переклад опису. Я збережу його як ваш текст. Машинний переклад його не замінить."
+
+["bot.tr.to_list_btn"]
+other = "Мови"
+
+["bot.tr.saved"]
+other = "Готово, переклад мовою «{{.Lang}}» збережено."
+
+["bot.tr.save_failed"]
+other = "Не вдалося зберегти переклад. Надішліть текст ще раз."
+
+["bot.tr.expired"]
+other = "Час для відповіді вийшов. Відкрийте мову знову."
+
+["bot.hp.i.ge.translations"]
+other = "Відкриває мови сторінки заходу. Там ви пишете переклад опису."
+
+["bot.hp.i.tr.lang"]
+other = "Показує переклад цією мовою та приймає ваш текст."
+
+["bot.hp.i.tr.machine"]
+other = "Перекладає мови, у яких немає перекладу. Ваші тексти лишаються як є."
+
+["bot.wz.ask_seller"]
+other = "Хто продає квитки?\n\nЯкщо квитки продаєте ви самі, їх можна купити на вашій сторінці й у віджеті. Якщо квитки продає партнер, на сторінці заходу буде кнопка на його касу."
+
+["bot.wz.seller_platform_btn"]
+other = "Ми, на сайті й у віджеті"
+
+["bot.wz.seller_partner_btn"]
+other = "Партнер"
+
+["bot.wz.err_seller_first"]
+other = "Спершу виберіть, хто продає квитки: натисніть одну з кнопок."
+
+["bot.wz.ask_ext_url"]
+other = "Надішліть посилання на касу партнера: сторінку, де купують квитки на цей захід. Адреса починається з https://.{{if .Value}}\n\nЗараз: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_url"]
+other = "Потрібне посилання на касу партнера. Воно починається з https://, веде на сайт партнера з назвою (не на IP-адресу) і не на наш сайт."
+
+["bot.wz.ask_ext_name"]
+other = "Як називається каса? Цю назву покупці побачать на кнопці, наприклад «Eventim».{{if .Value}}\n\nЗараз: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_name"]
+other = "Вкажіть назву каси, до 80 знаків."
+
+["bot.wz.ask_ext_price"]
+other = "Ціна «від» для сторінки заходу, наприклад 25 або 39,90. Це орієнтир для покупців: квитки продає партнер. Валюта та сама, що й у заходу, її я запитаю пізніше.\n\nЦіни немає? Натисніть «Пропустити».{{if .Value}}\n\nЗараз: {{.Value}}{{end}}"
+
+["bot.wz.err_ext_price"]
+other = "Не вдалося прочитати ціну. Напишіть число, наприклад 25 або 39,90, або натисніть «Пропустити»."
+
+["bot.wz.ack_seller"]
+other = "Продає"
+
+["bot.wz.ack_seller_us"]
+other = "ми, на сайті й у віджеті"
+
+["bot.wz.ack_seller_partner"]
+other = "партнер"
+
+["bot.wz.ack_ext_url"]
+other = "Посилання на касу"
+
+["bot.wz.ack_ext_name"]
+other = "Каса"
+
+["bot.wz.ack_ext_price"]
+other = "Ціна від"
+
+["bot.wz.summary_external"]
+other = "Продає партнер: {{.Name}}, {{.Url}}{{.Price}}"
+
+["bot.wz.summary_external_price"]
+other = ", ціна від {{.Price}}"
+
+["bot.wz.summary_session_ext"]
+other = "{{.When}} {{.Venue}}"
+
+["bot.wz.session_external"]
+other = "Продає партнер: {{.Name}}\n{{.Url}}"
+
+["bot.wz.edit_field_external"]
+other = "Каса партнера"
+
+["bot.wz.edit_b_external"]
+other = "Каса партнера"
+
+["bot.wz.edit_ext_btn"]
+other = "Змінити касу"
+
+["bot.wz.edit_chg_date_ext"]
+other = "Новий сеанс {{.When}} · {{.Venue}}. {{.List}}"
+
+["bot.wz.preview_new_date_ext"]
+other = "Новий сеанс {{.When}} · {{.Venue}}. {{.List}}"
+
+["bot.ser.wz_ask"]
+other = "Ця подія входить до туру? Тур об'єднує події під спільною назвою, наприклад гастролі різними містами. Оберіть тур або пропустіть крок."
+
+["bot.ser.wz_label"]
+other = "Тур"
+
+["bot.ser.warn_not_linked"]
+other = "Подію створено, але прив'язати її до туру не вдалося. Прив'яжіть тур на картці події."
+
+["bot.ser.event_line"]
+other = "🧭 Тур: <b>{{.Name}}</b>"
+
+["bot.ser.event_btn"]
+other = "🧭 Тур"
+
+["bot.ser.list_now"]
+other = "🧭 Тур цієї події: <b>{{.Name}}</b>"
+
+["bot.ser.list_none_now"]
+other = "🧭 Ця подія не входить в жоден тур."
+
+["bot.ser.list_hint"]
+other = "Натисніть на тур, щоб прив'язати до нього подію."
+
+["bot.ser.empty"]
+other = "Турів поки немає. Створіть тур у веб-центрі подій, і він з'явиться тут."
+
+["bot.ser.unbind_btn"]
+other = "Прибрати з туру"
+
+["bot.ser.back_btn"]
+other = "‹ До події"
+
+["bot.ser.saved"]
+other = "Подію прив'язано до туру «{{.Name}}»."
+
+["bot.ser.unbound"]
+other = "Подію прибрано з туру."
+
+["bot.ser.refused"]
+other = "Цей тур недоступний: він в архіві або видалений. Ось список, який він є зараз."
+
+["bot.ser.gone"]
+other = "Цього туру більше немає в списку. Ось список, який він є зараз."
+
+["bot.hp.i.ge.series"]
+other = "Прив'язує подію до туру або прибирає її з туру."

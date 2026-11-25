@@ -21,6 +21,7 @@ const LINES: Partial<Record<NavGroupId, MessageKey>> = {
   promotion: "helpPage.promotion",
   entrance: "helpPage.entrance",
   shop: "helpPage.shop",
+  ads: "helpPage.ads",
   settings: "helpPage.settings",
 };
 

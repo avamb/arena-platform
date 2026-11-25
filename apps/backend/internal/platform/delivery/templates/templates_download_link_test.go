@@ -13,6 +13,13 @@ var downloadLabels = map[string]string{
 	"es": "Descargar PDF",
 	"de": "PDF herunterladen",
 	"fr": "Télécharger le PDF",
+	"et": "Laadi PDF alla",
+	"fi": "Lataa PDF",
+	"hu": "PDF letöltése",
+	"lt": "Atsisiųsti PDF",
+	"lv": "Lejupielādēt PDF",
+	"pl": "Pobierz PDF",
+	"uk": "Завантажити PDF",
 	"he": "הורדת PDF",
 }
 

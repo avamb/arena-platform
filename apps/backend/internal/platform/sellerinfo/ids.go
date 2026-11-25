@@ -23,6 +23,11 @@ var idLabelsByLocale = map[string]idLabels{
 	"it": {Registration: "N. di registrazione", Tax: "Codice fiscale", VAT: "Partita IVA", EIN: "EIN"},
 	"pl": {Registration: "Numer rejestrowy", Tax: "NIP", VAT: "NIP UE", EIN: "EIN"},
 	"uk": {Registration: "Реєстраційний номер", Tax: "Податковий номер", VAT: "Номер платника ПДВ", EIN: "EIN"},
+	"hu": {Registration: "Cégjegyzékszám", Tax: "Adószám", VAT: "Közösségi adószám", EIN: "EIN"},
+	"et": {Registration: "Registreerimisnumber", Tax: "Maksukohustuslase number", VAT: "KMKR number", EIN: "EIN"},
+	"lv": {Registration: "Reģistrācijas nr.", Tax: "Nodokļu maksātāja kods", VAT: "PVN maksātāja numurs", EIN: "EIN"},
+	"lt": {Registration: "Registracijos nr.", Tax: "Mokesčių mokėtojo kodas", VAT: "PVM mokėtojo kodas", EIN: "EIN"},
+	"fi": {Registration: "Y-tunnus", Tax: "Verotunniste", VAT: "ALV-tunnus", EIN: "EIN"},
 }
 
 // IDsLine is the seller's identification line of a letter footer and a PDF

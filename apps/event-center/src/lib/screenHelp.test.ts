@@ -7,7 +7,7 @@ import { navGroups } from "@/lib/navMenu";
 import { CARD_HELP, ITEM_HELP, STATUS_HELP, helpLineId, helpLineIds, screenHelp, type NavContext } from "@/lib/screenHelp";
 
 const ACTIONS: Exclude<ItemId, "status">[] = [
-  "edit", "sample", "orders", "csv", "guests", "funnel", "qr", "promo", "invitations", "links",
+  "edit", "translations", "sample", "orders", "csv", "guests", "funnel", "qr", "promo", "invitations", "links",
   "totals", "pageStats", "poster", "sessions", "salesSwitch", "materials", "emailNote", "referral",
 ];
 const STATUS: StatusAction[] = ["publish", "off", "archive", "delete"];
@@ -28,6 +28,7 @@ function rights(can: (p: string) => boolean, status: string): ItemRights {
   const canStatus = { canPublish: can("event.publish"), canDelete: can("event.delete") };
   return {
     edit: can("event.update"),
+    translations: can("event.update"),
     sample: can("session.read"),
     orders: sales,
     csv,
@@ -103,14 +104,14 @@ describe("screen help: lines follow what the person sees", () => {
   it("events list: the owner and the manager read the same lines, in the order of the menu", () => {
     for (const p of [owner, manager]) {
       const h = screenHelp("events", p);
-      expect(h && helpLineIds(h)).toEqual(["nav-new-event", "menu-events", "nav-summary"]);
+      expect(h && helpLineIds(h)).toEqual(["nav-new-event", "menu-events", "nav-summary", "nav-series"]);
       expect(h?.back).toEqual(["nav.events"]);
     }
   });
 
   it("a role that cannot create events does not read about the Add event button", () => {
     const h = screenHelp("events", person(["import.bil24_session"]));
-    expect(h && helpLineIds(h)).toEqual(["menu-events", "nav-summary"]);
+    expect(h && helpLineIds(h)).toEqual(["menu-events", "nav-summary", "nav-series"]);
   });
 
   it("orders: the list is for order.read, the refunds screen reads only its own line, no rights means no help", () => {
@@ -131,6 +132,13 @@ describe("screen help: lines follow what the person sees", () => {
     expect(screenHelp("notifications", manager)?.back).toEqual(["nav.more", "nav.section.settings", "nav.notifications"]);
   });
 
+  it("tours: a person who may read events sees the Tours item and its help, one who may not sees neither", () => {
+    const h = screenHelp("series", owner);
+    expect(h && helpLineIds(h)).toEqual(["nav-series"]);
+    expect(h?.back).toEqual(["nav.more", "nav.section.events", "nav.series"]);
+    expect(screenHelp("series", person(["event.read"]))).toBeNull();
+  });
+
   it("promotion screens list the entry points the person sees, in the order of the sheet", () => {
     const h = screenHelp("links", owner);
     expect(h && helpLineIds(h)).toEqual(["nav-promo", "nav-invitations", "nav-links", "nav-growth"]);
@@ -142,6 +150,8 @@ describe("screen help: lines follow what the person sees", () => {
   it("shop home needs a shop, and entrance hides the guest list from a role without order.read", () => {
     expect(screenHelp("shop", { ...owner, shopMode: "none" })).toBeNull();
     expect(helpLineIds(screenHelp("shop", owner)!)).toEqual(["nav-shop"]);
+    expect(helpLineIds(screenHelp("adsMeta", owner)!)).toEqual(["nav-ads-meta"]);
+    expect(screenHelp("adsMeta", manager)).toBeNull();
     expect(helpLineIds(screenHelp("entrance", noOrders)!)).toEqual(["nav-scanner"]);
     expect(helpLineIds(screenHelp("entrance", owner)!)).toEqual(["nav-scanner", "nav-guest-list"]);
   });
@@ -159,6 +169,7 @@ describe("screen help: lines follow what the person sees", () => {
       "block-totals",
       "block-pageStats",
       "action-edit",
+      "action-translations",
       "block-poster",
       "block-sessions",
       "block-salesSwitch",

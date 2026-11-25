@@ -115,7 +115,8 @@ func TestBotE2E_MenuButtonAlwaysOpensTheMenu(t *testing.T) {
 	}
 
 	// ── an event draft is paused, not taken over by later texts
-	d.press("wz:new", "Как называется мероприятие?")
+	d.press("wz:new", "Кто продаёт билеты?")
+	d.press("wz:seller:platform", "Как называется мероприятие?")
 	d.say("☰ Меню", "Что будем делать?")
 	d.say("Концерт после меню "+seed.suffix, "Я не понял")
 	draft := func() (paused bool, name string) {

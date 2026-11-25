@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesstate"
 )
 
 // sales_state.go computes `sales_state` for the organization events list
@@ -23,6 +24,10 @@ const (
 	SalesStateSoldOut  = "sold_out" // future sessions exist and no free place is left in any of them
 	SalesStateArchived = "archived" // every session has ended, or the event is cancelled/archived
 	SalesStateDraft    = "draft"    // future sessions exist but the event is not published: nobody can buy
+	// SalesStateExternal: every future session is sold by a partner box
+	// office (sessions.sales_mode = 'external', migration 0221) — the
+	// session list's salesstate.External, for the whole event.
+	SalesStateExternal = salesstate.External
 )
 
 // salesStateFor decides the state from the event's lifecycle status and its
@@ -46,6 +51,12 @@ func salesStateFor(eventStatus string, f gen.EventSalesFacts, ok bool) string {
 	}
 	if eventStatus == "draft" {
 		return SalesStateDraft
+	}
+	// Only partner box offices sell it: it is neither sold out nor upcoming
+	// here (it owns no seats). A mixed event falls through: its external
+	// sessions own no seats, so the rule below speaks of its platform ones.
+	if f.FutureExternalSessions >= f.FutureSessions {
+		return SalesStateExternal
 	}
 	switch {
 	case f.Selling:

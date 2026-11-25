@@ -33,12 +33,19 @@ describe("navGroups", () => {
       ["promotion", ["nav-promo", "nav-invitations", "nav-links", "nav-growth"]],
       ["entrance", ["nav-scanner", "nav-guest-list"]],
       ["shop", ["nav-shop"]],
+      ["ads", ["nav-ads-meta"]],
       [
         "settings",
         ["nav-org-data", "nav-payments", "nav-team", "nav-promoters", "nav-venues", "nav-notifications", "nav-billing", "nav-switch-org"],
       ],
       ["help", ["nav-help"]],
     ]);
+  });
+
+  it("puts Tours in the Events section for a person with event.read, and nowhere else", () => {
+    const withTours = shape([...OWNER, "event.read"]);
+    expect(withTours.find(([id]) => id === "events")?.[1]).toEqual(["menu-events", "nav-summary", "nav-series"]);
+    expect(shape(OWNER).find(([id]) => id === "events")?.[1]).toEqual(["menu-events", "nav-summary"]);
   });
 
   it("drops what a manager without org.update and billing.read cannot use", () => {

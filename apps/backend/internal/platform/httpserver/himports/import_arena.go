@@ -54,11 +54,17 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 	if err != nil {
 		return importResult{}, err
 	}
+	if err := requireCategoriesUnlessExternal(ctx, q, plan, match); err != nil {
+		return importResult{}, err
+	}
 	eventID, err := h.resolveArenaEvent(ctx, q, tx, plan, match)
 	if err != nil {
 		return importResult{}, err
 	}
 	if err := applyArenaPromoter(ctx, q, plan, eventID); err != nil {
+		return importResult{}, err
+	}
+	if err := applyArenaSeries(ctx, q, plan, eventID); err != nil {
 		return importResult{}, err
 	}
 	if err := applyArenaEmailNote(ctx, q, plan, eventID); err != nil {
@@ -101,46 +107,57 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 		}
 	}
 
-	orderedTiers, cats, err := h.upsertArenaTiers(ctx, q, tx, plan, sessionID, seated.seatedEntries(), warnings)
+	// A session a partner box office sells (actionEvent.externalSale) owns no
+	// category, place or ledger row: the whole category pipeline is skipped.
+	external, err := applyArenaExternalSale(ctx, q, plan, sessionID, eventID, seated)
 	if err != nil {
 		return importResult{}, err
 	}
-	if seated != nil {
-		if err := materializeArenaSeating(ctx, q, eventID, sessionID, seated, orderedTiers); err != nil {
+	var orderedTiers []uuid.UUID
+	var seatingOut seatingOutcome
+	if !external {
+		var cats []importedCategory
+		orderedTiers, cats, err = h.upsertArenaTiers(ctx, q, tx, plan, sessionID, seated.seatedEntries(), warnings)
+		if err != nil {
 			return importResult{}, err
 		}
-	}
-	if err := markPricingOnly(ctx, q, plan, eventID, sessionID, seated, cats); err != nil {
-		return importResult{}, err
-	}
-	if err := refuseSeatedChainLinks(ctx, q, plan, sessionID, orderedTiers); err != nil {
-		return importResult{}, err
-	}
+		if seated != nil {
+			if err := materializeArenaSeating(ctx, q, eventID, sessionID, seated, orderedTiers); err != nil {
+				return importResult{}, err
+			}
+		}
+		if err := markPricingOnly(ctx, q, plan, eventID, sessionID, seated, cats); err != nil {
+			return importResult{}, err
+		}
+		if err := refuseSeatedChainLinks(ctx, q, plan, sessionID, orderedTiers); err != nil {
+			return importResult{}, err
+		}
 
-	// Plan 08_architecture/23 step 7 — the same category-quota rules the
-	// Bil24-format importer follows. A category without places mints its own
-	// General Admission places; a category whose places are plan seats is
-	// left alone (gaquota.CategoryKind), and a plan GA zone already owns the
-	// places seatmint wrote, so the bundle's availability only resizes it.
-	chain, err := applyArenaCategoryExtras(ctx, q, plan, sessionID, orderedTiers)
-	if err != nil {
-		return importResult{}, err
-	}
-	if err := syncImportedCategoryQuotas(ctx, q, sessionID, cats, true, true, chain, warnings); err != nil {
-		return importResult{}, err
-	}
-	// A quantity step selling now owns exactly its limit; the rest of the hall
-	// waits in the next, still closed category (migration 0114).
-	if _, err := gaquota.RebalanceSession(ctx, q, sessionID); err != nil {
-		return importResult{}, fmt.Errorf("apply category sell limits: %w", err)
-	}
+		// Plan 08_architecture/23 step 7 — the same category-quota rules the
+		// Bil24-format importer follows. A category without places mints its own
+		// General Admission places; a category whose places are plan seats is
+		// left alone (gaquota.CategoryKind), and a plan GA zone already owns the
+		// places seatmint wrote, so the bundle's availability only resizes it.
+		chain, err := applyArenaCategoryExtras(ctx, q, plan, sessionID, orderedTiers)
+		if err != nil {
+			return importResult{}, err
+		}
+		if err := syncImportedCategoryQuotas(ctx, q, sessionID, cats, true, true, chain, warnings); err != nil {
+			return importResult{}, err
+		}
+		// A quantity step selling now owns exactly its limit; the rest of the hall
+		// waits in the next, still closed category (migration 0114).
+		if _, err := gaquota.RebalanceSession(ctx, q, sessionID); err != nil {
+			return importResult{}, fmt.Errorf("apply category sell limits: %w", err)
+		}
 
-	if err := h.syncInventoryLedger(ctx, q, eventID, sessionID); err != nil {
-		return importResult{}, err
-	}
-	seatingOut, err := arenaSeatingOutcome(ctx, q, eventID, sessionID)
-	if err != nil {
-		return importResult{}, err
+		if err := h.syncInventoryLedger(ctx, q, eventID, sessionID); err != nil {
+			return importResult{}, err
+		}
+		seatingOut, err = arenaSeatingOutcome(ctx, q, eventID, sessionID)
+		if err != nil {
+			return importResult{}, err
+		}
 	}
 	var publishedNow bool
 	if plan.Request.Publish {
@@ -627,6 +644,11 @@ func (h *Handler) upsertArenaSession(
 			// capacity; the places written next make it exact (Recompute).
 			capacity = seatmint.PlanCapacity(seated.mode, seated.version)
 		}
+		if kind, _, _ := plan.Request.ActionEvent.ParseExternalSale(); capacity <= 0 && kind == bil24compat.ExternalSaleObject {
+			// A partner-sold session has no categories to sum: capacity_total only
+			// has to satisfy its CHECK (> 0), like a session created through the API.
+			capacity = 1
+		}
 		if capacity <= 0 {
 			return uuid.Nil, false, errCapacityRequired()
 		}
@@ -1004,6 +1026,61 @@ func resolveArenaPromoter(ctx context.Context, q *gen.Queries, plan importPlan) 
 		return promoterChange{}, invalid
 	}
 	return promoterChange{set: true, promoterID: p.ID}, nil
+}
+
+// applyArenaSeries applies action.arenaSeriesId (migration 0222) inside the
+// import transaction: absent keeps the event's tour, null or "" removes the
+// link, a UUID links one of the organization's ACTIVE tours. Anything else is
+// 422 import.invalid_series, the rule of PATCH .../events/{id} series_id.
+func applyArenaSeries(ctx context.Context, q *gen.Queries, plan importPlan, eventID uuid.UUID) error {
+	change, err := resolveArenaSeries(ctx, q, plan)
+	if err != nil || !change.set {
+		return err
+	}
+	var target *uuid.UUID
+	if change.seriesID != uuid.Nil {
+		id := change.seriesID
+		target = &id
+	}
+	if _, err := q.SetEventSeries(ctx, eventID, plan.OrgID, target); err != nil {
+		return fmt.Errorf("set event series: %w", err)
+	}
+	return nil
+}
+
+// seriesChange is what action.arenaSeriesId asks for: nothing (set false),
+// removing the link (seriesID uuid.Nil) or linking one tour.
+type seriesChange struct {
+	set      bool
+	seriesID uuid.UUID
+}
+
+// resolveArenaSeries reads action.arenaSeriesId and checks, reading only,
+// that a named tour is an active one of the organization.
+func resolveArenaSeries(ctx context.Context, q *gen.Queries, plan importPlan) (seriesChange, error) {
+	field := plan.Request.Action.ArenaSeriesID
+	if !field.Present {
+		return seriesChange{}, nil
+	}
+	if field.Value == nil || strings.TrimSpace(*field.Value) == "" {
+		return seriesChange{set: true}, nil
+	}
+	invalid := failImportAt(http.StatusUnprocessableEntity, "import.invalid_series", "/action/arenaSeriesId",
+		"action.arenaSeriesId is not an active tour of this organization")
+	seriesID, err := uuid.Parse(strings.TrimSpace(*field.Value))
+	if err != nil {
+		return seriesChange{}, invalid
+	}
+	s, err := q.GetEventSeries(ctx, seriesID, plan.OrgID)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return seriesChange{}, invalid
+	case err != nil:
+		return seriesChange{}, fmt.Errorf("read series %s: %w", seriesID, err)
+	case s.ArchivedAt != nil:
+		return seriesChange{}, invalid
+	}
+	return seriesChange{set: true, seriesID: s.ID}, nil
 }
 
 // categoryColorRE is the #rrggbb form of a category's seat-map colour

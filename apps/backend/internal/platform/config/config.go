@@ -30,9 +30,12 @@ import (
 	"net/mail"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/secretbox"
 )
 
 // AppEnv enumerates supported deployment profiles.
@@ -681,6 +684,15 @@ type Config struct {
 	// counters live in the memory of one arena-api process.
 	TextFormatsPerUserPerDay int `env:"TEXT_FORMATS_PER_USER_PER_DAY" required:"false" default:"100"`
 	TextFormatsPerOrgPerDay  int `env:"TEXT_FORMATS_PER_ORG_PER_DAY" required:"false" default:"500"`
+	// TranslateLLMAPIKey is the Anthropic key of the machine translation of an
+	// event's texts (internal/platform/contenttranslate, spec 63 section 16.4,
+	// secret). arena-api reads it to answer 503 translation.not_configured and
+	// arena-worker translates with it. Empty switches machine translation off.
+	TranslateLLMAPIKey string `env:"TRANSLATE_LLM_API_KEY" required:"false" default:""`
+	// TranslateLLMModel is the model that translates.
+	TranslateLLMModel string `env:"TRANSLATE_LLM_MODEL" required:"false" default:"claude-sonnet-5-5"`
+	// TranslateLLMBaseURL is the Messages API origin (a stub in tests).
+	TranslateLLMBaseURL string `env:"TRANSLATE_LLM_BASE_URL" required:"false" default:"https://api.anthropic.com"`
 	// OpsWatchdogHeartbeatHourUTC is the UTC hour (0-23) at which the
 	// ops.watchdog job sends its once-daily "still alive" digest.
 	OpsWatchdogHeartbeatHourUTC int `env:"OPS_WATCHDOG_HEARTBEAT_HOUR_UTC" required:"false" default:"7"`
@@ -694,6 +706,41 @@ type Config struct {
 	VenueGenURL string `env:"VENUE_GEN_URL" required:"false" default:""`
 	// VenueGenToken is the generator's bearer token (secret, arena-worker only).
 	VenueGenToken string `env:"VENUE_GEN_TOKEN" required:"false" default:""`
+
+	// -------------------------------------------------------------------------
+	// Meta (Facebook) business login and ads (spec 08_architecture/66, api and
+	// worker). MetaEnabled reports whether the connection is switched on.
+	// -------------------------------------------------------------------------
+	// MetaAppID is the Meta app id. Empty switches the Meta connection off.
+	MetaAppID string `env:"META_APP_ID" required:"false" default:""`
+	// MetaAppSecret is the Meta app secret (secret, api and worker only).
+	MetaAppSecret string `env:"META_APP_SECRET" required:"false" default:""`
+	// MetaLoginConfigID is the configuration id of "Facebook Login for
+	// Business".
+	MetaLoginConfigID string `env:"META_LOGIN_CONFIG_ID" required:"false" default:""`
+	// MetaGraphVersion is the Graph API version, such as v25.0.
+	MetaGraphVersion string `env:"META_GRAPH_VERSION" required:"false" default:"v25.0"`
+	// MetaOAuthRedirectURL is the OAuth redirect address registered in the
+	// Meta app (https in production).
+	MetaOAuthRedirectURL string `env:"META_OAUTH_REDIRECT_URL" required:"false" default:""`
+	// MetaGraphBaseURL redirects Graph calls to a stub. Test seam: refused in
+	// production, like STRIPE_API_BASE_URL.
+	MetaGraphBaseURL string `env:"META_GRAPH_BASE_URL" required:"false" default:""`
+	// MetaTokenEncKey is the secretbox key spec that seals Meta tokens at rest
+	// ("v2:<base64 32 bytes>,v1:<base64 32 bytes>", first = current). Empty
+	// switches the Meta connection off.
+	MetaTokenEncKey string `env:"META_TOKEN_ENC_KEY" required:"false" default:""`
+	// MetaAssetEdges optionally overrides the list of Graph asset edges read
+	// after a connection. Empty = the built-in list.
+	MetaAssetEdges string `env:"META_ASSET_EDGES" required:"false" default:""`
+	// MetaDataDeletionStatusURL is the page the Meta data-deletion callback
+	// names in its answer; the confirmation code is added as ?code=.
+	MetaDataDeletionStatusURL string `env:"META_DATA_DELETION_STATUS_URL" required:"false" default:"https://arenasoldout.com/legal/data-deletion"`
+	// MetaWebhookVerifyToken is the verify token entered in the Meta app's
+	// Webhooks panel (secret, api only). Empty: GET verification of
+	// /v1/integrations/meta/webhook is refused; POST is still checked by the
+	// X-Hub-Signature-256 of META_APP_SECRET.
+	MetaWebhookVerifyToken string `env:"META_WEBHOOK_VERIFY_TOKEN" required:"false" default:""`
 
 	// -------------------------------------------------------------------------
 	// Metrics endpoint authentication
@@ -939,12 +986,24 @@ func LoadFor(role Role) (*Config, error) {
 		PosterLLMBaseURL:            getenv("POSTER_LLM_BASE_URL", DefaultPosterLLMBaseURL),
 		PosterLLMProvider:           strings.ToLower(strings.TrimSpace(getenv("POSTER_LLM_PROVIDER", PosterProviderAnthropic))),
 		PosterLLMFallbackProvider:   strings.ToLower(strings.TrimSpace(getenv("POSTER_LLM_FALLBACK_PROVIDER", ""))),
+		TranslateLLMAPIKey:          getenv("TRANSLATE_LLM_API_KEY", ""),
+		TranslateLLMModel:           strings.TrimSpace(getenv("TRANSLATE_LLM_MODEL", "claude-sonnet-5-5")),
+		TranslateLLMBaseURL:         getenv("TRANSLATE_LLM_BASE_URL", DefaultPosterLLMBaseURL),
 		GeminiAPIKey:                getenv("GEMINI_API_KEY", ""),
 		PosterGeminiModel:           strings.TrimSpace(getenv("POSTER_GEMINI_MODEL", DefaultPosterGeminiModel)),
 		PosterGeminiBaseURL:         getenv("POSTER_GEMINI_BASE_URL", DefaultPosterGeminiBaseURL),
 		TextFormatLLMModel:          strings.TrimSpace(getenv("TEXT_FORMAT_LLM_MODEL", "claude-haiku-5-5")),
 		VenueGenURL:                 strings.TrimRight(strings.TrimSpace(getenv("VENUE_GEN_URL", "")), "/"),
 		VenueGenToken:               strings.TrimSpace(getenv("VENUE_GEN_TOKEN", "")),
+		MetaAppID:                   strings.TrimSpace(getenv("META_APP_ID", "")),
+		MetaAppSecret:               strings.TrimSpace(getenv("META_APP_SECRET", "")),
+		MetaLoginConfigID:           strings.TrimSpace(getenv("META_LOGIN_CONFIG_ID", "")),
+		MetaGraphVersion:            strings.TrimSpace(getenv("META_GRAPH_VERSION", DefaultMetaGraphVersion)),
+		MetaOAuthRedirectURL:        strings.TrimSpace(getenv("META_OAUTH_REDIRECT_URL", "")),
+		MetaTokenEncKey:             strings.TrimSpace(getenv("META_TOKEN_ENC_KEY", "")),
+		MetaAssetEdges:              strings.TrimSpace(getenv("META_ASSET_EDGES", "")),
+		MetaDataDeletionStatusURL:   strings.TrimSpace(getenv("META_DATA_DELETION_STATUS_URL", DefaultMetaDataDeletionStatusURL)),
+		MetaWebhookVerifyToken:      strings.TrimSpace(getenv("META_WEBHOOK_VERIFY_TOKEN", "")),
 
 		MetricsBearerToken: getenv("METRICS_BEARER_TOKEN", ""),
 	}
@@ -1119,6 +1178,8 @@ func LoadFor(role Role) (*Config, error) {
 	cfg.AllPayAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("ALLPAY_API_BASE_URL", "")), "/")
 	// PAYPLUS_API_BASE_URL — test/dev only, rejected in production by Validate.
 	cfg.PayPlusAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("PAYPLUS_API_BASE_URL", "")), "/")
+	// META_GRAPH_BASE_URL — test/dev only, rejected in production by Validate.
+	cfg.MetaGraphBaseURL = strings.TrimRight(strings.TrimSpace(getenv("META_GRAPH_BASE_URL", "")), "/")
 
 	d, err := getenvDuration("REQUEST_TIMEOUT_SECONDS", 30*time.Second, true)
 	if err != nil {
@@ -1579,6 +1640,13 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// --- Meta connection (api, worker) ------------------------------------
+	if c.uses(capMeta) && c.MetaGraphVersion != "" && !metaGraphVersionPattern.MatchString(c.MetaGraphVersion) {
+		errs = append(errs, fmt.Errorf(
+			"META_GRAPH_VERSION must look like v25.0 (got %q)", c.MetaGraphVersion,
+		))
+	}
+
 	// --- Ops watchdog -----------------------------------------------------
 	if c.OpsWatchdogHeartbeatHourUTC < 0 || c.OpsWatchdogHeartbeatHourUTC > 23 {
 		errs = append(errs, fmt.Errorf(
@@ -1996,12 +2064,23 @@ func (c *Config) validateProduction() []error {
 		))
 	}
 
+	// 17a2. META_GRAPH_BASE_URL: same reasoning — it would receive the Meta
+	// app secret and the organizations' access tokens with every request.
+	if strings.TrimSpace(c.MetaGraphBaseURL) != "" {
+		errs = append(errs, errors.New(
+			"META_GRAPH_BASE_URL must not be set in production;"+
+				" it redirects Meta Graph API calls away from graph.facebook.com"+
+				" and is for tests and local development only",
+		))
+	}
+
 	// 17b. BREVO_API_BASE_URL, POSTER_LLM_BASE_URL and POSTER_GEMINI_BASE_URL: a changed host would
 	// receive the platform's Brevo key or the LLM key with every request. Only
 	// the built-in default is accepted in production, on every role.
 	for _, seam := range []struct{ name, value, def string }{
 		{"BREVO_API_BASE_URL", c.BrevoAPIBaseURL, DefaultBrevoAPIBaseURL},
 		{"POSTER_LLM_BASE_URL", c.PosterLLMBaseURL, DefaultPosterLLMBaseURL},
+		{"TRANSLATE_LLM_BASE_URL", c.TranslateLLMBaseURL, DefaultPosterLLMBaseURL},
 		{"POSTER_GEMINI_BASE_URL", c.PosterGeminiBaseURL, DefaultPosterGeminiBaseURL},
 	} {
 		if v := strings.TrimRight(strings.TrimSpace(seam.value), "/"); v != "" && v != seam.def {
@@ -2044,7 +2123,65 @@ func (c *Config) validateProduction() []error {
 		))
 	}
 
+	// 20. A Meta app id switches the Meta connection on (spec 66 section 4.5):
+	// then the secret, the login configuration and a parsable token key are
+	// required (api, worker), and the OAuth redirect address must be https
+	// (api only: the worker never runs the login).
+	if c.uses(capMeta) && c.MetaAppID != "" {
+		errs = append(errs, c.validateProductionMeta()...)
+	}
+
 	return errs
+}
+
+// validateProductionMeta checks the Meta settings once META_APP_ID is set.
+// No error carries a secret value.
+func (c *Config) validateProductionMeta() []error {
+	var errs []error
+	for _, v := range []struct{ name, value string }{
+		{"META_APP_SECRET", c.MetaAppSecret},
+		{"META_LOGIN_CONFIG_ID", c.MetaLoginConfigID},
+		{"META_TOKEN_ENC_KEY", c.MetaTokenEncKey},
+	} {
+		if v.value == "" {
+			errs = append(errs, fmt.Errorf("%s is required in production when META_APP_ID is set", v.name))
+		}
+	}
+	if c.MetaTokenEncKey != "" {
+		if _, err := secretbox.ParseKeys(c.MetaTokenEncKey); err != nil {
+			errs = append(errs, fmt.Errorf("META_TOKEN_ENC_KEY is invalid: %w", err))
+		}
+	}
+	if u, err := url.Parse(c.MetaOAuthRedirectURL); c.uses(capMetaLogin) && (c.MetaOAuthRedirectURL == "" || err != nil ||
+		!strings.EqualFold(u.Scheme, "https") || u.Host == "") {
+		errs = append(errs, fmt.Errorf(
+			"META_OAUTH_REDIRECT_URL must be an https:// address in production when META_APP_ID is set (got %q)",
+			c.MetaOAuthRedirectURL,
+		))
+	}
+	return errs
+}
+
+// DefaultMetaGraphVersion is the Graph API version used when
+// META_GRAPH_VERSION is unset.
+const DefaultMetaGraphVersion = "v25.0"
+
+// DefaultMetaDataDeletionStatusURL is the data-deletion status page used when
+// META_DATA_DELETION_STATUS_URL is unset.
+const DefaultMetaDataDeletionStatusURL = "https://arenasoldout.com/legal/data-deletion"
+
+var metaGraphVersionPattern = regexp.MustCompile(`^v\d+\.\d+$`)
+
+// MetaEnabled reports whether the Meta connection is switched on: the app id,
+// the app secret, the login configuration id and the token key are all set
+// and the key parses. Without any of them the feature is off and no token is
+// ever stored.
+func (c *Config) MetaEnabled() bool {
+	if c == nil || c.MetaAppID == "" || c.MetaAppSecret == "" || c.MetaLoginConfigID == "" || c.MetaTokenEncKey == "" {
+		return false
+	}
+	_, err := secretbox.ParseKeys(c.MetaTokenEncKey)
+	return err == nil
 }
 
 // validateProductionJWT checks that JWT_SIGNING_SECRET is present, long enough
