@@ -230,6 +230,8 @@ func (h *Handler) HandlePublicCheckoutBuyer(w http.ResponseWriter, r *http.Reque
 	default:
 		h.logger.Info("public_checkout_buyer: the buyer was attached to a prepared order",
 			slog.String("checkout_session_id", cs.ID.String()))
+		// InitiateCheckout of the prepared order fires now (checkout_buyer_track.go).
+		h.queueAttachedInitiateCheckout(ctx, cs.ID, pc)
 		h.writeAttachAnswer(w, checkoutToken, pc)
 	}
 }

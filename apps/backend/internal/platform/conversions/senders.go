@@ -55,16 +55,17 @@ type Purchase struct {
 }
 
 // PurchaseItem is one session of a purchase. Price is a major-unit unit price.
+// The JSON tags are the stored form inside a SiteEvent payload.
 type PurchaseItem struct {
-	SessionID string
-	EventID   string
-	EventName string
-	StartAt   time.Time // zero when unknown
-	Venue     string
-	City      string
-	Country   string
-	Quantity  int
-	Price     float64
+	SessionID string    `json:"session_id"`
+	EventID   string    `json:"event_id,omitempty"`
+	EventName string    `json:"event_name,omitempty"`
+	StartAt   time.Time `json:"start_at"` // zero when unknown
+	Venue     string    `json:"venue,omitempty"`
+	City      string    `json:"city,omitempty"`
+	Country   string    `json:"country,omitempty"`
+	Quantity  int       `json:"quantity"`
+	Price     float64   `json:"price"`
 }
 
 // purchaseItems maps the order's sessions to Purchase items.
@@ -353,6 +354,7 @@ var metaEventNames = map[string]string{
 	KindInitiateCheckout: "InitiateCheckout",
 	KindLead:             "Lead",
 	KindSubscribe:        "CompleteRegistration",
+	KindAddToCart:        "AddToCart",
 }
 
 var ga4EventNames = map[string]string{
@@ -361,6 +363,7 @@ var ga4EventNames = map[string]string{
 	KindInitiateCheckout: "begin_checkout",
 	KindLead:             "generate_lead",
 	KindSubscribe:        "sign_up",
+	KindAddToCart:        "add_to_cart",
 }
 
 func eventTime(ev SiteEvent) time.Time {
@@ -433,6 +436,13 @@ func (m MetaSender) SendEvent(ctx context.Context, pixelID, token, testEventCode
 			custom["content_ids"] = []string{ev.ContentID}
 		}
 	}
+	// A widget cart names its sessions like a Purchase does (what, where, when).
+	if ev.Kind == KindAddToCart || ev.Kind == KindInitiateCheckout {
+		addMetaItems(custom, ev.Items)
+		if ev.SeatsConsidered > 0 {
+			custom["seats_considered"] = ev.SeatsConsidered
+		}
+	}
 	if ev.Value != 0 && ev.Currency != "" {
 		custom["value"] = ev.Value
 		custom["currency"] = strings.ToUpper(ev.Currency)
@@ -491,6 +501,9 @@ func (g GA4Sender) SendEvent(ctx context.Context, measurementID, apiSecret strin
 		if ev.ContentID != "" || ev.ContentName != "" {
 			params["items"] = []any{map[string]any{"item_id": ev.ContentID, "item_name": ev.ContentName}}
 		}
+	}
+	if (ev.Kind == KindAddToCart || ev.Kind == KindInitiateCheckout) && len(ev.Items) > 0 {
+		params["items"] = ga4Items(ev.Items)
 	}
 	if ev.Kind == KindInitiateCheckout {
 		if ev.Seller != "" {
