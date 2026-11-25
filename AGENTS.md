@@ -387,6 +387,7 @@ Stripe, Flitt and AllPay hosted checkout, payment modules, webhook state machine
 * PayPlus (internal/adapters/payplus, spec 47 §3, do…
 * A buyer e-mail is checked by emailaddr.Valid befor…
 * The legacy webhook routes bind an event to the organization whose secret verified it
+* A new checkout never cancels a payable order; a payment for a cancelled order never answers 500 (supersede)
 
 ### [Meta integration](docs/agents/meta-integration.md)
 

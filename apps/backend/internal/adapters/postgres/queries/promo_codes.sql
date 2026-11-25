@@ -174,10 +174,11 @@ SELECT pg_advisory_xact_lock(hashtextextended('promo_code_uses:' || $1::text, 0)
 -- (used) and the uses this buyer already took (mine). A use is a recorded
 -- redemption, or an order carrying the code with no redemption yet that was
 -- paid or still holds its places. Not counted: the live unpaid order of the
--- same reservation (a re-sent cart) and a live unpaid order of the same buyer
--- on the same session (the widget supersedes it, the gateway refuses the new
--- one with bil24.open_order_exists). A buyer is the customer ($5) or the
--- e-mail ($6): either one matches.
+-- same reservation (a re-sent cart) and a live unpaid order of the same
+-- e-mail ($6) on the same session that the widget is about to close
+-- (hfeed supersedeOpenOrder closes it only when it has payment attempts and
+-- every one failed). Any other open order of the buyer may still be paid and
+-- counts. A buyer is the customer ($5) or the e-mail ($6): either one matches.
 WITH pc AS (
     SELECT id, org_id, max_uses, max_uses_per_customer
     FROM   promo_codes
@@ -191,8 +192,12 @@ WITH pc AS (
             OR (o.status = 'pending_payment' AND o.expires_at > now()
                 AND o.reservation_id IS DISTINCT FROM $3::uuid
                 AND NOT (o.session_id IS NOT DISTINCT FROM $4::uuid
-                         AND (COALESCE(o.customer_id = $5::uuid, false)
-                              OR COALESCE($6::text <> '' AND lower(o.buyer_email) = lower($6::text), false)))))
+                         AND $6::text <> '' AND lower(btrim(o.buyer_email)) = lower(btrim($6::text))
+                         AND EXISTS (SELECT 1 FROM payment_intents pi
+                                     WHERE pi.checkout_session_id = o.checkout_session_id)
+                         AND NOT EXISTS (SELECT 1 FROM payment_intents pi
+                                         WHERE pi.checkout_session_id = o.checkout_session_id
+                                           AND pi.state <> 'failed'))))
 ), redeemed AS (
     SELECT r.customer_id AS redemption_customer_id, o.customer_id, o.buyer_email
     FROM   promo_code_redemptions r
