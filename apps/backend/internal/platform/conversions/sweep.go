@@ -184,6 +184,7 @@ func handle(ctx context.Context, store Store, senders Senders, logger *slog.Logg
 		Context:     od.Context,
 		Email:       od.Email, // consent is true here
 		Phone:       od.Phone,
+		Items:       purchaseItems(od),
 	}
 	var sendErr error
 	switch d.Provider {

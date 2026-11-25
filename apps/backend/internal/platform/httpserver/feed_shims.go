@@ -13,11 +13,13 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/conversions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hbil24"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hfeed"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mytickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesubscribe"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/secretbox"
 )
 
 // ─── handler construction ─────────────────────────────────────────────────────
@@ -71,7 +73,26 @@ func (s *Server) feedHandler() *hfeed.Handler {
 		WithMyTicketsPageCheck(s.myTicketsPageCheck()).
 		WithTicketAccessLog(s.ticketAccessRecorder()).
 		WithCheckoutIdempotency(s.checkoutStartIdempotency()).
-		WithPaymentApplier(s.confirmedPaymentApplier())
+		WithPaymentApplier(s.confirmedPaymentApplier()).
+		WithCartConversions(s.cartConversions())
+}
+
+// cartConversions queues the widget cart's AddToCart / InitiateCheckout; nil
+// without a pool, never a typed-nil interface.
+func (s *Server) cartConversions() hfeed.CartConversions {
+	if s.pgxPool == nil {
+		return nil
+	}
+	store := conversions.NewPGStore(s.pgxPool)
+	// Without the token box the store treats every Meta connection as off, so
+	// an organization connected through the Meta app would get no AddToCart /
+	// InitiateCheckout (the worker's store gets the same box, conversions_wiring.go).
+	if c := s.cfg; c != nil && c.MetaEnabled() {
+		if box, err := secretbox.ParseKeys(c.MetaTokenEncKey); err == nil {
+			store = store.WithMetaBox(box)
+		}
+	}
+	return store
 }
 
 // ticketAccessRecorder is the buyer's ticket access log (migration 0184); nil
