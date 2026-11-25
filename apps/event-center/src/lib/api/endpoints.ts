@@ -784,6 +784,15 @@ export function listPaymentConfigs(orgId: string): Promise<{ payment_configs: Pa
   return call<{ payment_configs: PaymentProviderConfigItem[] }>({ route: API.paymentConfigs, params: { org_id: orgId } });
 }
 
+/** Stores the Stripe publishable key of a config (`payment_config.write`): ONE secret, nothing else changes. */
+export function setStripePublishableKey(orgId: string, configId: string, key: string): Promise<unknown> {
+  return call<unknown>({
+    route: API.paymentConfigUpdate,
+    params: { org_id: orgId, id: configId },
+    body: { secrets: { publishable_key: key.trim() } },
+  });
+}
+
 // ─── 4-4: invitations ───────────────────────────────────────────────────────
 
 export type InvitationState = "valid" | "used" | "revoked";

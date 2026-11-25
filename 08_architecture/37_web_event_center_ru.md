@@ -269,6 +269,7 @@
 | Вход и организация | Роль и права в организации | bot.go (`canViewSales`, `isOwner` по роли из /v1/me) | R1 | ✔ (до правила, `r1.spec.ts`) | `GET /v1/organizations/{org_id}/me` | Бот пока решает по роли. Веб решает по правам A1. |
 | Вход и организация | Язык интерфейса | bot.go, `lang:` | R1 | ✔ (до правила, `r1.spec.ts`) | — | Хранится на устройстве. |
 | Вход и организация | Заметка «оплата не подключена» | payments.go | R3 | ✔ `live/org-data.spec.ts` | `GET /v1/organizations/{org_id}/payment-configs` |  |
+| Вход и организация | Быстрая оплата в виджете (публикуемый ключ Stripe) | — | R3 | — | `PATCH /v1/organizations/{org_id}/payment-configs/{id}` |  |
 | Мероприятия | Список мероприятий | events_list.go, `el:` | R1 | ✔ (до правила, `r1.spec.ts`) | `GET /v1/organizations/{org_id}/events` |  |
 | Мероприятия | Цифры продаж в списке | — (в боте только на карточке) | R1 | ✔ (до правила, `r1.spec.ts`) | `GET /v1/organizations/{org_id}/events/{event_id}/summary` | Один запрос на строку. Нужен пакетный маршрут. |
 | Мероприятия | Карточка мероприятия с сеансами | event_card.go, `ec:o:` | R1 | ✔ (до правила, `r1.spec.ts`) | `GET /v1/organizations/{org_id}/events`<br>`GET /v1/organizations/{org_id}/events/{event_id}/summary`<br>`GET /v1/organizations/{org_id}/events/{event_id}/sessions` |  |
