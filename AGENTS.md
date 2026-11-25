@@ -388,6 +388,8 @@ Stripe, Flitt and AllPay hosted checkout, payment modules, webhook state machine
 * A buyer e-mail is checked by emailaddr.Valid befor…
 * The legacy webhook routes bind an event to the organization whose secret verified it
 * Wallet domains are registered in EACH organizer's Stripe account by arena (platform hosts + channel site domains, never CORS_ALLOWED_ORIGINS)
+* A prepared checkout has no buyer until Pay (prepare:true, POST .../buyer, plain carts only, unattached orders hidden)
+* A new checkout never cancels a payable order; a payment for a cancelled order never answers 500 (supersede)
 
 ### [Meta integration](docs/agents/meta-integration.md)
 
