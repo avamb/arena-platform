@@ -10,7 +10,15 @@
  * This only implements what arena's own adapter calls. It is not a Stripe
  * emulator and must never be reachable from anything but a test.
  *
- *   POST /v1/checkout/sessions   create a Checkout Session (form-encoded in)
+ *   POST /v1/checkout/sessions   create a Checkout Session (form-encoded in);
+ *                                ui_mode=elements answers a client_secret and
+ *                                no url (spec 65 embedded checkout)
+ *   GET  /v1/checkout/sessions/:id         read a session back (status,
+ *                                payment_status, client_secret while open)
+ *   POST /v1/checkout/sessions/:id/expire  expire an open session; a session
+ *                                that is complete or expired is refused with
+ *                                400, as Stripe does
+ *   POST /__stub/checkout/sessions/:id/pay  test helper: mark a session paid
  *   GET  /v1/balance             what arena's credential verification calls
  *   GET  /pay/:id                a stand-in for the hosted payment page
  *   GET  /healthz                readiness probe for CI
@@ -106,6 +114,20 @@ function createSession(body, baseURL) {
     ? posted
     : Math.floor(Date.now() / 1000) + DEFAULT_WINDOW_SECONDS;
 
+  if (form.get('ui_mode') === 'elements') {
+    return {
+      id,
+      object: 'checkout.session',
+      ui_mode: 'elements',
+      url: null,
+      client_secret: `${id}_secret_${crypto.randomBytes(8).toString('hex')}`,
+      payment_intent: null,
+      expires_at: expiresAt,
+      payment_status: 'unpaid',
+      status: 'open',
+    };
+  }
+
   return {
     id,
     object: 'checkout.session',
@@ -168,6 +190,42 @@ const server = http.createServer((req, res) => {
       'Content-Length': Buffer.byteLength(html),
     });
     res.end(html);
+    return;
+  }
+
+  const sessionRoute = /^\/v1\/checkout\/sessions\/([^/]+)(\/expire)?$/.exec(urlPath);
+  if (sessionRoute !== null && (method === 'GET' || (method === 'POST' && sessionRoute[2] === '/expire'))) {
+    const session = sessions.get(sessionRoute[1]);
+    if (session === undefined) {
+      sendJSON(res, 404, { error: { type: 'invalid_request_error', message: 'No such checkout.session' } });
+      return;
+    }
+    if (method === 'POST') {
+      if (session['status'] !== 'open') {
+        sendJSON(res, 400, {
+          error: {
+            type: 'invalid_request_error',
+            message: 'Only Checkout Sessions with a status in ["open"] can be expired.',
+          },
+        });
+        return;
+      }
+      session['status'] = 'expired';
+    }
+    sendJSON(res, 200, session);
+    return;
+  }
+
+  const payRoute = /^\/__stub\/checkout\/sessions\/([^/]+)\/pay$/.exec(urlPath);
+  if (method === 'POST' && payRoute !== null) {
+    const session = sessions.get(payRoute[1]);
+    if (session === undefined) {
+      sendJSON(res, 404, { error: { type: 'invalid_request_error', message: 'No such checkout.session' } });
+      return;
+    }
+    session['status'] = 'complete';
+    session['payment_status'] = 'paid';
+    sendJSON(res, 200, session);
     return;
   }
 

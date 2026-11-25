@@ -19,6 +19,7 @@ import {
   PAYMENT_PROVIDERS,
   PAYMENT_MODES,
   PROVIDER_REQUIRED_SECRETS,
+  PROVIDER_OPTIONAL_SECRETS,
   validateOrgID,
   validateProvider,
   validateMode,
@@ -122,6 +123,13 @@ describe("validateMode", () => {
 // ---------------------------------------------------------------------------
 // PROVIDER_REQUIRED_SECRETS
 // ---------------------------------------------------------------------------
+describe("PROVIDER_OPTIONAL_SECRETS", () => {
+  it("stripe offers publishable_key as optional, never required", () => {
+    expect(PROVIDER_OPTIONAL_SECRETS.stripe).toContain("publishable_key");
+    expect(PROVIDER_REQUIRED_SECRETS.stripe).not.toContain("publishable_key");
+  });
+});
+
 describe("PROVIDER_REQUIRED_SECRETS", () => {
   it("stripe requires api_key and webhook_secret", () => {
     expect(PROVIDER_REQUIRED_SECRETS.stripe).toContain("api_key");

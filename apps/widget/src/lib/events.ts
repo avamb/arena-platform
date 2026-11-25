@@ -81,6 +81,15 @@ export const ARENA_EVENTS = {
    * `POST /checkout/{token}/recover`, giving the user a fresh hold expiry.
    */
   RECOVERY: 'arena:recovery',
+
+  /**
+   * Spec 65 E6a: a step of the on-page payment screen (`checkout_form_view`,
+   * `payment_method_selected`, `payment_details_complete`, `pay_clicked`,
+   * `payment_declined`, `payment_succeeded`; `payment_3ds` is reserved).
+   * `detail.wallets_available` rides on `checkout_form_view` when known. For developers of the host page only: the widget
+   * itself forwards nothing to any analytics system.
+   */
+  CHECKOUT: 'arena:checkout',
 } as const;
 
 /** Union of all event name string literals. */
@@ -159,6 +168,18 @@ export interface ArenaRecoveryDetail {
 }
 
 /**
+ * Detail payload for `arena:checkout` (spec 65 E6a). Carries the step and its
+ * closed-list qualifiers only: no e-mail, no card data, no client secret.
+ */
+export interface ArenaCheckoutStepDetail {
+  step: string;
+  method?: string;
+  group?: string;
+  attempt?: string;
+  wallets_available?: boolean;
+}
+
+/**
  * Maps each event name to its strongly-typed detail shape.
  * Use this with `CustomEvent<ArenaEventDetailMap[K]>` for full type safety.
  */
@@ -170,6 +191,7 @@ export type ArenaEventDetailMap = {
   'arena:order_failed': ArenaOrderFailedDetail;
   'arena:cart_opened': ArenaCartOpenedDetail;
   'arena:recovery': ArenaRecoveryDetail;
+  'arena:checkout': ArenaCheckoutStepDetail;
 };
 
 // ─── Dispatch helper ──────────────────────────────────────────────────────────

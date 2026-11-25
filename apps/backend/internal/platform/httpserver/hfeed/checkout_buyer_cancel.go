@@ -18,7 +18,12 @@
 //     (hcheckout late_payment.go, "buyer cancelled first");
 //   - a provider arena cannot ask (no read-back by reference, e.g. Stripe)
 //     whose page was handed out: 409 checkout.payment_in_progress — its own
-//     page expiry ends the attempt.
+//     page expiry ends the attempt;
+//   - an open embedded session (spec 65, also a prepared order the widget
+//     cancels on sheet close): EXPIRED at the provider first. Expired (now
+//     or already): the cancel goes on. Refused because it is paid or a
+//     payment is being processed, or no answer: 409
+//     checkout.payment_in_progress, nothing is cancelled.
 //
 // Idempotent: a repeat answers the same state with cancelled=true and writes
 // nothing. The answer is always the public status the order now has; the
@@ -176,6 +181,47 @@ func (h *Handler) writeCancelAnswer(w http.ResponseWriter, token, status string,
 	})
 }
 
+// expireEmbeddedForCancel closes an open embedded session at the provider
+// before a cancel. true: the session is expired (now, or it already was) and
+// can no longer be paid, so the cancel may release the places; its intent is
+// failed by the provider's checkout.session.expired webhook as for any
+// expired session. false: the provider refused (paid, or a payment is being
+// processed on it), did not answer, or cannot be asked — the caller answers
+// 409 checkout.payment_in_progress and nothing is cancelled.
+func (h *Handler) expireEmbeddedForCancel(ctx context.Context, cs gen.CheckoutSessionRow, pi gen.PaymentIntentRow) bool {
+	es, ok := h.paymentStarter.(EmbeddedPaymentStarter)
+	if !ok || pi.ProviderPaymentID == nil || *pi.ProviderPaymentID == "" {
+		return false
+	}
+	pctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), hostedPaymentStartTimeout)
+	defer cancel()
+	sessionID := *pi.ProviderPaymentID
+	expErr := es.ExpireEmbeddedCheckout(pctx, cs.OrgID, cs.ChannelID, pi.Provider, sessionID)
+	if expErr == nil {
+		h.logger.Info("public_checkout_cancel: the embedded session was expired before the cancel",
+			slog.String("checkout_session_id", cs.ID.String()),
+			slog.String("payment_intent_id", pi.ID.String()))
+		return true
+	}
+	if !errors.Is(expErr, payments.ErrCheckoutSessionNotExpirable) {
+		h.logger.Warn("public_checkout_cancel: the provider did not confirm the expiry of the embedded session; not cancelling",
+			slog.String("checkout_session_id", cs.ID.String()),
+			slog.String("payment_intent_id", pi.ID.String()),
+			slog.String("error", expErr.Error()))
+		return false
+	}
+	// Refused: already expired is fine (a repeated cancel, or Stripe's own
+	// expiry); paid or a payment being processed is not.
+	sess, _, readErr := es.ReadEmbeddedCheckout(pctx, cs.OrgID, cs.ChannelID, pi.Provider, sessionID)
+	if readErr == nil && sess.Status == payments.EmbeddedSessionExpired {
+		return true
+	}
+	h.logger.Info("public_checkout_cancel: the embedded session cannot be expired; a payment is in progress",
+		slog.String("checkout_session_id", cs.ID.String()),
+		slog.String("payment_intent_id", pi.ID.String()))
+	return false
+}
+
 // precheckOpenPayments asks the provider about every open payment attempt.
 func (h *Handler) precheckOpenPayments(ctx context.Context, cs gen.CheckoutSessionRow) precheckVerdict {
 	intents, err := h.checkoutQueries.ListPaymentIntentsByCheckout(ctx, cs.ID)
@@ -191,7 +237,19 @@ func (h *Handler) precheckOpenPayments(ctx context.Context, cs gen.CheckoutSessi
 		if pi.State == "succeeded" {
 			return precheckPaid
 		}
-		if pi.State == "failed" {
+		if pi.State == "failed" || intentSuperseded(pi) {
+			// A superseded session was expired at the provider before the
+			// hosted page replaced it (payment_hosted_fallback.go).
+			continue
+		}
+		if isEmbeddedIntent(pi) {
+			// An open embedded session is a page the buyer may be paying on
+			// right now. It is EXPIRED at the provider first (spec 65 early
+			// order: the widget cancels a prepared order on sheet close);
+			// only a session the provider closed lets the cancel go on.
+			if !h.expireEmbeddedForCancel(ctx, cs, pi) {
+				return precheckInProgress
+			}
 			continue
 		}
 		readable := false

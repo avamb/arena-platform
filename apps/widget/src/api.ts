@@ -9,6 +9,9 @@
  *   POST /v1/public/feeds/{token}/checkout/quote   (price + promo code, no hold)
  *   GET  /v1/public/checkout/{token}               (WID-D)
  *   POST /v1/public/checkout/{token}/recover       (WID-D, wraps WID-0c)
+ *   POST /v1/public/checkout/{token}/hosted        (embedded payment fallback, spec 65)
+ *   POST /v1/public/checkout/{token}/buyer         (attach the buyer to a prepared checkout)
+ *   POST /v1/public/checkout/{token}/cancel        (cancel an unfinished checkout)
  *   POST /v1/public/feeds/{token}/sessions/{id}/sale-subscriptions  ("notify me when sales open")
  *   GET  /v1/public/checkout/{token}/referral      ("Refer a friend" code of a paid order)
  *
@@ -30,6 +33,9 @@ import type {
   CheckoutStartResponse,
   CheckoutStatusResponse,
   CheckoutRecoverResponse,
+  CheckoutPreparePayload,
+  CheckoutBuyerPayload,
+  CheckoutBuyerResponse,
 } from './lib/checkout.js';
 import type { SaleSubscriptionPayload, SaleSubscriptionResponse } from './lib/saleSubscribe.js';
 import { applySeatCategoryOverlay } from './lib/seatCategories.js';
@@ -251,6 +257,93 @@ export async function postCheckoutStart(
 }
 
 /**
+ * POST /v1/public/feeds/{feedToken}/checkout/start with `prepare: true`
+ * (preload-payment="checkout"): creates the order, the hold and the embedded
+ * Stripe session WITHOUT a buyer, while the person still types.
+ *
+ * @param idempotencyKey  One per prepare attempt: a repeated request with the
+ *                        same key never creates a second order.
+ * @throws ApiError. 409 / 422 `checkout.prepare_unavailable` means this cart
+ *         or channel goes the classic way.
+ */
+export async function postCheckoutPrepare(
+  feedToken: string,
+  payload: CheckoutPreparePayload,
+  apiBase: string,
+  idempotencyKey: string,
+): Promise<CheckoutStartResponse> {
+  const url = `${apiBase}/v1/public/feeds/${encodeURIComponent(feedToken)}/checkout/start`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await apiErrorFromResponse(res, 'postCheckoutPrepare');
+  return res.json() as Promise<CheckoutStartResponse>;
+}
+
+/**
+ * POST /v1/public/checkout/{checkoutToken}/buyer
+ *
+ * Attaches the buyer (e-mail, name, phone, consent) to a prepared checkout.
+ * Does not call Stripe: the widget gives Stripe the e-mail itself.
+ *
+ * @throws ApiError. 422 is the buyer's to fix (e-mail, name, phone, consent);
+ *         404 / 409 (`checkout.not_payable`, `checkout.buyer_already_set`)
+ *         mean the prepared checkout cannot be used.
+ */
+export async function postCheckoutBuyer(
+  checkoutToken: string,
+  payload: CheckoutBuyerPayload,
+  apiBase = '',
+): Promise<CheckoutBuyerResponse> {
+  const url = `${apiBase}/v1/public/checkout/${encodeURIComponent(checkoutToken)}/buyer`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await apiErrorFromResponse(res, 'postCheckoutBuyer');
+  return res.json() as Promise<CheckoutBuyerResponse>;
+}
+
+/**
+ * POST /v1/public/checkout/{checkoutToken}/cancel
+ *
+ * Cancels an unfinished checkout: the platform expires its embedded Stripe
+ * session first, then cancels the order and releases the places. Sent with
+ * `keepalive` so it survives the page being left.
+ *
+ * @returns The order's status after the call (`cancelled`, `paid`, `expired`,
+ *          `needs_help`, `refunded`) and whether it is cancelled; null when the
+ *          answer has no readable body.
+ * @throws ApiError. 409 `checkout.payment_in_progress`: Stripe refused, the
+ *         money is going through.
+ */
+export async function postCheckoutCancel(
+  checkoutToken: string,
+  apiBase = '',
+  opts: { keepalive?: boolean } = {},
+): Promise<CheckoutCancelResponse | null> {
+  const url = `${apiBase}/v1/public/checkout/${encodeURIComponent(checkoutToken)}/cancel`;
+  const res = await fetch(url, { method: 'POST', keepalive: opts.keepalive === true });
+  if (!res.ok) throw await apiErrorFromResponse(res, 'postCheckoutCancel');
+  try {
+    return (await res.json()) as CheckoutCancelResponse;
+  } catch {
+    return null;
+  }
+}
+
+/** Response of POST /v1/public/checkout/{checkoutToken}/cancel. */
+export interface CheckoutCancelResponse {
+  checkout_token?: string;
+  status?: string;
+  /** True when the order is cancelled (now or by an earlier call). */
+  cancelled?: boolean;
+}
+
+/**
  * POST /v1/public/feeds/{feedToken}/checkout/quote
  *
  * Prices the cart (with an optional promo code) WITHOUT holding anything:
@@ -299,9 +392,14 @@ export async function postCheckoutQuote(
 export async function getCheckoutStatus(
   checkoutToken: string,
   apiBase = '',
+  opts: { includePayment?: boolean } = {},
 ): Promise<CheckoutStatusResponse> {
-  const url = `${apiBase}/v1/public/checkout/${encodeURIComponent(checkoutToken)}`;
-  const res = await fetch(url);
+  // `include=payment` asks the platform to re-supply the embedded-payment
+  // block while the order is pending (spec 65 §3.7). The answer carries a
+  // client secret, so it is never cached.
+  const query = opts.includePayment ? '?include=payment' : '';
+  const url = `${apiBase}/v1/public/checkout/${encodeURIComponent(checkoutToken)}${query}`;
+  const res = opts.includePayment ? await fetch(url, { cache: 'no-store' }) : await fetch(url);
   if (!res.ok) {
     let detail = '';
     let code: string | undefined;
@@ -346,6 +444,29 @@ export async function getCheckoutStatus(
   if (raw === 'needs_help') body.status = 'pending';
   else if (raw === 'refunded') body.status = 'failed';
   return body;
+}
+
+/**
+ * POST /v1/public/checkout/{checkoutToken}/hosted
+ *
+ * The way out when the embedded payment form cannot be used (Stripe.js did
+ * not load, the host's CSP forbids it, init failed): the platform expires the
+ * Elements session and creates a hosted one on the same hold (spec 65 §3.5).
+ *
+ * @returns the hosted page address to send the buyer to.
+ * @throws ApiError. 409 `checkout.hosted_fallback_unavailable` or
+ *         `checkout.not_payable` means the order cannot be paid any more:
+ *         start it again. Anything else is a transient failure.
+ */
+export async function postCheckoutHosted(
+  checkoutToken: string,
+  apiBase = '',
+): Promise<{ redirect_url: string }> {
+  const url = `${apiBase}/v1/public/checkout/${encodeURIComponent(checkoutToken)}/hosted`;
+  const res = await fetch(url, { method: 'POST' });
+  if (!res.ok) throw await apiErrorFromResponse(res, 'postCheckoutHosted');
+  const body = (await res.json()) as { redirect_url?: string };
+  return { redirect_url: body.redirect_url ?? '' };
 }
 
 /**

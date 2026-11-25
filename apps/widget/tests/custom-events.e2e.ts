@@ -184,7 +184,7 @@ async function setupBaseRoutes(
   // Checkout status (GET by token).
   if (opts.checkoutStatus) {
     const statusBody = JSON.stringify(opts.checkoutStatus);
-    await page.route(`**/v1/public/checkout/${CHECKOUT_TOKEN}`, (route) => {
+    await page.route(new RegExp(`/v1/public/checkout/${CHECKOUT_TOKEN}([?].*)?$`), (route) => {
       void route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -885,7 +885,7 @@ test.describe('WID-T2 — arena:cart_opened and arena:recovery events', () => {
 
   test.describe('arena:recovery', () => {
     test('does NOT fire on a plain checkout-token resume', async ({ page }) => {
-      await page.route(`**/v1/public/checkout/${RECOVER_TOKEN}`, (route) => {
+      await page.route(new RegExp(`/v1/public/checkout/${RECOVER_TOKEN}([?].*)?$`), (route) => {
         void route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -907,7 +907,7 @@ test.describe('WID-T2 — arena:cart_opened and arena:recovery events', () => {
     test('fires after successful silent recovery from a 401 status response', async ({ page }) => {
       const refreshedToken = `${RECOVER_TOKEN}-refreshed`;
       const newExpiry = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-      await page.route(`**/v1/public/checkout/${RECOVER_TOKEN}`, (route) => {
+      await page.route(new RegExp(`/v1/public/checkout/${RECOVER_TOKEN}([?].*)?$`), (route) => {
         void route.fulfill({
           status: 401,
           contentType: 'application/json',
@@ -925,7 +925,7 @@ test.describe('WID-T2 — arena:cart_opened and arena:recovery events', () => {
           }),
         });
       });
-      await page.route(`**/v1/public/checkout/${refreshedToken}`, (route) => {
+      await page.route(new RegExp(`/v1/public/checkout/${refreshedToken}([?].*)?$`), (route) => {
         void route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -950,7 +950,7 @@ test.describe('WID-T2 — arena:cart_opened and arena:recovery events', () => {
       const newExpiry = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
       // Route: GET checkout status → expired.
-      await page.route(`**/v1/public/checkout/${RECOVER_TOKEN}`, (route) => {
+      await page.route(new RegExp(`/v1/public/checkout/${RECOVER_TOKEN}([?].*)?$`), (route) => {
         void route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -1014,7 +1014,7 @@ test.describe('WID-T2 — arena:cart_opened and arena:recovery events', () => {
 
     test('does NOT fire arena:recovery when recover returns 409', async ({ page }) => {
       // Route: GET checkout status → expired.
-      await page.route(`**/v1/public/checkout/${RECOVER_TOKEN}`, (route) => {
+      await page.route(new RegExp(`/v1/public/checkout/${RECOVER_TOKEN}([?].*)?$`), (route) => {
         void route.fulfill({
           status: 200,
           contentType: 'application/json',
