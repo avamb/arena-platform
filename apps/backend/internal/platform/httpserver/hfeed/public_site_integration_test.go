@@ -40,7 +40,7 @@ func TestPublicFeedSite(t *testing.T) {
 		}
 		return ft.Token
 	}
-	withTY := mk("with", `{"site":{"origins":["https://x.example"],"track_key_hash":"SECRETHASH","thank_you":{"title":" Thanks ","text":"Use it","promo_code":"BACK10","url":"http://insecure.example"}},"contact_form":{"recipients":{"contact":["owner@example.com"]}}}`)
+	withTY := mk("with", `{"site":{"origins":["https://x.example"],"track_key_hash":"SECRETHASH","thank_you":{"title":" Thanks ","text":"Use it","promo_code":"BACK10","url":"http://insecure.example"},"socials":[{"network":"instagram","url":"https://instagram.com/a"},{"network":"myspace","url":"https://m.example"},{"network":"x","url":"http://x.com/a"}]},"contact_form":{"recipients":{"contact":["owner@example.com"]}}}`)
 	without := mk("without", `{"site":{"origins":["https://x.example"],"track_key_hash":"SECRETHASH"}}`)
 
 	h := promoterPageHandler(pool)
@@ -64,6 +64,10 @@ func TestPublicFeedSite(t *testing.T) {
 			PromoCode *string `json:"promo_code"`
 			URL       *string `json:"url"`
 		} `json:"thank_you"`
+		Socials []struct {
+			Network string `json:"network"`
+			URL     string `json:"url"`
+		} `json:"socials"`
 	}
 	if err := json.Unmarshal([]byte(body), &out); err != nil {
 		t.Fatal(err)
@@ -72,6 +76,9 @@ func TestPublicFeedSite(t *testing.T) {
 		out.ThankYou.PromoCode == nil || *out.ThankYou.PromoCode != "BACK10" || out.ThankYou.URL != nil {
 		t.Errorf("thank_you = %+v", out.ThankYou)
 	}
+	if len(out.Socials) != 1 || out.Socials[0].Network != "instagram" || out.Socials[0].URL != "https://instagram.com/a" {
+		t.Errorf("socials = %+v", out.Socials)
+	}
 	for _, leak := range []string{"SECRETHASH", "owner@example.com", "origins", "track_key"} {
 		if strings.Contains(body, leak) {
 			t.Errorf("body leaks %q: %s", leak, body)
@@ -79,7 +86,7 @@ func TestPublicFeedSite(t *testing.T) {
 	}
 
 	code, _, body = get(without)
-	if code != 200 || strings.TrimSpace(body) != `{"thank_you":null}` {
+	if code != 200 || strings.TrimSpace(body) != `{"socials":[],"thank_you":null}` {
 		t.Errorf("without: %d %s", code, body)
 	}
 	if code, _, _ = get("no-such-token-" + run); code != 404 {

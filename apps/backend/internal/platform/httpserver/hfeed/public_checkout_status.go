@@ -179,6 +179,21 @@ type checkoutStatusResponse struct {
 	LatePayment *string                        `json:"late_payment,omitempty"`
 	Items       []checkoutStatusItemResponse   `json:"items"`
 	Tickets     []checkoutStatusTicketResponse `json:"tickets"`
+	// MarketingOffer is the mailing subscription the thank-you page may offer
+	// the buyer, or null (always present). It is null when the organizer does
+	// not offer mailings, the organization is deleted, the order is not paid,
+	// or the order's buyer e-mail already has a pending or confirmed
+	// subscription.
+	MarketingOffer *checkoutMarketingOffer `json:"marketing_offer"`
+}
+
+// checkoutMarketingOffer is the marketing_offer block of the order status.
+type checkoutMarketingOffer struct {
+	// OrgName is the organizer's name the consent text names.
+	OrgName string `json:"org_name"`
+	// TextVersion is the only consent text version the subscription route
+	// accepts (marketing.ThankYouTextVersion).
+	TextVersion string `json:"text_version"`
 }
 
 // checkoutStatusEvent is the event block of the order status.
@@ -276,6 +291,7 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 	// wiring is needed to check the order directly. The same row gives the
 	// order number the buyer's e-mail and PDF print (order_number).
 	var orderNumber *int64
+	var marketingOffer *checkoutMarketingOffer
 	if h.checkoutQueries != nil {
 		if ord, ordErr := h.checkoutQueries.GetOrderByCheckoutSession(ctx, cs.ID); ordErr == nil {
 			num := ord.SystemID
@@ -288,6 +304,9 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 				)
 			}
 			publicStatus = publicOrderStatus(publicStatus, ord.Status)
+			if publicStatus == publicStatusPaid {
+				marketingOffer = h.checkoutMarketingOffer(ctx, cs.OrgID, ord.BuyerEmail)
+			}
 		}
 	}
 
@@ -308,6 +327,8 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 		Currency:          cs.Currency,
 		Items:             []checkoutStatusItemResponse{},
 		Tickets:           []checkoutStatusTicketResponse{},
+
+		MarketingOffer: marketingOffer,
 	}
 
 	resp.Event = h.checkoutEventBlock(ctx, reservation.SessionID)

@@ -23,6 +23,7 @@
 import type {
   FeedEventDetailResponse,
   FeedEventsListResponse,
+  FeedSiteResponse,
   SchemaResponse,
   SeatStatusResponse,
 } from './types.js';
@@ -117,6 +118,41 @@ export async function fetchFeedEvents(
     throw new Error(`fetchFeedEvents HTTP ${res.status}: ${res.statusText}`);
   }
   return res.json() as Promise<FeedEventsListResponse>;
+}
+
+// ─── Thank-you blocks ────────────────────────────────────────────────────────
+
+/**
+ * GET /v1/public/feeds/{token}/site - the organizer's thank-you note and
+ * social links. Older servers answer 404; the caller treats any failure as
+ * "draw nothing".
+ */
+export async function fetchFeedSite(feedToken: string, apiBase = ''): Promise<FeedSiteResponse> {
+  const url = `${apiBase}/v1/public/feeds/${encodeURIComponent(feedToken)}/site`;
+  const res = await fetch(url);
+  if (!res.ok) throw await apiErrorFromResponse(res, 'fetchFeedSite');
+  return res.json() as Promise<FeedSiteResponse>;
+}
+
+/**
+ * POST /v1/public/checkout/{checkoutToken}/marketing - subscribe the paid
+ * order's e-mail to the organizer's news (double opt-in).
+ *
+ * @throws ApiError: 409 `checkout.not_paid`, 429, other non-2xx.
+ */
+export async function postCheckoutMarketing(
+  checkoutToken: string,
+  body: { text_version: string; page_url?: string },
+  apiBase = '',
+): Promise<{ status: 'pending' | 'already_confirmed' }> {
+  const url = `${apiBase}/v1/public/checkout/${encodeURIComponent(checkoutToken)}/marketing`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw await apiErrorFromResponse(res, 'postCheckoutMarketing');
+  return res.json().catch(() => ({ status: 'pending' })) as Promise<{ status: 'pending' | 'already_confirmed' }>;
 }
 
 // ─── Session schema ──────────────────────────────────────────────────────────

@@ -98,9 +98,13 @@ type publicFeedEventResponse struct {
 	// SeriesID is the tour (event_series) the event belongs to, absent when it
 	// has none, so the feed of an event without a tour keeps its old fields.
 	// Read in one batch by hydrateFeedSeriesIDs, never via EventRow.
-	SeriesID  *string `json:"series_id,omitempty"`
-	CreatedAt string  `json:"created_at"`
-	UpdatedAt string  `json:"updated_at"`
+	SeriesID *string `json:"series_id,omitempty"`
+	// PageURL is the buyers' hosted page address of the event ("" when it is
+	// unknown: no slug, or the server has no PUBLIC_TICKETS_BASE_URL). Built
+	// only by publicurl.Page, see hydrateFeedPageURLs.
+	PageURL   string `json:"page_url"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 // mediaFileURL builds the public URL for a media object id.
@@ -727,6 +731,7 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 	h.hydrateFeedDescriptions(ctx, events)
 	h.hydrateFeedTranslations(ctx, events, requestedLocale(r))
 	h.hydrateFeedSeriesIDs(ctx, events)
+	h.hydrateFeedPageURLs(ctx, events)
 
 	totalPages := int(total) / perPage
 	if int(total)%perPage != 0 {
@@ -832,6 +837,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 		h.hydrateFeedDescriptions(ctx, hydrated)
 		reportHTML = h.hydrateFeedTranslations(ctx, hydrated, requestedLocale(r))[eventID]
 		h.hydrateFeedSeriesIDs(ctx, hydrated)
+		h.hydrateFeedPageURLs(ctx, hydrated)
 		eventResp = hydrated[0]
 	}
 

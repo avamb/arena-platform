@@ -404,6 +404,8 @@ export interface FeedEvent {
    */
   poster_media_id?: string | null;
   poster_url?: string | null;
+  /** Address of the event's own page on the organizer's site; "" when unknown. Absent on older backends. */
+  page_url?: string;
   created_at: string;
   updated_at: string;
   sessions: FeedSession[];
@@ -420,6 +422,12 @@ export interface FeedEventDetailResponse {
  * comes from the per-event detail endpoint.
  */
 export type FeedEventSummary = Omit<FeedEvent, 'sessions'>;
+
+/** Response from GET /v1/public/feeds/{token}/site. */
+export interface FeedSiteResponse {
+  thank_you: { title: string; text: string; promo_code: string | null; url: string | null } | null;
+  socials: Array<{ network: string; url: string }>;
+}
 
 /** Response from GET /v1/public/feeds/{token}/events (list). */
 export interface FeedEventsListResponse {

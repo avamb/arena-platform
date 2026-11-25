@@ -165,10 +165,10 @@ func TestHostedPageResponse_ExistingFieldsUnchanged(t *testing.T) {
 }
 
 // TestPublicFeedEventResponse_ExistingFieldsUnchanged: the event of the widget
-// feed keeps its fields plus slug, age_rating and short_description (P-5); series_id (tours) is there only for an event with a tour (the detail adds sessions, since 1-2c materials, and venues).
+// feed keeps its fields plus slug, age_rating and short_description (P-5); page_url (the buyers hosted page address, empty when unknown) is always there; series_id (tours) is there only for an event with a tour (the detail adds sessions, since 1-2c materials, and venues).
 func TestPublicFeedEventResponse_ExistingFieldsUnchanged(t *testing.T) {
 	const want = "age_rating,available_locales,content_locale,created_at,description,description_html,description_text,display_number,first_session_at,id,image_url,last_session_at,name,org_id," +
-		"poster_media_id,poster_url,short_description,slug,status,translation_stale,updated_at,venue_names,visibility"
+		"page_url,poster_media_id,poster_url,short_description,slug,status,translation_stale,updated_at,venue_names,visibility"
 	if got := strings.Join(keysOf(t, publicFeedEventResponse{}), ","); got != want {
 		t.Errorf("feed event keys = %s, want %s", got, want)
 	}

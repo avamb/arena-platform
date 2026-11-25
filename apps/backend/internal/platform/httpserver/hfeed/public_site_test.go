@@ -48,3 +48,45 @@ func TestParseSiteThankYou(t *testing.T) {
 		}
 	}
 }
+
+func TestParseSiteSocials(t *testing.T) {
+	for _, in := range []string{``, `null`, `"x"`, `{`, `[]`, `{}`, `5`} {
+		if got := ParseSiteSocials([]byte(in)); got == nil || len(got) != 0 {
+			t.Errorf("%q: got %#v, want empty non-nil", in, got)
+		}
+	}
+
+	got := ParseSiteSocials([]byte(`[
+		{"network":"Instagram","url":" https://instagram.com/a "},
+		{"network":"myspace","url":"https://myspace.com/a"},
+		{"network":"facebook","url":"http://facebook.com/a"},
+		{"network":"x","url":"https://u:p@x.com/a"},
+		{"network":"telegram","url":"javascript:alert(1)"},
+		{"network":"youtube","url":5},
+		{"network":"tiktok","url":"https://tiktok.com/@a","extra":"leak"},
+		{"url":"https://vk.com/a"}
+	]`))
+	want := []SiteSocial{{"instagram", "https://instagram.com/a"}, {"tiktok", "https://tiktok.com/@a"}}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("array: got %+v", got)
+	}
+
+	obj := ParseSiteSocials([]byte(`{"youtube":"https://youtube.com/c","bogus":"https://b.example","facebook":"https://fb.com/a"}`))
+	if len(obj) != 2 || obj[0].Network != "facebook" || obj[1].Network != "youtube" {
+		t.Errorf("object: got %+v", obj)
+	}
+
+	long := "https://example.com/" + strings.Repeat("a", 2040)
+	if g := ParseSiteSocials([]byte(`[{"network":"x","url":"` + long + `"}]`)); len(g) != 0 {
+		t.Errorf("long url kept: %+v", g)
+	}
+
+	var many []string
+	for i := 0; i < 12; i++ {
+		many = append(many, `{"network":"threads","url":"https://threads.net/u`+strings.Repeat("a", i)+`"}`)
+	}
+	g := ParseSiteSocials([]byte("[" + strings.Join(many, ",") + "]"))
+	if len(g) != 8 || g[0].URL != "https://threads.net/u" || g[7].URL != "https://threads.net/uaaaaaaa" {
+		t.Errorf("cap/order: %d %+v", len(g), g)
+	}
+}

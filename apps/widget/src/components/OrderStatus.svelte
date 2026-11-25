@@ -23,6 +23,7 @@
   } from '../lib/checkout.js';
   import { countdownSeconds, isTwoMinWarning, formatCountdown } from '../lib/cart.js';
   import ReferralInvite from './ReferralInvite.svelte';
+  import ThankYouBlocks from './thankyou/ThankYouBlocks.svelte';
 
   interface Props {
     status: CheckoutStatusResponse;
@@ -48,6 +49,10 @@
     /** The order's checkout token. A paid order uses it to ask for the buyer's
      * "Refer a friend" code; without it the block is simply not drawn. */
     checkoutToken?: string | null;
+    /** Feed token: the paid view reads the organizer's thank-you note, socials and other events with it. */
+    feedToken?: string;
+    /** The event of the order (page address and name for the share links). */
+    event?: { id?: string; name?: string; page_url?: string } | null;
     /** Whether a recovery or resend action is in flight. */
     actionLoading?: boolean;
     /** Error from a recovery or resend action. */
@@ -64,6 +69,8 @@
     onDone,
     apiBase = '',
     checkoutToken = null,
+    feedToken = '',
+    event = null,
     actionLoading = false,
     actionError = null,
   }: Props = $props();
@@ -222,6 +229,15 @@
           {t.buy_more}
         </button>
       {/if}
+
+      <ThankYouBlocks
+        {locale}
+        {apiBase}
+        {feedToken}
+        {checkoutToken}
+        {event}
+        marketingOffer={status.marketing_offer ?? null}
+      />
     </div>
 
   {:else if status.status === 'expired'}

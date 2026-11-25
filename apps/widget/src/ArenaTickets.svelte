@@ -1788,6 +1788,8 @@
         onDone={orderStatus.status === 'paid' ? handleDone : undefined}
         apiBase={resolvedApiBase}
         {checkoutToken}
+        feedToken={normFeedToken}
+        {event}
         actionLoading={orderActionLoading}
         actionError={orderActionError}
       />

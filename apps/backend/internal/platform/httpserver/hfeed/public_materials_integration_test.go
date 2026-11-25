@@ -361,7 +361,7 @@ func TestPublicMaterials_ExistingFieldsUnchanged(t *testing.T) {
 
 	feed := f.feedBody(t)
 	const wantFeed = "age_rating,available_locales,content_locale,created_at,description,description_html,description_text,display_number,first_session_at,id,image_url,last_session_at,materials,name,org_id," +
-		"poster_media_id,poster_url,sessions,short_description,slug,status,translation_stale,updated_at,venue_names,venues,visibility"
+		"page_url,poster_media_id,poster_url,sessions,short_description,slug,status,translation_stale,updated_at,venue_names,venues,visibility"
 	if got := strings.Join(sortedKeys(feed), ","); got != wantFeed {
 		t.Errorf("feed event keys = %s, want %s", got, wantFeed)
 	}
