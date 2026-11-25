@@ -26,8 +26,11 @@ describe('preload-payment attribute', () => {
     expect(widgetSource).toMatch(/if \(cartSheetOpen && stripeEarly\) \{\s*loadStripeJs\(\)\.catch\(\(\) => \{\}\);/);
   });
 
-  it('preconnects once the cart has a line, never on page load', () => {
-    expect(widgetSource).toMatch(/if \(cartCount > 0 && stripeEarly\) preconnectStripe\(\);/);
+  it('preconnects once the cart has a line AND the buyer acted, never on page load', () => {
+    expect(widgetSource).toMatch(/if \(cartCount > 0 && stripeEarly && buyerActed\) preconnectStripe\(\);/);
+    expect(widgetSource).toContain('let buyerActed = $state(false);');
+    expect(widgetSource).toContain("el.addEventListener('pointerdown', mark);");
+    expect(widgetSource).toContain("el.addEventListener('keydown', mark);");
   });
 
   it('shares the one Stripe.js loader with the payment screen', () => {
