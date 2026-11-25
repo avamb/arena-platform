@@ -277,10 +277,28 @@
       loadStripeJs().catch(() => {});
     }
   });
-  // The first ticket or seat in the cart warms the connection to js.stripe.com
-  // (one tag per page); never on page load.
+  // The buyer's first press or key anywhere in the widget (the host element,
+  // which covers the shadow root). Until then the preconnect waits: a
+  // preselected quantity must not warm js.stripe.com on page load.
+  let buyerActed = $state(false);
   $effect(() => {
-    if (cartCount > 0 && stripeEarly) preconnectStripe();
+    const el = host;
+    const mark = () => {
+      buyerActed = true;
+      el.removeEventListener('pointerdown', mark);
+      el.removeEventListener('keydown', mark);
+    };
+    el.addEventListener('pointerdown', mark);
+    el.addEventListener('keydown', mark);
+    return () => {
+      el.removeEventListener('pointerdown', mark);
+      el.removeEventListener('keydown', mark);
+    };
+  });
+  // The first ticket or seat in the cart warms the connection to js.stripe.com
+  // (one tag per page); never on page load, never before a buyer action.
+  $effect(() => {
+    if (cartCount > 0 && stripeEarly && buyerActed) preconnectStripe();
   });
 
   // ── Selection state ────────────────────────────────────────────────────────
