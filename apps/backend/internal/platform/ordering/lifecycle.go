@@ -2,6 +2,7 @@ package ordering
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -63,6 +64,75 @@ func MarkPaid(ctx context.Context, q LifecycleStore, in PaidInput) (gen.OrderRow
 		return gen.OrderRow{}, fmt.Errorf("ordering: mark paid: %w", err)
 	}
 	if _, err := q.InsertOrderEvent(ctx, updated.ID, EventPaid, actorOrSystem(in.Actor), marshalPayload(in.Payload)); err != nil {
+		return gen.OrderRow{}, fmt.Errorf("ordering: insert paid event: %w", err)
+	}
+	return updated, nil
+}
+
+// ReasonSupersededByNewCheckout is the order_events.cancelled reason of an
+// open order closed because the same buyer started a new checkout for the
+// same session (hfeed supersedeOpenOrder).
+const ReasonSupersededByNewCheckout = "superseded_by_new_checkout"
+
+// LastCancelReason is the reason of the newest 'cancelled' event in events
+// (oldest first, as ListOrderEventsByOrder returns them), or "" when there is
+// none or its payload carries no reason.
+func LastCancelReason(events []gen.OrderEventRow) string {
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Type != EventCancelled {
+			continue
+		}
+		var p struct {
+			Reason string `json:"reason"`
+		}
+		if err := json.Unmarshal(events[i].Payload, &p); err != nil {
+			return ""
+		}
+		return p.Reason
+	}
+	return ""
+}
+
+// MarkPaidAfterSupersede is MarkPaid for an order that may have been closed
+// by a new checkout of the same buyer while its own payment page stayed open
+// (ReasonSupersededByNewCheckout). The money has been taken and the hold is
+// still there, so the order is moved cancelled → paid and the paid event
+// records revived_from. A pending or paid order behaves exactly as with
+// MarkPaid; an expired order is ErrInvalidTransition.
+//
+// The CALLER decides that the order was superseded (LastCancelReason) and
+// that its hold is still active; this function does not read events.
+func MarkPaidAfterSupersede(ctx context.Context, q LifecycleStore, in PaidInput) (gen.OrderRow, error) {
+	now := in.Now
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+
+	current, err := q.GetOrderByID(ctx, in.OrderID, in.OrgID)
+	if err != nil {
+		return gen.OrderRow{}, fmt.Errorf("ordering: load order: %w", err)
+	}
+	if current.Status != StatusCancelled {
+		return MarkPaid(ctx, q, in)
+	}
+
+	paidAt := now
+	updated, err := q.UpdateOrderStatus(ctx, in.OrderID, in.OrgID, StatusPaid, &paidAt, nil)
+	if err != nil {
+		return gen.OrderRow{}, fmt.Errorf("ordering: mark superseded order paid: %w", err)
+	}
+	payload := map[string]any{}
+	switch p := in.Payload.(type) {
+	case nil:
+	case map[string]any:
+		for k, v := range p {
+			payload[k] = v
+		}
+	default:
+		payload["payment"] = p
+	}
+	payload["revived_from"] = ReasonSupersededByNewCheckout
+	if _, err := q.InsertOrderEvent(ctx, updated.ID, EventPaid, actorOrSystem(in.Actor), marshalPayload(payload)); err != nil {
 		return gen.OrderRow{}, fmt.Errorf("ordering: insert paid event: %w", err)
 	}
 	return updated, nil

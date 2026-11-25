@@ -181,7 +181,7 @@ const listFunnelServerRows = `WITH x AS (
            COALESCE(cs.attribution ->> 'utm_campaign', '') AS utm_campaign,
            o.sales_link_id,
            o.currency::text AS currency,
-           COALESCE(o.customer_id::text, lower(btrim(o.buyer_email)), o.id::text)
+           COALESCE(o.customer_id::text, (SELECT rv.customer_id::text FROM reservations rv WHERE rv.id = o.reservation_id), lower(btrim(o.buyer_email)), o.id::text)
                || '|' || o.session_id::text
                || '|' || ((o.created_at AT TIME ZONE $5::text)::date)::text AS buyer,
            (o.status IN ('paid', 'partially_refunded', 'refunded')) AS paid,
@@ -276,7 +276,7 @@ func (q *Queries) ListFunnelServerRows(ctx context.Context, w FunnelWindow) ([]F
 }
 
 const getFunnelServerTotals = `WITH x AS (
-    SELECT COALESCE(o.customer_id::text, lower(btrim(o.buyer_email)), o.id::text)
+    SELECT COALESCE(o.customer_id::text, (SELECT rv.customer_id::text FROM reservations rv WHERE rv.id = o.reservation_id), lower(btrim(o.buyer_email)), o.id::text)
                || '|' || o.session_id::text
                || '|' || ((o.created_at AT TIME ZONE $5::text)::date)::text AS buyer,
            (o.status IN ('paid', 'partially_refunded', 'refunded')) AS paid,
