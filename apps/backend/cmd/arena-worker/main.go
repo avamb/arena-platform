@@ -315,6 +315,7 @@ func run() error {
 	registerContentTranslateHandler(registry, pool.Pool, cfg, logger)
 	registerTicketReissueHandler(registry, pool.Pool, cfg, logger)
 	registerPaymentRecoverHandler(registry, pool.Pool, cfg, logger)
+	registerHoldCloseHandlers(registry, pool.Pool, cfg, metrics, logger)
 	registerBillingReconcileHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
 	registerJobRetentionHandler(registry, pool.Pool, logger)
 	registerAnalyticsHandlers(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
@@ -365,6 +366,7 @@ func run() error {
 	}
 	scheduleRefundSweep(rootCtx, pool.Pool, logger)
 	schedulePaymentRecover(rootCtx, pool.Pool, logger)
+	scheduleHoldClose(rootCtx, pool.Pool, logger)
 	scheduleAnalyticsJobs(rootCtx, pool.Pool, logger)
 	scheduleReferralSweep(rootCtx, pool.Pool, logger)
 	if err := cartreminder.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
@@ -603,6 +605,7 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		Store:     gen.New(pool),
 		Logger:    logger,
 		Scheduler: ordering.NewPGSweepScheduler(pool),
+		Grace:     httpserver.WidgetPaymentGrace(cfg),
 	}))
 	// shop.order.expire_sweep is the same sweep for the merchandise shop: an
 	// unpaid shop order whose hold passed expires and its goods go back on
@@ -619,7 +622,9 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	reservationQueries := gen.New(pool)
 	reg.Register(reservationexpiry.JobType, reservationexpiry.NewHandler(reservationexpiry.Options{
 		Processor: hcheckout.NewReservationProcessor(pool, reservationQueries, logger).
-			WithCheckoutQueries(reservationQueries),
+			WithCheckoutQueries(reservationQueries).
+			WithPaymentGrace(httpserver.WidgetPaymentGrace(cfg)).
+			WithPageClosingProviders(pageClosingProviders()),
 		Logger:    logger,
 		Scheduler: reservationexpiry.NewPGScheduler(pool),
 	}))

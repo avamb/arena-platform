@@ -287,6 +287,19 @@ WHERE  o.status = 'pending_payment'
            WHERE  pi.checkout_session_id = o.checkout_session_id
              AND  pi.state = 'succeeded'
        )
+  AND  NOT EXISTS (
+           SELECT 1 FROM reservations r
+           WHERE  r.id = o.reservation_id
+             AND  r.paying_until IS NOT NULL
+             AND  r.paying_until > $1
+       )
+  AND  NOT EXISTS (
+           SELECT 1 FROM payment_intents pi
+           WHERE  pi.checkout_session_id = o.checkout_session_id
+             AND  pi.state IN ('created', 'requires_action')
+             AND  pi.page_expires_at IS NOT NULL
+             AND  pi.page_expires_at + make_interval(secs => $3::float8) > $1
+       )
 ORDER  BY o.expires_at ASC
 LIMIT  $2;
 

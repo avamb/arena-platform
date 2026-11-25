@@ -5902,6 +5902,15 @@ type CheckoutBuyerAttachResponse struct {
 	Status string `json:"status"`
 }
 
+// CheckoutCancelRequest Optional body of `POST /v1/public/checkout/{checkout_token}/cancel`.
+// An empty body is the same as `{}`.
+type CheckoutCancelRequest struct {
+	// KeepHold Spec 67 section 4.5. `true`: cancel the order but keep the seats
+	// of a seat hold of the click in the hold. Ignored on the old path
+	// (a checkout that has no hold token).
+	KeepHold *bool `json:"keep_hold,omitempty"`
+}
+
 // CheckoutCancelResponse Response of `POST /v1/public/checkout/{checkout_token}/cancel`.
 type CheckoutCancelResponse struct {
 	// Cancelled True when the order is cancelled (now or by an earlier call).
@@ -5909,6 +5918,13 @@ type CheckoutCancelResponse struct {
 
 	// CheckoutToken The checkout token, echoed.
 	CheckoutToken string `json:"checkout_token"`
+
+	// HoldKept Present only when the request sent `keep_hold: true` and the
+	// order was cancelled by this call. True when the seats stayed in
+	// their seat hold of the click (the hold is back on the select
+	// step with its `expires_at`); false when the hold could not be
+	// kept and the seats were released as on the old path.
+	HoldKept *bool `json:"hold_kept,omitempty"`
 
 	// Status The public status the order has now, as
 	// `GET /v1/public/checkout/{checkout_token}` reports it:
@@ -5930,6 +5946,24 @@ type CheckoutHostedFallbackResponse struct {
 
 	// RedirectUrl Absolute URL of the provider's hosted payment page; the widget navigates to it.
 	RedirectUrl string `json:"redirect_url"`
+}
+
+// CheckoutPayingResponse Response of `POST /v1/public/checkout/{checkout_token}/paying`.
+type CheckoutPayingResponse struct {
+	// CheckoutToken The checkout token, echoed.
+	CheckoutToken string `json:"checkout_token"`
+
+	// ExpiresAt The order's expiry after the mark (RFC 3339, UTC). Absent when the status is `paid`.
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+
+	// PayingUntil Until when the expiry job does not close the payment page,
+	// present when the status is `pending`. Null on a checkout of the
+	// old path (it has no hold to keep).
+	PayingUntil *time.Time `json:"paying_until"`
+
+	// Status The public status of the order: `paid` when the payment came
+	// first (nothing was marked), else `pending`.
+	Status string `json:"status"`
 }
 
 // CheckoutRecoverResponse Response body for `POST /v1/public/checkout/{checkout_token}/recover`
@@ -8852,6 +8886,22 @@ type EventGalleryOrderRequest struct {
 	ItemIds []openapi_types.UUID `json:"item_ids"`
 }
 
+// EventHoldProfileRequest Body of `PUT /v1/admin/events/{event_id}/hold-profile`.
+type EventHoldProfileRequest struct {
+	// Profile `standard`, `high_demand`, or null to return the event to the
+	// standard profile. The key must be present.
+	Profile *string `json:"profile"`
+}
+
+// EventHoldProfileResponse Response of `PUT /v1/admin/events/{event_id}/hold-profile`.
+type EventHoldProfileResponse struct {
+	// EventId The event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Profile The profile now set, null for the standard one.
+	Profile *string `json:"profile"`
+}
+
 // EventItem A single event organized by one organization. Since Wave 4
 // (AB-36/AB-37) the event carries no venue and no own dates — both
 // belong to its sessions. `first_session_at` / `last_session_at`
@@ -10332,6 +10382,190 @@ type HealthzResponse struct {
 
 // HealthzResponseStatus Always "ok" when the process is alive
 type HealthzResponseStatus string
+
+// HoldAnswer A seat hold of the click (spec 67 section 4.1), the answer of every
+// hold route.
+type HoldAnswer struct {
+	// CheckoutToken Only in the answer of `GET /v1/public/holds/{hold_token}` while
+	// an order waits for payment: the checkout token of that order.
+	CheckoutToken *string `json:"checkout_token,omitempty"`
+
+	// Conflicts Only in the answer of `POST .../holds`: the requested seats that
+	// were not held (the rest were), sorted by `seat_key`. Omitted when
+	// there is none.
+	Conflicts *[]HoldConflict `json:"conflicts,omitempty"`
+
+	// ExpiresAt When the hold ends (RFC 3339, UTC).
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// ExtendAvailable True when `POST .../extend` would be taken right now: the hold
+	// is open, has extensions left and is in its last 75 seconds.
+	ExtendAvailable bool `json:"extend_available"`
+
+	// ExtensionsLeft How many extensions the hold still has.
+	ExtensionsLeft int `json:"extensions_left"`
+
+	// HoldToken The key of the hold, 43 URL-safe characters. The same hold
+	// always has the same token, so a device that lost it gets it
+	// back from `POST .../holds`.
+	HoldToken string `json:"hold_token"`
+
+	// Policy The hold's policy snapshot, in seconds.
+	Policy HoldPolicyAnswer `json:"policy"`
+
+	// SeatKeys The seats the hold holds now; for a closed hold the seats it
+	// held last, or an empty list.
+	SeatKeys []string `json:"seat_keys"`
+
+	// SessionId The session the seats belong to.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// State The state of the hold's reservation (`draft` and `active` are
+	// open; `expired`, `cancelled` and the like are closed). An open hold of the select step past
+	// its `expires_at` already reads `expired`.
+	State string `json:"state"`
+
+	// Step `select` (no order yet), `payment` (an order waits for payment)
+	// or `closed` (the hold is over).
+	Step string `json:"step"`
+}
+
+// HoldConflict One seat the request could not hold.
+type HoldConflict struct {
+	// SeatKey The seat key.
+	SeatKey string `json:"seat_key"`
+
+	// Status Why the seat was not held: `paused` (this visitor held it and
+	// let it expire a moment ago) or the seat's current status
+	// (`held`, `sold`, `unavailable`).
+	Status string `json:"status"`
+}
+
+// HoldCreateRequest Body of `POST /v1/public/feeds/{feed_token}/holds` (spec 67 section
+// 4.1). At most 16 KiB. Send at least one seat in `seat_keys`, unless
+// `rehold_of` is set (then the seats of the expired hold are held
+// again).
+type HoldCreateRequest struct {
+	// DeviceId Random id the widget keeps on the device (a UUID v4). It counts
+	// the visitor's open holds and pauses the seats of an expired
+	// hold. A click without it is limited by the client address
+	// exactly like a device (open holds, pause, one open hold).
+	DeviceId *string `json:"device_id,omitempty"`
+
+	// HoldToken Token of the visitor's open hold on this session and channel.
+	// Present: the seats are added to that hold. Absent: the hold of
+	// the same device is used when it has one, else a new hold is
+	// created.
+	HoldToken *string `json:"hold_token,omitempty"`
+
+	// ReholdOf Token of an expired hold of the same device and session, at
+	// most ten minutes after its expiry, never held again. The new
+	// hold takes its seats (or `seat_keys` when sent) and starts the
+	// select step anew.
+	ReholdOf *string `json:"rehold_of,omitempty"`
+
+	// SeatKeys Seat keys to hold. At most 50, each only once.
+	SeatKeys *[]string `json:"seat_keys,omitempty"`
+
+	// SessionId UUID of the seated session the seats belong to.
+	SessionId openapi_types.UUID `json:"session_id"`
+}
+
+// HoldPolicyAnswer The times of the hold's policy snapshot, taken when the hold was created.
+type HoldPolicyAnswer struct {
+	// ExtendCount How many extensions the policy allows per hold.
+	ExtendCount int `json:"extend_count"`
+
+	// ExtendSeconds How many seconds one extension adds. Zero means extensions are off.
+	ExtendSeconds int64 `json:"extend_seconds"`
+
+	// PaymentSeconds How long the seats are held on the payment step, in seconds.
+	PaymentSeconds int64 `json:"payment_seconds"`
+
+	// SelectSeconds How long the seats are held on the select step, in seconds.
+	SelectSeconds int64 `json:"select_seconds"`
+}
+
+// HoldPolicyListResponse Response of `GET /v1/admin/hold-policy`.
+type HoldPolicyListResponse struct {
+	// Profiles Both profiles.
+	Profiles []HoldPolicyProfile `json:"profiles"`
+}
+
+// HoldPolicyProfile One seat hold profile (spec 67 section 7.2). Times are in seconds, the poll interval in milliseconds.
+type HoldPolicyProfile struct {
+	// ExtendCount How many extensions one hold may take.
+	ExtendCount int32 `json:"extend_count"`
+
+	// ExtendSeconds How many seconds one extension adds. Zero turns extensions off.
+	ExtendSeconds int32 `json:"extend_seconds"`
+
+	// MaxActivePerDevice The most open holds one device may have.
+	MaxActivePerDevice int32 `json:"max_active_per_device"`
+
+	// MaxActivePerIp The most open holds one address may have (when the address limit is on).
+	MaxActivePerIp int32 `json:"max_active_per_ip"`
+
+	// MaxSeatsPerHold The most seats one hold may have.
+	MaxSeatsPerHold int32 `json:"max_seats_per_hold"`
+
+	// PayingSeconds How long the expiry job leaves the payment page open after the buyer pressed pay.
+	PayingSeconds int32 `json:"paying_seconds"`
+
+	// PaymentSeconds How long seats are held on the payment step.
+	PaymentSeconds int32 `json:"payment_seconds"`
+
+	// PollIntervalMs How often the widget asks for the seat status, in milliseconds.
+	PollIntervalMs int32 `json:"poll_interval_ms"`
+
+	// Profile Name of the profile, `standard` or `high_demand`.
+	Profile string `json:"profile"`
+
+	// ReholdPauseSeconds How long a visitor cannot hold again the seats of a hold that expired unpaid.
+	ReholdPauseSeconds int32 `json:"rehold_pause_seconds"`
+
+	// SelectSeconds How long seats are held on the select step.
+	SelectSeconds int32 `json:"select_seconds"`
+
+	// UpdatedAt When the profile was last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// UpdatedBy The user who changed it last, null for the seeded values.
+	UpdatedBy *openapi_types.UUID `json:"updated_by"`
+}
+
+// HoldPolicyPutRequest Body of `PUT /v1/admin/hold-policy/{profile}`. Every field is required; an unknown field is refused.
+type HoldPolicyPutRequest struct {
+	// ExtendCount How many extensions one hold may take.
+	ExtendCount int32 `json:"extend_count"`
+
+	// ExtendSeconds How many seconds one extension adds. Zero turns extensions off.
+	ExtendSeconds int32 `json:"extend_seconds"`
+
+	// MaxActivePerDevice The most open holds one device may have.
+	MaxActivePerDevice int32 `json:"max_active_per_device"`
+
+	// MaxActivePerIp The most open holds one address may have.
+	MaxActivePerIp int32 `json:"max_active_per_ip"`
+
+	// MaxSeatsPerHold The most seats one hold may have.
+	MaxSeatsPerHold int32 `json:"max_seats_per_hold"`
+
+	// PayingSeconds How long the expiry job leaves the payment page open after the buyer pressed pay.
+	PayingSeconds int32 `json:"paying_seconds"`
+
+	// PaymentSeconds How long seats are held on the payment step.
+	PaymentSeconds int32 `json:"payment_seconds"`
+
+	// PollIntervalMs How often the widget asks for the seat status, in milliseconds.
+	PollIntervalMs int32 `json:"poll_interval_ms"`
+
+	// ReholdPauseSeconds How long a visitor cannot hold again the seats of a hold that expired unpaid.
+	ReholdPauseSeconds int32 `json:"rehold_pause_seconds"`
+
+	// SelectSeconds How long seats are held on the select step.
+	SelectSeconds int32 `json:"select_seconds"`
+}
 
 // HostedPageContactForm The "Write to the organizer" form of a hosted page.
 type HostedPageContactForm struct {
@@ -16985,6 +17219,18 @@ type PublicFeedCheckoutStartRequest struct {
 	// GaItems GA items for GA or hybrid sessions.
 	GaItems *[]PublicGAItem `json:"ga_items,omitempty"`
 
+	// HoldToken Spec 67 section 4.4, optional. The key of a seat hold taken at
+	// the click (`POST /v1/public/feeds/{feed_token}/holds`): the
+	// seats come from the hold and no new hold is taken. `seats`,
+	// `ga_items`, `tier_id` and `qty` must then be absent (422
+	// `checkout.hold_and_seats`). Works with `prepare` and on the
+	// classic path alike. An unknown token is 404 `hold.not_found`, a
+	// hold of another session 422 `checkout.hold_session_mismatch`, a
+	// hold that is over 409 `hold.expired`, a hold that already has an
+	// open order 409 `hold.in_payment`. A refusal never releases the
+	// seats.
+	HoldToken *string `json:"hold_token,omitempty"`
+
 	// HolderEmail Email address of the ticket holder. Superseded by `buyer.email`
 	// when the `buyer` object is present.
 	HolderEmail openapi_types.Email `json:"holder_email"`
@@ -19988,6 +20234,9 @@ type SeatingSchemaResponseAdmissionMode string
 type SeatingSeatStatusResponse struct {
 	// Delta `true` when the response is a since_version delta, `false` when it is a full snapshot.
 	Delta bool `json:"delta"`
+
+	// PollIntervalMs How often the widget should ask again, in milliseconds. It is the poll interval of the session's seat hold profile (spec 67 section 4.9), the standard profile's when the profile cannot be read.
+	PollIntervalMs int64 `json:"poll_interval_ms"`
 
 	// Seats Map of `seat_key` → seat status. Empty when the caller is already at head. Statuses are `available|held|sold|unavailable`.
 	Seats map[string]string `json:"seats"`
@@ -25750,6 +25999,18 @@ type GetV1AdminCustomerImportsIdRowsParams struct {
 // GetV1AdminCustomerImportsIdRowsParamsAction defines parameters for GetV1AdminCustomerImportsIdRows.
 type GetV1AdminCustomerImportsIdRowsParamsAction string
 
+// PutAdminEventHoldProfileParams defines parameters for PutAdminEventHoldProfile.
+type PutAdminEventHoldProfileParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PutAdminHoldPolicyParams defines parameters for PutAdminHoldPolicy.
+type PutAdminHoldPolicyParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // ListLegalDocumentsParams defines parameters for ListLegalDocuments.
 type ListLegalDocumentsParams struct {
 	// Kind Only this kind (`sale_terms`).
@@ -27607,6 +27868,12 @@ type GetPublicFeedEventParams struct {
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
+// CreatePublicHoldParams defines parameters for CreatePublicHold.
+type CreatePublicHoldParams struct {
+	// IdempotencyKey Optional client-generated key, one per click. The same key and body replay the stored answer.
+	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
+}
+
 // CreateSiteMarketingSubscriptionParams defines parameters for CreateSiteMarketingSubscription.
 type CreateSiteMarketingSubscriptionParams struct {
 	// IdempotencyKey Optional client-generated key, one per submission (at most 255
@@ -27929,6 +28196,9 @@ type PostV1AdminBillingWhiteLabelEndJSONRequestBody = BillingEndWhiteLabelReques
 // PostV1AdminCustomerImportsJSONRequestBody defines body for PostV1AdminCustomerImports for application/json ContentType.
 type PostV1AdminCustomerImportsJSONRequestBody = CreateCustomerImportRequest
 
+// PutAdminEventHoldProfileJSONRequestBody defines body for PutAdminEventHoldProfile for application/json ContentType.
+type PutAdminEventHoldProfileJSONRequestBody = EventHoldProfileRequest
+
 // PostV1AdminGeoCitiesJSONRequestBody defines body for PostV1AdminGeoCities for application/json ContentType.
 type PostV1AdminGeoCitiesJSONRequestBody = GeoCreateCityRequest
 
@@ -27940,6 +28210,9 @@ type PostV1AdminGeoCountriesJSONRequestBody = GeoCreateCountryRequest
 
 // PatchV1AdminGeoCountriesIso2JSONRequestBody defines body for PatchV1AdminGeoCountriesIso2 for application/json ContentType.
 type PatchV1AdminGeoCountriesIso2JSONRequestBody = GeoUpdateCountryRequest
+
+// PutAdminHoldPolicyJSONRequestBody defines body for PutAdminHoldPolicy for application/json ContentType.
+type PutAdminHoldPolicyJSONRequestBody = HoldPolicyPutRequest
 
 // PostV1AdminImpersonateJSONRequestBody defines body for PostV1AdminImpersonate for application/json ContentType.
 type PostV1AdminImpersonateJSONRequestBody = ImpersonateRequest
@@ -28607,6 +28880,9 @@ type TransitionPaymentIntentJSONRequestBody = TransitionPaymentIntentRequest
 // AttachPublicCheckoutBuyerJSONRequestBody defines body for AttachPublicCheckoutBuyer for application/json ContentType.
 type AttachPublicCheckoutBuyerJSONRequestBody = CheckoutBuyerAttachRequest
 
+// CancelPublicCheckoutJSONRequestBody defines body for CancelPublicCheckout for application/json ContentType.
+type CancelPublicCheckoutJSONRequestBody = CheckoutCancelRequest
+
 // UpdatePublicCheckoutTrackingConsentJSONRequestBody defines body for UpdatePublicCheckoutTrackingConsent for application/json ContentType.
 type UpdatePublicCheckoutTrackingConsentJSONRequestBody = TrackingConsent
 
@@ -28618,6 +28894,9 @@ type StartPublicFeedCheckoutJSONRequestBody = PublicFeedCheckoutStartRequest
 
 // PostPublicFeedFunnelEventsJSONRequestBody defines body for PostPublicFeedFunnelEvents for application/json ContentType.
 type PostPublicFeedFunnelEventsJSONRequestBody = WidgetFunnelEventsBatch
+
+// CreatePublicHoldJSONRequestBody defines body for CreatePublicHold for application/json ContentType.
+type CreatePublicHoldJSONRequestBody = HoldCreateRequest
 
 // CreateSiteMarketingSubscriptionJSONRequestBody defines body for CreateSiteMarketingSubscription for application/json ContentType.
 type CreateSiteMarketingSubscriptionJSONRequestBody = SiteMarketingSubscriptionRequest

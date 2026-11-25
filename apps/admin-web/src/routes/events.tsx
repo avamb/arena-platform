@@ -78,6 +78,7 @@ import {
 import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth/useAuth";
 import { useTranslation } from "@/lib/i18n/I18nContext";
+import { EventHoldProfile } from "./eventHoldProfile";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
 import {
   ResponsiveTable,
@@ -2264,6 +2265,8 @@ function OverviewTab({
   onUpdated: () => void;
 }) {
   const queryClient = useQueryClient();
+  const { permissions: overviewPermissions } = useAuth();
+  const { t: tOverview } = useTranslation();
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
@@ -2432,6 +2435,11 @@ function OverviewTab({
         <EventStatusBadge status={event.status} />
       </DetailRow>
       <DetailRow label="Visibility">{event.visibility}</DetailRow>
+      {overviewPermissions.has("superadmin.read") ? (
+        <DetailRow label={tOverview("holdPolicy.event.label")}>
+          <EventHoldProfile eventId={event.id} />
+        </DetailRow>
+      ) : null}
       <DetailRow label="Organization">
         {(() => {
           const org = orgsByID.get(event.org_id);

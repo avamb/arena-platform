@@ -223,6 +223,10 @@ func LoadOrder(ctx context.Context, db interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }, orderID uuid.UUID) (Order, error) {
 	var o Order
+	// "A newer order" compares the moment each order got its buyer, the
+	// latest of created_at and the buyer_attached event, as SweepOrgs does: a
+	// prepared order (spec 65) attached later is the newer one even when its
+	// sheet opened first.
 	err := db.QueryRow(ctx, `
 		SELECT o.id, o.org_id, o.session_id, o.checkout_session_id, o.system_id, o.status,
 		       COALESCE(o.buyer_email, ''), COALESCE(cs.buyer_locale, ''), o.expires_at, o.created_at,
@@ -234,13 +238,19 @@ func LoadOrder(ctx context.Context, db interface {
 		                   AND COALESCE(pi.hosted_checkout_url, '') <> ''
 		                 ORDER BY pi.created_at DESC LIMIT 1), ''),
 		       EXISTS (SELECT 1 FROM orders n
-		               WHERE n.session_id = o.session_id AND n.id <> o.id AND n.created_at > o.created_at
+		               WHERE n.session_id = o.session_id AND n.id <> o.id
+		                 AND GREATEST(n.created_at,
+		                              COALESCE((SELECT max(e.created_at) FROM order_events e
+		                                        WHERE e.order_id = n.id AND e.type = $2), n.created_at))
+		                   > GREATEST(o.created_at,
+		                              COALESCE((SELECT max(e.created_at) FROM order_events e
+		                                        WHERE e.order_id = o.id AND e.type = $2), o.created_at))
 		                 AND lower(btrim(n.buyer_email)) = lower(btrim(o.buyer_email))
 		                 AND n.status IN ('pending_payment', 'paid', 'partially_refunded')),
 		       COALESCE((SELECT g.cart_reminder_enabled FROM org_growth_settings g WHERE g.org_id = o.org_id), true)
 		FROM   orders o
 		JOIN   checkout_sessions cs ON cs.id = o.checkout_session_id
-		WHERE  o.id = $1`, orderID).Scan(
+		WHERE  o.id = $1`, orderID, ordering.EventBuyerAttached).Scan(
 		&o.ID, &o.OrgID, &o.SessionID, &o.CheckoutID, &o.SystemID, &o.Status,
 		&o.BuyerEmail, &o.Locale, &o.ExpiresAt, &o.CreatedAt, &o.Total, &o.Currency, &o.Tickets,
 		&o.CheckoutToken, &o.ReturnURL, &o.PaymentURL, &o.NewerOrder, &o.ReminderOn)

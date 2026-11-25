@@ -9556,8 +9556,226 @@ export interface paths {
          *
          *     Idempotent: a repeat answers `cancelled: true` again and writes
          *     nothing. No JWT: the `checkout_token` is the credential.
+         *
+         *     The body is optional. `{"keep_hold": true}` (spec 67 section 4.5)
+         *     keeps the seats of a seat hold of the click: the order is cancelled
+         *     and the hold is back on the select step with its `expires_at`; the
+         *     answer then carries `hold_kept`.
          */
         post: operations["cancelPublicCheckout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/checkout/{checkout_token}/paying": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The payment of an order is in progress
+         * @description Spec 67 section 4.8. The widget sends it right before it confirms
+         *     the payment (before 3-D Secure). The seat hold of the click then
+         *     gets `paying_until` = now + the profile's `paying_seconds`, once,
+         *     and the order does not expire before it. While `paying_until` has
+         *     not passed, the expiry job does not close the payment page.
+         *
+         *     A repeat changes nothing and answers 200 again. A checkout of the
+         *     old path (no hold) changes nothing and answers 200 with
+         *     `paying_until` null. An order that is already paid answers 200 with
+         *     `status: paid`. After the expiry job began closing the page, or when
+         *     the hold's time is over, the answer is 409 `hold.expired`.
+         *
+         *     No JWT: the `checkout_token` is the credential.
+         */
+        post: operations["markPublicCheckoutPaying"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/feeds/{feed_token}/holds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hold seats at the click
+         * @description Spec 67 section 4.1. Holds the seats of a seated session for the
+         *     visitor at the moment of the click, before any order.
+         *
+         *     * With `hold_token`, the seats are added to that hold.
+         *     * Without it, the open hold of the same `device_id` on this session
+         *       takes the seats; failing that, a new hold is created (201). A new
+         *       hold of the same device soon after the last one closed keeps that
+         *       one's select deadline and used extensions.
+         *     * With `rehold_of`, the seats of an expired hold are held again
+         *       (once per chain, within ten minutes of the expiry).
+         *
+         *     Seats that cannot be held are listed in `conflicts` of a 200/201
+         *     answer when others were held; when none could be held the answer is
+         *     409. A visitor cannot hold again at once the seats of a hold of
+         *     theirs that expired unpaid (`paused`).
+         *
+         *     An optional `Idempotency-Key` header makes a retry safe (kept one
+         *     hour; only a 2xx answer is stored). No JWT: the feed token is the
+         *     credential. Rate-limited per feed token and per IP. With
+         *     `HOLD_ON_CLICK_ENABLED` off every hold route answers 404
+         *     `hold.disabled`.
+         */
+        post: operations["createPublicHold"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/holds/{hold_token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a seat hold
+         * @description Spec 67 section 4.1. The hold addressed by its token, with
+         *     `checkout_token` while an order waits for payment (then
+         *     `step` is `payment`). An unknown token is 404 whoever's it is.
+         *     No JWT: the hold token is the credential. With
+         *     `HOLD_ON_CLICK_ENABLED` off the answer is 404 `hold.disabled`.
+         */
+        get: operations["getPublicHold"];
+        put?: never;
+        post?: never;
+        /**
+         * Release every seat of a hold
+         * @description Spec 67 section 4.3. Frees all the seats of the hold and cancels it.
+         *     Answers the hold as it stands after the call. A hold that is
+         *     already cancelled answers 200 again (an empty hold). A hold with an
+         *     order waiting for payment is refused: go back to the seating plan
+         *     first. No JWT: the hold token is the credential.
+         */
+        delete: operations["releasePublicHold"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/holds/{hold_token}/seats/{seat_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Release one seat of a hold
+         * @description Spec 67 section 4.2. Frees one seat of the hold. A seat the hold
+         *     does not hold is already free: the answer is the same. Removing the
+         *     last seat cancels the hold. Answers the hold as it stands after the
+         *     call. A hold with an order waiting for payment is refused. No JWT:
+         *     the hold token is the credential.
+         */
+        delete: operations["releasePublicHoldSeat"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/holds/{hold_token}/extend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Extend a seat hold
+         * @description Spec 67 section 4.7. Adds the policy's `extend_seconds` to the hold,
+         *     on either step, while the hold has extensions left, only in its last
+         *     75 seconds (`extend_available` of the hold answer) and never after
+         *     the expiry job began closing the payment page. On the payment step
+         *     the order waiting for payment gets the same expiry. No JWT: the hold
+         *     token is the credential. There is no body.
+         */
+        post: operations["extendPublicHold"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/hold-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - list the seat hold profiles
+         * @description Spec 67 section 7.2. Returns the two hold profiles, `standard` and `high_demand`. Requires JWT, superadmin.read and a platform superadmin.
+         */
+        get: operations["listAdminHoldPolicy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/hold-policy/{profile}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Admin - replace a seat hold profile
+         * @description Spec 67 section 7.2. Replaces every number of one profile. The values are checked (`hold_policy.invalid` when one is outside its range). Requires JWT, superadmin.read, a platform superadmin and X-Admin-Reason. Writes an audit row with the old and the new values in the same transaction; without a durable audit writer nothing is changed (503 `dependency.audit_unavailable`).
+         */
+        put: operations["putAdminHoldPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/events/{event_id}/hold-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Admin - pick the seat hold profile of an event
+         * @description Spec 67 section 7.2. Sets the profile the event's sessions use: `standard`, `high_demand`, or null for the standard one. The key `profile` must be present. Requires JWT, superadmin.read, a platform superadmin and X-Admin-Reason. Writes an audit row with the old and the new value.
+         */
+        put: operations["putAdminEventHoldProfile"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -31790,6 +32008,19 @@ export interface components {
              */
             prepare?: boolean;
             /**
+             * @description Spec 67 section 4.4, optional. The key of a seat hold taken at
+             *     the click (`POST /v1/public/feeds/{feed_token}/holds`): the
+             *     seats come from the hold and no new hold is taken. `seats`,
+             *     `ga_items`, `tier_id` and `qty` must then be absent (422
+             *     `checkout.hold_and_seats`). Works with `prepare` and on the
+             *     classic path alike. An unknown token is 404 `hold.not_found`, a
+             *     hold of another session 422 `checkout.hold_session_mismatch`, a
+             *     hold that is over 409 `hold.expired`, a hold that already has an
+             *     open order 409 `hold.in_payment`. A refusal never releases the
+             *     seats.
+             */
+            hold_token?: string;
+            /**
              * @deprecated
              * @description Deprecated alias of `buyer_context.tracking_consent` +
              *     `tracking_consent_text_version`; both write the same stored
@@ -31867,6 +32098,314 @@ export interface components {
             status: string;
             /** @description True when the order is cancelled (now or by an earlier call). */
             cancelled: boolean;
+            /**
+             * @description Present only when the request sent `keep_hold: true` and the
+             *     order was cancelled by this call. True when the seats stayed in
+             *     their seat hold of the click (the hold is back on the select
+             *     step with its `expires_at`); false when the hold could not be
+             *     kept and the seats were released as on the old path.
+             */
+            hold_kept?: boolean;
+        };
+        /**
+         * @description Optional body of `POST /v1/public/checkout/{checkout_token}/cancel`.
+         *     An empty body is the same as `{}`.
+         */
+        CheckoutCancelRequest: {
+            /**
+             * @description Spec 67 section 4.5. `true`: cancel the order but keep the seats
+             *     of a seat hold of the click in the hold. Ignored on the old path
+             *     (a checkout that has no hold token).
+             */
+            keep_hold?: boolean;
+        };
+        /**
+         * @description Body of `POST /v1/public/feeds/{feed_token}/holds` (spec 67 section
+         *     4.1). At most 16 KiB. Send at least one seat in `seat_keys`, unless
+         *     `rehold_of` is set (then the seats of the expired hold are held
+         *     again).
+         */
+        HoldCreateRequest: {
+            /**
+             * Format: uuid
+             * @description UUID of the seated session the seats belong to.
+             */
+            session_id: string;
+            /** @description Seat keys to hold. At most 50, each only once. */
+            seat_keys?: string[];
+            /**
+             * @description Token of the visitor's open hold on this session and channel.
+             *     Present: the seats are added to that hold. Absent: the hold of
+             *     the same device is used when it has one, else a new hold is
+             *     created.
+             */
+            hold_token?: string;
+            /**
+             * @description Random id the widget keeps on the device (a UUID v4). It counts
+             *     the visitor's open holds and pauses the seats of an expired
+             *     hold. A click without it is limited by the client address
+             *     exactly like a device (open holds, pause, one open hold).
+             */
+            device_id?: string;
+            /**
+             * @description Token of an expired hold of the same device and session, at
+             *     most ten minutes after its expiry, never held again. The new
+             *     hold takes its seats (or `seat_keys` when sent) and starts the
+             *     select step anew.
+             */
+            rehold_of?: string;
+        };
+        /** @description The times of the hold's policy snapshot, taken when the hold was created. */
+        HoldPolicyAnswer: {
+            /**
+             * Format: int64
+             * @description How long the seats are held on the select step, in seconds.
+             */
+            select_seconds: number;
+            /**
+             * Format: int64
+             * @description How long the seats are held on the payment step, in seconds.
+             */
+            payment_seconds: number;
+            /**
+             * Format: int64
+             * @description How many seconds one extension adds. Zero means extensions are off.
+             */
+            extend_seconds: number;
+            /** @description How many extensions the policy allows per hold. */
+            extend_count: number;
+        };
+        /** @description One seat the request could not hold. */
+        HoldConflict: {
+            /** @description The seat key. */
+            seat_key: string;
+            /**
+             * @description Why the seat was not held: `paused` (this visitor held it and
+             *     let it expire a moment ago) or the seat's current status
+             *     (`held`, `sold`, `unavailable`).
+             */
+            status: string;
+        };
+        /**
+         * @description A seat hold of the click (spec 67 section 4.1), the answer of every
+         *     hold route.
+         */
+        HoldAnswer: {
+            /**
+             * @description The key of the hold, 43 URL-safe characters. The same hold
+             *     always has the same token, so a device that lost it gets it
+             *     back from `POST .../holds`.
+             */
+            hold_token: string;
+            /**
+             * Format: uuid
+             * @description The session the seats belong to.
+             */
+            session_id: string;
+            /**
+             * @description The state of the hold's reservation (`draft` and `active` are
+             *     open; `expired`, `cancelled` and the like are closed). An open hold of the select step past
+             *     its `expires_at` already reads `expired`.
+             */
+            state: string;
+            /**
+             * @description `select` (no order yet), `payment` (an order waits for payment)
+             *     or `closed` (the hold is over).
+             */
+            step: string;
+            /**
+             * @description The seats the hold holds now; for a closed hold the seats it
+             *     held last, or an empty list.
+             */
+            seat_keys: string[];
+            /**
+             * Format: date-time
+             * @description When the hold ends (RFC 3339, UTC).
+             */
+            expires_at: string;
+            /**
+             * @description True when `POST .../extend` would be taken right now: the hold
+             *     is open, has extensions left and is in its last 75 seconds.
+             */
+            extend_available: boolean;
+            /** @description How many extensions the hold still has. */
+            extensions_left: number;
+            /** @description The hold's policy snapshot, in seconds. */
+            policy: components["schemas"]["HoldPolicyAnswer"];
+            /**
+             * @description Only in the answer of `POST .../holds`: the requested seats that
+             *     were not held (the rest were), sorted by `seat_key`. Omitted when
+             *     there is none.
+             */
+            conflicts?: components["schemas"]["HoldConflict"][];
+            /**
+             * @description Only in the answer of `GET /v1/public/holds/{hold_token}` while
+             *     an order waits for payment: the checkout token of that order.
+             */
+            checkout_token?: string;
+        };
+        /** @description Response of `POST /v1/public/checkout/{checkout_token}/paying`. */
+        CheckoutPayingResponse: {
+            /** @description The checkout token, echoed. */
+            checkout_token: string;
+            /**
+             * @description The public status of the order: `paid` when the payment came
+             *     first (nothing was marked), else `pending`.
+             */
+            status: string;
+            /**
+             * Format: date-time
+             * @description Until when the expiry job does not close the payment page,
+             *     present when the status is `pending`. Null on a checkout of the
+             *     old path (it has no hold to keep).
+             */
+            paying_until?: string | null;
+            /**
+             * Format: date-time
+             * @description The order's expiry after the mark (RFC 3339, UTC). Absent when the status is `paid`.
+             */
+            expires_at?: string;
+        };
+        /** @description One seat hold profile (spec 67 section 7.2). Times are in seconds, the poll interval in milliseconds. */
+        HoldPolicyProfile: {
+            /** @description Name of the profile, `standard` or `high_demand`. */
+            profile: string;
+            /**
+             * Format: int32
+             * @description How long seats are held on the select step.
+             */
+            select_seconds: number;
+            /**
+             * Format: int32
+             * @description How long seats are held on the payment step.
+             */
+            payment_seconds: number;
+            /**
+             * Format: int32
+             * @description How many seconds one extension adds. Zero turns extensions off.
+             */
+            extend_seconds: number;
+            /**
+             * Format: int32
+             * @description How many extensions one hold may take.
+             */
+            extend_count: number;
+            /**
+             * Format: int32
+             * @description How long the expiry job leaves the payment page open after the buyer pressed pay.
+             */
+            paying_seconds: number;
+            /**
+             * Format: int32
+             * @description The most seats one hold may have.
+             */
+            max_seats_per_hold: number;
+            /**
+             * Format: int32
+             * @description The most open holds one device may have.
+             */
+            max_active_per_device: number;
+            /**
+             * Format: int32
+             * @description The most open holds one address may have (when the address limit is on).
+             */
+            max_active_per_ip: number;
+            /**
+             * Format: int32
+             * @description How long a visitor cannot hold again the seats of a hold that expired unpaid.
+             */
+            rehold_pause_seconds: number;
+            /**
+             * Format: int32
+             * @description How often the widget asks for the seat status, in milliseconds.
+             */
+            poll_interval_ms: number;
+            /**
+             * Format: date-time
+             * @description When the profile was last changed.
+             */
+            updated_at: string;
+            /**
+             * Format: uuid
+             * @description The user who changed it last, null for the seeded values.
+             */
+            updated_by: string | null;
+        };
+        /** @description Response of `GET /v1/admin/hold-policy`. */
+        HoldPolicyListResponse: {
+            /** @description Both profiles. */
+            profiles: components["schemas"]["HoldPolicyProfile"][];
+        };
+        /** @description Body of `PUT /v1/admin/hold-policy/{profile}`. Every field is required; an unknown field is refused. */
+        HoldPolicyPutRequest: {
+            /**
+             * Format: int32
+             * @description How long seats are held on the select step.
+             */
+            select_seconds: number;
+            /**
+             * Format: int32
+             * @description How long seats are held on the payment step.
+             */
+            payment_seconds: number;
+            /**
+             * Format: int32
+             * @description How many seconds one extension adds. Zero turns extensions off.
+             */
+            extend_seconds: number;
+            /**
+             * Format: int32
+             * @description How many extensions one hold may take.
+             */
+            extend_count: number;
+            /**
+             * Format: int32
+             * @description How long the expiry job leaves the payment page open after the buyer pressed pay.
+             */
+            paying_seconds: number;
+            /**
+             * Format: int32
+             * @description The most seats one hold may have.
+             */
+            max_seats_per_hold: number;
+            /**
+             * Format: int32
+             * @description The most open holds one device may have.
+             */
+            max_active_per_device: number;
+            /**
+             * Format: int32
+             * @description The most open holds one address may have.
+             */
+            max_active_per_ip: number;
+            /**
+             * Format: int32
+             * @description How long a visitor cannot hold again the seats of a hold that expired unpaid.
+             */
+            rehold_pause_seconds: number;
+            /**
+             * Format: int32
+             * @description How often the widget asks for the seat status, in milliseconds.
+             */
+            poll_interval_ms: number;
+        };
+        /** @description Body of `PUT /v1/admin/events/{event_id}/hold-profile`. */
+        EventHoldProfileRequest: {
+            /**
+             * @description `standard`, `high_demand`, or null to return the event to the
+             *     standard profile. The key must be present.
+             */
+            profile: string | null;
+        };
+        /** @description Response of `PUT /v1/admin/events/{event_id}/hold-profile`. */
+        EventHoldProfileResponse: {
+            /**
+             * Format: uuid
+             * @description The event.
+             */
+            event_id: string;
+            /** @description The profile now set, null for the standard one. */
+            profile: string | null;
         };
         /**
          * @description Browser identifiers for server-side conversions. Every string is at most
@@ -34674,6 +35213,11 @@ export interface components {
             };
             /** @description `true` when the response is a since_version delta, `false` when it is a full snapshot. */
             delta: boolean;
+            /**
+             * Format: int64
+             * @description How often the widget should ask again, in milliseconds. It is the poll interval of the session's seat hold profile (spec 67 section 4.9), the standard profile's when the profile cannot be read.
+             */
+            poll_interval_ms: number;
         };
         /**
          * @description A sales channel belonging to an organization. Channels represent
@@ -71914,8 +72458,21 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description `hold.not_found` when `hold_token` is sent and no hold has it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /**
-             * @description Seat conflict (reservation.seats_conflict with conflicts[]),
+             * @description `hold.expired` (with `hold_token`: the hold is over or its seats
+             *     went back) or `hold.in_payment` (the hold already has an open
+             *     order; finish it or cancel it first).
+             *
+             *     Seat conflict (reservation.seats_conflict with conflicts[]),
              *     capacity exceeded (reservation.over_capacity), or a category that
              *     is closed (`tier.closed`) or outside its sale window or past the
              *     session's sales end (`tier.not_on_sale`), or a session that was
@@ -71964,6 +72521,11 @@ export interface operations {
              *     `checkout.prepare_unavailable` for `prepare: true` without the
              *     `stripe_elements` capability or with a buyer, a promo code, a
              *     marketing tick or a consent (`details.reason`).
+             *
+             *     `checkout.hold_and_seats` when `hold_token` comes together with
+             *     `seats`, `ga_items`, `tier_id` or `qty` (`details.field` is
+             *     `seats`); `checkout.hold_session_mismatch` when the hold is for
+             *     another session (`details.field` is `session_id`).
              */
             422: {
                 headers: {
@@ -73792,7 +74354,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CheckoutCancelRequest"];
+            };
+        };
         responses: {
             /**
              * @description The order's status after the call (`cancelled`, `paid`,
@@ -73804,6 +74370,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CheckoutCancelResponse"];
+                };
+            };
+            /**
+             * @description The body could not be read (`checkout.invalid_body`) or is not
+             *     valid JSON (`checkout.invalid_json`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description No checkout for this token (`checkout.not_found`). */
@@ -73841,6 +74419,706 @@ export interface operations {
              *     checkout could not be read (`checkout.lookup_failed`) or the
              *     cancel could not be written (`checkout.cancel_failed`); retry.
              */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    markPublicCheckoutPaying: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque checkout token from `checkout/start`. */
+                checkout_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The mark is written, was written before, or the order is paid. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutPayingResponse"];
+                };
+            };
+            /** @description No checkout for this token (`checkout.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The order or the hold is over, or the payment page is being
+             *     closed (`hold.expired`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded (`checkout.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database unavailable (`dependency.database_unavailable`), or the
+             *     mark could not be saved (`checkout.unavailable`); retry.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createPublicHold: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional client-generated key, one per click. The same key and body replay the stored answer. */
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                /** @description Public feed token that scopes the available sessions. */
+                feed_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HoldCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description The seats were added to an existing hold (or it already had them). */
+            200: {
+                headers: {
+                    /** @description Always `no-store`. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HoldAnswer"];
+                };
+            };
+            /** @description A new hold was created. */
+            201: {
+                headers: {
+                    /** @description Always `no-store`. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HoldAnswer"];
+                };
+            };
+            /**
+             * @description `hold.invalid_body` (not JSON or empty), `hold.invalid_session`
+             *     (`session_id` is not a UUID), `hold.invalid_device` (`device_id`
+             *     over 128 characters) or `hold.invalid_seats` (a seat twice, or
+             *     no seat and no `rehold_of`); `details.field` names the field.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session is not on sale for this feed token (`feed.session_not_on_feed`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `hold.disabled` (the feature is off), `hold.not_found` (no such
+             *     hold, or it belongs to another session or channel) or
+             *     `reservation.session_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `hold.seats_taken` (`details.conflicts`: the seats others hold
+             *     or `paused` ones), `hold.expired` (the hold of `hold_token` is
+             *     over), `hold.in_payment` (the hold has an order waiting for
+             *     payment), `hold.rehold_paused` (every seat is paused;
+             *     `details.retry_after_seconds`, `details.conflicts` and the
+             *     header `Retry-After`), `hold.rehold_used` (the hold was already
+             *     held again) or `hold.rehold_unavailable` (it cannot be held
+             *     again). A session that is closed for sale answers the usual
+             *     session and category codes (`session.cancelled`,
+             *     `session.sales_not_started`, `session.sold_out`, `tier.closed`,
+             *     `tier.not_on_sale`).
+             */
+            409: {
+                headers: {
+                    /** @description Seconds until the paused seats can be held (`hold.rehold_paused` only). */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `hold.too_many_seats` (`details.max_seats`), `hold.not_seated`
+             *     (the session has no seating plan) or `hold.rehold_foreign_seat`
+             *     (`rehold_of` with a seat that was not in the old hold;
+             *     `details.field` is `seat_keys`, `details.seat_key` names the
+             *     seat).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `hold.too_many_active` (`details.max_active`: the device or the
+             *     address has too many open holds; a request without `device_id`
+             *     is counted by its address like a device) or `feed.rate_limited`.
+             */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `hold.failed` or `dependency.database_unavailable`; retry. Never
+             *     502: Cloudflare would replace it.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicHold: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The hold token from `POST /v1/public/feeds/{feed_token}/holds`. */
+                hold_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The hold. */
+            200: {
+                headers: {
+                    /** @description Always `no-store`. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HoldAnswer"];
+                };
+            };
+            /** @description `hold.disabled` or `hold.not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded (`hold.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `hold.failed` or `dependency.database_unavailable`; retry. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    releasePublicHold: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The hold token. */
+                hold_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The hold after the release. */
+            200: {
+                headers: {
+                    /** @description Always `no-store`. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HoldAnswer"];
+                };
+            };
+            /** @description `hold.disabled` or `hold.not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `hold.expired` (the hold is over or was paid) or `hold.in_payment` (an order waits for payment). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded (`hold.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `hold.failed` or `dependency.database_unavailable`; retry. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    releasePublicHoldSeat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The hold token. */
+                hold_token: string;
+                /** @description The seat key, URL-encoded. */
+                seat_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The hold after the removal. */
+            200: {
+                headers: {
+                    /** @description Always `no-store`. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HoldAnswer"];
+                };
+            };
+            /** @description The seat key in the path is empty or malformed (`hold.invalid_seats`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `hold.disabled` or `hold.not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `hold.expired` (the hold is over or was paid) or `hold.in_payment` (an order waits for payment). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded (`hold.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `hold.failed` or `dependency.database_unavailable`; retry. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    extendPublicHold: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The hold token. */
+                hold_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The hold with its new `expires_at`. */
+            200: {
+                headers: {
+                    /** @description Always `no-store`. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HoldAnswer"];
+                };
+            };
+            /** @description `hold.disabled` or `hold.not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `hold.expired` (over, or the page is being closed),
+             *     `hold.extend_used` (no extension left, or extensions are off) or
+             *     `hold.extend_not_yet` (more than 75 seconds are left;
+             *     `details.available_at` says when).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded (`hold.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `hold.failed` or `dependency.database_unavailable`; retry. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listAdminHoldPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Both profiles. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HoldPolicyListResponse"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller is not a platform superadmin (`hold_policy.superadmin_only`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The profiles could not be read (`hold_policy.admin_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putAdminHoldPolicy: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Name of the profile: `standard` or `high_demand`. */
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HoldPolicyPutRequest"];
+            };
+        };
+        responses: {
+            /** @description The profile after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HoldPolicyProfile"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of the expected shape (`hold_policy.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller is not a platform superadmin (`hold_policy.superadmin_only`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The profile is not `standard` or `high_demand` (`hold_policy.profile_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A field is missing or a value is outside the allowed range (`hold_policy.invalid`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Nothing was changed (`hold_policy.admin_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or audit log unavailable (`dependency.database_unavailable`, `dependency.audit_unavailable`); nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putAdminEventHoldProfile: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUID of the event. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventHoldProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description The profile now set on the event. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventHoldProfileResponse"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of the expected shape (`hold_policy.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller is not a platform superadmin (`hold_policy.superadmin_only`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The event does not exist (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `event_id` is not a UUID (`hold_policy.invalid_event_id`), or `profile` is missing or not one of the allowed values (`hold_policy.invalid`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Nothing was changed (`hold_policy.admin_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or audit log unavailable (`dependency.database_unavailable`, `dependency.audit_unavailable`); nothing was changed. */
             503: {
                 headers: {
                     [name: string]: unknown;

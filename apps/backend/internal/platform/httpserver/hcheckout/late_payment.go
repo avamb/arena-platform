@@ -103,9 +103,15 @@ func (h *Handler) settleLatePaymentTx(
 	orderStatus, windowEnd := "", time.Time{}
 	if ord != nil {
 		orderStatus = ord.Status
-		if ord.ExpiresAt != nil {
-			windowEnd = *ord.ExpiresAt
+		// The window ends at the latest of the order's expiry, the hold's
+		// "payment in progress" mark and the provider page's own expiry
+		// (spec 67 section 5.2): a payment inside it is never after_window.
+		// Old rows carry neither mark, so the order's expiry alone decides.
+		payingUntil, pageExpiresAt, err := txq.GetLatePaymentWindowBounds(ctx, pi.ID, ord.ReservationID)
+		if err != nil {
+			return lateSettlement{}, fmt.Errorf("late payment: load window bounds: %w", err)
 		}
+		windowEnd = latepayment.WindowEnd(ord.ExpiresAt, payingUntil, pageExpiresAt)
 	}
 	lateCase, ok := latepayment.Classify(cur.State, orderStatus, paidAt, windowEnd)
 	if !ok {

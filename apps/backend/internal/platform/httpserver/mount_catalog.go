@@ -315,6 +315,8 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 		r.Post("/public/checkout/{checkout_token}/hosted", s.handlePublicCheckoutHostedFallback)
 		// The buyer of a prepared order (spec 65 early order).
 		r.Post("/public/checkout/{checkout_token}/buyer", s.handlePublicCheckoutBuyer)
+		// "The payment is in progress": the seat hold is not closed (spec 67 section 4.8).
+		r.Post("/public/checkout/{checkout_token}/paying", s.handlePublicCheckoutPaying)
 		// The buyer's cookie consent changed while the order is open (П-20).
 		r.Patch("/public/checkout/{checkout_token}/consent", s.handlePublicCheckoutConsent)
 		// The buyer's "Refer a friend" code and share link (spec 52).

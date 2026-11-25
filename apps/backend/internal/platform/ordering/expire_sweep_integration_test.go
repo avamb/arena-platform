@@ -67,7 +67,7 @@ func TestExpireSweep_LiveDB(t *testing.T) {
 	// The candidate query is global, so scope the assertion to this fixture
 	// rather than to the returned count — the shared stand may carry unrelated
 	// expirable orders.
-	candidates, err := q.ListExpirableOrders(ctx, time.Now().UTC(), 500)
+	candidates, err := q.ListExpirableOrders(ctx, time.Now().UTC(), ordering.DefaultPaymentGrace, 500)
 	if err != nil {
 		t.Fatalf("ListExpirableOrders: %v", err)
 	}

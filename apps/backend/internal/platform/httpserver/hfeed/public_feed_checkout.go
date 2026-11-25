@@ -69,6 +69,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customers"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailaddr"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/holdpolicy"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
@@ -172,6 +173,11 @@ type PublicFeedCheckoutStartRequest struct {
 	// 422/409 checkout.prepare_unavailable and the widget starts the
 	// checkout the classic way at "Pay".
 	Prepare bool `json:"prepare,omitempty"`
+	// HoldToken is the key of a seat hold taken at the click (spec 67
+	// section 4.4): the seats come from the hold, no new hold is taken, and
+	// seats[] / ga_items[] must not be sent (422 checkout.hold_and_seats).
+	// Works with prepare and on the classic path alike.
+	HoldToken string `json:"hold_token,omitempty"`
 }
 
 // normalizeBuyerLocale validates a caller-supplied locale against the
@@ -318,6 +324,18 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// ── 3. A seat hold of the click (spec 67 section 4.4) names its seats
+	// itself: a cart sent with it is refused before anything is read.
+	req.HoldToken = strings.TrimSpace(req.HoldToken)
+	fromHold := req.HoldToken != ""
+	if fromHold && (len(req.Seats) > 0 || len(req.GaItems) > 0 || req.TierID != "" || req.Qty != 0) {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+			ErrCodeHoldAndSeats, "Send either hold_token or the seats, not both.", r,
+			map[string]any{"field": "seats"},
+		))
+		return
+	}
+
 	// ── 3a. A prepared order (spec 65) carries no buyer and nothing that
 	// depends on one; refused before anything is read or held.
 	if req.Prepare {
@@ -367,7 +385,9 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 		req.GaItems = []PublicGAItem{{TierID: req.TierID, Quantity: req.Qty}}
 	}
 
-	hasSeats := len(req.Seats) > 0
+	// A hold of the click is a seated cart: its seats are read under the
+	// hold's lock in the transaction below.
+	hasSeats := len(req.Seats) > 0 || fromHold
 	hasGA := len(req.GaItems) > 0
 
 	// Legacy GA path: validate qty range for backward-compat (feature #153).
@@ -697,6 +717,9 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 	// hold transaction: inside it only the resolved values are written.
 	attr := h.resolveCheckoutAttribution(ctx, checkCtx.OrgID, req.Attribution, time.Now())
 	attr.buyerCtx = conversions.CleanBuyerContext(req.BuyerContext, httputil.TrustedClientIP(r, 0), r.UserAgent())
+	// Whether the channel's provider can close its page decides the payment
+	// step of a hold of the click (spec 67 section 5.5); read on the pool.
+	holdCanExpirePage := fromHold && h.channelCanExpirePage(ctx, checkCtx.OrgID, checkCtx.SalesChannelID)
 
 	// ── 10. Begin transaction ─────────────────────────────────────────────────
 	if h.inventoryQueries == nil || h.pool == nil {
@@ -726,6 +749,81 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 	}
 	if h.promoQueries != nil {
 		promoQ = h.promoQueries.WithTx(tx)
+	}
+
+	// ── 10b. The seats of a hold of the click (spec 67 section 4.4) ─────────
+	// The hold row is locked first; nothing of the hold changes in this
+	// transaction, so a refusal below leaves the seats with the buyer.
+	if fromHold {
+		hold, locked, ok := h.lockHoldForCheckout(ctx, w, r, resQ, req.HoldToken, sessionID)
+		if !ok {
+			return
+		}
+		seatLines, seatCurrency, errCode := h.seatPricingLines(ctx, tierQ, sessionID, locked)
+		if errCode != "" {
+			h.writePricingError(w, r, errCode)
+			return
+		}
+		currency := seatCurrency
+		if currency == "" {
+			currency = "EUR" // defensive default: no tier bound anywhere
+		}
+		promoLines := hcheckout.TierLinesForSession(seatLines, sessionID.String(), currency)
+		discount, promoCodeID, promoErrCode := h.applyPromoDiscountFor(ctx, promoQ, promoRow, promoLines, req.HolderEmail, derefOr(buyerPhone))
+		pj.record(ctx, promoRow, promoErrCode)
+		if promoErrCode != "" {
+			h.refusePromoFor(w, r, promoAttempt, promoErrCode, promoRow, promoQ)
+			return
+		}
+		var block string
+		discount, promoCodeID, growth.rewardWon, block = h.pickDiscount(ctx, promoQ, mk, promoLines, req.HolderEmail, discount, promoCodeID)
+		if block != "" {
+			writeMarketingBlock(w, r, block)
+			return
+		}
+		bd := hcheckout.ComputePricingLines(seatLines, discount, currency, pricingRules)
+		if h.refuseChangedPrice(w, r, req.ExpectedTotal, bd) {
+			return
+		}
+		if req.Prepare && bd.Total <= 0 {
+			writePrepareUnavailable(w, r, http.StatusConflict, prepareReasonFree)
+			return
+		}
+		if !h.applyPaymentPreflight(ctx, w, r, checkCtx, bd.Total, preflight) {
+			return
+		}
+		// Only the lock is released: the confirmation transaction locks the
+		// hold again and checks it again.
+		if err := tx.Commit(ctx); err != nil {
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+				"checkout.unavailable", "We could not check your seats. Try again in a minute.", r,
+			))
+			return
+		}
+		seatTierPrices := make(map[uuid.UUID]int64, len(seatLines))
+		for _, l := range seatLines {
+			if tid, parseErr := uuid.Parse(l.TierID); parseErr == nil {
+				seatTierPrices[tid] = l.UnitPrice
+			}
+		}
+		hc := &holdCheckout{
+			reservationID: hold.ID,
+			sessionID:     sessionID,
+			policy:        holdpolicy.FromSnapshot(hold.HoldPolicy),
+			canExpirePage: holdCanExpirePage,
+		}
+		h.logger.Info("public_feed_checkout: seat hold priced",
+			slog.String("feed_token", feedToken),
+			slog.String("session_id", sessionID.String()),
+			slog.String("reservation_id", hold.ID.String()),
+			slog.Int("seat_count", len(locked)),
+			slog.Int64("total", bd.Total),
+			slog.String("currency", bd.Currency),
+		)
+		h.confirmPublicCheckout(ctx, w, r, checkCtx, hold.ID, checkoutToken, bd, promoCodeID, hold.ExpiresAt,
+			publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, seatTierPrices, req.ReturnURL, buyerLocale, consent, attr, growth,
+			wantsEmbeddedCheckout(req.Capabilities), req.Prepare, hc)
+		return
 	}
 
 	// ── 11. Seated branch ─────────────────────────────────────────────────────
@@ -1025,7 +1123,7 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 		}
 		h.confirmPublicCheckout(ctx, w, r, checkCtx, res.ID, checkoutToken, bd, promoCodeID, expiresAt,
 			publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, seatTierPrices, req.ReturnURL, buyerLocale, consent, attr, growth,
-			wantsEmbeddedCheckout(req.Capabilities), req.Prepare)
+			wantsEmbeddedCheckout(req.Capabilities), req.Prepare, nil)
 		return
 	}
 
@@ -1188,7 +1286,7 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 	// so no tier price map is needed.
 	h.confirmPublicCheckout(ctx, w, r, checkCtx, reservation.ID, checkoutToken, bd, promoCodeID, expiresAt,
 		publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, nil, req.ReturnURL, buyerLocale, consent, attr, growth,
-		wantsEmbeddedCheckout(req.Capabilities), req.Prepare)
+		wantsEmbeddedCheckout(req.Capabilities), req.Prepare, nil)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1442,6 +1540,9 @@ func (h *Handler) confirmPublicCheckout(
 	growth growthCheckout,
 	wantsEmbedded bool,
 	prepare bool,
+	// hold is the seat hold of the click the checkout comes from (spec 67
+	// section 4.4), nil on the old path.
+	hold *holdCheckout,
 ) {
 	// ── 0. A paid cart needs a place to send the buyer BACK to, and a
 	// payment window, before anything is written. Resolving the return URL
@@ -1476,7 +1577,12 @@ func (h *Handler) confirmPublicCheckout(
 	// The window is the CHANNEL's (П-3, payment_window.go), read on the pool
 	// here, before the transaction opens.
 	holdExpiresAt := expiresAt
-	if paid && h.paymentWindow > 0 {
+	var holdStep time.Duration
+	if hold != nil {
+		// A hold of the click gets its payment step once, in the
+		// transaction below (startHoldPaymentStepTx).
+		holdStep = h.holdPaymentStep(ctx, hold, checkCtx.OrgID, checkCtx.SalesChannelID)
+	} else if paid && h.paymentWindow > 0 {
 		window := h.channelPaymentWindow(ctx, checkCtx.OrgID, checkCtx.SalesChannelID)
 		holdExpiresAt = time.Now().UTC().Add(window + h.paymentGrace)
 	}
@@ -1495,6 +1601,29 @@ func (h *Handler) confirmPublicCheckout(
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	txq := gen.New(tx)
+
+	if hold != nil {
+		// The hold row first (AGENTS.md), checked again under the lock: an
+		// expiry, a closing or another tab's order may have come in since
+		// the pricing transaction.
+		holdExp, outcome, err := h.startHoldPaymentStepTx(ctx, txq, hold, holdStep, paid, time.Now().UTC())
+		if err != nil {
+			h.logger.Error("public_feed_checkout: start the payment step of the hold failed",
+				slog.String("reservation_id", reservationID.String()),
+				slog.String("error", err.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+				"checkout.start_failed", "We could not start the checkout. Try again in a minute.", r,
+			))
+			return
+		}
+		if outcome != holdConfirmOK {
+			writeHoldConfirmRefusal(w, r, outcome)
+			return
+		}
+		expiresAt = holdExp
+		holdExpiresAt = holdExp
+	}
 
 	// Touches only the reservations row — no inventory, no session lock — so
 	// it observes no lock order of its own (AGENTS.md hold-mutation rule).
@@ -1574,11 +1703,15 @@ func (h *Handler) confirmPublicCheckout(
 			// The hold row is locked by this transaction (SetHoldExpiryTx),
 			// so it ends before the release starts.
 			_ = tx.Rollback(ctx)
-			if _, relErr := hcheckout.ReleaseHold(ctx, h.pool, h.reservationQueries, reservationID); relErr != nil {
-				h.logger.Warn("public_feed_checkout: release hold after a refused promo code failed",
-					slog.String("reservation_id", reservationID.String()),
-					slog.String("error", relErr.Error()),
-				)
+			// A hold of the click keeps its seats: the buyer may go on
+			// without the code (spec 67: a seat is never taken away).
+			if hold == nil {
+				if _, relErr := hcheckout.ReleaseHold(ctx, h.pool, h.reservationQueries, reservationID); relErr != nil {
+					h.logger.Warn("public_feed_checkout: release hold after a refused promo code failed",
+						slog.String("reservation_id", reservationID.String()),
+						slog.String("error", relErr.Error()),
+					)
+				}
 			}
 			if growth.rewardWon {
 				writeMarketingBlock(w, r, rewardRefusal(refusal))
@@ -1709,6 +1842,17 @@ func (h *Handler) confirmPublicCheckout(
 		ReturnBase:    returnBase,
 		ExpiresAt:     expiresAt,
 	}
+	// The moment "Pay" is taken until: the hold itself on the short payment
+	// step of a hold of the click (no grace, spec 67 section 3.3), else the
+	// provider page's end, a grace before the hold.
+	paymentExpiresAt := expiresAt.Add(-h.paymentGrace)
+	if hold != nil {
+		payIn.KeepHold = true
+		if hold.canExpirePage {
+			payIn.PageExpiresAt = newHoldPageExpiry(hold.policy, time.Now().UTC())
+			paymentExpiresAt = expiresAt
+		}
+	}
 	var answer paymentStartAnswer
 	var ok bool
 	if prepare {
@@ -1734,7 +1878,7 @@ func (h *Handler) confirmPublicCheckout(
 		// The moment the provider's page stops taking the payment (the
 		// channel's window, П-3): what the site counts down to. expires_at
 		// is the hold, a grace later.
-		"payment_expires_at": expiresAt.Add(-h.paymentGrace).Format(time.RFC3339),
+		"payment_expires_at": paymentExpiresAt.Format(time.RFC3339),
 		"pricing":            bd,
 
 		"marketing_discount_applied": growth.rewardWon && bd.Discount > 0,
@@ -1831,6 +1975,11 @@ func (h *Handler) createPublicOrder(
 		chargePercentBP = ordering.ChargePercentBP(ch.FeePercent)
 	}
 
+	// Known gap: two simultaneous starts with the same e-mail on one session
+	// can still meet orders_one_pending_per_customer_session_uq here. The
+	// attach of a prepared order moves the customer link into a SAVEPOINT
+	// (attachBuyerTx); doing the same here means changing the order insert
+	// inside ordering.CreateOrderFromCheckout, left for its own change.
 	res, err := ordering.CreateOrderFromCheckout(ctx, txq, ordering.CreateInput{
 		CheckoutSessionID: cs.ID,
 		EventID:           checkCtx.EventID,

@@ -44,6 +44,9 @@ var holdWriters = map[string]string{
 	filepath.Join("internal", "platform", "httpserver", "hcheckout", "hold_api.go"): "",
 	// ExtendHold / ExtendHoldTx: growing a cart is a new hold of its places.
 	filepath.Join("internal", "platform", "httpserver", "hcheckout", "hold_mutation.go"): "",
+	// CreateSeatedHoldPartialTx / ExtendHoldPartialTx: the public hold at the
+	// click (spec 67), partial mode.
+	filepath.Join("internal", "platform", "httpserver", "hcheckout", "hold_partial.go"): "",
 	// POST /v1/reservations (GA).
 	filepath.Join("internal", "platform", "httpserver", "hcheckout", "reservations.go"): "",
 	// POST /v1/sessions/{id}/seat-reservations.

@@ -11,9 +11,11 @@
 package httpserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/google/uuid"
@@ -309,5 +311,122 @@ func TestSupersede_OrderCancelledForAnotherReasonIsRefunded(t *testing.T) {
 	_ = pool.QueryRow(ctx, `SELECT count(*) FROM refunds WHERE payment_intent_id = $1`, pi.ID).Scan(&refunds)
 	if refunds != 1 {
 		t.Fatalf("refunds after a replay = %d (%v); want 1", refunds, m)
+	}
+}
+
+// A per-customer promo limit counts the buyer's kept open order: it can still
+// be paid, so a second cart of the same e-mail on the same date may not take
+// the code again. Once every attempt of the first order failed, the second
+// cart closes it and may take the code.
+func TestSupersede_PerCustomerPromoCountsTheKeptOrder(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+	f, done := lateFixture(t, ctx, pool, "sup6")
+	defer done()
+	defer f.cleanupPromos()
+	defer func() {
+		_, _ = pool.Exec(context.Background(), `UPDATE checkout_sessions SET promo_code_id = NULL WHERE org_id = $1`, f.orgID)
+		_, _ = pool.Exec(context.Background(), `UPDATE orders SET promo_code_id = NULL WHERE org_id = $1`, f.orgID)
+	}()
+	stub := newStubAllPayServer(t, f)
+	srv := allpayServer(t, pool, stub)
+
+	code := "ONCE" + f.orgID.String()[:6]
+	f.insertPromo(t, ctx, code, "percent", 10, ", max_uses_per_customer", ", 1")
+
+	start := func() (int, string) {
+		raw, _ := json.Marshal(map[string]any{
+			"session_id": f.sessionID.String(),
+			"tier_id":    f.tierID.String(),
+			"qty":        1,
+			"return_url": hostedTicketsBaseURL + "/shows/late",
+			"promo_code": code,
+			"buyer":      map[string]any{"email": f.buyerMail, "name": "Late Buyer", "phone": f.buyerPhone},
+		})
+		req := httptest.NewRequest(http.MethodPost, "/v1/public/feeds/"+f.feedToken+"/checkout/start", bytes.NewReader(raw))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		srv.router.ServeHTTP(rec, req)
+		var out struct {
+			CheckoutSession struct {
+				ID string `json:"id"`
+			} `json:"checkout_session"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out.CheckoutSession.ID
+	}
+
+	c1, firstID := start()
+	if c1 != http.StatusCreated {
+		t.Fatalf("first start = %d; want 201", c1)
+	}
+	if c2, _ := start(); c2 != http.StatusUnprocessableEntity && c2 != http.StatusConflict {
+		t.Fatalf("second start with the first order still payable = %d; want the code refused", c2)
+	}
+	failIntentsOf(t, ctx, pool, uuid.MustParse(firstID))
+	if c3, _ := start(); c3 != http.StatusCreated {
+		t.Fatalf("second start after the first attempts failed = %d; want 201", c3)
+	}
+	var st string
+	_ = pool.QueryRow(ctx, `SELECT state FROM checkout_sessions WHERE id = $1`, firstID).Scan(&st)
+	if st != "abandoned" {
+		t.Fatalf("first checkout = %s; want abandoned by the new cart", st)
+	}
+}
+
+// An order superseded the old way (only the order cancelled) is cancelled by
+// its buyer: the hold goes back and the checkout is abandoned, instead of the
+// places waiting for the payment window.
+func TestSupersede_BuyerCancelOfOldStyleSupersededOrderReleasesTheHold(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+	f, done := lateFixture(t, ctx, pool, "sup7")
+	defer done()
+	stub := newStubAllPayServer(t, f)
+	srv := allpayServer(t, pool, stub)
+	q := gen.New(pool)
+
+	st := lateStartCheckout(t, srv, f, nil)
+	csID := uuid.MustParse(st.CheckoutSession.ID)
+	ord, _ := q.GetOrderByCheckoutSession(ctx, csID)
+	if _, err := ordering.Cancel(ctx, q, ordering.CancelInput{
+		OrderID: ord.ID, OrgID: ord.OrgID, Actor: ordering.ActorSystem,
+		Reason: ordering.ReasonSupersededByNewCheckout,
+	}); err != nil {
+		t.Fatalf("old-style supersede: %v", err)
+	}
+	if code, body := postCancel(t, srv, st.CheckoutToken); code != http.StatusOK || body["cancelled"] != true {
+		t.Fatalf("cancel = %d %v; want 200 cancelled", code, body)
+	}
+	if held := heldOf(t, ctx, pool, f.sessionID); held != 0 {
+		t.Fatalf("held after the cancel = %d; the places must go back", held)
+	}
+	cs, _ := q.GetCheckoutSessionByID(ctx, csID)
+	if cs.State != "abandoned" {
+		t.Fatalf("checkout = %s; want abandoned", cs.State)
+	}
+}
+
+// The second open order of one customer has no customer_id; once paid it
+// takes the customer of its hold.
+func TestSupersede_PaidSecondOrderTakesTheCustomerOfItsHold(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+	f, done := lateFixture(t, ctx, pool, "sup8")
+	defer done()
+	stub := newStubAllPayServer(t, f)
+	srv := allpayServer(t, pool, stub)
+	q := gen.New(pool)
+
+	firstCS := supersedeStart(t, srv, f, "", "")
+	secondCS := supersedeStart(t, srv, f, "", "")
+	first, _ := q.GetOrderByCheckoutSession(ctx, firstCS)
+	if second, _ := q.GetOrderByCheckoutSession(ctx, secondCS); second.CustomerID != nil {
+		t.Fatalf("second order customer = %v before payment; want none", second.CustomerID)
+	}
+	payViaAllPay(t, srv, stub, f, q, secondCS)
+	second, _ := q.GetOrderByCheckoutSession(ctx, secondCS)
+	if second.Status != ordering.StatusPaid || second.CustomerID == nil || first.CustomerID == nil || *second.CustomerID != *first.CustomerID {
+		t.Fatalf("second order = %s customer %v; want paid with the customer %v", second.Status, second.CustomerID, first.CustomerID)
 	}
 }

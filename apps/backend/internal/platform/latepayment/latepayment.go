@@ -48,6 +48,20 @@ type JobPayload struct {
 	PaymentIntentID string `json:"payment_intent_id"`
 }
 
+// WindowEnd is the end of the window a payment counts as made in time: the
+// latest of the given moments (orders.expires_at, reservations.paying_until,
+// payment_intents.page_expires_at, spec 67 section 5.2). nil moments are
+// ignored; with none it is the zero time (no window known).
+func WindowEnd(moments ...*time.Time) time.Time {
+	var end time.Time
+	for _, m := range moments {
+		if m != nil && m.After(end) {
+			end = *m
+		}
+	}
+	return end
+}
+
 // Classify decides the case of a payment whose checkout could no longer be
 // completed. csState is checkout_sessions.state, orderStatus the order's
 // status ("" without an order), paidAt when the provider says the buyer paid

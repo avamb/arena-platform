@@ -159,6 +159,8 @@ var roleSecrets = []roleSecret{
 	// (spec 66 section 4.5).
 	{"META_APP_SECRET", []Role{RoleAPI, RoleWorker}, func(c *Config) string { return c.MetaAppSecret }},
 	{"META_TOKEN_ENC_KEY", []Role{RoleAPI, RoleWorker}, func(c *Config) string { return c.MetaTokenEncKey }},
+	// Only arena-api hashes the visitor of a seat hold (spec 67 section 6.1).
+	{"HOLD_VISITOR_KEY", []Role{RoleAPI}, func(c *Config) string { return c.HoldVisitorKey }},
 	// Only arena-api answers Meta's webhook verification.
 	{"META_WEBHOOK_VERIFY_TOKEN", []Role{RoleAPI}, func(c *Config) string { return c.MetaWebhookVerifyToken }},
 }
