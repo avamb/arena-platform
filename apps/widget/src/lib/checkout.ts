@@ -157,6 +157,11 @@ export interface CheckoutStartPayload {
   session_id: string;
   holder_email: string;
   seats?: string[];
+  /**
+   * Spec 67 §4.4: the key of the hold the buyer took by clicking seats. With it
+   * `seats` are NOT sent (422 checkout.hold_and_seats): the places come from the hold.
+   */
+  hold_token?: string;
   ga_items?: PublicGAItem[];
   buyer?: {
     email: string;
@@ -230,6 +235,8 @@ export interface CheckoutStartPayload {
 export interface CheckoutPreparePayload {
   session_id: string;
   seats?: string[];
+  /** Spec 67 §4.4: the hold's key instead of `seats`. */
+  hold_token?: string;
   ga_items?: PublicGAItem[];
   return_url?: string;
   locale?: string;

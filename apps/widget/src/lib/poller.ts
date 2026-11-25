@@ -61,7 +61,7 @@ export interface PollerConfig {
 export class SeatStatusPoller {
   private readonly sessionId: string;
   private readonly apiBase: string;
-  private readonly normalInterval: number;
+  private normalInterval: number;
   private readonly hiddenInterval: number;
   private readonly onUpdate: PollerConfig['onUpdate'];
   private readonly onError: PollerConfig['onError'];
@@ -70,6 +70,7 @@ export class SeatStatusPoller {
   private isFirstFetch = true;
   private running = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private inflight: Promise<void> | null = null;
 
   constructor(config: PollerConfig) {
     this.sessionId = config.sessionId;
@@ -104,6 +105,17 @@ export class SeatStatusPoller {
     }
   }
 
+  /**
+   * Ask now instead of waiting for the next tick (spec 67 §9: after a seat was
+   * taken). Resolves when the answer is applied; the next tick follows it.
+   */
+  async refresh(): Promise<void> {
+    if (!this.running) return;
+    if (this.inflight) return this.inflight;
+    this.clearTimer();
+    await this.tick();
+  }
+
   // ── Internal ───────────────────────────────────────────────────────────────
 
   private readonly onVisibilityChange = (): void => {
@@ -134,7 +146,16 @@ export class SeatStatusPoller {
     }
   }
 
-  private async tick(): Promise<void> {
+  private tick(): Promise<void> {
+    if (this.inflight) return this.inflight;
+    const p = this.runTick().finally(() => {
+      this.inflight = null;
+    });
+    this.inflight = p;
+    return p;
+  }
+
+  private async runTick(): Promise<void> {
     if (!this.running) return;
     try {
       let response;
@@ -145,6 +166,11 @@ export class SeatStatusPoller {
         response = await fetchSeatStatusDelta(this.sessionId, this.currentVersion, this.apiBase);
       }
       this.currentVersion = response.status_version;
+      // Spec 67 §4.9: the server sets the pace (1.5 s at high demand).
+      const asked = response.poll_interval_ms;
+      if (typeof asked === 'number' && Number.isFinite(asked) && asked >= 1_000 && asked <= 10_000) {
+        this.normalInterval = asked;
+      }
       this.onUpdate(response.seats, response.status_version);
     } catch (err) {
       this.onError?.(err instanceof Error ? err : new Error(String(err)));

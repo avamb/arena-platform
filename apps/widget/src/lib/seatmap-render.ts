@@ -66,6 +66,12 @@ export const STATUS_COLORS: Readonly<Record<string, string>> = {
   unavailable: '#d1d5db',
 } as const;
 
+/**
+ * Fill of a seat that is held for THIS buyer (spec 67 §8.1). Deliberately not
+ * the amber of somebody else's hold (`held`) and not a category colour.
+ */
+export const OWN_HOLD_COLOR = '#0f766e';
+
 /** Fallback color when a seat's category index is not resolved. */
 export const FALLBACK_COLOR = '#d1d5db';
 
@@ -522,5 +528,65 @@ export function clearConflictHighlight(
   }
   if (Object.keys(delta).length > 0) {
     applySeatStatusUpdate(container, delta, catColorMap);
+  }
+}
+
+// ─── Own hold (spec 67) ───────────────────────────────────────────────────────
+
+/**
+ * Paint the seats of the buyer's own hold.
+ *
+ *  - `held`    the server confirmed the seat: `OWN_HOLD_COLOR`, `data-hold="own"`;
+ *  - `pending` the click is on its way: the seat keeps its colour, half
+ *              transparent, `data-hold="pending"`;
+ *  - a seat that left both sets goes back to the colour of its status.
+ *
+ * Keyed DOM mutation like the other `apply*` helpers: no re-render.
+ */
+export function applyHoldStyles(
+  container: Element,
+  held: ReadonlySet<string>,
+  pending: ReadonlySet<string>,
+  previous: ReadonlySet<string>,
+  catColorMap: ReadonlyMap<number, string>,
+  seatStatuses: Record<string, SeatStatusValue>,
+): void {
+  const find = (key: string): Element | null =>
+    container.querySelector<Element>(`circle[data-seat-key="${cssAttrEscape(key)}"]`);
+
+  for (const key of previous) {
+    if (held.has(key) || pending.has(key)) continue;
+    const el = find(key);
+    if (!el) continue;
+    el.removeAttribute('data-hold');
+    el.removeAttribute('fill-opacity');
+    // The seat is free again for everybody until the next poll says otherwise.
+    const status: SeatStatusValue = seatStatuses[key] === 'held' ? 'available' : (seatStatuses[key] ?? 'available');
+    const catIdx = parseInt(el.getAttribute('data-cat') ?? '0', 10);
+    el.setAttribute('fill', seatFillColor(catIdx, status, catColorMap));
+    el.setAttribute('data-status', status);
+  }
+  for (const key of held) {
+    const el = find(key);
+    if (!el) continue;
+    el.setAttribute('fill', OWN_HOLD_COLOR);
+    el.removeAttribute('fill-opacity');
+    el.setAttribute('data-hold', 'own');
+  }
+  for (const key of pending) {
+    const el = find(key);
+    if (!el) continue;
+    el.setAttribute('fill-opacity', '0.5');
+    el.setAttribute('data-hold', 'pending');
+  }
+}
+
+/** Mark (or unmark) seats with the pulsing outline of "free seats nearby". */
+export function setPulse(container: Element, keys: Iterable<string>, on: boolean): void {
+  for (const key of keys) {
+    const el = container.querySelector<Element>(`circle[data-seat-key="${cssAttrEscape(key)}"]`);
+    if (!el) continue;
+    if (on) el.setAttribute('data-pulse', 'true');
+    else el.removeAttribute('data-pulse');
   }
 }
