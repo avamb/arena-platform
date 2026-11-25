@@ -119,9 +119,12 @@ func parseCount(s string) int64 {
 func FormatMinor(minor int64, currency string) string {
 	exp := CurrencyExponent(currency)
 	neg := minor < 0
-	u := uint64(minor)
+	var u uint64
 	if neg {
-		u = uint64(-minor)
+		// -(minor+1) is >= 0 even for MinInt64, so the conversion cannot wrap.
+		u = uint64(-(minor + 1)) + 1 //nolint:gosec // guarded: minor < 0, so -(minor+1) >= 0
+	} else {
+		u = uint64(minor) //nolint:gosec // guarded: minor >= 0
 	}
 	s := strconv.FormatUint(u, 10)
 	if exp > 0 {

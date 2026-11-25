@@ -1,8 +1,8 @@
 //go:build integration
 
-// meta_ad_insights_0220_integration_test.go — migration 0220 (spec 66 M2):
+// meta_ad_insights_0224_integration_test.go — migration 0224 (spec 66 M2):
 // Down, Up, Down and Up again inside one transaction (the database is
-// already at 0220). Up gives 'ads' to every organization subscription with
+// already at 0224). Up gives 'ads' to every organization subscription with
 // 'tickets' and never to an operator row; Down removes it and deletes a
 // subscription that heard only 'ads'. Everything is rolled back.
 package migrations_test
@@ -15,9 +15,9 @@ import (
 	"time"
 )
 
-func section0220(t *testing.T, which string) string {
+func section0224(t *testing.T, which string) string {
 	t.Helper()
-	body, err := os.ReadFile("sql/0220_meta_ad_insights.sql")
+	body, err := os.ReadFile("sql/0224_meta_ad_insights.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func section0220(t *testing.T, which string) string {
 	return down
 }
 
-func TestMigration0220_UpDownUp(t *testing.T) {
+func TestMigration0224_UpDownUp(t *testing.T) {
 	ctx := context.Background()
 	conn := connectDB(t)
 	tx, err := conn.Begin(ctx)
@@ -54,18 +54,18 @@ func TestMigration0220_UpDownUp(t *testing.T) {
 		return n
 	}
 	if tables() != 4 {
-		t.Fatalf("the database is not at 0220")
+		t.Fatalf("the database is not at 0224")
 	}
-	if _, err := tx.Exec(ctx, section0220(t, "down")); err != nil {
-		t.Fatalf("Down of 0220: %v", err)
+	if _, err := tx.Exec(ctx, section0224(t, "down")); err != nil {
+		t.Fatalf("Down of 0224: %v", err)
 	}
 	if n := tables(); n != 0 {
 		t.Fatalf("Down left %d tables", n)
 	}
 
 	var org string
-	if err := tx.QueryRow(ctx, `INSERT INTO organizations (name, slug) VALUES ('mig0220', $1) RETURNING id::text`,
-		"mig0220-"+time.Now().Format("150405.000000000")).Scan(&org); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO organizations (name, slug) VALUES ('mig0224', $1) RETURNING id::text`,
+		"mig0224-"+time.Now().Format("150405.000000000")).Scan(&org); err != nil {
 		t.Fatal(err)
 	}
 	sub := func(orgID any, kinds string) string {
@@ -96,8 +96,8 @@ func TestMigration0220_UpDownUp(t *testing.T) {
 		VALUES ($1, 'x', 'x', '{ads}')`, org)
 
 	for round := 0; round < 2; round++ {
-		if _, err := tx.Exec(ctx, section0220(t, "up")); err != nil {
-			t.Fatalf("Up of 0220 (round %d): %v", round, err)
+		if _, err := tx.Exec(ctx, section0224(t, "up")); err != nil {
+			t.Fatalf("Up of 0224 (round %d): %v", round, err)
 		}
 		if tables() != 4 {
 			t.Fatalf("Up did not create the tables")
@@ -127,7 +127,7 @@ func TestMigration0220_UpDownUp(t *testing.T) {
 			VALUES (md5(random()::text), $1, 'c', '{ads}', now() + interval '30 minutes')`, org); err != nil {
 			t.Fatalf("a connect code with 'ads': %v", err)
 		}
-		if _, err := tx.Exec(ctx, section0220(t, "down")); err != nil {
+		if _, err := tx.Exec(ctx, section0224(t, "down")); err != nil {
 			t.Fatalf("Down (round %d): %v", round, err)
 		}
 		if k := kinds(adsOnly); k != "<gone>" {
@@ -137,7 +137,7 @@ func TestMigration0220_UpDownUp(t *testing.T) {
 			t.Errorf("Down left tickets row = %s", k)
 		}
 	}
-	if _, err := tx.Exec(ctx, section0220(t, "up")); err != nil {
+	if _, err := tx.Exec(ctx, section0224(t, "up")); err != nil {
 		t.Fatalf("final Up: %v", err)
 	}
 }
