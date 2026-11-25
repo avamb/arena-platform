@@ -21,9 +21,11 @@ import (
 // event session with the same email hit the partial unique index
 // orders_one_pending_per_customer_session_uq (spec §14.3) and got a 500.
 //
-// Expected: both checkout/start calls answer 201; the first order is closed as
-// cancelled with a "superseded_by_new_checkout" event; the second is the one
-// pending_payment order the index allows.
+// Expected: both checkout/start calls answer 201. Since the supersede fix
+// (2026-11-24) the first order, whose payment page is still open, is NOT
+// cancelled — its payment may still arrive — and the second is minted without
+// customer_id so the index admits it. The "every attempt failed → closed
+// whole" case is TestSupersede_SameEmailFailedAttemptsClosesFirstWhole.
 func TestW1A6c_PublicFeed_SecondCheckoutSameBuyerSupersedesOpenOrder(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := t.Context()
@@ -88,48 +90,37 @@ func TestW1A6c_PublicFeed_SecondCheckoutSameBuyerSupersedesOpenOrder(t *testing.
 	if first.ID == second.ID {
 		t.Fatalf("both checkouts map to the same order %s; want two orders", first.ID)
 	}
-	if first.CustomerID == nil || second.CustomerID == nil || *first.CustomerID != *second.CustomerID {
-		t.Fatalf("customer_id first=%v second=%v; want the same resolved customer", first.CustomerID, second.CustomerID)
+	// The first checkout's Stripe page is still open (its intent is not
+	// 'failed'), so its order may still be paid: it is NOT cancelled, and the
+	// second order goes without a customer link (the index admits one open
+	// order per customer and session).
+	if first.CustomerID == nil {
+		t.Fatal("first order has no customer; want the resolved customer")
 	}
-	if first.Status != ordering.StatusCancelled {
-		t.Errorf("first order status = %q, want %q", first.Status, ordering.StatusCancelled)
+	if second.CustomerID != nil {
+		t.Errorf("second order customer_id = %v; want NULL while the first order is open", second.CustomerID)
 	}
-	if first.CancelledAt == nil {
-		t.Error("first order cancelled_at is NULL; want the supersede timestamp")
+	if first.Status != ordering.StatusPendingPayment {
+		t.Errorf("first order status = %q, want %q (it can still be paid)", first.Status, ordering.StatusPendingPayment)
 	}
 	if second.Status != ordering.StatusPendingPayment {
 		t.Errorf("second order status = %q, want %q", second.Status, ordering.StatusPendingPayment)
 	}
-
 	events, err := q.ListOrderEventsByOrder(ctx, first.ID)
 	if err != nil {
 		t.Fatalf("ListOrderEventsByOrder: %v", err)
 	}
-	var superseded bool
-	for _, ev := range events {
-		if ev.Type != ordering.EventCancelled {
-			continue
-		}
-		var payload struct {
-			Reason string `json:"reason"`
-		}
-		if err := json.Unmarshal(ev.Payload, &payload); err != nil {
-			t.Fatalf("decode cancelled event payload: %v", err)
-		}
-		if payload.Reason == "superseded_by_new_checkout" {
-			superseded = true
-		}
-	}
-	if !superseded {
-		t.Errorf("first order has no cancelled event with reason superseded_by_new_checkout; events=%+v", events)
+	if got := ordering.LastCancelReason(events); got != "" {
+		t.Errorf("first order has a cancelled event (%q); want none", got)
 	}
 
-	// The read side of the index: exactly one open order for this customer+session.
-	open, err := ordering.FindOpenOrder(ctx, q, *second.CustomerID, f.sessionID)
+	// The read side of the index: the one open order of this customer+session
+	// is still the first.
+	open, err := ordering.FindOpenOrder(ctx, q, *first.CustomerID, f.sessionID)
 	if err != nil {
 		t.Fatalf("FindOpenOrder: %v", err)
 	}
-	if open.ID != second.ID {
-		t.Errorf("FindOpenOrder = %s, want the second order %s", open.ID, second.ID)
+	if open.ID != first.ID {
+		t.Errorf("FindOpenOrder = %s, want the first order %s", open.ID, first.ID)
 	}
 }
