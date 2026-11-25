@@ -123,6 +123,19 @@ func FulfillCompletedCheckoutTx(
 		}
 		out.OrderMarkedPaid = true
 
+		// A second open order of one customer is minted without customer_id
+		// (hfeed supersedeOpenOrder); once paid it takes the customer of its
+		// hold, so the customer card shows it. Best effort, behind a savepoint.
+		if ord.CustomerID == nil {
+			_ = savepoint(ctx, tx, func(sp pgx.Tx) error {
+				_, err := sp.Exec(ctx, `UPDATE orders o SET customer_id = r.customer_id
+					FROM reservations r
+					WHERE o.id = $1 AND o.customer_id IS NULL
+					  AND r.id = o.reservation_id AND r.customer_id IS NOT NULL`, ord.ID)
+				return err
+			})
+		}
+
 		// ── 2b. Promo redemption (bookkeeping) ───────────────────────────────
 		// The money has moved, so an over-limit code is recorded, not refused
 		// — same stance as PAY_ORDER's payRedeemPromo. One row per order

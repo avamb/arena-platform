@@ -158,13 +158,18 @@ func CancelUnpaidCheckoutTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, au
 	case state == "completed" || (ord != nil && ord.Status == ordering.StatusPaid):
 		res.Outcome = BuyerCancelPaid
 		return res, false, nil
-	case state == "abandoned" || (ord != nil && ord.Status == ordering.StatusCancelled):
+	// An order cancelled while its checkout stayed open (superseded before the
+	// 2026-11-25 fix) falls through: its hold is released and the checkout
+	// abandoned; ordering.Cancel below is a no-op on it.
+	case state == "abandoned" || (ord != nil && ord.Status == ordering.StatusCancelled &&
+		state != "pricing_confirmed" && state != "created"):
 		res.Outcome = BuyerCancelAlreadyCancelled
 		return res, false, nil
 	case state == "expired" || (ord != nil && ord.Status == ordering.StatusExpired):
 		res.Outcome = BuyerCancelExpired
 		return res, false, nil
-	case state == "manual_review" || (ord != nil && ord.Status != ordering.StatusPendingPayment):
+	case state == "manual_review" || (ord != nil && ord.Status != ordering.StatusPendingPayment &&
+		ord.Status != ordering.StatusCancelled):
 		res.Outcome = BuyerCancelUnderReview
 		return res, false, nil
 	}
