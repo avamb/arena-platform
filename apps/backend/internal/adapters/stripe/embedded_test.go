@@ -65,7 +65,7 @@ func TestCreateEmbeddedCheckoutSession_WireShape(t *testing.T) {
 		"mode":                                   "payment",
 		"ui_mode":                                "elements",
 		"allowed_payment_method_types[0]":        "card",
-		"allowed_payment_method_types[1]":        "link",
+		"wallet_options[link][display]":          "never",
 		"return_url":                             req.ReturnURL,
 		"customer_email":                         req.CustomerEmail,
 		"client_reference_id":                    req.ClientReferenceID,
@@ -78,7 +78,7 @@ func TestCreateEmbeddedCheckoutSession_WireShape(t *testing.T) {
 			t.Errorf("%s = %q, want %q", key, got, want)
 		}
 	}
-	for _, forbidden := range []string{"success_url", "cancel_url", "payment_method_types[0]"} {
+	for _, forbidden := range []string{"success_url", "cancel_url", "payment_method_types[0]", "allowed_payment_method_types[1]"} {
 		if f.Has(forbidden) {
 			t.Errorf("%s was sent; Stripe refuses it for ui_mode=elements", forbidden)
 		}

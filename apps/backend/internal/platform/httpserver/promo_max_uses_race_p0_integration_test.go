@@ -155,9 +155,8 @@ func TestORD08_TwoConcurrentOrdersWithAMaxUsesOneCode(t *testing.T) {
 // TestORD08_OneBuyerTwoConcurrentOrdersWithAPerCustomerOneCode is the
 // max_uses_per_customer half of D-02: one buyer (one e-mail) starts two
 // checkouts at the same moment, one per date of the event, with a code of
-// max_uses_per_customer=1 and no overall cap. Two dates, because on ONE date
-// the second checkout supersedes the buyer's first order instead
-// (supersedeOpenOrder), so only one of them can ever be paid there anyway.
+// max_uses_per_customer=1 and no overall cap. Two dates; the same date with a
+// first order that can still be paid is TestSupersede_PerCustomerPromoCountsTheKeptOrder.
 func TestORD08_OneBuyerTwoConcurrentOrdersWithAPerCustomerOneCode(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := t.Context()

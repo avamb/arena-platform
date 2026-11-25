@@ -605,7 +605,7 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
         });
         express.mount(mounts.express);
 
-        const payment = checkout.createPaymentElement();
+        const payment = checkout.createPaymentElement({ wallets: { link: 'never' } });
         elements.push(payment);
         payment.on('ready', () => {
           paymentReady = true;
