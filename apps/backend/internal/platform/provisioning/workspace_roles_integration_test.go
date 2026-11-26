@@ -63,7 +63,9 @@ func TestCreateWorkspace_NeverCreatesAGlobalRole(t *testing.T) {
 	existingUser := func(email string) uuid.UUID {
 		t.Helper()
 		var id uuid.UUID
-		if err := tx.QueryRow(ctx, `INSERT INTO users (email, password_hash) VALUES ($1, 'x') RETURNING id`, email).Scan(&id); err != nil {
+		// A confirmed address: an unconfirmed one is reset by the approval
+		// (workspace_owner_claim_integration_test.go).
+		if err := tx.QueryRow(ctx, `INSERT INTO users (email, password_hash, email_verified_at) VALUES ($1, 'x', now()) RETURNING id`, email).Scan(&id); err != nil {
 			t.Fatal(err)
 		}
 		return id

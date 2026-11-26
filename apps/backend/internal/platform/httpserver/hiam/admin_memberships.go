@@ -48,6 +48,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/accountclaim"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
@@ -326,6 +327,28 @@ func (h *Handler) HandleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// An existing account that accountclaim selects (unconfirmed address, no
+	// membership anywhere, no Telegram link) is decided before the membership
+	// is written. An unknown user_id is left to the insert below (422).
+	resetEligible := false
+	var resetEmail string
+	if !invited {
+		existing, lookupErr := q.GetUserByID(ctx, userID)
+		if lookupErr == nil {
+			resetEmail = existing.Email
+			resetEligible, lookupErr = accountclaim.NeedsReset(ctx, tx, userID, existing.EmailVerifiedAt)
+		} else if errors.Is(lookupErr, pgx.ErrNoRows) {
+			lookupErr = nil
+		}
+		if lookupErr != nil {
+			h.logger.Error("admin_membership: load member account failed", slog.String("error", lookupErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"admin_membership.insert_failed", "failed to add member", r,
+			))
+			return
+		}
+	}
+
 	m, err := q.InsertMembership(ctx, userID, orgID, req.Role)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -351,6 +374,21 @@ func (h *Handler) HandleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	// Such an account gets a fresh secret with its new membership and the
+	// set-your-password letter, like an invited one (accountclaim).
+	accountReset := false
+	if resetEligible {
+		if err := accountclaim.ResetCredentials(ctx, tx, userID); err != nil {
+			h.logger.Error("admin_membership: reset unconfirmed account failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"admin_membership.invite_failed", "failed to prepare the member account", r,
+			))
+			return
+		}
+		invited, accountReset = true, true
+		invitedEmail = resetEmail
+		invitationExpiresAt = time.Now().UTC().Add(passwordResetTokenTTL)
+	}
 	var invitationJobID string
 	if invited {
 		// Queue the invitation email in the SAME transaction as the invited
@@ -365,14 +403,20 @@ func (h *Handler) HandleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 			))
 			return
 		}
-		invitationJobID, err = enqueuePasswordSetupEmail(ctx, tx, authemail.PasswordResetEmailPayload{
-			UserID:    userID.String(),
-			Email:     invitedEmail,
-			Token:     invitationToken,
-			ExpiresAt: invitationExpiresAt,
-			Purpose:   authemail.PurposeOrgInvitation,
-			OrgName:   orgName,
-		})
+		if accountReset {
+			invitationJobID, err = accountclaim.QueueSetupLetter(ctx, tx, accountclaim.SetupLetter{
+				UserID: userID, Email: invitedEmail, OrgName: orgName, ExpiresAt: invitationExpiresAt,
+			})
+		} else {
+			invitationJobID, err = enqueuePasswordSetupEmail(ctx, tx, authemail.PasswordResetEmailPayload{
+				UserID:    userID.String(),
+				Email:     invitedEmail,
+				Token:     invitationToken,
+				ExpiresAt: invitationExpiresAt,
+				Purpose:   authemail.PurposeOrgInvitation,
+				OrgName:   orgName,
+			})
+		}
 		if err != nil {
 			h.logger.Error("admin_membership: enqueue invitation email failed",
 				slog.String("user_id", userID.String()),
@@ -395,10 +439,11 @@ func (h *Handler) HandleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 		action = "v1.admin.membership.invite"
 	}
 	h.writeAdminMembershipAudit(r, action, m.ID.String(), reason, map[string]any{
-		"org_id":  m.OrgID.String(),
-		"user_id": m.UserID.String(),
-		"role":    m.Role,
-		"invited": invited,
+		"org_id":        m.OrgID.String(),
+		"user_id":       m.UserID.String(),
+		"role":          m.Role,
+		"invited":       invited,
+		"account_reset": accountReset,
 	})
 	if invited {
 		// Identifiers only — never the token or the link.

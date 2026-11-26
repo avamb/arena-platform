@@ -2,12 +2,15 @@
 //
 // Flow:
 //  1. Parse and validate the request body (email, password, optional locale).
-//  2. Normalise email to lowercase + trim.
+//  2. Normalise email to lowercase + trim, then apply the per-address and
+//     per-e-mail request limits (account_limits.go, 429 auth.rate_limited).
 //  3. Validate password length (8–72 chars).
 //  4. Hash password with bcrypt at cost 12.
 //  5. Begin a PostgreSQL transaction.
 //  6. INSERT INTO users — if the email already exists, pgx returns a unique
-//     violation (code 23505) which is mapped to 409 Conflict.
+//     violation (code 23505): the answer is the same 201 shape as for a new
+//     account (a random user_id, the normalised email, the current time),
+//     nothing is written and no letter is sent.
 //  7. Generate a 64-char hex verification token (32 random bytes).
 //  8. INSERT INTO email_verification_tokens with expires_at = now()+24h.
 //  9. INSERT INTO worker_jobs (auth.email_verification job) — atomically with
@@ -28,6 +31,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -86,6 +90,10 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.allowAccountRequest(w, r, h.accountLimits.registerIP, h.accountLimits.registerEmail, email) {
+		return
+	}
+
 	if req.Password == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"validation.password_required", "password is required", r,
@@ -139,10 +147,15 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
-			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
-				"auth.email_already_registered", "this email address is already registered", r,
-				map[string]any{"field": "email"},
-			))
+			// An address that already has an account gets the same answer as
+			// a new one; nothing is written and no letter is sent. The id is
+			// a version 7 UUID and the time has microsecond precision, as a
+			// row PostgreSQL creates.
+			fakeID, idErr := uuid.NewV7()
+			if idErr != nil {
+				fakeID = uuid.New()
+			}
+			writeRegisterAccepted(w, fakeID, email, time.Now().UTC().Truncate(time.Microsecond))
 			return
 		}
 		logger.Error("auth.register: insert user failed", "error", err)
@@ -204,10 +217,15 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		slog.String("request_id", logging.RequestID(ctx)),
 	)
 
+	writeRegisterAccepted(w, userRow.ID, userRow.Email, userRow.CreatedAt)
+}
+
+// writeRegisterAccepted writes the 201 answer of POST /v1/auth/register.
+func writeRegisterAccepted(w http.ResponseWriter, userID uuid.UUID, email string, createdAt time.Time) {
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
-		"user_id":    userRow.ID.String(),
-		"email":      userRow.Email,
-		"created_at": userRow.CreatedAt.UTC().Format(time.RFC3339Nano),
+		"user_id":    userID.String(),
+		"email":      email,
+		"created_at": createdAt.UTC().Format(time.RFC3339Nano),
 		"message":    "Registration successful. Please check your email to verify your address.",
 	})
 }

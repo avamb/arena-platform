@@ -5,6 +5,7 @@ package hcheckout
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -270,6 +271,13 @@ type Handler struct {
 	// it. Kept so the constructor and the config stay compatible.
 	webhookAllPaySecret string
 
+	// refuseUnsignedLegacy makes the legacy webhook routes answer 401 when no
+	// secret at all can verify a delivery (no organization secret, no process
+	// secret). Set for APP_ENV staging and production
+	// (WithUnsignedLegacyWebhooksRefused); the zero value keeps the local
+	// mock-provider mode that accepts an unsigned body.
+	refuseUnsignedLegacy bool
+
 	// Callback fields for cross-domain side effects.
 	issueTickets      func(ctx context.Context, cs gen.CheckoutSessionRow) ([]gen.TicketRow, error)
 	publishRefunded   func(ctx context.Context, checkoutSessionID, refundID, currency string, amount int64)
@@ -423,8 +431,25 @@ func (h *Handler) verifyWebhookSignature(r *http.Request, body []byte) error {
 // lookup that mutates nothing; the HMAC is still verified over the raw
 // bytes. PAY-01: the per-provider checks run through the module registry
 // (payment_modules.go), in registry order.
+//
+// With refuseUnsignedLegacy set, a delivery that no secret can verify is
+// refused with payments.ErrInvalidWebhookSignature instead of being accepted
+// unsigned.
 func (h *Handler) verifyLegacyWebhookSigner(r *http.Request, body []byte, kind legacyWebhookKind) (legacyWebhookSigner, error) {
-	return verifyLegacyWebhook(r.Context(), r, body,
+	signer, err := verifyLegacyWebhook(r.Context(), r, body,
 		h.webhookSecretsFromOrgConfig(r.Context(), body, kind),
 		paymodules.PlatformWebhookSecrets(h.webhookStripeSecret, h.webhookAllPaySecret))
+	if err == nil && signer.Provider == "" && h.refuseUnsignedLegacy {
+		return legacyWebhookSigner{}, fmt.Errorf("%w: no webhook secret is configured for this delivery",
+			payments.ErrInvalidWebhookSignature)
+	}
+	return signer, err
+}
+
+// WithUnsignedLegacyWebhooksRefused sets whether the legacy webhook routes
+// refuse a delivery that no configured secret can verify. The server sets it
+// for APP_ENV staging and production.
+func (h *Handler) WithUnsignedLegacyWebhooksRefused(refuse bool) *Handler {
+	h.refuseUnsignedLegacy = refuse
+	return h
 }

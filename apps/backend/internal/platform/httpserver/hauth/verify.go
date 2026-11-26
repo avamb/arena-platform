@@ -30,6 +30,10 @@ func (h *Handler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := logging.FromContext(ctx)
 
+	if !h.allowAccountRequest(w, r, h.accountLimits.verifyIP, nil, "") {
+		return
+	}
+
 	token := r.URL.Query().Get("token")
 	if token == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(

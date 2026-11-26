@@ -15,6 +15,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 )
 
@@ -25,9 +26,13 @@ func (s *Server) checkoutHandler() *hcheckout.Handler {
 	// verification. Empty strings enable dev/mock mode (blocked in production
 	// by config.validateProduction check #10b).
 	var stripeSecret, allPaySecret string
+	// Staging and production never accept an unsigned legacy webhook; the
+	// local environments (APP_ENV development) keep the mock-provider mode.
+	refuseUnsigned := false
 	if s.cfg != nil {
 		stripeSecret = s.cfg.StripeWebhookSecret
 		allPaySecret = s.cfg.AllPayWebhookSecret
+		refuseUnsigned = s.cfg.AppEnv == config.EnvStaging || s.cfg.AppEnv == config.EnvProduction
 	}
 	return hcheckout.New(
 		s.checkoutQueries,
@@ -50,6 +55,7 @@ func (s *Server) checkoutHandler() *hcheckout.Handler {
 		s.publishTicketRefundedV1Events,
 	).WithMetrics(s.typedMetrics).WithPromoAttempts(s.promoAttemptRecorder()).WithRowOrgAccess(s.rowOrgAccess).WithRefundEngine(s.refundEngine()).WithShopPayments(s.shopPayments()).WithDisputes(s.disputeRecorder()).
 		WithLatePaymentHold(widgetPaymentWindow(s.cfg), widgetPaymentGrace(s.cfg)).
+		WithUnsignedLegacyWebhooksRefused(refuseUnsigned).
 		WithModuleOptions(payments.Options{
 			StripeAPIBaseURL:  s.stripeBaseURL(),
 			FlittAPIBaseURL:   s.flittBaseURL(),

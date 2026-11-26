@@ -66,6 +66,9 @@ type Handler struct {
 	miniappLimiter ratelimit.Limiter
 	miniappMetrics MiniappMetrics
 	miniappNow     func() time.Time
+	// accountLimits count requests on register, password reset and e-mail
+	// verification (account_limits.go).
+	accountLimits accountLimiters
 }
 
 // New creates a Handler. jwtSecret, issuer, and audience must be fully resolved
@@ -101,6 +104,7 @@ func New(
 		stepUpLimiter:  newStepUpLimiter(),
 		webLinkLimiter: newWebLinkLimiter(),
 		miniappLimiter: newMiniappLimiter(),
+		accountLimits:  newAccountLimiters(),
 	}
 }
 
@@ -131,5 +135,6 @@ func NewWithLimiter(
 		stepUpLimiter:         newStepUpLimiter(),
 		webLinkLimiter:        newWebLinkLimiter(),
 		miniappLimiter:        newMiniappLimiter(),
+		accountLimits:         newAccountLimiters(),
 	}
 }

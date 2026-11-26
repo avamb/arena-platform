@@ -147,6 +147,20 @@ func (q *Queries) MarkEmailVerified(ctx context.Context, id uuid.UUID) (MarkEmai
 	return i, err
 }
 
+const markEmailVerifiedIfUnset = `-- name: MarkEmailVerifiedIfUnset :exec
+UPDATE users
+SET email_verified_at = now()
+WHERE id = $1 AND email_verified_at IS NULL
+`
+
+// MarkEmailVerifiedIfUnset sets email_verified_at = now() when it is still
+// NULL and leaves an earlier confirmation as it is. Used by the
+// password-reset confirm handler: the reset link proves the address.
+func (q *Queries) MarkEmailVerifiedIfUnset(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, markEmailVerifiedIfUnset, id)
+	return err
+}
+
 const markVerificationTokenUsed = `-- name: MarkVerificationTokenUsed :exec
 UPDATE email_verification_tokens
 SET used_at = now()
