@@ -425,6 +425,8 @@ export type FeedEventSummary = Omit<FeedEvent, 'sessions'>;
 export interface FeedSiteResponse {
   thank_you: { title: string; text: string; promo_code: string | null; url: string | null } | null;
   socials: Array<{ network: string; url: string }>;
+  /** Show posters on the "You may also like" cards. Absent on older backends = true. */
+  thank_you_posters?: boolean;
 }
 
 /** Response from GET /v1/public/feeds/{token}/events (list). */

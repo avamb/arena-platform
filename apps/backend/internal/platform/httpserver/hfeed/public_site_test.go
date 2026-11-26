@@ -3,6 +3,8 @@ package hfeed
 import (
 	"strings"
 	"testing"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 func TestParseSiteThankYou(t *testing.T) {
@@ -88,5 +90,13 @@ func TestParseSiteSocials(t *testing.T) {
 	g := ParseSiteSocials([]byte("[" + strings.Join(many, ",") + "]"))
 	if len(g) != 8 || g[0].URL != "https://threads.net/u" || g[7].URL != "https://threads.net/uaaaaaaa" {
 		t.Errorf("cap/order: %d %+v", len(g), g)
+	}
+}
+
+func TestThankYouPostersDefault(t *testing.T) {
+	for in, want := range map[string]bool{"": true, "null": true, "true": true, "false": false, `"false"`: true, "0": true} {
+		if got := gen.ThankYouPostersOn([]byte(in)); got != want {
+			t.Errorf("ThankYouPostersOn(%q) = %v, want %v", in, got, want)
+		}
 	}
 }

@@ -1108,6 +1108,7 @@ export const en = {
   "orgData.page.phone": "Phone on the page",
   "orgData.page.phone.hint": "With the country code, for example +34 600 000 000. You can keep it empty.",
   "orgData.page.personal": "This is probably a personal e-mail address. We recommend a different address for tickets, for example tickets@your-site.com. You can keep this address.",
+  "orgData.page.thankYouPosters": "Show posters in the \"You may also like\" block after purchase",
   "orgData.page.save": "Save the page contact",
   "orgData.tg.title": "Buyer messages",
   "orgData.tg.on": "We send buyer messages to the e-mail of the sales page and to your sales chat in Telegram.",

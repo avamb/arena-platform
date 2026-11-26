@@ -7,12 +7,21 @@
     s: ThankYouStrings;
     events: RelatedEvent[];
     locale?: string;
+    /** Draw each event's poster above its name (site setting). */
+    posters?: boolean;
   }
-  const { s, events, locale = 'en' }: Props = $props();
+  const { s, events, locale = 'en', posters = true }: Props = $props();
 
-  function when(iso: string): string {
+  function when(iso: string, timeZone: string | null): string {
     try {
-      return new Intl.DateTimeFormat(locale || 'en', { dateStyle: 'long' }).format(new Date(iso));
+      // Plain English reads as en-GB with a 24-hour clock, like the rest of the widget.
+      const plainEn = !locale || locale.toLowerCase() === 'en';
+      return new Intl.DateTimeFormat(plainEn ? 'en-GB' : locale, {
+        dateStyle: 'long',
+        timeStyle: 'short',
+        ...(plainEn ? { hourCycle: 'h23' as const } : {}),
+        ...(timeZone ? { timeZone } : {}),
+      }).format(new Date(iso));
     } catch {
       return iso.slice(0, 10);
     }
@@ -22,13 +31,15 @@
 {#if events.length > 0}
   <section class="ty-block" data-testid="ty-related">
     <h3 class="ty-title">{s.related_title}</h3>
-    <ul class="ty-cards">
+    <ul class="ty-cards" class:ty-cards--posters={posters}>
       {#each events as e (e.id)}
         <li>
           <a class="ty-ev" href={e.pageUrl} target="_blank" rel="noopener noreferrer">
-            <img src={e.posterUrl} alt="" />
+            {#if posters && e.posterUrl}
+              <img class="ty-poster" src={e.posterUrl} alt="" loading="lazy" />
+            {/if}
             <b>{e.name}</b>
-            <small>{when(e.date)}</small>
+            <small>{when(e.date, e.timezone)}</small>
           </a>
         </li>
       {/each}

@@ -25214,6 +25214,8 @@ export interface components {
             thank_you: components["schemas"]["FeedSiteThankYou"] | null;
             /** @description The organizer's social-network links, at most 8, in the organizer's order. An empty list when none are set or none is valid. */
             socials: components["schemas"]["FeedSiteSocial"][];
+            /** @description Whether the "You may also like" block of the thank-you page shows posters. The organizer switches it per sales channel (`settings.site.thank_you_posters`); true when never set. */
+            thank_you_posters: boolean;
         };
         /** @description Body of `POST /v1/public/checkout/{checkout_token}/marketing`. The e-mail is never in the body; it is the order's own buyer e-mail. */
         CheckoutMarketingRequest: {
@@ -25926,6 +25928,11 @@ export interface components {
              *     turns the question off until it is complete again.
              */
             consent_active: boolean;
+            /**
+             * @description Whether the "You may also like" block of the thank-you page shows
+             *     posters (`settings.site.thank_you_posters`). True when never set.
+             */
+            thank_you_posters: boolean;
             /** @description The channel's published contact, null when it has none. */
             public_contact: components["schemas"]["SellerProfileContact"] | null;
             /**
@@ -26066,6 +26073,8 @@ export interface components {
              *     `seller.incomplete` with details.missing). False switches it off.
              */
             consent_required?: boolean;
+            /** @description True shows posters in the "You may also like" block of the thank-you page, false shows names and dates only. Absent keeps the stored value. Never refused for missing seller data. */
+            thank_you_posters?: boolean;
             /** @description The published contact; null removes it. */
             public_contact?: components["schemas"]["SellerDisplayContactPatch"] | null;
         };
