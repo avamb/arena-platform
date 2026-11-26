@@ -2072,7 +2072,7 @@ components:
           description: Its Telegram username, stored with the link (accept only).
         locale:
           type: string
-          description: The language of the Telegram client, stored with the link (accept only; en, ru or es, else en).
+          description: The language of the Telegram client, stored with the link (accept only; en, ru, es or uk, else en).
     BotTelegramConnectPreview:
       type: object
       required: [org_id, org_name, email_masked, state]
@@ -3793,7 +3793,7 @@ components:
           type: string
           description: |
             Language of the invitation e-mail and of the bot's first messages
-            (`en` default, `ru`, `es`). Unknown values fall back to `en`.
+            (`en` default, `ru`, `es`, `uk`). Unknown values fall back to `en`.
             With `channel` `web` and no locale, the language of an existing
             account's own preference is used.
         channel:
@@ -3904,7 +3904,7 @@ components:
           description: The Telegram @username, stored for display only.
         locale:
           type: string
-          description: The bot language for this account (`en` default, `ru`, `es`).
+          description: The bot language for this account (`en` default, `ru`, `es`, `uk`).
     BotInvitationAcceptResponse:
       type: object
       description: Who the Telegram account now is.
@@ -4041,7 +4041,7 @@ components:
       properties:
         locale:
           type: string
-          description: Language of the new letter (`en`, `ru`, `es`); absent means the invitee's own language.
+          description: Language of the new letter (`en`, `ru`, `es`, `uk`); absent means the invitee's own language.
     BotInvitationResendResponse:
       type: object
       description: Response of POST /v1/organizations/{org_id}/bot-invitations/{id}/resend.
@@ -27562,7 +27562,7 @@ components:
           description: "Schema version; bumped when a field is removed or changes meaning."
         locale:
           type: string
-          description: "Language of the labels (`en`, `ru` or `es`; anything else falls back to `en`)."
+          description: "Language of the labels (`en`, `ru`, `es` or `uk`; anything else falls back to `en`)."
         steps:
           type: array
           description: "Form steps in order."
@@ -27600,7 +27600,7 @@ components:
           description: "Phone number; normalized to E.164 (for example +34600111222)."
         locale:
           type: string
-          description: "Language of the e-mails and of the form (`en`, `ru`, `es`)."
+          description: "Language of the e-mails and of the form (`en`, `ru`, `es`, `uk`)."
         utm:
           type: object
           additionalProperties:
@@ -28174,7 +28174,7 @@ components:
           description: "Contact e-mail; a six-digit confirmation code is sent to it."
         locale:
           type: string
-          description: "Language of the e-mails and of the form (`en`, `ru`, `es`)."
+          description: "Language of the e-mails and of the form (`en`, `ru`, `es`, `uk`)."
 
     OnboardingBotStartResponse:
       type: object
@@ -76797,7 +76797,7 @@ paths:
         - name: locale
           in: query
           required: false
-          description: Language of the labels (en, ru, es); anything else falls back to en.
+          description: Language of the labels (en, ru, es, uk); anything else falls back to en.
           schema:
             type: string
       responses:
@@ -77894,7 +77894,7 @@ paths:
         - name: locale
           in: query
           required: false
-          description: Language of the labels (en, ru, es); anything else falls back to en.
+          description: Language of the labels (en, ru, es, uk); anything else falls back to en.
           schema:
             type: string
       responses:

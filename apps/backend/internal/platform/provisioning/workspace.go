@@ -331,7 +331,7 @@ func legalForm(s string) *string {
 
 func botLocale(l string) string {
 	switch l {
-	case "ru", "es":
+	case "ru", "es", "uk":
 		return l
 	}
 	return "en"

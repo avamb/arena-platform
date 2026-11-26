@@ -4,7 +4,7 @@ import "strings"
 
 // SupportedLocales are the languages the form speaks. Anything else falls back
 // to English; the website passes whatever its own language is.
-var SupportedLocales = []string{"en", "ru", "es"}
+var SupportedLocales = []string{"en", "ru", "es", "uk"}
 
 // NormalizeLocale folds a tag such as "ru-RU" to a supported language.
 func NormalizeLocale(raw string) string {
@@ -305,6 +305,96 @@ var labels = map[string]map[string]string{
 		"o.payment_provider.flitt":     "Flitt",
 		"o.payment_provider.other":     "Otro proveedor",
 		"o.payment_provider.undecided": "Aún no lo he decidido",
+	},
+	"uk": {
+		"s.contact":      "Про вас",
+		"s.organization": "Ваша організація",
+		"s.events":       "Ваші заходи",
+		"s.platform":     "Квитки та оплата",
+		"s.consents":     "Згоди",
+
+		"f.first_name":           "Ім'я",
+		"f.last_name":            "Прізвище",
+		"f.email":                "E-mail",
+		"f.phone":                "Телефон",
+		"h.phone":                "З кодом країни, наприклад +34 600 000 000",
+		"f.telegram_username":    "Ім'я користувача в Telegram",
+		"f.org_name":             "Назва на афішах і квитках",
+		"h.org_name":             "Назва організатора (промоутера), якою її бачать покупці на квитках і афішах. Назву концерту ви введете пізніше, коли створюватимете захід",
+		"f.legal_name":           "Юридична назва",
+		"h.legal_name":           "Лише для наших внутрішніх записів, щоб ми знали свого партнера. Ніде не публікується",
+		"f.country":              "Країна реєстрації",
+		"f.legal_form":           "Організаційно-правова форма",
+		"f.tax_id":               "Податковий номер",
+		"h.tax_id":               "Будь-який податковий номер, який ви вважаєте правильним для себе: компанії, ФОП або особистий. Лише для наших внутрішніх записів, ніде не публікується. Він не мусить збігатися з вашим платіжним акаунтом",
+		"f.tax_id_scheme":        "Тип податкового номера",
+		"f.registration_number":  "Реєстраційний номер компанії",
+		"f.address_line1":        "Юридична адреса",
+		"f.address_postal_code":  "Поштовий індекс",
+		"f.address_city":         "Місто",
+		"f.address_country":      "Країна адреси",
+		"f.website":              "Сайт",
+		"f.social_links":         "Посилання на соцмережі",
+		"f.event_types":          "Які заходи ви проводите",
+		"f.seating":              "Розсадка",
+		"f.events_per_year":      "Заходів на рік",
+		"f.tickets_per_year":     "Квитків на рік",
+		"f.avg_ticket_price":     "Середня ціна квитка",
+		"f.currency":             "Валюта",
+		"f.first_event_date":     "Дата першого заходу",
+		"f.previous_system":      "Де ви продаєте квитки зараз",
+		"f.previous_system_name": "Назва поточної системи",
+		"f.has_website":          "Чи є у вас сайт",
+		"f.website_platform":     "На чому зроблено сайт",
+		"f.wants_wp_plugin":      "Підключити до нашого плагіна для WordPress",
+		"f.payment_provider":     "Платіжний провайдер",
+		"h.payment_provider":     "Ключі свого акаунта ви введете після схвалення, не в цій анкеті",
+		"f.has_payment_account":  "Чи є у вас уже акаунт у провайдера",
+		"f.notes":                "Що ще нам варто знати",
+		"f.accept_terms":         "Я приймаю умови використання",
+		"f.accept_privacy":       "Я приймаю політику конфіденційності",
+		"f.confirm_authority":    "Я маю право діяти від імені цієї організації",
+		"f.marketing_opt_in":     "Надсилайте мені новини та поради (за бажанням)",
+
+		"o.tax_id_scheme.vat":   "Номер платника ПДВ",
+		"o.tax_id_scheme.ico":   "Реєстраційний номер компанії (IČO та подібні)",
+		"o.tax_id_scheme.ein":   "EIN (США)",
+		"o.tax_id_scheme.other": "Інше",
+
+		"o.event_types.concert":     "Концерти",
+		"o.event_types.theatre":     "Театр і шоу",
+		"o.event_types.masterclass": "Майстер-класи та воркшопи",
+		"o.event_types.festival":    "Фестивалі",
+		"o.event_types.sport":       "Спорт",
+		"o.event_types.tour":        "Тури та екскурсії",
+		"o.event_types.other":       "Інше",
+
+		"o.seating.ga":     "Вільна розсадка (без місць)",
+		"o.seating.seated": "Місця за схемою",
+		"o.seating.both":   "Обидва варіанти",
+
+		"o.events_per_year.1-5":    "Від 1 до 5",
+		"o.events_per_year.6-20":   "Від 6 до 20",
+		"o.events_per_year.21-100": "Від 21 до 100",
+		"o.events_per_year.100+":   "Понад 100",
+
+		"o.tickets_per_year.<500":   "Менше ніж 500",
+		"o.tickets_per_year.500-5k": "Від 500 до 5 000",
+		"o.tickets_per_year.5k-50k": "Від 5 000 до 50 000",
+		"o.tickets_per_year.50k+":   "Понад 50 000",
+
+		"o.previous_system.bil24": "Bil24",
+		"o.previous_system.other": "Інша система",
+		"o.previous_system.none":  "Поки не продаю квитки онлайн",
+
+		"o.website_platform.wordpress": "WordPress",
+		"o.website_platform.other":     "Щось інше",
+		"o.website_platform.none":      "Сайту немає",
+
+		"o.payment_provider.stripe":    "Stripe",
+		"o.payment_provider.flitt":     "Flitt",
+		"o.payment_provider.other":     "Інший провайдер",
+		"o.payment_provider.undecided": "Ще не визначилися",
 	},
 }
 

@@ -122,6 +122,23 @@ func TestBuildSchema_FallsBackToEnglish(t *testing.T) {
 	}
 }
 
+func TestNormalizeLocale_Ukrainian(t *testing.T) {
+	cases := map[string]string{
+		"uk":    "uk",
+		"uk-UA": "uk",
+		"UK_ua": "uk",
+		"de":    "en",
+	}
+	for in, want := range cases {
+		if got := NormalizeLocale(in); got != want {
+			t.Errorf("NormalizeLocale(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := BuildSchema("uk", nil, "v1", "v1").Steps[0].Title; got != "Про вас" {
+		t.Errorf("uk first step title = %q, want %q", got, "Про вас")
+	}
+}
+
 func TestTaxIDFormat(t *testing.T) {
 	if r, _ := taxIDFormat("vat", "ES B-1234567"); r != CheckPass {
 		t.Errorf("good VAT: %s", r)

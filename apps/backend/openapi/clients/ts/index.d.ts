@@ -17113,7 +17113,7 @@ export interface components {
             telegram_user_id: number;
             /** @description Its Telegram username, stored with the link (accept only). */
             telegram_username?: string;
-            /** @description The language of the Telegram client, stored with the link (accept only; en, ru or es, else en). */
+            /** @description The language of the Telegram client, stored with the link (accept only; en, ru, es or uk, else en). */
             locale?: string;
         };
         /** @description The facts of the bot's "Connect this Telegram to <organization>?" screen. */
@@ -18632,7 +18632,7 @@ export interface components {
             role: "owner" | "manager";
             /**
              * @description Language of the invitation e-mail and of the bot's first messages
-             *     (`en` default, `ru`, `es`). Unknown values fall back to `en`.
+             *     (`en` default, `ru`, `es`, `uk`). Unknown values fall back to `en`.
              *     With `channel` `web` and no locale, the language of an existing
              *     account's own preference is used.
              */
@@ -18722,7 +18722,7 @@ export interface components {
             telegram_user_id: number;
             /** @description The Telegram @username, stored for display only. */
             telegram_username?: string;
-            /** @description The bot language for this account (`en` default, `ru`, `es`). */
+            /** @description The bot language for this account (`en` default, `ru`, `es`, `uk`). */
             locale?: string;
         };
         /** @description Who the Telegram account now is. */
@@ -18841,7 +18841,7 @@ export interface components {
         };
         /** @description Optional body of the resend route. */
         BotInvitationResendRequest: {
-            /** @description Language of the new letter (`en`, `ru`, `es`); absent means the invitee's own language. */
+            /** @description Language of the new letter (`en`, `ru`, `es`, `uk`); absent means the invitee's own language. */
             locale?: string;
         };
         /** @description Response of POST /v1/organizations/{org_id}/bot-invitations/{id}/resend. */
@@ -38421,7 +38421,7 @@ export interface components {
         OnboardingFormSchema: {
             /** @description Schema version; bumped when a field is removed or changes meaning. */
             version: number;
-            /** @description Language of the labels (`en`, `ru` or `es`; anything else falls back to `en`). */
+            /** @description Language of the labels (`en`, `ru`, `es` or `uk`; anything else falls back to `en`). */
             locale: string;
             /** @description Form steps in order. */
             steps: components["schemas"]["OnboardingSchemaStep"][];
@@ -38445,7 +38445,7 @@ export interface components {
             email: string;
             /** @description Phone number; normalized to E.164 (for example +34600111222). */
             phone: string;
-            /** @description Language of the e-mails and of the form (`en`, `ru`, `es`). */
+            /** @description Language of the e-mails and of the form (`en`, `ru`, `es`, `uk`). */
             locale?: string;
             /** @description Optional marketing attribution (source, medium, campaign, term, content, ref). */
             utm?: {
@@ -38868,7 +38868,7 @@ export interface components {
              * @description Contact e-mail; a six-digit confirmation code is sent to it.
              */
             email: string;
-            /** @description Language of the e-mails and of the form (`en`, `ru`, `es`). */
+            /** @description Language of the e-mails and of the form (`en`, `ru`, `es`, `uk`). */
             locale?: string;
         };
         /** @description The account's application: the existing open one, or a new draft. */
@@ -89028,7 +89028,7 @@ export interface operations {
     getOnboardingFormSchema: {
         parameters: {
             query?: {
-                /** @description Language of the labels (en, ru, es); anything else falls back to en. */
+                /** @description Language of the labels (en, ru, es, uk); anything else falls back to en. */
                 locale?: string;
             };
             header?: never;
@@ -90280,7 +90280,7 @@ export interface operations {
     getBotOnboardingFormSchema: {
         parameters: {
             query?: {
-                /** @description Language of the labels (en, ru, es); anything else falls back to en. */
+                /** @description Language of the labels (en, ru, es, uk); anything else falls back to en. */
                 locale?: string;
             };
             header?: never;
