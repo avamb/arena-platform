@@ -1174,6 +1174,7 @@ function PaymentsBody({
           error={c.verification_error}
           verifiedAt={c.verified_at}
         />
+        {c.provider === "stripe" ? <EmbeddedFormBadge secretFieldsSet={c.secret_fields_set} /> : null}
         {c.provider === "stripe" ? <WalletDomainsBlock orgId={c.org_id} configId={c.id} /> : null}
         </>
       ),
@@ -1240,6 +1241,27 @@ function PaymentsBody({
         rows={rows}
         rowKey={(c) => c.id}
       />
+    </div>
+  );
+}
+
+/** Whether a Stripe config holds a publishable key: buyers then pay in the widget's own form. */
+export function EmbeddedFormBadge({ secretFieldsSet }: { secretFieldsSet: readonly string[] }) {
+  const on = secretFieldsSet.includes("publishable_key");
+  return (
+    <div
+      style={{
+        ...badgeBaseStyle,
+        marginTop: 4,
+        background: on ? "#dcfce7" : "#fef9c3",
+        color: on ? "#166534" : "#854d0e",
+        borderColor: on ? "#bbf7d0" : "#fde68a",
+      }}
+      data-testid={on ? "payments-embedded-on" : "payments-embedded-off"}
+    >
+      {on
+        ? "Embedded form: on"
+        : "Embedded form: no publishable key, payment happens on the Stripe page"}
     </div>
   );
 }

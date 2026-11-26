@@ -32,6 +32,7 @@ import {
   STRIPE_CHECKOUT_SESSION_EVENTS,
   StripeWebhookConfigUrlsView,
   PayPlusHelpView,
+  EmbeddedFormBadge,
   STRIPE_API_KEY_PERMISSIONS,
   StripeApiKeyPermissionsView,
   normalizeVerificationStatus,
@@ -661,5 +662,23 @@ describe("PayPlusHelpView", () => {
     const html = renderToStaticMarkup(createElement(PayPlusHelpView, { mode: "live" }));
     expect(html).toContain("restapi.payplus.co.il");
     expect(html).not.toContain("restapidev");
+  });
+});
+
+describe("EmbeddedFormBadge", () => {
+  it("says the form is on when a publishable key is stored", () => {
+    const html = renderToStaticMarkup(
+      createElement(EmbeddedFormBadge, { secretFieldsSet: ["api_key", "publishable_key"] }),
+    );
+    expect(html).toContain("payments-embedded-on");
+    expect(html).toContain("Embedded form: on");
+  });
+
+  it("says payment stays on the Stripe page without the key", () => {
+    const html = renderToStaticMarkup(
+      createElement(EmbeddedFormBadge, { secretFieldsSet: ["api_key"] }),
+    );
+    expect(html).toContain("payments-embedded-off");
+    expect(html).toContain("no publishable key");
   });
 });
