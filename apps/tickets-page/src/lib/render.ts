@@ -321,6 +321,9 @@ export function renderEvent(
   // Buyer funnel (spec 50 A7): the page counts the view itself (main.ts), the
   // widget sends session_open and seats_chosen on a buyer action.
   widget.setAttribute('funnel', 'hosted_page');
+  // No separate cart screen: the cart lines and the buyer form share one
+  // screen, as on the Lampyris site (owner decision 26.11).
+  widget.setAttribute('checkout', 'one-step');
   widget.setAttribute('locale', toWidgetLocale(locale));
   if (options.apiBase) {
     widget.setAttribute('api-base', options.apiBase);
@@ -738,6 +741,9 @@ function mountTicketPicker(
   // scrolls into view (below). Its session_open and seats_chosen need a buyer
   // action, so the widget still sends those itself.
   widget.setAttribute('funnel', 'tickets_page');
+  // No separate cart screen: the cart lines and the buyer form share one
+  // screen, as on the Lampyris site (owner decision 26.11).
+  widget.setAttribute('checkout', 'one-step');
   widget.setAttribute('locale', toWidgetLocale(locale));
   if (options.apiBase) {
     widget.setAttribute('api-base', options.apiBase);
