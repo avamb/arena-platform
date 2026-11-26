@@ -86,7 +86,7 @@ func TestPublicFeedSite(t *testing.T) {
 	}
 
 	code, _, body = get(without)
-	if code != 200 || strings.TrimSpace(body) != `{"socials":[],"thank_you":null}` {
+	if code != 200 || strings.TrimSpace(body) != `{"socials":[],"thank_you":null,"thank_you_posters":true}` {
 		t.Errorf("without: %d %s", code, body)
 	}
 	if code, _, _ = get("no-such-token-" + run); code != 404 {
