@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
+  preconnectStripe,
   STRIPE_FORM_READY_TIMEOUT_MS,
   STRIPE_JS_LOAD_TIMEOUT_MS,
   STRIPE_JS_URL,
@@ -181,5 +182,30 @@ describe('openEmbeddedCheckout', () => {
     });
     await expect(p).resolves.toBeTruthy();
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('preconnectStripe', () => {
+  function fakeDoc() {
+    const links: Array<Record<string, string>> = [];
+    const head = {
+      querySelectorAll: () => links.map((l) => ({ getAttribute: (n: string) => l[n] ?? null })),
+      appendChild: (l: Record<string, string>) => links.push({ rel: l.rel, href: l.href }),
+    };
+    return {
+      links,
+      doc: { head, createElement: () => ({}) } as unknown as Document,
+    };
+  }
+
+  it('adds one preconnect to js.stripe.com and is idempotent', () => {
+    const { doc, links } = fakeDoc();
+    expect(preconnectStripe(doc)).toBe(true);
+    expect(preconnectStripe(doc)).toBe(false);
+    expect(links).toEqual([{ rel: 'preconnect', href: 'https://js.stripe.com' }]);
+  });
+
+  it('does nothing without a document', () => {
+    expect(preconnectStripe(undefined)).toBe(false);
   });
 });

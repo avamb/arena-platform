@@ -10,6 +10,7 @@
       cover: { type: 'String', attribute: 'cover' },
       sessions: { type: 'String', attribute: 'sessions' },
       frame: { type: 'String', attribute: 'frame' },
+      checkout: { type: 'String', attribute: 'checkout' },
       materials: { type: 'String', attribute: 'materials' },
       funnel: { type: 'String', attribute: 'funnel' },
       promo: { type: 'String', attribute: 'promo' },
@@ -121,7 +122,7 @@
   import GaAreaPopover from './components/GaAreaPopover.svelte';
   import OrderStatus from './components/OrderStatus.svelte';
   import PaymentScreen from './components/PaymentScreen.svelte';
-  import { loadStripeJs } from './lib/stripeElements.js';
+  import { loadStripeJs, preconnectStripe } from './lib/stripeElements.js';
   import { createPaymentStepsRegistry } from './lib/paymentSteps.js';
   import type { PaymentBlock } from './lib/checkout.js';
   import Materials from './components/Materials.svelte';
@@ -160,6 +161,8 @@
      * things. Anything else (or absent) keeps the frame, which is what a
      * standalone embed on someone else's site wants. */
     frame?: string;
+    /** 'one-step' shows the cart and the buyer form on ONE screen of the cart sheet. */
+    checkout?: string;
     /** 'hidden' drops the event's materials block (gallery, videos, map,
      * "where else to buy", photo report). A host page that already shows
      * the same material itself — the hosted tickets page does — sets it so
@@ -190,7 +193,7 @@
     preloadPayment?: string;
   }
 
-  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '', frame = '', materials = '', funnel = '', promo: promoAttribute = '', trackingConsent = '', trackingConsentVersion = '', preloadPayment = '' }: Props = $props();
+  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '', frame = '', checkout = '', materials = '', funnel = '', promo: promoAttribute = '', trackingConsent = '', trackingConsentVersion = '', preloadPayment = '' }: Props = $props();
 
   /**
    * Host element reference for CustomEvent dispatch (WID-S5).
@@ -207,6 +210,7 @@
   // Case- and space-insensitive so cover="Hidden" behaves; any other value
   // keeps the cover, since a typo must not silently strip the artwork.
   const coverHidden = $derived(cover.trim().toLowerCase() === 'hidden');
+  const oneStep = $derived(checkout.trim().toLowerCase() === 'one-step');
   const frameHidden = $derived(frame.trim().toLowerCase() === 'hidden');
   const materialsHidden = $derived(materials.trim().toLowerCase() === 'hidden');
   const badgeT = $derived(getPlatformBadgeStrings(normLocale));
@@ -282,16 +286,50 @@
   let stage = $state<WidgetStage>('selecting');
   let cartSheetOpen = $state(false);
 
+  // The host page sees the checkout as `data-cart-open` on <arena-tickets>, so it can hide
+  // its own "Buy tickets" buttons with CSS alone while the buyer pays: the sheet is open, or
+  // the widget has left seat selection (an inline payment step closes the sheet first).
+  $effect(() => {
+    if (!host) return;
+    if (cartSheetOpen || stage !== 'selecting') host.setAttribute('data-cart-open', '');
+    else host.removeAttribute('data-cart-open');
+  });
+
   // Stripe.js takes ~0.3 s plus its own connections; loaded after "Pay" it sat
   // on the critical path to the card form. With preload-payment="stripe" it
   // starts when the sheet opens. loadStripeJs is one shared promise, so the
   // payment screen reuses it; a failure here is ignored and retried there.
-  // preload-payment="checkout" implies it.
+  // preload-payment="checkout" implies it. With the attribute absent (auto) it
+  // happens only when the session's payment is embedded (`embedded_payment`).
   const preload = $derived(preloadMode(preloadPayment));
+  const stripeEarly = $derived(loadsStripeEarly(preload, selectedSession?.embedded_payment));
   $effect(() => {
-    if (cartSheetOpen && loadsStripeEarly(preload)) {
+    if (cartSheetOpen && stripeEarly) {
       loadStripeJs().catch(() => {});
     }
+  });
+  // The buyer's first press or key anywhere in the widget (the host element,
+  // which covers the shadow root). Until then the preconnect waits: a
+  // preselected quantity must not warm js.stripe.com on page load.
+  let buyerActed = $state(false);
+  $effect(() => {
+    const el = host;
+    const mark = () => {
+      buyerActed = true;
+      el.removeEventListener('pointerdown', mark);
+      el.removeEventListener('keydown', mark);
+    };
+    el.addEventListener('pointerdown', mark);
+    el.addEventListener('keydown', mark);
+    return () => {
+      el.removeEventListener('pointerdown', mark);
+      el.removeEventListener('keydown', mark);
+    };
+  });
+  // The first ticket or seat in the cart warms the connection to js.stripe.com
+  // (one tag per page); never on page load, never before a buyer action.
+  $effect(() => {
+    if (cartCount > 0 && stripeEarly && buyerActed) preconnectStripe();
   });
 
   // ── Selection state ────────────────────────────────────────────────────────
@@ -1750,6 +1788,8 @@
         onDone={orderStatus.status === 'paid' ? handleDone : undefined}
         apiBase={resolvedApiBase}
         {checkoutToken}
+        feedToken={normFeedToken}
+        {event}
         actionLoading={orderActionLoading}
         actionError={orderActionError}
       />
@@ -1967,6 +2007,7 @@
     {#if cartSheetOpen && selectedSession}
       <CartSheet
         cart={effectiveCart}
+        {oneStep}
         buyerFields={selectedSession.buyer_fields as import('./lib/checkout.js').BuyerFieldConfig[]}
         serviceFeePercent={selectedSession.service_fee_percent}
         promoAvailable={selectedSession.promo_codes_available === true || wantedPromo !== null}

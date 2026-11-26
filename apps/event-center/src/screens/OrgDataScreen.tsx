@@ -17,12 +17,13 @@ import { GuestListTeamSwitch } from "@/components/GuestListTeamSwitch";
 import { OrgDataForm } from "@/components/OrgDataForm";
 import { SellerChannelCard } from "@/components/SellerChannelCard";
 import { SellerErrorNotice } from "@/components/SellerErrorNotice";
+import { StripeQuickPay } from "@/components/StripeQuickPay";
 import { ErrorBox, Loading } from "@/components/ui";
 import { fetchOrganization, fetchSellerProfile, listPaymentConfigs, patchSellerProfile } from "@/lib/api/endpoints";
 import type { SellerProfile } from "@/lib/api/types";
 import { useI18n } from "@/lib/i18n";
 import { ScreenHelp } from "@/components/ScreenHelp";
-import { missingKey, paymentsNotConnected } from "@/lib/orgData";
+import { missingKey, paymentsNotConnected, stripeQuickPayConfigs } from "@/lib/orgData";
 import { useOrg } from "@/screens/OrgLayout";
 
 export function OrgDataScreen() {
@@ -45,10 +46,10 @@ export function OrgDataScreen() {
       </section>
     );
   }
-  return <OrgDataBody orgId={orgId} canReadPayments={access.can("payment_config.read")} />;
+  return <OrgDataBody orgId={orgId} canReadPayments={access.can("payment_config.read")} canWritePayments={access.can("payment_config.write")} />;
 }
 
-function OrgDataBody({ orgId, canReadPayments }: { orgId: string; canReadPayments: boolean }) {
+function OrgDataBody({ orgId, canReadPayments, canWritePayments }: { orgId: string; canReadPayments: boolean; canWritePayments: boolean }) {
   const { t } = useI18n();
   const org = useQuery({ queryKey: ["orgDetail", orgId], queryFn: () => fetchOrganization(orgId) });
   const profile = useQuery({ queryKey: ["sellerProfile", orgId], queryFn: () => fetchSellerProfile(orgId) });
@@ -68,7 +69,7 @@ function OrgDataBody({ orgId, canReadPayments }: { orgId: string; canReadPayment
         <ScreenHelp screenId="orgData" />
       </div>
       <p>{t("orgData.intro")}</p>
-      {canReadPayments && <PaymentsSection configs={payments.data?.payment_configs} />}
+      {canReadPayments && <PaymentsSection orgId={orgId} canWrite={canWritePayments} configs={payments.data?.payment_configs} />}
       {failure !== null && failure !== undefined ? (
         <ErrorBox error={failure} onRetry={() => void Promise.all([org.refetch(), profile.refetch()])} />
       ) : org.data === undefined || profile.data === undefined ? (
@@ -94,7 +95,16 @@ function OrgDataBody({ orgId, canReadPayments }: { orgId: string; canReadPayment
  * configs this screen already reads. While the read runs, or when it fails,
  * the section says nothing under its heading, like the bot.
  */
-function PaymentsSection({ configs }: { configs: readonly { is_active: boolean; verification_status: string }[] | undefined }) {
+type PaymentsConfig = {
+  id: string;
+  provider: string;
+  mode: "test" | "live";
+  is_active: boolean;
+  verification_status: string;
+  secret_fields_set: readonly string[];
+};
+
+export function PaymentsSection({ orgId, canWrite, configs }: { orgId: string; canWrite: boolean; configs: readonly PaymentsConfig[] | undefined }) {
   const { t } = useI18n();
   return (
     <section id="payments" aria-labelledby="org-data-payments-title" data-testid="org-data-payments-section">
@@ -109,6 +119,9 @@ function PaymentsSection({ configs }: { configs: readonly { is_active: boolean; 
             {t("orgData.payments.connected")}
           </p>
         ))}
+      {stripeQuickPayConfigs(configs).map((c) => (
+        <StripeQuickPay key={c.id} orgId={orgId} config={c} canWrite={canWrite} />
+      ))}
     </section>
   );
 }

@@ -57,6 +57,8 @@ var (
 	_ payments.WebhookParser = (*Adapter)(nil)
 	_ payments.Refunder      = (*Adapter)(nil)
 	_ payments.RefundLookup  = (*Adapter)(nil)
+
+	_ payments.BrowserKeyProber = (*Adapter)(nil)
 )
 
 // ProviderDescriptor is Stripe's static description. A package-level

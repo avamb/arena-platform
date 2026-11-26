@@ -10999,6 +10999,10 @@ components:
         translation_stale:
           type: boolean
           description: Public feed only. True when the translation served was made from an older original than the current one; it is still served.
+        page_url:
+          type: string
+          description: Public feed only. The buyers' hosted page of the event, `<PUBLIC_TICKETS_BASE_URL>/<page slug>/<event slug>` (the promoter's slug when the event has an active promoter with a page, else the organization's). Empty string when the event has no slug or the server has no tickets base. It is an address, not a sign that the page is reachable.
+          example: "https://tickets.arenasoldout.com/teatrkolibel/silver-hoof"
         genre:
           type: [string, "null"]
           description: |
@@ -11581,6 +11585,75 @@ components:
           type: object
           description: Reserved for translated texts. Always an empty object for now.
           additionalProperties: true
+
+    FeedSiteThankYou:
+      type: object
+      required: [title, text, promo_code, url]
+      description: The organizer's block for the thank-you page of a static site, trimmed and length-capped by the server.
+      properties:
+        title:
+          type: string
+          description: Heading of the block, at most 120 characters. May be empty when the text is set.
+        text:
+          type: string
+          description: Body text, at most 1000 characters. May be empty when the title is set.
+        promo_code:
+          type: [string, "null"]
+          description: Promo code to show to the buyer, at most 64 characters, or null.
+        url:
+          type: [string, "null"]
+          description: Absolute https link of the block, or null.
+
+    FeedSiteSocial:
+      type: object
+      required: [network, url]
+      description: One social-network link of the organizer.
+      properties:
+        network:
+          type: string
+          description: "Network key, lower case: `facebook`, `instagram`, `telegram`, `tiktok`, `youtube`, `x`, `whatsapp`, `linkedin`, `vk` or `threads`."
+        url:
+          type: string
+          description: Absolute https link of the organizer's page there, at most 2048 characters, without a user name.
+
+    FeedSiteSettings:
+      type: object
+      required: [thank_you, socials]
+      description: Public settings of a static site that sells through a feed token.
+      properties:
+        thank_you:
+          description: The thank-you block, or null when the organizer set none.
+          oneOf:
+            - $ref: "#/components/schemas/FeedSiteThankYou"
+            - type: "null"
+        socials:
+          type: array
+          description: The organizer's social-network links, at most 8, in the organizer's order. An empty list when none are set or none is valid.
+          items:
+            $ref: "#/components/schemas/FeedSiteSocial"
+
+    CheckoutMarketingRequest:
+      type: object
+      required: [text_version]
+      additionalProperties: false
+      description: Body of `POST /v1/public/checkout/{checkout_token}/marketing`. The e-mail is never in the body; it is the order's own buyer e-mail.
+      properties:
+        text_version:
+          type: string
+          description: "The version of the consent text the page showed. Only the `marketing_offer.text_version` of the order status is accepted (`marketing-thankyou-2026-11-25`: the text names the organizer). Stored with the grant as the evidence of what was agreed to."
+        page_url:
+          type: string
+          description: The page the buyer was on, an https link of at most 2048 characters without a user name. The confirmation sends the buyer back to it when it lies on one of the sales channel's site origins, else to the hosted tickets page. Optional.
+
+    CheckoutMarketingResponse:
+      type: object
+      required: [status]
+      description: Answer of `POST /v1/public/checkout/{checkout_token}/marketing`.
+      properties:
+        status:
+          type: string
+          enum: [pending, already_confirmed]
+          description: "`pending`: the confirmation letter is on its way (or was sent for this order already); `already_confirmed`: the address is subscribed, nothing was written."
 
     FeedSeriesListEnvelope:
       type: object
@@ -21217,7 +21290,7 @@ components:
         Response body for `GET /v1/public/checkout/{checkout_token}`.
         Returns the current order status and cart contents for an anonymous buyer.
         No JWT required — the opaque `checkout_token` in the path is the credential.
-      required: [status, checkout_token, checkout_session_id, items, tickets]
+      required: [status, checkout_token, checkout_session_id, items, tickets, marketing_offer]
       properties:
         status:
           type: string
@@ -21334,6 +21407,17 @@ components:
           description: Issued tickets; non-empty only when status is `paid`.
           items:
             $ref: "#/components/schemas/CheckoutStatusTicketItem"
+        marketing_offer:
+          type: [object, "null"]
+          description: Always present. The mailing subscription the thank-you page may offer the buyer, or null when the order is not paid, the organizer does not offer mailings, the organization is deleted, or the order's buyer e-mail already has a pending or confirmed subscription to the organizer's mailings.
+          required: [org_name, text_version]
+          properties:
+            org_name:
+              type: string
+              description: The organizer's name the consent text names.
+            text_version:
+              type: string
+              description: The consent text version to send to `POST /v1/public/checkout/{checkout_token}/marketing`; the route accepts only this one.
 
     StartCheckoutRequest:
       type: object
@@ -43615,6 +43699,16 @@ paths:
             `mode=live` config may only be active for a KYB-verified
             organization (`organizations.kyb_status = verified`); test-mode
             configs are unrestricted.
+
+            `payment_config.publishable_key_refused`: Stripe answered 401 to
+            the supplied `publishable_key`, so it does not exist or was
+            revoked; nothing is saved.
+
+            `payment_config.publishable_key_account_mismatch`: the
+            `publishable_key` belongs to another Stripe account than the
+            secret key (stored or supplied); nothing is saved. A check that
+            could not be made (timeout, network error, restricted key, any
+            other answer) never blocks a save.
           content:
             application/json:
               schema:
@@ -43940,6 +44034,16 @@ paths:
             `mode=live` config may only be active for a KYB-verified
             organization (`organizations.kyb_status = verified`); test-mode
             configs are unrestricted.
+
+            `payment_config.publishable_key_refused`: Stripe answered 401 to
+            the supplied `publishable_key`, so it does not exist or was
+            revoked; nothing is saved.
+
+            `payment_config.publishable_key_account_mismatch`: the
+            `publishable_key` belongs to another Stripe account than the
+            secret key (stored or supplied); nothing is saved. A check that
+            could not be made (timeout, network error, restricted key, any
+            other answer) never blocks a save.
           content:
             application/json:
               schema:
@@ -60558,6 +60662,51 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/public/feeds/{feed_token}/site:
+    get:
+      operationId: getPublicFeedSite
+      summary: Get the public settings of a static site
+      description: |
+        Returns the organizer's own block for the "thank you" page of a static
+        site, read from the sales channel of the feed token. Only the
+        `thank_you` block and the `socials` links are ever returned, no other
+        channel setting. No JWT
+        required: the feed token in the path is the credential. Rate-limited
+        per token and per IP. Cached publicly for a short time.
+      tags: [PublicFeed]
+      parameters:
+        - name: feed_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Opaque feed token (from `agent_feed_tokens.token`).
+      responses:
+        "200":
+          description: The site settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedSiteSettings"
+        "404":
+          description: Unknown or inactive feed token (`feed.token_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/public/feeds/{feed_token}/series:
     get:
       operationId: listPublicFeedSeries
@@ -60723,6 +60872,12 @@ paths:
             and not used up. The widget shows its promo field only then.
             It reveals that such a code exists, never which one, and not
             whether one fits a cart: `checkout/quote` decides that.
+          * `embedded_payment` — boolean. True when a payment started on
+            this feed would be embedded in the page (the deployment
+            switch is on, the channel does not force the hosted page and
+            the organization's provider config holds the browser key).
+            The widget loads the provider's script early only then.
+            Carries no key.
           * `show_withdrawal_notice` — boolean. True when the seller
             organization is in the EU/EEA (the country of its legal
             address, else the organization country: the 27 EU states
@@ -63084,6 +63239,81 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable, the subscription could not be stored (`subscription.failed`, retry), or the captcha is not configured or cannot be checked (`subscription.captcha_not_configured`, `subscription.captcha_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/checkout/{checkout_token}/marketing:
+    post:
+      operationId: subscribePublicCheckoutMarketing
+      summary: Subscribe the order's buyer to the organizer's mailings
+      description: |
+        The buyer on the thank-you page of a static site agrees to the
+        organizer's mailings. The address is the PAID order's own buyer e-mail
+        (never one in the body). Double opt-in: a pending subscription is
+        stored, the grant is journaled (source `site`) and the confirmation
+        letter is queued in the same transaction, like
+        `POST /v1/public/feeds/{feed_token}/marketing-subscriptions`, with the
+        same hourly limits: 10 grants per client IP answer 429, 3 per address
+        are absorbed as a quiet `pending`. No captcha: the opaque
+        `checkout_token` is the credential. A confirmed address writes
+        nothing and answers `already_confirmed`; a grant already made for
+        this order answers `pending` without a new letter. Rate-limited per
+        token and per IP like the other public checkout routes.
+      tags: [v1]
+      parameters:
+        - name: checkout_token
+          in: path
+          required: true
+          description: Opaque checkout token (64 lowercase hex characters) minted when the checkout started.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutMarketingRequest"
+      responses:
+        "202":
+          description: Accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutMarketingResponse"
+        "400":
+          description: The body is not readable or a field is wrong (`checkout.invalid_body`, `checkout.invalid_text_version`, `checkout.invalid_page_url`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No checkout for this token, or its organization is deleted (`checkout.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The order is not paid (`checkout.not_paid`) or the organizer does not offer mailings (`marketing.not_offered`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The order's e-mail cannot receive mailings (`subscription.invalid_email`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many requests (`checkout.rate_limited`, `subscription.rate_limited`); `Retry-After` says when to try again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable (`dependency.database_unavailable`, `subscription.failed`); retry.
           content:
             application/json:
               schema:

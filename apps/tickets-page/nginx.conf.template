@@ -61,9 +61,21 @@ server {
     # filename is not content-hashed (apps/widget/vite.config.ts pins the
     # output name to arena-tickets.js) and a widget release can ship
     # independently of this page's own deploys.
+    # The bundle is an ES module: an organizer's own site loads it with
+    # <script type="module">, which is a CORS request, so it needs ACAO.
+    # Lazy chunks of the bundle (arena-tickets-<name>-<hash>.js, e.g. the
+    # thank-you blocks) are content-hashed, so they may be cached for long.
+    location ^~ /widget/v1/arena-tickets- {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        add_header Access-Control-Allow-Origin "*" always;
+        try_files $uri =404;
+    }
+
     location ^~ /widget/v1/ {
         include /etc/nginx/snippets/security-headers.conf;
         add_header Cache-Control "public, max-age=300" always;
+        add_header Access-Control-Allow-Origin "*" always;
         try_files $uri =404;
     }
 

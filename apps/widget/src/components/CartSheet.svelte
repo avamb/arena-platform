@@ -14,6 +14,12 @@
 
   interface Props {
     cart: CartState;
+    /**
+     * checkout="one-step": no separate cart screen. The cart lines, the promo
+     * block, the money rows and the buyer form with the pay button are shown
+     * together on one screen titled like the buyer-form step.
+     */
+    oneStep?: boolean;
     buyerFields: BuyerFieldConfig[];
     locale?: string;
     /**
@@ -97,7 +103,7 @@
     onEmailChange?: (email: string) => void;
   }
   const {
-    cart, buyerFields, locale = 'en', serviceFeePercent = null, showWithdrawalNotice = false, consent = null, marketing = null, marketingDiscountUsed = false, marketingTicked = false, marketingQuote = null, onMarketingChange, cartReminder = false, submitting = false, submitError = null,
+    cart, oneStep = false, buyerFields, locale = 'en', serviceFeePercent = null, showWithdrawalNotice = false, consent = null, marketing = null, marketingDiscountUsed = false, marketingTicked = false, marketingQuote = null, onMarketingChange, cartReminder = false, submitting = false, submitError = null,
     promoCode = null, promoQuote = null, cartKey = '', promoAvailable = false, promoExpanded = false, promoPrefill = '', promoBusy = false, promoError = null, promoNote = null,
     onApplyPromo, onRemovePromo, onContinue,
     conflictKeys, onContinueWithoutConflicts,
@@ -182,6 +188,18 @@
   }
   function handleBackToCart(): void { showBuyerForm = false; }
 
+  // One-step: the buyer is "on the form" from the first moment, so the step
+  // that leaves the cart is told once on open; an emptied cart closes the sheet.
+  let oneStepStarted = false;
+  $effect(() => {
+    if (!oneStep || oneStepStarted) return;
+    oneStepStarted = true;
+    onContinue?.();
+  });
+  $effect(() => {
+    if (oneStep && cart.lines.length === 0) onClose();
+  });
+
   // Keyboard-aware sheet: when the phone keyboard opens, the visual viewport
   // shrinks while the layout viewport does not. Lift the sheet by the covered
   // height and cap its height to the visible area, so the pay button stays
@@ -216,6 +234,35 @@
   });
 </script>
 
+{#snippet buyerBlock()}
+  {#if promoNote && !oneStep}
+    <p class="promo-note" role="status">{promoNote}</p>
+  {/if}
+  {#if submitError}
+    <p class="submit-error" role="alert">{submitError}</p>
+    {#if conflictKeys && conflictKeys.size > 0 && onContinueWithoutConflicts}
+      <!-- WID-T4: one-click "continue without unavailable seats" CTA -->
+      <button class="continue-without-btn" onclick={onContinueWithoutConflicts}>
+        {t.continue_without_conflicts}
+      </button>
+    {/if}
+  {/if}
+  <BuyerForm
+    {buyerFields}
+    {locale}
+    {submitting}
+    submitText={payLabel}
+    withdrawalNotice={shouldShowWithdrawalNotice(showWithdrawalNotice, payTotal)}
+    {consent}
+    {marketing}
+    {marketingDiscountUsed}
+    {cartReminder}
+    {onMarketingChange}
+    onSubmit={onCheckout}
+    {onEmailChange}
+  />
+{/snippet}
+
 <!-- Sheet overlay -->
 <div class="sheet-overlay" role="presentation" onclick={onClose}></div>
 
@@ -224,7 +271,7 @@
     <button class="back-btn" onclick={showBuyerForm ? handleBackToCart : onClose} aria-label={showBuyerForm ? t.cart_back : t.cart_title}>
       {#if showBuyerForm}← {t.cart_back}{:else}✕{/if}
     </button>
-    <h2 class="sheet-title">{showBuyerForm ? t.cart_details_title : t.cart_title}</h2>
+    <h2 class="sheet-title">{showBuyerForm || oneStep ? t.cart_details_title : t.cart_title}</h2>
   </div>
 
   {#if !showBuyerForm}
@@ -321,41 +368,20 @@
           </div>
         {/if}
 
-        <button class="cta-btn" onclick={handleContinue} disabled={count === 0 || payBlocked}>
-          {t.submit_label}
-        </button>
+        {#if oneStep}
+          {@render buyerBlock()}
+        {:else}
+          <button class="cta-btn" onclick={handleContinue} disabled={count === 0 || payBlocked}>
+            {t.submit_label}
+          </button>
+        {/if}
       {/if}
     </div>
 
   {:else}
     <!-- Buyer form -->
     <div class="sheet-body">
-      {#if promoNote}
-        <p class="promo-note" role="status">{promoNote}</p>
-      {/if}
-      {#if submitError}
-        <p class="submit-error" role="alert">{submitError}</p>
-        {#if conflictKeys && conflictKeys.size > 0 && onContinueWithoutConflicts}
-          <!-- WID-T4: one-click "continue without unavailable seats" CTA -->
-          <button class="continue-without-btn" onclick={onContinueWithoutConflicts}>
-            {t.continue_without_conflicts}
-          </button>
-        {/if}
-      {/if}
-      <BuyerForm
-        {buyerFields}
-        {locale}
-        {submitting}
-        submitText={payLabel}
-        withdrawalNotice={shouldShowWithdrawalNotice(showWithdrawalNotice, payTotal)}
-        {consent}
-        {marketing}
-        {marketingDiscountUsed}
-        {cartReminder}
-        {onMarketingChange}
-        onSubmit={onCheckout}
-        {onEmailChange}
-      />
+      {@render buyerBlock()}
     </div>
   {/if}
 </div>

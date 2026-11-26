@@ -159,6 +159,14 @@ export const PARITY: readonly ParityRow[] = [
     ready: { twin: "live/org-data.spec.ts" },
     routes: [`GET ${O}/payment-configs`],
   },
+  {
+    area: "Вход и организация",
+    fn: "Быстрая оплата в виджете (публикуемый ключ Stripe)",
+    bot: "—",
+    web: "R3",
+    // Без ready: живой twin-тест ещё не написан.
+    routes: [`PATCH ${O}/payment-configs/{id}`],
+  },
   // ── Мероприятия ─────────────────────────────────────────────────────
   {
     area: "Мероприятия",

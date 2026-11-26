@@ -215,6 +215,12 @@ const (
 	None      CancelTicketRequestRefundMode = "none"
 )
 
+// Defines values for CheckoutMarketingResponseStatus.
+const (
+	CheckoutMarketingResponseStatusAlreadyConfirmed CheckoutMarketingResponseStatus = "already_confirmed"
+	CheckoutMarketingResponseStatusPending          CheckoutMarketingResponseStatus = "pending"
+)
+
 // Defines values for CheckoutSessionItemState.
 const (
 	CheckoutSessionItemStateAbandoned        CheckoutSessionItemState = "abandoned"
@@ -972,10 +978,10 @@ const (
 
 // Defines values for GetV1AdminCustomerImportsIdRowsParamsAction.
 const (
-	Created        GetV1AdminCustomerImportsIdRowsParamsAction = "created"
-	Matched        GetV1AdminCustomerImportsIdRowsParamsAction = "matched"
-	MergeCandidate GetV1AdminCustomerImportsIdRowsParamsAction = "merge_candidate"
-	Skipped        GetV1AdminCustomerImportsIdRowsParamsAction = "skipped"
+	GetV1AdminCustomerImportsIdRowsParamsActionCreated        GetV1AdminCustomerImportsIdRowsParamsAction = "created"
+	GetV1AdminCustomerImportsIdRowsParamsActionMatched        GetV1AdminCustomerImportsIdRowsParamsAction = "matched"
+	GetV1AdminCustomerImportsIdRowsParamsActionMergeCandidate GetV1AdminCustomerImportsIdRowsParamsAction = "merge_candidate"
+	GetV1AdminCustomerImportsIdRowsParamsActionSkipped        GetV1AdminCustomerImportsIdRowsParamsAction = "skipped"
 )
 
 // Defines values for ListEventsParamsVisibility.
@@ -5948,6 +5954,24 @@ type CheckoutHostedFallbackResponse struct {
 	RedirectUrl string `json:"redirect_url"`
 }
 
+// CheckoutMarketingRequest Body of `POST /v1/public/checkout/{checkout_token}/marketing`. The e-mail is never in the body; it is the order's own buyer e-mail.
+type CheckoutMarketingRequest struct {
+	// PageUrl The page the buyer was on, an https link of at most 2048 characters without a user name. The confirmation sends the buyer back to it when it lies on one of the sales channel's site origins, else to the hosted tickets page. Optional.
+	PageUrl *string `json:"page_url,omitempty"`
+
+	// TextVersion The version of the consent text the page showed. Only the `marketing_offer.text_version` of the order status is accepted (`marketing-thankyou-2026-11-25`: the text names the organizer). Stored with the grant as the evidence of what was agreed to.
+	TextVersion string `json:"text_version"`
+}
+
+// CheckoutMarketingResponse Answer of `POST /v1/public/checkout/{checkout_token}/marketing`.
+type CheckoutMarketingResponse struct {
+	// Status `pending`: the confirmation letter is on its way (or was sent for this order already); `already_confirmed`: the address is subscribed, nothing was written.
+	Status CheckoutMarketingResponseStatus `json:"status"`
+}
+
+// CheckoutMarketingResponseStatus `pending`: the confirmation letter is on its way (or was sent for this order already); `already_confirmed`: the address is subscribed, nothing was written.
+type CheckoutMarketingResponseStatus string
+
 // CheckoutPayingResponse Response of `POST /v1/public/checkout/{checkout_token}/paying`.
 type CheckoutPayingResponse struct {
 	// CheckoutToken The checkout token, echoed.
@@ -6207,6 +6231,15 @@ type CheckoutStatusResponse struct {
 	// or `reacquired` (the places were taken again and the order is
 	// paid). Omitted otherwise.
 	LatePayment *string `json:"late_payment,omitempty"`
+
+	// MarketingOffer Always present. The mailing subscription the thank-you page may offer the buyer, or null when the order is not paid, the organizer does not offer mailings, the organization is deleted, or the order's buyer e-mail already has a pending or confirmed subscription to the organizer's mailings.
+	MarketingOffer *struct {
+		// OrgName The organizer's name the consent text names.
+		OrgName string `json:"org_name"`
+
+		// TextVersion The consent text version to send to `POST /v1/public/checkout/{checkout_token}/marketing`; the route accepts only this one.
+		TextVersion string `json:"text_version"`
+	} `json:"marketing_offer"`
 
 	// OrderNumber The order number the buyer sees in the ticket e-mail and on the PDF
 	// (`orders.system_id`). Present once the order exists for this
@@ -9034,6 +9067,9 @@ type EventItem struct {
 	// mutate the event.
 	OrgId openapi_types.UUID `json:"org_id"`
 
+	// PageUrl Public feed only. The buyers' hosted page of the event, `<PUBLIC_TICKETS_BASE_URL>/<page slug>/<event slug>` (the promoter's slug when the event has an active promoter with a page, else the organization's). Empty string when the event has no slug or the server has no tickets base. It is an address, not a sign that the page is reachable.
+	PageUrl *string `json:"page_url,omitempty"`
+
 	// PosterMediaId Optional event-level poster media object ID (AB-47). Used as the
 	// default poster for all sessions that have no session-level
 	// `poster_media_id` override. Resolution order:
@@ -9937,6 +9973,39 @@ type FeedSeriesSummary struct {
 
 	// PriceFrom The minimum open category price per currency, sorted by currency.
 	PriceFrom []FeedSeriesPrice `json:"price_from"`
+}
+
+// FeedSiteSettings Public settings of a static site that sells through a feed token.
+type FeedSiteSettings struct {
+	// Socials The organizer's social-network links, at most 8, in the organizer's order. An empty list when none are set or none is valid.
+	Socials []FeedSiteSocial `json:"socials"`
+
+	// ThankYou The thank-you block, or null when the organizer set none.
+	ThankYou *FeedSiteThankYou `json:"thank_you"`
+}
+
+// FeedSiteSocial One social-network link of the organizer.
+type FeedSiteSocial struct {
+	// Network Network key, lower case: `facebook`, `instagram`, `telegram`, `tiktok`, `youtube`, `x`, `whatsapp`, `linkedin`, `vk` or `threads`.
+	Network string `json:"network"`
+
+	// Url Absolute https link of the organizer's page there, at most 2048 characters, without a user name.
+	Url string `json:"url"`
+}
+
+// FeedSiteThankYou The organizer's block for the thank-you page of a static site, trimmed and length-capped by the server.
+type FeedSiteThankYou struct {
+	// PromoCode Promo code to show to the buyer, at most 64 characters, or null.
+	PromoCode *string `json:"promo_code"`
+
+	// Text Body text, at most 1000 characters. May be empty when the title is set.
+	Text string `json:"text"`
+
+	// Title Heading of the block, at most 120 characters. May be empty when the text is set.
+	Title string `json:"title"`
+
+	// Url Absolute https link of the block, or null.
+	Url *string `json:"url"`
 }
 
 // FeedToken A long-lived bearer token that grants a scanner device read access to the
@@ -28869,6 +28938,9 @@ type CancelPublicCheckoutJSONRequestBody = CheckoutCancelRequest
 
 // UpdatePublicCheckoutTrackingConsentJSONRequestBody defines body for UpdatePublicCheckoutTrackingConsent for application/json ContentType.
 type UpdatePublicCheckoutTrackingConsentJSONRequestBody = TrackingConsent
+
+// SubscribePublicCheckoutMarketingJSONRequestBody defines body for SubscribePublicCheckoutMarketing for application/json ContentType.
+type SubscribePublicCheckoutMarketingJSONRequestBody = CheckoutMarketingRequest
 
 // QuotePublicFeedCheckoutJSONRequestBody defines body for QuotePublicFeedCheckout for application/json ContentType.
 type QuotePublicFeedCheckoutJSONRequestBody = PublicFeedCheckoutQuoteRequest

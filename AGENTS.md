@@ -390,6 +390,7 @@ Stripe, Flitt and AllPay hosted checkout, payment modules, webhook state machine
 * Wallet domains are registered in EACH organizer's Stripe account by arena (platform hosts + channel site domains, never CORS_ALLOWED_ORIGINS)
 * A prepared checkout has no buyer until Pay (prepare:true, POST .../buyer, plain carts only, unattached orders hidden)
 * A new checkout never cancels a payable order; a payment for a cancelled order never answers 500 (supersede)
+* The Stripe publishable key is pasted by the organizer and probed at save (only 401 refuses; a real pk answers 403)
 
 ### [Meta integration](docs/agents/meta-integration.md)
 
@@ -689,6 +690,9 @@ Public page materials, seller block, terms, consent, statistics beacon, widget l
 * The organizer's terms of sale are a template plus…
 * The hosted page's statistics beacon (task 2-3, HP-…
 * Content translations (migration 0220): one table for events and series, a manual text is never overwritten by the machine
+* The widget thank-you page: /site, page_url, a separate newsletter consent by checkout token with its own text version
+* The widget bundle is an ES module: an organizer's site needs ACAO on /widget/v1/ and its origin in API CORS
+* GET /v1/public/feeds/{feed_token}/site returns only thank_you from the channel's site settings
 
 ### [Posters, formatted text and the Telegram mini app](docs/agents/posters-rich-text-miniapp.md)
 
