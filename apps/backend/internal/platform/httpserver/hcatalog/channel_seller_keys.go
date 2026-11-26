@@ -13,11 +13,17 @@ import "encoding/json"
 // so they keep the stored values instead.
 var sellerDisplayKeys = []string{"show_seller", "public_contact", "seller_hidden", "consent_required"}
 
+// siteDisplayKeys are the members of settings.site that the same route writes:
+// thank_you_posters switches the posters of the "You may also like" block of
+// the thank-you page.
+var siteDisplayKeys = []string{"thank_you_posters"}
+
 // keepSellerDisplayKeys returns next with the seller-display keys of
-// settings.hosted_page replaced by the stored ones: a value the caller sent
-// is dropped, a stored value is kept. stored may be nil (a new channel: the
-// keys are simply dropped). next must be a JSON object (NormalizeChannelSettings);
-// anything that does not decode is returned unchanged.
+// settings.hosted_page (and settings.site.thank_you_posters) replaced by the
+// stored ones: a value the caller sent is dropped, a stored value is kept.
+// stored may be nil (a new channel: the keys are simply dropped). next must be
+// a JSON object (NormalizeChannelSettings); anything that does not decode is
+// returned unchanged.
 func keepSellerDisplayKeys(next, stored json.RawMessage) json.RawMessage {
 	if len(next) == 0 {
 		return next
@@ -26,45 +32,54 @@ func keepSellerDisplayKeys(next, stored json.RawMessage) json.RawMessage {
 	if err := json.Unmarshal(next, &n); err != nil {
 		return next
 	}
-	hp := map[string]json.RawMessage{}
-	if raw, ok := n["hosted_page"]; ok {
-		if err := json.Unmarshal(raw, &hp); err != nil || hp == nil {
-			hp = map[string]json.RawMessage{}
-		}
-	}
-	changed := false
-	for _, k := range sellerDisplayKeys {
-		if _, ok := hp[k]; ok {
-			delete(hp, k)
-			changed = true
-		}
-	}
-	var st struct {
-		HostedPage map[string]json.RawMessage `json:"hosted_page"`
-	}
+	var st map[string]map[string]json.RawMessage
 	if len(stored) > 0 {
 		_ = json.Unmarshal(stored, &st)
 	}
-	for _, k := range sellerDisplayKeys {
-		if v, ok := st.HostedPage[k]; ok {
-			hp[k] = v
-			changed = true
-		}
-	}
-	if !changed {
+	c1 := keepSection(n, st, "hosted_page", sellerDisplayKeys)
+	c2 := keepSection(n, st, "site", siteDisplayKeys)
+	if !c1 && !c2 {
 		return next
 	}
-	if _, had := n["hosted_page"]; !had && len(hp) == 0 {
-		return next
-	}
-	b, err := json.Marshal(hp)
-	if err != nil {
-		return next
-	}
-	n["hosted_page"] = b
 	out, err := json.Marshal(n)
 	if err != nil {
 		return next
 	}
 	return out
+}
+
+// keepSection rewrites n[section] so that the given keys carry the stored
+// values (or are absent). It reports whether it changed n.
+func keepSection(n map[string]json.RawMessage, st map[string]map[string]json.RawMessage, section string, keys []string) bool {
+	sec := map[string]json.RawMessage{}
+	if raw, ok := n[section]; ok {
+		if err := json.Unmarshal(raw, &sec); err != nil || sec == nil {
+			sec = map[string]json.RawMessage{}
+		}
+	}
+	changed := false
+	for _, k := range keys {
+		if _, ok := sec[k]; ok {
+			delete(sec, k)
+			changed = true
+		}
+	}
+	for _, k := range keys {
+		if v, ok := st[section][k]; ok {
+			sec[k] = v
+			changed = true
+		}
+	}
+	if !changed {
+		return false
+	}
+	if _, had := n[section]; !had && len(sec) == 0 {
+		return false
+	}
+	b, err := json.Marshal(sec)
+	if err != nil {
+		return false
+	}
+	n[section] = b
+	return true
 }

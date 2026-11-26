@@ -762,20 +762,23 @@ export async function patchSellerProfile(orgId: string, patch: SellerProfilePatc
   return out.seller_profile;
 }
 
+/** What the web changes on one sales-page channel; send only what changes. */
+export type SellerDisplayPatch = {
+  public_contact?: { email?: string | null; phone?: string | null };
+  /** Posters in the "You may also like" block of the thank-you page. */
+  thank_you_posters?: boolean;
+};
+
 /**
- * The public contact of one sales-page channel. Only `public_contact` is
- * sent: `seller_hidden` is the platform operator's switch and the legacy
- * `show_seller` no longer decides anything.
+ * The public contact and the thank-you posters switch of one sales-page
+ * channel. `seller_hidden` is the platform operator's switch and the legacy
+ * `show_seller` no longer decides anything, so neither is ever sent.
  */
-export async function patchSellerDisplay(
-  orgId: string,
-  channelId: string,
-  publicContact: { email?: string | null; phone?: string | null },
-): Promise<SellerProfile> {
+export async function patchSellerDisplay(orgId: string, channelId: string, patch: SellerDisplayPatch): Promise<SellerProfile> {
   const out = await call<{ seller_profile: SellerProfile }>({
     route: API.sellerDisplayUpdate,
     params: { org_id: orgId, channel_id: channelId },
-    body: { public_contact: publicContact },
+    body: patch,
   });
   return out.seller_profile;
 }

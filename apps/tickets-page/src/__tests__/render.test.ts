@@ -138,6 +138,26 @@ describe('renderEvent', () => {
     expect(img?.src).toBe('https://example.com/poster.jpg');
   });
 
+  it('marks the hero paid on arena:order_paid: image and description are hidden by class, title and meta stay, widget scrolls into view', () => {
+    const container = freshContainer();
+    renderEvent(container, sampleData, 'en', { apiBase: '', resumingCheckout: false });
+    const hero = container.querySelector('.asa-hero') as HTMLElement;
+    const wrap = container.querySelector('.asa-widget-wrap') as HTMLElement;
+    const scroll = vi.fn();
+    wrap.scrollIntoView = scroll;
+    expect(hero.classList.contains('asa-hero--paid')).toBe(false);
+
+    container.querySelector('arena-tickets')!.dispatchEvent(new CustomEvent('arena:order_paid', { detail: {} }));
+
+    expect(hero.classList.contains('asa-hero--paid')).toBe(true);
+    // The elements the CSS hides under .asa-hero--paid are still the hero's children; title and meta are not among them.
+    expect(hero.querySelector('.asa-hero-image')).not.toBeNull();
+    expect(hero.querySelector('.asa-hero-description')).not.toBeNull();
+    expect(hero.querySelector('.asa-hero-title')?.textContent).toBe('Summer Festival 2026');
+    expect(hero.querySelector('.asa-hero-meta')).not.toBeNull();
+    expect(scroll).toHaveBeenCalledWith(expect.objectContaining({ block: 'start' }));
+  });
+
   it('prints the date with a 24-hour time in the venue zone for a one-session event', () => {
     const container = freshContainer();
     renderEvent(container, sampleData, 'en', { apiBase: '', resumingCheckout: false });

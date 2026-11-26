@@ -11618,7 +11618,7 @@ components:
 
     FeedSiteSettings:
       type: object
-      required: [thank_you, socials]
+      required: [thank_you, socials, thank_you_posters]
       description: Public settings of a static site that sells through a feed token.
       properties:
         thank_you:
@@ -11631,6 +11631,9 @@ components:
           description: The organizer's social-network links, at most 8, in the organizer's order. An empty list when none are set or none is valid.
           items:
             $ref: "#/components/schemas/FeedSiteSocial"
+        thank_you_posters:
+          type: boolean
+          description: Whether the "You may also like" block of the thank-you page shows posters. The organizer switches it per sales channel (`settings.site.thank_you_posters`); true when never set.
 
     CheckoutMarketingRequest:
       type: object
@@ -12392,7 +12395,7 @@ components:
 
     SellerProfileChannel:
       type: object
-      required: [id, name, show_seller, seller_hidden, complete, seller_shown, consent_required, consent_active, public_contact, email_looks_personal, missing]
+      required: [id, name, show_seller, seller_hidden, complete, seller_shown, consent_required, consent_active, thank_you_posters, public_contact, email_looks_personal, missing]
       description: One channel of the organization that runs a hosted sales page.
       properties:
         id:
@@ -12430,6 +12433,11 @@ components:
             Whether checkout asks for the consent now: `consent_required` and
             the data is complete. A profile emptied after the switch was set
             turns the question off until it is complete again.
+        thank_you_posters:
+          type: boolean
+          description: |
+            Whether the "You may also like" block of the thank-you page shows
+            posters (`settings.site.thank_you_posters`). True when never set.
         public_contact:
           description: The channel's published contact, null when it has none.
           oneOf:
@@ -12618,6 +12626,9 @@ components:
             the tick is refused with 422 `checkout.consent_required`. May be
             switched on only while the seller data is complete (422
             `seller.incomplete` with details.missing). False switches it off.
+        thank_you_posters:
+          type: boolean
+          description: True shows posters in the "You may also like" block of the thank-you page, false shows names and dates only. Absent keeps the stored value. Never refused for missing seller data.
         public_contact:
           description: The published contact; null removes it.
           oneOf:

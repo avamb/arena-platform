@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
@@ -147,7 +148,7 @@ func (h *Handler) HandlePublicFeedSite(w http.ResponseWriter, r *http.Request) {
 	if !h.checkFeedToken(w, r, feedToken) {
 		return
 	}
-	raw, socialsRaw, err := h.publicFeedQueries.GetFeedTokenSiteBlocks(r.Context(), feedToken)
+	raw, socialsRaw, postersRaw, err := h.publicFeedQueries.GetFeedTokenSiteBlocks(r.Context(), feedToken)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		h.logger.Error("public_site: read failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -162,5 +163,5 @@ func (h *Handler) HandlePublicFeedSite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=30")
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"thank_you": ParseSiteThankYou(raw), "socials": ParseSiteSocials(socialsRaw)})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"thank_you": ParseSiteThankYou(raw), "socials": ParseSiteSocials(socialsRaw), "thank_you_posters": gen.ThankYouPostersOn(postersRaw)})
 }
