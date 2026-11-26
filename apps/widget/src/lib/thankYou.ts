@@ -126,13 +126,26 @@ export interface RelatedEvent {
   id: string;
   name: string;
   pageUrl: string;
-  posterUrl: string;
   date: string;
+  /** Venue zone for the date (the venue holding that session), else the first known zone, else null. */
+  timezone: string | null;
+}
+
+/** The zone of the venue whose sessions contain the chosen date, else the first venue with a zone. */
+function relatedTimezone(e: FeedEventSummary, date: string): string | null {
+  const venues = e.venues ?? [];
+  const at = Date.parse(date);
+  const own = venues.find(
+    (v) => v?.timezone && (v.session_starts ?? []).some((s) => Date.parse(s) === at),
+  );
+  if (own?.timezone) return own.timezone;
+  return venues.find((v) => v?.timezone)?.timezone ?? null;
 }
 
 /**
  * Up to `limit` future events other than the current one that have a page
- * address and a poster, nearest first. A date in the past or missing drops the event.
+ * address, nearest first. No poster is needed: the card shows only name, date
+ * and time. A date in the past or missing drops the event.
  */
 export function pickRelatedEvents(
   events: FeedEventSummary[] | null | undefined,
@@ -145,8 +158,7 @@ export function pickRelatedEvents(
   for (const e of events ?? []) {
     if (!e || e.id === currentId) continue;
     const pageUrl = (e.page_url ?? '').trim();
-    const posterUrl = (e.poster_url ?? e.image_url ?? '').trim();
-    if (!pageUrl || !posterUrl || !(e.name ?? '').trim()) continue;
+    if (!pageUrl || !(e.name ?? '').trim()) continue;
     const first = e.first_session_at ? Date.parse(e.first_session_at) : NaN;
     const last = e.last_session_at ? Date.parse(e.last_session_at) : NaN;
     // The nearest date still ahead: the first start, or the last one for a run that has begun.
@@ -160,7 +172,7 @@ export function pickRelatedEvents(
       date = e.last_session_at as string;
     }
     if (Number.isNaN(at)) continue;
-    rows.push({ id: e.id, name: e.name, pageUrl, posterUrl, date, at });
+    rows.push({ id: e.id, name: e.name, pageUrl, date, timezone: relatedTimezone(e, date), at });
   }
   rows.sort((a, b) => a.at - b.at);
   return rows.slice(0, limit).map(({ at: _at, ...r }) => r);

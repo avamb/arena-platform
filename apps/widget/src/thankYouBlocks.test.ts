@@ -56,7 +56,7 @@ describe('ThankYouBlocks', () => {
     const { fetchMock, q } = await show((url) => {
       if (url.endsWith('/site')) return json(SITE);
       return json({
-        events: [{ id: 'n1', name: 'Next', page_url: 'https://site/n1', poster_url: 'https://x/p.jpg',
+        events: [{ id: 'n1', name: 'Next', page_url: 'https://site/n1',
           first_session_at: '2099-01-01T10:00:00Z', last_session_at: '2099-01-01T12:00:00Z' }],
       });
     });
@@ -72,6 +72,7 @@ describe('ThankYouBlocks', () => {
     expect(q('ty-newsletter')).not.toBeNull();
     expect(q('ty-newsletter')!.textContent).toContain('Teatro Sur');
     expect(q('ty-related')!.querySelectorAll('li').length).toBe(1);
+    expect(q('ty-related')!.querySelector('img')).toBeNull();
   });
 
   it('hides follow, promo and related on 404 but keeps share', async () => {

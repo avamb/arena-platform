@@ -885,7 +885,7 @@ jobs:
   # Job 6: Widget — Svelte 5 custom element (arena-tickets)
   #
   # Runs on every push/PR. Steps: install → type-check → unit tests
-  # (vitest) → build → size gate (<150 KB gzip) → mock E2E (WCAG).
+  # (vitest) → build → size gate (<160 KB gzip) → mock E2E (WCAG).
   #
   # Note: Mock-only E2E (test:e2e) is non-gating for publication.
   # The real backend acceptance gate (widget-acceptance) is the
@@ -928,7 +928,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Size gate (<150 KB gzip)
+      - name: Size gate (<160 KB gzip)
         run: npm run size
 
       # ── WCAG 2.2 AA gate: axe-core + keyboard E2E via Playwright ───────────

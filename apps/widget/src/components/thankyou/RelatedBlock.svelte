@@ -10,9 +10,16 @@
   }
   const { s, events, locale = 'en' }: Props = $props();
 
-  function when(iso: string): string {
+  function when(iso: string, timeZone: string | null): string {
     try {
-      return new Intl.DateTimeFormat(locale || 'en', { dateStyle: 'long' }).format(new Date(iso));
+      // Plain English reads as en-GB with a 24-hour clock, like the rest of the widget.
+      const plainEn = !locale || locale.toLowerCase() === 'en';
+      return new Intl.DateTimeFormat(plainEn ? 'en-GB' : locale, {
+        dateStyle: 'long',
+        timeStyle: 'short',
+        ...(plainEn ? { hourCycle: 'h23' as const } : {}),
+        ...(timeZone ? { timeZone } : {}),
+      }).format(new Date(iso));
     } catch {
       return iso.slice(0, 10);
     }
@@ -26,9 +33,8 @@
       {#each events as e (e.id)}
         <li>
           <a class="ty-ev" href={e.pageUrl} target="_blank" rel="noopener noreferrer">
-            <img src={e.posterUrl} alt="" />
             <b>{e.name}</b>
-            <small>{when(e.date)}</small>
+            <small>{when(e.date, e.timezone)}</small>
           </a>
         </li>
       {/each}
