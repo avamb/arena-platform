@@ -8,6 +8,7 @@ import { ApiError } from '../api.js';
 import {
   EXTEND_WINDOW_SECONDS,
   createHoldController,
+  holdFeatureOff,
   deviceStorageKey,
   extendMinutes,
   extendVisible,
@@ -499,5 +500,34 @@ describe('the feature is off on the platform (hold.disabled)', () => {
       expect(c.view.holdToken).toBeNull();
       expect(c.tap('A-4')).toBe('ignored');
     }
+  });
+
+  it('treats a platform without the hold routes (404/405, not a hold code) as off', async () => {
+    for (const [status, code] of [
+      [404, 'http.not_found'],
+      [404, undefined],
+      [405, 'http.method_not_allowed'],
+    ] as const) {
+      const r = rig({
+        post: async (body, key) => {
+          r.posts.push({ body, key });
+          throw new ApiError('no route', { status, code });
+        },
+      });
+      const handed: string[][] = [];
+      r.deps.onDisabled = (k) => handed.push(k);
+      const c = createHoldController(r.deps);
+      c.tap('B-1');
+      await c.idle();
+      expect(handed).toEqual([['B-1']]);
+      expect(r.events.rejected).toEqual([]);
+    }
+  });
+
+  it('a 404 with a hold code is not a disabled feature', () => {
+    expect(holdFeatureOff(new ApiError('x', { status: 404, code: 'hold.expired' }))).toBe(false);
+    expect(holdFeatureOff(new ApiError('x', { status: 409, code: 'hold.seats_taken' }))).toBe(false);
+    expect(holdFeatureOff(new ApiError('x', { status: 503, code: 'hold.disabled' }))).toBe(true);
+    expect(holdFeatureOff(new Error('network'))).toBe(false);
   });
 });

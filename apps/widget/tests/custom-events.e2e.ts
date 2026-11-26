@@ -392,13 +392,18 @@ test.describe('WID-S5 — CustomEvents from <arena-tickets>', () => {
 
       // Select A1, then deselect it.
       // WID-T2: dispatchEvent for SVG elements.
-      await page.evaluate(() => {
-        const host = document.getElementById('test-widget');
-        const seat = host?.shadowRoot?.querySelector('[data-seat-key="A1"]');
-        const evt = () => new MouseEvent('click', { bubbles: true, cancelable: true, composed: true });
-        seat?.dispatchEvent(evt()); // select
-        seat?.dispatchEvent(evt()); // deselect
-      });
+      // Spec 67: a second click while the first is still on its way is
+      // ignored, so the deselect waits until the seat is selected.
+      const clickSeat = (key: string) =>
+        page.evaluate((k) => {
+          const host = document.getElementById('test-widget');
+          host?.shadowRoot
+            ?.querySelector(`[data-seat-key="${k}"]`)
+            ?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true }));
+        }, key);
+      await clickSeat('A1'); // select
+      await expect(page.locator('[data-seat-key="A1"][data-selected="true"]')).toHaveCount(1);
+      await clickSeat('A1'); // deselect
 
       await page.waitForTimeout(100);
 
@@ -421,19 +426,20 @@ test.describe('WID-S5 — CustomEvents from <arena-tickets>', () => {
       await captureEvents(page);
 
       // WID-T2: dispatchEvent for SVG elements.
-      await page.evaluate(() => {
-        const host = document.getElementById('test-widget');
-        const sr = host?.shadowRoot;
-        const click = (key: string) =>
-          sr?.querySelector(`[data-seat-key="${key}"]`)?.dispatchEvent(
-            new MouseEvent('click', { bubbles: true, cancelable: true, composed: true }),
-          );
-        // Select A1, A2, A3 — then release A2.
-        click('A1');
-        click('A2');
-        click('A3');
-        click('A2'); // deselect A2
-      });
+      const clickSeats = (keys: string[]) =>
+        page.evaluate((ks) => {
+          const sr = document.getElementById('test-widget')?.shadowRoot;
+          for (const k of ks) {
+            sr?.querySelector(`[data-seat-key="${k}"]`)?.dispatchEvent(
+              new MouseEvent('click', { bubbles: true, cancelable: true, composed: true }),
+            );
+          }
+        }, keys);
+      // Select A1, A2, A3 — then release A2 once it is selected (spec 67:
+      // a click on a seat still on its way is ignored).
+      await clickSeats(['A1', 'A2', 'A3']);
+      await expect(page.locator('[data-seat-key][data-selected="true"]')).toHaveCount(3);
+      await clickSeats(['A2']); // deselect A2
 
       await page.waitForTimeout(100);
 

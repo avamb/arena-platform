@@ -390,6 +390,17 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/**
+ * The platform takes no hold at the click: `hold.disabled`, or a platform
+ * without the hold routes at all (404/405 with a code that is not a hold
+ * code, e.g. `http.not_found` from a backend older than spec 67).
+ */
+export function holdFeatureOff(err: unknown): boolean {
+  if (!(err instanceof ApiError)) return false;
+  if (err.code === 'hold.disabled') return true;
+  return (err.status === 404 || err.status === 405) && !err.code.startsWith('hold.');
+}
+
 /** An error worth sending again with the same key: no answer at all, or a 5xx. */
 function retryable(err: unknown): boolean {
   if (err instanceof ApiError) return err.status >= 500 && err.code !== 'hold.disabled';
@@ -544,7 +555,7 @@ export function createHoldController(deps: HoldControllerDeps): HoldController {
       try {
         res = await sendWithRetry(body, key);
       } catch (err) {
-        if (err instanceof ApiError && err.code === 'hold.disabled') {
+        if (holdFeatureOff(err)) {
           // The feature is off on the platform: every click waiting behind
           // this one falls back with it, silently.
           disabled = true;
