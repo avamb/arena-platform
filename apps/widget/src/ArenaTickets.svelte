@@ -67,24 +67,9 @@
   import { initialAddToCartState, trackCartChange, withAddToCart } from './lib/addToCart.js';
   import { createFunnel, parseFunnelHost, type Funnel, type FunnelStep } from './lib/funnel.js';
   import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
-  import {
-    PULSE_MS,
-    browserStorage,
-    createHoldController,
-    deleteHoldSeat,
-    extendMinutes,
-    extendVisible,
-    getDeviceId,
-    getHold,
-    holdSecondsLeft,
-    postCheckoutPaying,
-    postHold,
-    postHoldExtend,
-    type HoldController,
-    type HoldView,
-  } from './lib/holds.js';
-  import { fillHold, getHoldStrings, holdCountdownText, holdErrorText } from './lib/holdI18n.js';
-  import { formatCountdown } from './lib/cart.js';
+  import { holdSecondsLeft, postCheckoutPaying } from './lib/holdBasics.js';
+  // Types only: the hold runtime loads lazily (lib/holdRuntime.ts, spec 67).
+  import type { HoldController, HoldView } from './lib/holds.js';
   import { dispatchWidgetEvent, ARENA_EVENTS } from './lib/events.js';
   import {
     saveCheckoutToken,
@@ -682,10 +667,30 @@
   // seat key -> "row/number" for the list of seats taken meanwhile.
   let seatLabels = new Map<string, string>();
 
-  const holdT = $derived(getHoldStrings(normLocale));
-  const holdSecs = $derived(holdSecondsLeft(holdView.expiresAt, nowMs));
+  // The hold code is a lazy chunk, loaded only for a session with a plan.
+  type HoldRuntime = typeof import('./lib/holdRuntime.js');
+  let holdRt = $state.raw<HoldRuntime | null>(null);
+  let holdRtLoad: Promise<HoldRuntime> | null = null;
+  function loadHoldRuntime(): Promise<HoldRuntime> {
+    if (!holdRtLoad) {
+      const p = import('./lib/holdRuntime.js').then((m) => {
+        holdRt = m;
+        return m;
+      });
+      holdRtLoad = p;
+      p.catch(() => {
+        if (holdRtLoad === p) holdRtLoad = null;
+      });
+    }
+    return holdRtLoad;
+  }
+  // A late chunk of an older session switch starts nothing.
+  let holdGen = 0;
+  let holdLoadingSid = '';
+  // Taps while the chunk loads, replayed in order once it is there.
+  let holdTapQueue: { sid: string; seatKey: string; status: SeatStatusValue }[] = [];
+
   const holdShown = $derived(holdView.held.size > 0 && holdView.expiresAt !== null);
-  const holdExtendShown = $derived(extendVisible(holdView.expiresAt, holdView.extendAvailable, nowMs));
   // One expiry for the sheet and the bar: the hold's own (spec 67 §3.3).
   const cartExpiresAt = $derived(holdView.holdToken ? holdView.expiresAt : holdExpiresAt);
 
@@ -705,71 +710,68 @@
     selectedSeatKeys = new Set([...v.held, ...v.pending]);
   }
 
-  function seatList(keys: readonly string[]): string {
-    return keys.map((k) => seatLabels.get(k) ?? k).join(', ');
-  }
-
-  /** A seat was taken by somebody else: look at the statuses now, light free seats nearby. */
-  async function onHoldSeatTaken(keys: string[]): Promise<void> {
-    const first = keys[0];
-    if (!first) return;
-    try {
-      await seatMap?.refreshStatuses();
-    } catch {
-      /* the next poll brings them */
-    }
-    const lit = seatMap?.highlightNearest(first) ?? 0;
-    showHoldNotice(lit > 0 ? holdT.seat_taken_near : holdT.seat_taken_none, lit > 0 ? PULSE_MS : 0);
-  }
-
   function switchHold(sessionId: string, feed: string, base: string): void {
+    holdGen += 1;
     holdCtl?.destroy();
     holdCtl = null;
     holdView = emptyHoldView;
     payingNotice = false;
+    holdLoadingSid = '';
+    holdTapQueue = [];
     if (!sessionId || !feed || holdDisabled) return;
-    const ctl: HoldController = createHoldController({
+    if (holdRt) {
+      startHold(holdRt, sessionId, feed, base);
+      return;
+    }
+    const gen = holdGen;
+    holdLoadingSid = sessionId;
+    loadHoldRuntime().then(
+      (rt) => {
+        if (gen !== holdGen) return;
+        holdLoadingSid = '';
+        startHold(rt, sessionId, feed, base);
+        replayHoldTaps();
+      },
+      () => {
+        if (gen !== holdGen) return;
+        holdLoadingSid = '';
+        // No chunk: the plain seat choice for this page view, as hold.disabled.
+        holdDisabled = true;
+        replayHoldTaps();
+      },
+    );
+  }
+
+  function replayHoldTaps(): void {
+    const taps = holdTapQueue;
+    holdTapQueue = [];
+    for (const tap of taps) {
+      if (selectedSession?.id === tap.sid) seatTapNow(tap.seatKey, tap.status);
+    }
+  }
+
+  function startHold(rt: HoldRuntime, sessionId: string, feed: string, base: string): void {
+    const ctl: HoldController = rt.startWidgetHold({
       sessionId,
-      deviceId: getDeviceId(feed),
-      storage: browserStorage(),
-      post: (body, key) => postHold(feed, body, base, key),
-      del: (token, seatKey) => deleteHoldSeat(token, seatKey, base),
-      get: (token) => getHold(token, base),
-      extend: (token) => postHoldExtend(token, base),
-      // A prepared order is on its payment step: the hold takes no change
-      // until that order is cancelled (keep_hold), so it goes first.
+      feed,
+      base,
+      locale: () => normLocale,
+      current: (c) => holdCtl === c,
       beforeMutate: async () => {
         preparedCtl.update(false, cartKey);
         await preparedCtl.settled();
       },
-      onChange: (v) => {
-        if (holdCtl === ctl) applyHoldView(v);
-      },
-      onDisabled: (keys) => {
-        if (holdCtl !== ctl) return;
-        // An existing hold is never dropped: its seats stay the buyer's.
-        if (ctl.view.holdToken) return;
+      view: applyHoldView,
+      disabled: (c, keys) => {
         holdDisabled = true;
         holdCtl = null;
-        ctl.destroy();
+        c.destroy();
         holdView = emptyHoldView;
-        // No message: the clicked seats are simply the plain selection now.
         selectedSeatKeys = new Set([...selectedSeatKeys, ...keys]);
       },
-      onSeatTaken: (keys) => {
-        if (holdCtl === ctl) void onHoldSeatTaken(keys);
-      },
-      onPartial: (keys) => {
-        if (holdCtl !== ctl) return;
-        showHoldNotice(fillHold(holdT.hold_rebook_partial, { seats: seatList(keys) }));
-        void seatMap?.refreshStatuses().catch(() => {});
-      },
-      onRejected: (code, details) => {
-        if (holdCtl === ctl) showHoldNotice(holdErrorText(code, normLocale, details));
-      },
-      onExtended: (min) => {
-        if (holdCtl === ctl) showHoldNotice(fillHold(holdT.hold_extended, { min }), 5_000);
-      },
+      notice: showHoldNotice,
+      seatMap: () => seatMap,
+      seatLabel: (k) => seatLabels.get(k),
     });
     holdCtl = ctl;
     void ctl.restore();
@@ -812,12 +814,13 @@
   // memory only, like paymentBlock).
   let preparedView = $state.raw<PreparedCheckout | null>(null);
 
+  // Spec 67: not while a click on a seat is still on its way (the hold would be
+  // out of date). Comments sit outside the expressions: inside they ship.
   const prepareWanted = $derived(
     preload === 'checkout' &&
       cartSheetOpen &&
       stage === 'selecting' &&
       !checkoutToken &&
-      // Spec 67: not while a click on a seat is still on its way (the hold would be out of date).
       !holdView.busy &&
       !holdView.expired &&
       !!selectedSession &&
@@ -862,11 +865,11 @@
   // True while "Pay" takes the prepared order over (it is not cancelled then).
   let consumingPrepared = false;
 
+  // Spec 67 §4.5 (cancel): with a hold the order goes and the seats stay in the hold.
   const preparedCtl = createPreparedCheckout({
     prepare: (idempotencyKey) =>
       postCheckoutPrepare(normFeedToken, buildPreparePayload(), resolvedApiBase, idempotencyKey),
     attach: (token, body) => postCheckoutBuyer(token, body, resolvedApiBase),
-    // Spec 67 §4.5: with a hold the order goes and the seats stay in the hold.
     cancel: (token) =>
       postCheckoutCancel(token, resolvedApiBase, { keepalive: true, keepHold: holdView.holdToken !== null }),
     onChange: (p) => {
@@ -900,6 +903,7 @@
       window.removeEventListener('pagehide', onPageHide);
       window.removeEventListener('pageshow', onPageShow);
       preparedCtl.destroy();
+      holdGen += 1;
       holdCtl?.destroy();
       if (holdNoticeTimer) clearTimeout(holdNoticeTimer);
     };
@@ -1158,6 +1162,14 @@
 
   function onSeatTap(seatKey: string, status: SeatStatusValue): void {
     openedSession();
+    if (holdLoadingSid && selectedSession?.schema_url && selectedSession.id === holdLoadingSid) {
+      holdTapQueue.push({ sid: holdLoadingSid, seatKey, status });
+      return;
+    }
+    seatTapNow(seatKey, status);
+  }
+
+  function seatTapNow(seatKey: string, status: SeatStatusValue): void {
     const prev = selectedSeatKeys;
     // Spec 67: on a plan the click holds the seat (or lets an own seat go).
     const ctl = holdCtl;
@@ -1502,11 +1514,15 @@
       } else if (err instanceof ApiError && err.code.startsWith('hold.')) {
         // Spec 67: the hold is over (hold.expired) or sits on another order.
         conflictKeys = new Set();
-        checkoutError = makeCheckoutError('other', holdErrorText(err.code, normLocale, err.details));
         if (err.code === 'hold.expired') {
           cartSheetOpen = false;
           void holdCtl?.checkExpiry();
         }
+        // A hold.* answer comes for a hold_token, so the hold chunk is there.
+        checkoutError = makeCheckoutError(
+          'other',
+          holdRt?.holdErrorText(err.code, normLocale, err.details) ?? buyerErrorText(err, normLocale, t.error_checkout),
+        );
       } else if (err instanceof ApiError && cartLimitMessage(err.code, normLocale) !== null) {
         // The platform refused the size of the cart: say so in the buyer's language.
         conflictKeys = new Set();
@@ -1914,6 +1930,7 @@
               selectedKeys={selectedSeatKeys}
               heldKeys={holdView.held}
               pendingKeys={holdView.pending}
+              holdDraw={holdRt}
               bind:this={seatMap}
               {conflictKeys}
               {onSeatTap}
@@ -1948,22 +1965,15 @@
         {/if}
 
         <!-- Spec 67: the hold's clock, the extension and the end of the hold -->
-        {#if holdView.expired}
-          <div class="arena-hold arena-hold--ended" role="alert" data-testid="hold-expired">
-            <span>{holdT.hold_expired}</span>
-            <button type="button" class="arena-hold-btn" disabled={holdView.busy} onclick={() => void holdCtl?.rehold()}>
-              {holdT.hold_rebook}
-            </button>
-          </div>
-        {:else if holdShown}
-          <div class="arena-hold" class:arena-hold--soon={holdSecs <= 120} role="timer" data-testid="hold-countdown">
-            <span>{holdCountdownText(normLocale, formatCountdown(holdSecs))}</span>
-            {#if holdExtendShown}
-              <button type="button" class="arena-hold-btn" disabled={holdView.busy} onclick={() => void holdCtl?.extend()} data-testid="hold-extend">
-                {fillHold(holdT.hold_extend, { min: extendMinutes(holdView.policy) })}
-              </button>
-            {/if}
-          </div>
+        {#if holdRt}
+          <holdRt.HoldClock
+            view={holdView}
+            locale={normLocale}
+            {nowMs}
+            shown={holdShown}
+            onRehold={() => void holdCtl?.rehold()}
+            onExtend={() => void holdCtl?.extend()}
+          />
         {/if}
 
         <!-- Mini cart bar -->
@@ -2097,7 +2107,7 @@
             onBack={cart.lines.length > 0 ? backToContacts : undefined}
           />
           {#if payingNotice && payView.shown}
-            <p class="arena-tickets-limit" role="status" data-testid="hold-paying">{holdT.hold_paying}</p>
+            <p class="arena-tickets-limit" role="status" data-testid="hold-paying">{holdRt?.getHoldStrings(normLocale).hold_paying}</p>
           {/if}
         </div>
       </div>
@@ -2245,41 +2255,6 @@
     font-size: 0.875rem;
     color: #92400e;
     background: #fef3c7;
-  }
-
-  /* Spec 67: the hold's clock under the map, above the cart bar. */
-  .arena-hold {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.5rem 1rem;
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: #134e4a;
-    background: #ccfbf1;
-  }
-  .arena-hold--soon {
-    color: #92400e;
-    background: #fef3c7;
-  }
-  .arena-hold--ended {
-    color: #7f1d1d;
-    background: #fee2e2;
-  }
-  .arena-hold-btn {
-    font: inherit;
-    font-weight: 600;
-    padding: 0.35rem 0.75rem;
-    border: 1px solid currentColor;
-    border-radius: var(--_radius, 6px);
-    background: transparent;
-    color: inherit;
-    cursor: pointer;
-  }
-  .arena-hold-btn:disabled {
-    opacity: 0.6;
-    cursor: default;
   }
 
   .arena-tickets-cancelled {

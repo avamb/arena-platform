@@ -22,12 +22,10 @@
     applyConflictHighlight,
     clearConflictHighlight,
     applySelectionHighlights,
-    applyHoldStyles,
-    setPulse,
     buildCategoryColorMap,
     buildPriceLabel,
   } from '../lib/seatmap-render.js';
-  import { NEAREST_SEATS, PULSE_MS, nearestSeats, type SeatSpot } from '../lib/holds.js';
+  import type { HoldDraw, SeatPulser } from '../lib/holdDraw.js';
   import { createSeatCard, seatCardModel, type SeatCard, type SeatCardInput } from '../lib/seat-card.js';
   import {
     IDENTITY,
@@ -61,6 +59,11 @@
      */
     heldKeys?: ReadonlySet<string>;
     pendingKeys?: ReadonlySet<string>;
+    /**
+     * Spec 67: the drawing of the own hold, from the lazy hold chunk. Null until
+     * that chunk is loaded; there is no hold to draw before it.
+     */
+    holdDraw?: HoldDraw | null;
     /** Called when user taps/clicks a seat circle. */
     onSeatTap?: (seatKey: string, status: SeatStatusValue) => void;
     /**
@@ -80,7 +83,7 @@
     apiBase?: string;
   }
 
-  const { session, locale = 'en', conflictKeys, selectedKeys = new Set(), heldKeys = new Set(), pendingKeys = new Set(), onSeatTap, onGaAreaTap, onSchemaLoaded, apiBase = '' }: Props = $props();
+  const { session, locale = 'en', conflictKeys, selectedKeys = new Set(), heldKeys = new Set(), pendingKeys = new Set(), holdDraw = null, onSeatTap, onGaAreaTap, onSchemaLoaded, apiBase = '' }: Props = $props();
 
   // ── i18n ────────────────────────────────────────────────────────────────────
   const t = $derived(getCheckoutI18n(locale));
@@ -242,59 +245,16 @@
     await poller?.refresh();
   }
 
-  let pulsed: string[] = [];
-  let pulseTimer: ReturnType<typeof setTimeout> | null = null;
-
-  function clearPulse(): void {
-    if (pulseTimer) clearTimeout(pulseTimer);
-    pulseTimer = null;
-    if (svgContainer && pulsed.length > 0) setPulse(svgContainer, pulsed, false);
-    pulsed = [];
-  }
+  let pulser: SeatPulser | null = null;
 
   /**
-   * Pulse up to 4 free seats of the tapped seat's category and price for 6 s.
-   * Positions come from the rendered circles (`getBBox`), never from the plan's
-   * cx/cy. Returns how many seats were lit.
+   * Pulse up to 4 free seats of the tapped seat's category and price for 6 s
+   * (holdDraw.createPulser). Returns how many seats were lit.
    */
   export function highlightNearest(seatKey: string): number {
-    clearPulse();
-    if (!svgContainer) return 0;
-    const circles = svgContainer.querySelectorAll<SVGGraphicsElement>('circle[data-seat-key]');
-    const spots: SeatSpot[] = [];
-    let target: SeatSpot | null = null;
-    for (const el of circles) {
-      const key = el.getAttribute('data-seat-key') ?? '';
-      if (!key) continue;
-      const cat = parseInt(el.getAttribute('data-cat') ?? '0', 10);
-      const cp = categoryPrices.find((c) => c.index === cat);
-      let box: DOMRect | SVGRect;
-      try {
-        box = el.getBBox();
-      } catch {
-        continue; // not rendered
-      }
-      const own = el.getAttribute('data-hold');
-      const spot: SeatSpot = {
-        key,
-        x: box.x + box.width / 2,
-        y: box.y + box.height / 2,
-        rowKey: el.closest('[data-row-key]')?.getAttribute('data-row-key') ?? '',
-        tierId: cp?.tier_id ?? `cat:${cat}`,
-        price: cp ? (cp.current_price ?? cp.price_amount ?? null) : null,
-        // The seat's own state: a seat of the buyer's hold or conflict is not offered.
-        status: own ? 'own' : (el.getAttribute('data-status') ?? 'available'),
-      };
-      if (key === seatKey) target = spot;
-      else spots.push(spot);
-    }
-    if (!target) return 0;
-    const keys = nearestSeats(target, spots, NEAREST_SEATS);
-    if (keys.length === 0) return 0;
-    pulsed = keys;
-    setPulse(svgContainer, keys, true);
-    pulseTimer = setTimeout(clearPulse, PULSE_MS);
-    return keys.length;
+    if (!holdDraw) return 0;
+    pulser ??= holdDraw.createPulser(() => svgContainer);
+    return pulser.highlight(seatKey, categoryPrices);
   }
 
   // ── Fit/reset ───────────────────────────────────────────────────────────────
@@ -657,7 +617,7 @@
 
   onDestroy(() => {
     poller?.stop();
-    if (pulseTimer) clearTimeout(pulseTimer);
+    pulser?.dispose();
     seatCard?.destroy();
     seatCard = null;
     if (svgContainer) {
@@ -696,12 +656,15 @@
     if (!svgContainer || !svgHTML) return;
     const held = heldKeys;
     const pending = pendingKeys;
+    // No hold chunk yet: no hold either, nothing to draw.
+    const draw = holdDraw;
+    if (!draw) return;
     // A new plan was drawn: nothing of the old marks is on it.
     if (prevHoldSvg !== svgHTML) {
       prevHoldSvg = svgHTML;
       prevHoldKeys = new Set();
     }
-    applyHoldStyles(svgContainer, held, pending, prevHoldKeys, catColorMap, seatStatuses);
+    draw.applyHoldStyles(svgContainer, held, pending, prevHoldKeys, catColorMap, seatStatuses);
     prevHoldKeys = new Set([...held, ...pending]);
   });
 
@@ -854,28 +817,6 @@
 
   .seat-map-container:active {
     cursor: grabbing;
-  }
-
-  /* Spec 67 §9: free seats lit after a seat was taken. The outline pulses for
-     6 s (the script removes the mark); with reduced motion it stays thick. */
-  :global(.seat-map-container circle[data-pulse='true']) {
-    stroke: #2563eb;
-    stroke-width: 4;
-    animation: arena-seat-pulse 0.9s ease-in-out infinite;
-  }
-  :global(.seat-map-container circle[data-hold='own']) {
-    stroke: #134e4a;
-    stroke-width: 2;
-  }
-  @keyframes arena-seat-pulse {
-    0%, 100% { stroke-width: 2; stroke-opacity: 1; }
-    50% { stroke-width: 6; stroke-opacity: 0.55; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    :global(.seat-map-container circle[data-pulse='true']) {
-      animation: none;
-      stroke-width: 5;
-    }
   }
 
   .seat-map-inner {

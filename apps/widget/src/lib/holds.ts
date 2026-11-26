@@ -24,15 +24,16 @@
  */
 
 import { ApiError, apiErrorFromResponse } from '../api.js';
-import { countdownSeconds } from './cart.js';
+import { holdSecondsLeft, type HoldPolicy } from './holdBasics.js';
+
+// This file loads lazily (lib/holdRuntime.ts). The small part the main bundle
+// needs lives in holdBasics.ts, the seat-map part in holdDraw.ts; both are
+// re-exported here so callers and tests keep one import.
+export { holdSecondsLeft, postCheckoutPaying } from './holdBasics.js';
+export { NEAREST_SEATS, PULSE_MS, nearestSeats } from './holdDraw.js';
+export type { HoldPolicy, SeatSpot } from './holdBasics.js';
 
 // ─── Types of the routes (hand-written for now, see the TODO above) ──────────
-
-export interface HoldPolicy {
-  select_seconds: number;
-  payment_seconds: number;
-  extend_seconds: number;
-}
 
 export interface HoldConflict {
   seat_key: string;
@@ -69,10 +70,6 @@ export type HoldStep = 'select' | 'payment';
 
 /** "Extend" shows when this many seconds are left (the server allows 75: clock drift). */
 export const EXTEND_WINDOW_SECONDS = 60;
-/** How many nearest free seats are pulsed after a seat was taken. */
-export const NEAREST_SEATS = 4;
-/** How long they pulse. */
-export const PULSE_MS = 6_000;
 /** The poll interval when the seat-status answer names none. */
 export const DEFAULT_POLL_MS = 3_000;
 /** A retry of a request that got no answer waits this long. */
@@ -213,29 +210,6 @@ export async function postHoldExtend(holdToken: string, apiBase: string): Promis
   return (await res.json()) as HoldResponse;
 }
 
-/**
- * POST /v1/public/checkout/{checkout_token}/paying (§4.8): "payment is going
- * on", sent right before Stripe confirms. Fire and forget: the payment never
- * waits for it. A network failure is sent once more.
- */
-export function postCheckoutPaying(checkoutToken: string, apiBase: string): void {
-  const url = `${apiBase}/v1/public/checkout/${encodeURIComponent(checkoutToken)}/paying`;
-  const send = (): Promise<unknown> => fetch(url, { method: 'POST', keepalive: true });
-  try {
-    void send().catch(() => {
-      setTimeout(() => {
-        try {
-          void send().catch(() => {});
-        } catch {
-          /* nothing to do */
-        }
-      }, 1_000);
-    });
-  } catch {
-    /* nothing to do */
-  }
-}
-
 async function readBody(res: Response): Promise<HoldResponse | null> {
   try {
     return (await res.json()) as HoldResponse;
@@ -245,11 +219,6 @@ async function readBody(res: Response): Promise<HoldResponse | null> {
 }
 
 // ─── The clock ───────────────────────────────────────────────────────────────
-
-/** Seconds left on the hold's own clock (never below zero). */
-export function holdSecondsLeft(expiresAt: string | null, nowMs: number = Date.now()): number {
-  return expiresAt ? countdownSeconds(expiresAt, nowMs) : 0;
-}
 
 /** The "Extend" button: the platform still has an extension and 60 s or fewer are left. */
 export function extendVisible(expiresAt: string | null, extendAvailable: boolean, nowMs: number = Date.now()): boolean {
@@ -262,34 +231,6 @@ export function extendVisible(expiresAt: string | null, extendAvailable: boolean
 export function extendMinutes(policy: HoldPolicy | null | undefined): number {
   const s = policy?.extend_seconds;
   return typeof s === 'number' && s > 0 ? Math.max(1, Math.round(s / 60)) : 5;
-}
-
-// ─── The nearest free seats (spec 67 §9) ─────────────────────────────────────
-
-/** One rendered seat: the centre comes from `getBBox()`, never from the plan's cx/cy. */
-export interface SeatSpot {
-  key: string;
-  x: number;
-  y: number;
-  rowKey: string;
-  tierId: string;
-  /** Price in minor units, or null when the category has none. */
-  price: number | null;
-  status: string;
-}
-
-/**
- * Up to `limit` free seats of the same category (tier) and the same price as
- * `target`, the seats of the same row first, then by distance.
- */
-export function nearestSeats(target: SeatSpot, all: readonly SeatSpot[], limit: number = NEAREST_SEATS): string[] {
-  const dist = (s: SeatSpot): number => Math.hypot(s.x - target.x, s.y - target.y);
-  return all
-    .filter((s) => s.key !== target.key && s.status === 'available' && s.tierId === target.tierId && s.price === target.price)
-    .map((s) => ({ key: s.key, same: s.rowKey === target.rowKey, d: dist(s) }))
-    .sort((a, b) => Number(b.same) - Number(a.same) || a.d - b.d || (a.key < b.key ? -1 : 1))
-    .slice(0, Math.max(0, limit))
-    .map((s) => s.key);
 }
 
 // ─── Error texts ─────────────────────────────────────────────────────────────

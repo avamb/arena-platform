@@ -228,6 +228,7 @@ Windows host, Docker Desktop, bash allowlist, lint and format tooling, git hygie
 * Tooling on this Windows host (2026-10-24)
 * A python script that writes a file in text mode (o…
 * The admin console's nginx takes its security headers from ONE file included in every location
+* A worktree's node_modules may be a junction to the main checkout's stale deps: measure size and run tests only after npm ci
 
 ### [Venue SVG generator](docs/agents/venue-generator.md)
 
