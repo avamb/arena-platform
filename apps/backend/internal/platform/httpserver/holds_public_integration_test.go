@@ -546,6 +546,10 @@ func TestHoldsPublic_PaymentStepAndExtend(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE reservations SET extensions_used = 0, expires_at = now() + interval '50 seconds' WHERE id = $1`, id); err != nil {
 		t.Fatal(err)
 	}
+	// The order copies the hold's expiry, as checkout/start writes it.
+	if _, err := pool.Exec(ctx, `UPDATE orders SET expires_at = (SELECT expires_at FROM reservations WHERE id = $2) WHERE id = $1`, orderID, id); err != nil {
+		t.Fatal(err)
+	}
 	code, pext := extend()
 	if code != http.StatusOK || pext.Step != "payment" {
 		t.Fatalf("extend on payment = %d %+v", code, pext)
@@ -555,6 +559,23 @@ func TestHoldsPublic_PaymentStepAndExtend(t *testing.T) {
 	_ = pool.QueryRow(ctx, `SELECT expires_at FROM orders WHERE id = $1`, orderID).Scan(&ordExp)
 	if !resExp.Equal(ordExp) {
 		t.Errorf("order expires %v, hold %v: want one expiry", ordExp, resExp)
+	}
+	// An order that already runs longer (a /paying window) is never moved
+	// backwards by an extension.
+	if _, err := pool.Exec(ctx, `UPDATE reservations SET extensions_used = 0, expires_at = now() + interval '50 seconds' WHERE id = $1`, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE orders SET expires_at = now() + interval '30 minutes' WHERE id = $1`, orderID); err != nil {
+		t.Fatal(err)
+	}
+	var later time.Time
+	_ = pool.QueryRow(ctx, `SELECT expires_at FROM orders WHERE id = $1`, orderID).Scan(&later)
+	if code, out := extend(); code != http.StatusOK {
+		t.Fatalf("second extend on payment = %d %q", code, out.code())
+	}
+	_ = pool.QueryRow(ctx, `SELECT expires_at FROM orders WHERE id = $1`, orderID).Scan(&ordExp)
+	if !ordExp.Equal(later) {
+		t.Errorf("order expires %v after the extension, want it kept at %v", ordExp, later)
 	}
 
 	// After the closing mark nothing extends.
@@ -718,6 +739,42 @@ func TestHoldsPublic_NoDeviceClicksHitDeviceLimit(t *testing.T) {
 	}
 	if st := phSeatStatus(t, ctx, pool, f.sessions[2], phSeat(1)); st != "available" {
 		t.Errorf("third hold took a seat: %q", st)
+	}
+}
+
+// A click without device_id never joins an open hold found by the address:
+// two visitors behind one address get two holds, and the second never gets
+// the first one's key.
+func TestHoldsPublic_NoDeviceClickNeverJoinsAnotherHold(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+	f := newPHFixture(t, ctx, pool, 1, 4)
+	srv := buildPHServer(t, pool)
+	s := f.sessions[0]
+	code, first := phPost(t, srv, f, phClick(s, "", phSeat(1)), "")
+	if code != http.StatusCreated || first.HoldToken == "" {
+		t.Fatalf("first no-device click = %d %q", code, first.code())
+	}
+	code, second := phPost(t, srv, f, phClick(s, "", phSeat(2)), "")
+	if code != http.StatusCreated {
+		t.Fatalf("second no-device click = %d %q", code, second.code())
+	}
+	if second.HoldToken == "" || second.HoldToken == first.HoldToken {
+		t.Fatalf("second click got the first hold's key %q", second.HoldToken)
+	}
+	if !reflect.DeepEqual(second.SeatKeys, []string{phSeat(2)}) {
+		t.Fatalf("second hold seats = %v, want only %s", second.SeatKeys, phSeat(2))
+	}
+	if n := phOpenHolds(t, ctx, pool, f.sessions); n != 2 {
+		t.Fatalf("open holds = %d, want 2", n)
+	}
+	var firstSeats int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM session_seats WHERE session_id = $1 AND reservation_id = $2`,
+		s, phHoldID(t, ctx, pool, first.HoldToken)).Scan(&firstSeats); err != nil {
+		t.Fatal(err)
+	}
+	if firstSeats != 1 {
+		t.Fatalf("seats of the first hold = %d, want 1", firstSeats)
 	}
 }
 

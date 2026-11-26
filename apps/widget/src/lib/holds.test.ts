@@ -524,6 +524,36 @@ describe('the feature is off on the platform (hold.disabled)', () => {
     }
   });
 
+  it('keeps an existing hold: the click is refused with hold.disabled, the feature stays on', async () => {
+    let off = false;
+    const r = rig({
+      post: async (body, key) => {
+        r.posts.push({ body, key });
+        if (off) throw new ApiError('off', { status: 503, code: 'hold.disabled' });
+        return hold([...(body.hold_token ? ['A-1'] : []), ...body.seat_keys]);
+      },
+    });
+    const handed: string[][] = [];
+    r.deps.onDisabled = (k) => handed.push(k);
+    const c = createHoldController(r.deps);
+    c.tap('A-1');
+    await c.idle();
+    expect(c.view.holdToken).toBe('tok-1');
+    off = true;
+    c.tap('A-2');
+    await c.idle();
+    expect(handed).toEqual([]);
+    expect(r.events.rejected.map((e) => e.code)).toEqual(['hold.disabled']);
+    expect(c.view.pending.has('A-2')).toBe(false);
+    expect(c.view.holdToken).toBe('tok-1');
+    expect([...c.view.held]).toEqual(['A-1']);
+    expect(r.storage.data.get(holdStorageKey('s1'))).toBe('tok-1');
+    // Not disabled: a later click is still sent.
+    expect(c.tap('A-3')).toBe('add');
+    await c.idle();
+    expect(r.posts).toHaveLength(3);
+  });
+
   it('a 404 with a hold code is not a disabled feature', () => {
     expect(holdFeatureOff(new ApiError('x', { status: 404, code: 'hold.expired' }))).toBe(false);
     expect(holdFeatureOff(new ApiError('x', { status: 409, code: 'hold.seats_taken' }))).toBe(false);

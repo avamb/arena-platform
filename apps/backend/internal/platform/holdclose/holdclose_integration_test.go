@@ -368,6 +368,58 @@ func TestHoldClose_Complete_SeatsKept_LiveDB(t *testing.T) {
 	}
 }
 
+// A checkout parked for an operator (manual_review) or a payment attempt that
+// succeeded owns the seats: closing the page never releases them, the mark is
+// taken back, and reservation.expire_sweep past its hard limit leaves them too.
+func TestHoldClose_ManualReviewOrSucceeded_SeatsKept_LiveDB(t *testing.T) {
+	pool := livePool(t)
+	f := newFixture(t, pool, 8)
+	ctx := context.Background()
+	review := f.newPaymentHold(1, 2, holdOpts{clickPath: true, expiredAgo: 30 * time.Second, pageIn: dur(15 * time.Minute)})
+	if _, err := pool.Exec(ctx, `UPDATE checkout_sessions SET state = 'manual_review' WHERE id = $1`, review.checkoutID); err != nil {
+		t.Fatal(err)
+	}
+	paid := f.newPaymentHold(3, 2, holdOpts{clickPath: true, expiredAgo: 30 * time.Second, pageIn: dur(15 * time.Minute)})
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO payment_intents (checkout_session_id, org_id, provider, provider_payment_id, amount, currency, state, succeeded_at)
+		VALUES ($1, $2, 'stripe', $3, 2500, 'EUR', 'succeeded', now())`,
+		paid.checkoutID, f.orgID, "cs_test_paid_"+uuid.NewString()[:12]); err != nil {
+		t.Fatal(err)
+	}
+	sp := newFakeStripe()
+	st := run(t, newProc(pool, sp))
+	if st.Released != 0 {
+		t.Fatalf("stats %+v, want nothing released", st)
+	}
+	for _, h := range []paymentHold{review, paid} {
+		f.assertSeats(h, "held")
+		res, ord, _, _ := f.state(h)
+		if res != "draft" || ord != "pending_payment" {
+			t.Fatalf("states reservation=%s order=%s, want untouched", res, ord)
+		}
+		if f.closingMark(h) != nil {
+			t.Fatal("closing mark left behind on a refused release")
+		}
+	}
+
+	// The sweep past its hard limit (page long gone) leaves them as well.
+	if _, err := pool.Exec(ctx, `UPDATE payment_intents SET page_expires_at = now() - interval '2 hours'
+		WHERE checkout_session_id = ANY($1::uuid[])`, []uuid.UUID{review.checkoutID, paid.checkoutID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE reservations SET expires_at = now() - interval '2 hours'
+		WHERE id = ANY($1::uuid[])`, []uuid.UUID{review.reservationID, paid.reservationID}); err != nil {
+		t.Fatal(err)
+	}
+	runReservationSweep(t, pool)
+	for _, h := range []paymentHold{review, paid} {
+		f.assertSeats(h, "held")
+		if s := f.str(`SELECT state FROM reservations WHERE id = $1`, h.reservationID); s != "draft" {
+			t.Fatalf("hold state after the sweep = %s, want draft", s)
+		}
+	}
+}
+
 func TestHoldClose_AlreadyExpiredAtStripe_SeatsFree_LiveDB(t *testing.T) {
 	pool := livePool(t)
 	f := newFixture(t, pool, 4)

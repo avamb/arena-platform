@@ -44,6 +44,18 @@ WHERE  r.state IN ('draft', 'active')
                            + make_interval(secs => $2::float8) > now())
                   )
        )
+  AND  NOT (
+           r.hold_token_hash IS NOT NULL
+       AND EXISTS (
+               SELECT 1
+               FROM   checkout_sessions cs
+               WHERE  cs.reservation_id = r.id
+                 AND  (cs.state = 'manual_review'
+                       OR EXISTS (SELECT 1 FROM payment_intents pi
+                                  WHERE  pi.checkout_session_id = cs.id
+                                    AND  pi.state = 'succeeded'))
+           )
+       )
 ORDER BY r.expires_at ASC
 LIMIT  $1
 FOR UPDATE OF r SKIP LOCKED`
@@ -58,9 +70,11 @@ FOR UPDATE OF r SKIP LOCKED`
 // in pageClosingProviders that has NO page_expires_at (a page whose expiry
 // was never recorded) is skipped as well, up to expires_at + the longest
 // page the hold's policy can make (max(minPageLifetime, payment + extend x
-// extend_count + paying)) + grace, so it can never stick forever. Rows of
-// the old path behave as before. Must be called inside a transaction (FOR
-// UPDATE SKIP LOCKED).
+// extend_count + paying)) + grace, so it can never stick forever. A hold of
+// the click with a checkout in manual_review or a succeeded payment attempt
+// is never a candidate: its seats belong to a payment (same guard as
+// holdclose's Release). Rows of the old path behave as before. Must be
+// called inside a transaction (FOR UPDATE SKIP LOCKED).
 func (q *Queries) GetExpiredReservationsHoldAware(ctx context.Context, limit int32, grace time.Duration, pageClosingProviders []string, minPageLifetime time.Duration) ([]ReservationRow, error) {
 	if pageClosingProviders == nil {
 		pageClosingProviders = []string{}

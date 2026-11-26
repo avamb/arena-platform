@@ -747,6 +747,8 @@
       },
       onDisabled: (keys) => {
         if (holdCtl !== ctl) return;
+        // An existing hold is never dropped: its seats stay the buyer's.
+        if (ctl.view.holdToken) return;
         holdDisabled = true;
         holdCtl = null;
         ctl.destroy();

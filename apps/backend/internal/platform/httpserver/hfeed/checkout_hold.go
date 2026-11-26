@@ -41,6 +41,7 @@ const (
 	ErrCodeHoldExpired   = "hold.expired"
 	ErrCodeHoldInPayment = "hold.in_payment"
 	ErrCodeHoldNotFound  = "hold.not_found"
+	ErrCodeHoldChanged   = "hold.changed"
 )
 
 // holdCheckout is what the confirmation transaction needs to know about the
@@ -48,10 +49,23 @@ const (
 type holdCheckout struct {
 	reservationID uuid.UUID
 	sessionID     uuid.UUID
-	policy        holdpolicy.Policy
+	// seatKeys are the seats the pricing transaction priced, in seat_key
+	// order (ListReservationSeats). The confirmation transaction refuses the
+	// checkout when the hold's seats are no longer exactly these.
+	seatKeys []string
+	policy   holdpolicy.Policy
 	// canExpirePage: the channel's provider can close its page, so the
 	// payment step is the policy's and the page gets page_expires_at.
 	canExpirePage bool
+}
+
+// WithHoldPricedHook installs a function called after the pricing
+// transaction of a checkout from a hold has committed and before the
+// confirmation transaction begins. Tests use it to change the hold in
+// between; production never sets it.
+func (h *Handler) WithHoldPricedHook(fn func(reservationID uuid.UUID)) *Handler {
+	h.holdPricedHook = fn
+	return h
 }
 
 // paymentStep is how long the payment step of this hold lasts from its
@@ -87,13 +101,11 @@ func (h *Handler) channelCanExpirePage(ctx context.Context, orgID, channelID uui
 // has written the answer and reports false.
 func (h *Handler) lockHoldForCheckout(
 	ctx context.Context, w http.ResponseWriter, r *http.Request,
-	txq *gen.Queries, holdToken string, sessionID uuid.UUID,
+	txq *gen.Queries, holdToken string, sessionID, orgID, channelID uuid.UUID,
 ) (gen.HoldCheckoutRow, []gen.SessionSeatRow, bool) {
 	hold, err := txq.LockHoldCheckoutByTokenHash(ctx, holdpolicy.HashHoldToken(holdToken))
 	if errors.Is(err, pgx.ErrNoRows) {
-		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-			ErrCodeHoldNotFound, "We cannot find these seats. Choose the seats again.", r,
-		))
+		writeHoldNotFound(w, r)
 		return hold, nil, false
 	}
 	if err != nil {
@@ -101,6 +113,12 @@ func (h *Handler) lockHoldForCheckout(
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"checkout.unavailable", "We could not check your seats. Try again in a minute.", r,
 		))
+		return hold, nil, false
+	}
+	if hold.OrgID != orgID || hold.ChannelID != channelID {
+		// A hold taken through another sales channel (or organization) is
+		// not this feed's: it is answered as unknown, like POST /holds does.
+		writeHoldNotFound(w, r)
 		return hold, nil, false
 	}
 	if hold.SessionID != sessionID {
@@ -171,6 +189,12 @@ func holdLive(hold gen.HoldCheckoutRow, now time.Time) bool {
 	return hold.ClosingStartedAt == nil && hold.ExpiresAt.After(now)
 }
 
+func writeHoldNotFound(w http.ResponseWriter, r *http.Request) {
+	httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+		ErrCodeHoldNotFound, "We cannot find these seats. Choose the seats again.", r,
+	))
+}
+
 func writeHoldExpired(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 		ErrCodeHoldExpired, "The time to hold these seats is over. Hold them again.", r,
@@ -184,7 +208,26 @@ const (
 	holdConfirmOK holdConfirmOutcome = iota
 	holdConfirmExpired
 	holdConfirmInPayment
+	// holdConfirmChanged: the hold's seats are not the seats the pricing
+	// transaction priced (a POST /holds or a DELETE of a seat came in
+	// between), so the priced total does not belong to them.
+	holdConfirmChanged
 )
+
+// sameSeatKeys reports whether the hold's current seats are exactly the
+// priced ones, every one still held by this hold. Both lists are in seat_key
+// order (ListReservationSeats).
+func sameSeatKeys(priced []string, reservationID uuid.UUID, current []gen.SessionSeatRow) bool {
+	if len(priced) == 0 || len(priced) != len(current) {
+		return false
+	}
+	for i, s := range current {
+		if s.SeatKey != priced[i] || s.Status != "held" || s.ReservationID == nil || *s.ReservationID != reservationID {
+			return false
+		}
+	}
+	return true
+}
 
 // startHoldPaymentStepTx is the first statement of the confirmation
 // transaction of a hold: the hold row locked and checked again, the payment
@@ -206,6 +249,15 @@ func (h *Handler) startHoldPaymentStepTx(ctx context.Context, txq *gen.Queries, 
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return time.Time{}, 0, err
 	}
+	// Under the hold lock the seat set cannot move any more (POST /holds and
+	// DELETE of a seat lock this row first): it must be the priced one.
+	current, err := txq.ListReservationSeats(ctx, row.ID)
+	if err != nil {
+		return time.Time{}, 0, err
+	}
+	if !sameSeatKeys(hold.seatKeys, row.ID, current) {
+		return time.Time{}, holdConfirmChanged, nil
+	}
 	if !paid || row.PaymentStartedAt != nil {
 		// Once per hold: a reopened order sheet keeps the time it had.
 		return row.ExpiresAt, holdConfirmOK, nil
@@ -220,9 +272,15 @@ func (h *Handler) startHoldPaymentStepTx(ctx context.Context, txq *gen.Queries, 
 // writeHoldConfirmRefusal answers a hold the confirmation transaction found
 // closed or already in a payment.
 func writeHoldConfirmRefusal(w http.ResponseWriter, r *http.Request, outcome holdConfirmOutcome) {
-	if outcome == holdConfirmInPayment {
+	switch outcome {
+	case holdConfirmInPayment:
 		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 			ErrCodeHoldInPayment, "These seats are already in a payment. Finish it, or cancel it first.", r,
+		))
+		return
+	case holdConfirmChanged:
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+			ErrCodeHoldChanged, "Your seats changed. Check the order and try again.", r,
 		))
 		return
 	}

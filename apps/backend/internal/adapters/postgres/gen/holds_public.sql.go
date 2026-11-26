@@ -322,13 +322,14 @@ func (q *Queries) ExtendPublicHold(ctx context.Context, reservationID uuid.UUID,
 
 const setPendingOrderExpiryForReservation = `-- name: SetPendingOrderExpiryForReservation :execrows
 UPDATE orders
-SET    expires_at = $2,
+SET    expires_at = GREATEST(expires_at, $2),
        updated_at = now()
 WHERE  reservation_id = $1
   AND  status = 'pending_payment'`
 
 // SetPendingOrderExpiryForReservation gives the hold's order waiting for
-// payment the same expiry as the hold; returns the rows changed.
+// payment the hold's new expiry, never an earlier one than it has; returns
+// the rows changed.
 func (q *Queries) SetPendingOrderExpiryForReservation(ctx context.Context, reservationID uuid.UUID, expiresAt time.Time) (int64, error) {
 	ct, err := q.db.Exec(ctx, setPendingOrderExpiryForReservation, reservationID, expiresAt)
 	if err != nil {

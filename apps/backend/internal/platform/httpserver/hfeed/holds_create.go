@@ -47,9 +47,13 @@ type holdCreateInput struct {
 	tokenHash  []byte
 	reholdHash []byte
 	deviceHash []byte
-	ipHash     []byte
-	policy     holdpolicy.Policy
-	now        time.Time
+	// deviceFromIP: the request had no device_id and deviceHash is the
+	// address hash. It still counts for the limits and the pause, but never
+	// finds another visitor's open hold to add the seats to.
+	deviceFromIP bool
+	ipHash       []byte
+	policy       holdpolicy.Policy
+	now          time.Time
 }
 
 // holdCreateOutcome is what the transaction did.
@@ -199,21 +203,26 @@ func (hh *HoldsHandler) checkCreate(w http.ResponseWriter, r *http.Request) (hol
 
 	ipHash := hh.ipHash(hh.h.clientIP(r))
 	deviceHash := hh.deviceHash(deviceID)
+	deviceFromIP := false
 	if deviceHash == nil {
 		// A click without device_id must not escape the per-device limits,
 		// the pause and the inherited deadline: the address stands in for the
-		// device, whether or not the address limits are switched on.
+		// device, whether or not the address limits are switched on. It never
+		// merges into an open hold of the address: people behind one address
+		// are different buyers (createHoldTx).
 		deviceHash = ipHash
+		deviceFromIP = deviceHash != nil
 	}
 	in := holdCreateInput{
-		sessionID:  sessionID,
-		orgID:      checkCtx.OrgID,
-		channelID:  checkCtx.SalesChannelID,
-		seatKeys:   seatKeys,
-		deviceHash: deviceHash,
-		ipHash:     ipHash,
-		policy:     policy,
-		now:        hh.now(),
+		sessionID:    sessionID,
+		orgID:        checkCtx.OrgID,
+		channelID:    checkCtx.SalesChannelID,
+		seatKeys:     seatKeys,
+		deviceHash:   deviceHash,
+		deviceFromIP: deviceFromIP,
+		ipHash:       ipHash,
+		policy:       policy,
+		now:          hh.now(),
 	}
 	if t := strings.TrimSpace(req.HoldToken); t != "" {
 		in.tokenHash = holdTokenHash(t)
@@ -257,7 +266,10 @@ func (hh *HoldsHandler) createHoldTx(ctx context.Context, q *gen.Queries, in hol
 		}
 		return hh.addToHoldTx(ctx, q, in, row)
 	}
-	if in.deviceHash != nil && in.reholdHash == nil {
+	// Only a real device id finds its open hold: the address hash that stands
+	// in for a missing device id would hand another visitor's hold (and its
+	// token) to this click.
+	if in.deviceHash != nil && !in.deviceFromIP && in.reholdHash == nil {
 		row, err := q.LockOpenDeviceHoldOnSession(ctx, in.sessionID, in.deviceHash)
 		switch {
 		case err == nil && row.ChannelID == in.channelID:

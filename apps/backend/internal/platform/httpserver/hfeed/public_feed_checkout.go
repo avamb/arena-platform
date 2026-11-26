@@ -757,7 +757,7 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 	// The hold row is locked first; nothing of the hold changes in this
 	// transaction, so a refusal below leaves the seats with the buyer.
 	if fromHold {
-		hold, locked, ok := h.lockHoldForCheckout(ctx, w, r, resQ, req.HoldToken, sessionID)
+		hold, locked, ok := h.lockHoldForCheckout(ctx, w, r, resQ, req.HoldToken, sessionID, checkCtx.OrgID, checkCtx.SalesChannelID)
 		if !ok {
 			return
 		}
@@ -808,9 +808,14 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 				seatTierPrices[tid] = l.UnitPrice
 			}
 		}
+		pricedKeys := make([]string, 0, len(locked))
+		for _, s := range locked {
+			pricedKeys = append(pricedKeys, s.SeatKey)
+		}
 		hc := &holdCheckout{
 			reservationID: hold.ID,
 			sessionID:     sessionID,
+			seatKeys:      pricedKeys,
 			policy:        holdpolicy.FromSnapshot(hold.HoldPolicy),
 			canExpirePage: holdCanExpirePage,
 		}
@@ -822,6 +827,9 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 			slog.Int64("total", bd.Total),
 			slog.String("currency", bd.Currency),
 		)
+		if h.holdPricedHook != nil {
+			h.holdPricedHook(hold.ID)
+		}
 		h.confirmPublicCheckout(ctx, w, r, checkCtx, hold.ID, checkoutToken, bd, promoCodeID, hold.ExpiresAt,
 			publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, seatTierPrices, req.ReturnURL, buyerLocale, consent, attr, growth,
 			wantsEmbeddedCheckout(req.Capabilities), req.Prepare, hc)

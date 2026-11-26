@@ -1,7 +1,7 @@
 -- hold_close.sql — the queries behind closing the provider payment page of an
 -- expired seat hold (spec 08_architecture/67 section 5.2), the hold-aware
 -- reservation sweep, the late-payment window bounds and the visitor hash
--- purge (spec 67 section 6.1). Migration 0225.
+-- purge (spec 67 section 6.1). Migration 0226.
 
 -- name: GetExpiredReservationsHoldAware :many
 -- reservation.expire_sweep's candidates: like GetExpiredReservations, but a
@@ -10,7 +10,9 @@
 -- to hold.close_payment until that hard limit. A hold of the click with an
 -- open attempt of a page-closing provider ($3) whose page_expires_at was never
 -- recorded is left to it too, up to expires_at + the longest page of its
--- policy (at least $4 seconds) + grace. A row of the old path is a candidate
+-- policy (at least $4 seconds) + grace. A hold of the click with a checkout
+-- in manual_review or a succeeded payment attempt is never a candidate (same
+-- guard as holdclose's Release). A row of the old path is a candidate
 -- exactly as before.
 SELECT r.id, r.org_id, r.channel_id, r.session_id, r.tier_id, r.user_id, r.quantity, r.state,
        r.expires_at, r.created_at, r.updated_at, r.cancelled_at, r.converted_at, r.expired_at
@@ -39,6 +41,18 @@ WHERE  r.state IN ('draft', 'active')
                                  + COALESCE((r.hold_policy ->> 'paying_seconds')::float8, 0)))
                            + make_interval(secs => $2::float8) > now())
                   )
+       )
+  AND  NOT (
+           r.hold_token_hash IS NOT NULL
+       AND EXISTS (
+               SELECT 1
+               FROM   checkout_sessions cs
+               WHERE  cs.reservation_id = r.id
+                 AND  (cs.state = 'manual_review'
+                       OR EXISTS (SELECT 1 FROM payment_intents pi
+                                  WHERE  pi.checkout_session_id = cs.id
+                                    AND  pi.state = 'succeeded'))
+           )
        )
 ORDER BY r.expires_at ASC
 LIMIT  $1

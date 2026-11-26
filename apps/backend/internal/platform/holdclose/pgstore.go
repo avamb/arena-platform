@@ -66,7 +66,9 @@ func (s *PGStore) OpenIntents(ctx context.Context, reservationID uuid.UUID, prov
 // Under the reservation lock it refuses (released=false, the mark cleared,
 // the hold tried again on the next pass) when the hold has an open payment
 // attempt that is not in intentIDs: a page recorded after OpenIntents was
-// read is open at the provider and must be closed first.
+// read is open at the provider and must be closed first. It refuses the same
+// way when a checkout of the hold is in manual_review or a payment attempt of
+// it succeeded: those seats belong to a payment.
 func (s *PGStore) Release(ctx context.Context, reservationID uuid.UUID, mark time.Time, intentIDs []uuid.UUID) (bool, error) {
 	var released bool
 	err := txretry.Do(ctx, txretry.DefaultAttempts, func() error {
@@ -115,6 +117,22 @@ func (s *PGStore) releaseOnce(ctx context.Context, reservationID uuid.UUID, mark
 	open, err := txq.LockOpenAttemptsOfReservation(ctx, reservationID)
 	if err != nil {
 		return false, fmt.Errorf("holdclose: lock payment attempts: %w", err)
+	}
+	// A checkout parked for an operator (manual_review) or a payment that
+	// succeeded owns these seats: they are never released here. The claim is
+	// taken back; the operator or the payment webhook decides.
+	paid, err := paymentOwnsHold(ctx, tx, reservationID, checkouts)
+	if err != nil {
+		return false, err
+	}
+	if paid {
+		if err := txq.ClearHoldCloseMark(ctx, reservationID, mark); err != nil {
+			return false, fmt.Errorf("holdclose: clear mark: %w", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return false, fmt.Errorf("holdclose: commit cleared mark: %w", err)
+		}
+		return false, nil
 	}
 	closed := make(map[uuid.UUID]struct{}, len(intentIDs))
 	for _, id := range intentIDs {
@@ -172,6 +190,29 @@ func (s *PGStore) releaseOnce(ctx context.Context, reservationID uuid.UUID, mark
 		return false, fmt.Errorf("holdclose: commit release: %w", err)
 	}
 	return true, nil
+}
+
+// paymentOwnsHold reports whether a checkout of the reservation is in
+// manual_review or one of its payment attempts succeeded. Read inside the
+// release transaction, after the checkouts are locked.
+func paymentOwnsHold(ctx context.Context, tx pgx.Tx, reservationID uuid.UUID, checkouts []gen.LockedCheckoutOfHold) (bool, error) {
+	for _, c := range checkouts {
+		if c.State == "manual_review" {
+			return true, nil
+		}
+	}
+	var succeeded bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+		    SELECT 1
+		    FROM   checkout_sessions cs
+		    JOIN   payment_intents pi ON pi.checkout_session_id = cs.id
+		    WHERE  cs.reservation_id = $1
+		      AND  pi.state = 'succeeded'
+		)`, reservationID).Scan(&succeeded); err != nil {
+		return false, fmt.Errorf("holdclose: succeeded payment lookup: %w", err)
+	}
+	return succeeded, nil
 }
 
 var _ Store = (*PGStore)(nil)

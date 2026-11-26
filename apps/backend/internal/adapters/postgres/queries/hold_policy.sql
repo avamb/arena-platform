@@ -1,5 +1,5 @@
 -- hold_policy.sql — seat hold times and limits (spec 67 section 7.1,
--- migration 0225). A profile is copied into reservations.hold_policy when a
+-- migration 0226). A profile is copied into reservations.hold_policy when a
 -- hold is created, so an edit here moves only new holds.
 
 -- name: ListHoldPolicyProfiles :many

@@ -350,9 +350,11 @@ export interface HoldControllerDeps {
   /** The platform refused with this code (hold.too_many_seats, ...) or the call failed (`hold.failed`). */
   onRejected?: (code: string, details: Record<string, unknown>) => void;
   /**
-   * The platform has the feature off (404/503 `hold.disabled`): the widget goes
-   * back to today's way for the whole page view, with no message. `seatKeys`
-   * are the seats clicked and not yet held; they become the plain selection.
+   * The platform has the feature off (404/503 `hold.disabled`) and there is no
+   * hold: the widget goes back to today's way for the whole page view, with no
+   * message. `seatKeys` are the seats clicked and not yet held; they become the
+   * plain selection. With a hold the click goes to `onRejected('hold.disabled')`
+   * instead and the hold is kept.
    */
   onDisabled?: (seatKeys: string[]) => void;
   /** The extension was taken, `minutes` long. */
@@ -555,9 +557,18 @@ export function createHoldController(deps: HoldControllerDeps): HoldController {
       try {
         res = await sendWithRetry(body, key);
       } catch (err) {
+        if (holdFeatureOff(err) && token) {
+          // The feature went off while this buyer has a hold: the hold is
+          // kept (its seats are the buyer's and its order may be paying), only
+          // this click is refused.
+          pending.delete(seatKey);
+          emit();
+          deps.onRejected?.('hold.disabled', err instanceof ApiError ? err.details : {});
+          return;
+        }
         if (holdFeatureOff(err)) {
-          // The feature is off on the platform: every click waiting behind
-          // this one falls back with it, silently.
+          // The feature is off on the platform and there is no hold: every
+          // click waiting behind this one falls back with it, silently.
           disabled = true;
           const keys = [...pending];
           pending = new Set();

@@ -1,5 +1,5 @@
 -- holds_public.sql — the public seat hold at the moment of the click (spec
--- 08_architecture/67, section 4, migration 0225). Companion hand-written gen
+-- 08_architecture/67, section 4, migration 0226). Companion hand-written gen
 -- file: apps/backend/internal/adapters/postgres/gen/holds_public.sql.go
 --
 -- A public hold is a reservations row with hold_token_hash set. Only the
@@ -148,8 +148,9 @@ RETURNING id, org_id, channel_id, session_id, quantity, state, expires_at, creat
           closing_started_at, hold_policy;
 
 -- name: SetPendingOrderExpiryForReservation :execrows
+-- Never moves an order's expiry backwards (GREATEST skips a NULL).
 UPDATE orders
-SET    expires_at = $2,
+SET    expires_at = GREATEST(expires_at, $2),
        updated_at = now()
 WHERE  reservation_id = $1
   AND  status = 'pending_payment';
