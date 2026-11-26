@@ -42,10 +42,18 @@ export function SellerChannelCard({ orgId, channel }: { orgId: string; channel: 
   }, [channel.public_contact?.email, channel.public_contact?.phone]);
 
   const save = useMutation({
-    mutationFn: (contact: { email?: string | null; phone?: string | null }) => patchSellerDisplay(orgId, channel.id, contact),
+    mutationFn: (contact: { email?: string | null; phone?: string | null }) => patchSellerDisplay(orgId, channel.id, { public_contact: contact }),
     onSuccess: (profile) => {
       queryClient.setQueryData(["sellerProfile", orgId], profile);
       setNote("saved");
+    },
+  });
+
+  // The posters switch saves at once, like a toggle, and leaves the contact form alone.
+  const savePosters = useMutation({
+    mutationFn: (on: boolean) => patchSellerDisplay(orgId, channel.id, { thank_you_posters: on }),
+    onSuccess: (profile) => {
+      queryClient.setQueryData(["sellerProfile", orgId], profile);
     },
   });
 
@@ -125,6 +133,20 @@ export function SellerChannelCard({ orgId, channel }: { orgId: string; channel: 
             {t("orgData.page.personal")}
           </p>
         )}
+        <label className="check" data-testid="seller-thank-you-posters-row">
+          <input
+            type="checkbox"
+            checked={savePosters.isPending ? (savePosters.variables ?? channel.thank_you_posters) : channel.thank_you_posters}
+            disabled={savePosters.isPending}
+            onChange={(e) => {
+              savePosters.reset();
+              savePosters.mutate(e.target.checked);
+            }}
+            data-testid="seller-thank-you-posters"
+          />{" "}
+          {t("orgData.page.thankYouPosters")}
+        </label>
+        {savePosters.error !== null && <SellerErrorNotice error={savePosters.error} testId="seller-posters-error" />}
         {save.error !== null && <SellerErrorNotice error={save.error} testId="seller-save-error" />}
         {note === "saved" && (
           <p className="notice notice-ok" role="status" data-testid="seller-saved">

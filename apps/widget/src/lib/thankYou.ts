@@ -25,6 +25,8 @@ export interface SocialLink {
 export interface FeedSite {
   thank_you: ThankYouNote | null;
   socials: SocialLink[];
+  /** Posters on the related cards; true when the server does not say. */
+  thank_you_posters: boolean;
 }
 
 export type ShareNetwork = 'facebook' | 'linkedin' | 'reddit' | 'telegram' | 'whatsapp' | 'email' | 'x';
@@ -115,6 +117,7 @@ export async function loadFeedSite(feedToken: string, apiBase: string): Promise<
     return {
       thank_you: noteVisible(raw?.thank_you) ? raw.thank_you : null,
       socials: cleanSocials(raw?.socials),
+      thank_you_posters: raw?.thank_you_posters !== false,
     };
   } catch {
     return null;
@@ -129,6 +132,8 @@ export interface RelatedEvent {
   date: string;
   /** Venue zone for the date (the venue holding that session), else the first known zone, else null. */
   timezone: string | null;
+  /** Poster (or event image) address, null when the event has none. */
+  posterUrl: string | null;
 }
 
 /** The zone of the venue whose sessions contain the chosen date, else the first venue with a zone. */
@@ -144,8 +149,8 @@ function relatedTimezone(e: FeedEventSummary, date: string): string | null {
 
 /**
  * Up to `limit` future events other than the current one that have a page
- * address, nearest first. No poster is needed: the card shows only name, date
- * and time. A date in the past or missing drops the event.
+ * address, nearest first. No poster is needed: an event without one keeps its
+ * card, only without a picture. A date in the past or missing drops the event.
  */
 export function pickRelatedEvents(
   events: FeedEventSummary[] | null | undefined,
@@ -172,7 +177,8 @@ export function pickRelatedEvents(
       date = e.last_session_at as string;
     }
     if (Number.isNaN(at)) continue;
-    rows.push({ id: e.id, name: e.name, pageUrl, date, timezone: relatedTimezone(e, date), at });
+    const posterUrl = (e.poster_url ?? '').trim() || (e.image_url ?? '').trim() || null;
+    rows.push({ id: e.id, name: e.name, pageUrl, date, timezone: relatedTimezone(e, date), posterUrl, at });
   }
   rows.sort((a, b) => a.at - b.at);
   return rows.slice(0, limit).map(({ at: _at, ...r }) => r);

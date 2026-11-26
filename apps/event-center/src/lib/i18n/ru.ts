@@ -1108,6 +1108,7 @@ export const ru: Record<MessageKey, string> = {
   "orgData.page.phone": "Публичный телефон",
   "orgData.page.phone.hint": "С кодом страны, например +34 600 000 000. Можно оставить пустым.",
   "orgData.page.personal": "Похоже на личный ящик. Лучше завести отдельный адрес для билетов, например tickets@ваш-сайт.com. Если хотите, оставьте этот.",
+  "orgData.page.thankYouPosters": "Показывать афиши в блоке «Вам может понравиться» после покупки",
   "orgData.page.save": "Сохранить контакт страницы",
   "orgData.tg.title": "Сообщения покупателей",
   "orgData.tg.on": "Сообщения покупателей приходят на e-mail страницы продаж и ещё в ваш чат продаж в Telegram.",

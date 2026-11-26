@@ -69,7 +69,7 @@
   {#if checkoutToken && marketingOffer}
     <NewsletterBlock {s} {checkoutToken} {apiBase} offer={marketingOffer} />
   {/if}
-  <RelatedBlock {s} events={related} {locale} />
+  <RelatedBlock {s} events={related} {locale} posters={site?.thank_you_posters ?? true} />
 </div>
 
 <style>
@@ -92,4 +92,7 @@
   .ty :global(.ty-cards) { list-style: none; margin: 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: 0.75rem; }
   .ty :global(.ty-ev) { display: flex; flex-direction: column; gap: 0.25rem; text-decoration: none; text-align: start; color: var(--arena-color-primary, #1a1a1a); font-size: 0.875rem; }
   .ty :global(.ty-ev small) { opacity: 0.7; font-size: 0.8125rem; }
+  .ty :global(.ty-cards--posters) { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: 0.75rem; }
+  .ty :global(.ty-cards--posters .ty-ev) { height: 100%; }
+  .ty :global(.ty-poster) { display: block; width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: var(--arena-radius, 8px); }
 </style>

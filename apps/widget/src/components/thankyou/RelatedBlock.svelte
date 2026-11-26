@@ -7,8 +7,10 @@
     s: ThankYouStrings;
     events: RelatedEvent[];
     locale?: string;
+    /** Draw each event's poster above its name (site setting). */
+    posters?: boolean;
   }
-  const { s, events, locale = 'en' }: Props = $props();
+  const { s, events, locale = 'en', posters = true }: Props = $props();
 
   function when(iso: string, timeZone: string | null): string {
     try {
@@ -29,10 +31,13 @@
 {#if events.length > 0}
   <section class="ty-block" data-testid="ty-related">
     <h3 class="ty-title">{s.related_title}</h3>
-    <ul class="ty-cards">
+    <ul class="ty-cards" class:ty-cards--posters={posters}>
       {#each events as e (e.id)}
         <li>
           <a class="ty-ev" href={e.pageUrl} target="_blank" rel="noopener noreferrer">
+            {#if posters && e.posterUrl}
+              <img class="ty-poster" src={e.posterUrl} alt="" loading="lazy" />
+            {/if}
             <b>{e.name}</b>
             <small>{when(e.date, e.timezone)}</small>
           </a>

@@ -75,6 +75,41 @@ describe('ThankYouBlocks', () => {
     expect(q('ty-related')!.querySelector('img')).toBeNull();
   });
 
+  const relatedAnswer = (site: unknown) => (url: string) => {
+    if (url.endsWith('/site')) return json(site);
+    return json({
+      events: [
+        { id: 'n1', name: 'With', page_url: 'https://site/n1', poster_url: 'https://cdn/p1.jpg',
+          first_session_at: '2099-01-01T10:00:00Z', last_session_at: '2099-01-01T12:00:00Z' },
+        { id: 'n2', name: 'Without', page_url: 'https://site/n2',
+          first_session_at: '2099-02-01T10:00:00Z', last_session_at: '2099-02-01T12:00:00Z' },
+      ],
+    });
+  };
+
+  it('draws posters above name and date when thank_you_posters is true', async () => {
+    const { q } = await show(relatedAnswer({ ...SITE, thank_you_posters: true }));
+    const cards = q('ty-related')!;
+    expect(cards.querySelectorAll('li').length).toBe(2);
+    expect(cards.querySelectorAll('img').length).toBe(1);
+    expect(cards.querySelector('img')!.getAttribute('src')).toBe('https://cdn/p1.jpg');
+    expect(cards.querySelector('ul')!.classList.contains('ty-cards--posters')).toBe(true);
+    expect(cards.querySelector('li a')!.firstElementChild!.tagName).toBe('IMG');
+  });
+
+  it('treats an absent thank_you_posters as posters on', async () => {
+    const { q } = await show(relatedAnswer(SITE));
+    expect(q('ty-related')!.querySelectorAll('img').length).toBe(1);
+  });
+
+  it('draws the text list without images when thank_you_posters is false', async () => {
+    const { q } = await show(relatedAnswer({ ...SITE, thank_you_posters: false }));
+    const cards = q('ty-related')!;
+    expect(cards.querySelectorAll('li').length).toBe(2);
+    expect(cards.querySelector('img')).toBeNull();
+    expect(cards.querySelector('ul')!.classList.contains('ty-cards--posters')).toBe(false);
+  });
+
   it('hides follow, promo and related on 404 but keeps share', async () => {
     const { q } = await show(() => json({ error: { code: 'not_found' } }, 404));
     expect(q('ty-follow')).toBeNull();

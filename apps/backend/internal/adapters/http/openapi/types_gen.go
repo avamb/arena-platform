@@ -9932,6 +9932,9 @@ type FeedSiteSettings struct {
 
 	// ThankYou The thank-you block, or null when the organizer set none.
 	ThankYou *FeedSiteThankYou `json:"thank_you"`
+
+	// ThankYouPosters Whether the "You may also like" block of the thank-you page shows posters. The organizer switches it per sales channel (`settings.site.thank_you_posters`); true when never set.
+	ThankYouPosters bool `json:"thank_you_posters"`
 }
 
 // FeedSiteSocial One social-network link of the organizer.
@@ -20167,6 +20170,10 @@ type SellerProfileChannel struct {
 	// clients. It no longer decides whether the sales page shows the
 	// block; read `seller_shown`.
 	ShowSeller bool `json:"show_seller"`
+
+	// ThankYouPosters Whether the "You may also like" block of the thank-you page shows
+	// posters (`settings.site.thank_you_posters`). True when never set.
+	ThankYouPosters bool `json:"thank_you_posters"`
 }
 
 // SellerProfileContact The contact a hosted-page channel publishes
@@ -24519,6 +24526,9 @@ type UpdateSellerDisplayRequest struct {
 
 	// ShowSeller Legacy flag kept for older clients. It no longer decides whether the page shows the block.
 	ShowSeller *bool `json:"show_seller,omitempty"`
+
+	// ThankYouPosters True shows posters in the "You may also like" block of the thank-you page, false shows names and dates only. Absent keeps the stored value. Never refused for missing seller data.
+	ThankYouPosters *bool `json:"thank_you_posters,omitempty"`
 }
 
 // UpdateSellerProfileRequest The organization-wide switches. Every key is optional; at least one is
