@@ -39,6 +39,6 @@ SELECT
   (SELECT greatest(0, count(*) - (SELECT capacity_total FROM led)) FROM live_tickets)    AS tickets_over_capacity,
   (SELECT abs(count(*) - (SELECT capacity_sold FROM led)) FROM live_tickets)             AS ledger_sold_vs_tickets_drift,
   (SELECT abs((SELECT count(*) FROM session_seats WHERE session_id = :'session_id'
-                AND kind = 'ga_unit' AND status = 'sold') - (SELECT capacity_sold FROM led))) AS units_sold_vs_ledger_drift,
+                AND kind IN ('ga_unit','seat') AND status = 'sold') - (SELECT capacity_sold FROM led))) AS units_sold_vs_ledger_drift,
   (SELECT count(*) FROM reservations WHERE session_id = :'session_id'
      AND state IN ('draft','active') AND expires_at < now() - interval '2 minutes')      AS holds_expired_over_2m_not_released;

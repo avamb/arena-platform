@@ -71,6 +71,7 @@ logs/
 
 # k6 load test results (generated artifacts; not source)
 ops/loadtest/results/*.json
+ops/loadtest/results/*.jsonl
 ops/loadtest/results/*.gz
 ops/loadtest/results/*.txt
 
