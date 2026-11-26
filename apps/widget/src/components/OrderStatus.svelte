@@ -23,6 +23,7 @@
   } from '../lib/checkout.js';
   import { countdownSeconds, isTwoMinWarning, formatCountdown } from '../lib/cart.js';
   import ReferralInvite from './ReferralInvite.svelte';
+  import type { Component } from 'svelte';
 
   interface Props {
     status: CheckoutStatusResponse;
@@ -48,6 +49,10 @@
     /** The order's checkout token. A paid order uses it to ask for the buyer's
      * "Refer a friend" code; without it the block is simply not drawn. */
     checkoutToken?: string | null;
+    /** Feed token: the paid view reads the organizer's thank-you note, socials and other events with it. */
+    feedToken?: string;
+    /** The event of the order (page address and name for the share links). */
+    event?: { id?: string; name?: string; page_url?: string } | null;
     /** Whether a recovery or resend action is in flight. */
     actionLoading?: boolean;
     /** Error from a recovery or resend action. */
@@ -64,11 +69,29 @@
     onDone,
     apiBase = '',
     checkoutToken = null,
+    feedToken = '',
+    event = null,
     actionLoading = false,
     actionError = null,
   }: Props = $props();
 
   const t = $derived(getCheckoutI18n(locale));
+
+  // The thank-you blocks live in their own chunk, fetched only when the paid
+  // view shows. A failed load leaves the blocks out, with no error UI.
+  let ThankYou = $state<Component<any> | null>(null);
+  $effect(() => {
+    if (status.status !== 'paid' || ThankYou) return;
+    let alive = true;
+    import('./thankyou/ThankYouBlocks.svelte')
+      .then((m) => {
+        if (alive) ThankYou = m.default as Component<any>;
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  });
 
   // Hold countdown timer driven by server-side expires_at (WID-T3)
   let secondsLeft = $state(0);
@@ -221,6 +244,17 @@
         >
           {t.buy_more}
         </button>
+      {/if}
+
+      {#if ThankYou}
+        <ThankYou
+          {locale}
+          {apiBase}
+          {feedToken}
+          {checkoutToken}
+          {event}
+          marketingOffer={status.marketing_offer ?? null}
+        />
       {/if}
     </div>
 

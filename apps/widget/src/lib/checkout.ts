@@ -411,6 +411,8 @@ export interface CheckoutStatusResponse {
   payment?: PaymentBlock | null;
   items: CheckoutStatusItem[];
   tickets: CheckoutStatusTicketItem[];
+  /** The mailing subscription the thank-you page may offer; null or absent when none. */
+  marketing_offer?: { org_name: string; text_version: string } | null;
 }
 
 /** Response from POST /v1/public/checkout/{token}/recover. */

@@ -238,6 +238,10 @@ func (s *Server) handlePublicFeedSeries(w http.ResponseWriter, r *http.Request) 
 	s.feedHandler().HandlePublicFeedSeries(w, r)
 }
 
+func (s *Server) handlePublicFeedSite(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandlePublicFeedSite(w, r)
+}
+
 func (s *Server) handlePublicFeedSeriesItem(w http.ResponseWriter, r *http.Request) {
 	s.feedHandler().HandlePublicFeedSeriesItem(w, r)
 }

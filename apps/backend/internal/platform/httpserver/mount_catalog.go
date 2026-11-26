@@ -267,6 +267,7 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 		r.Get("/public/feeds/{feed_token}/events", s.handlePublicFeedEvents)
 		r.Get("/public/feeds/{feed_token}/events/{event_id}", s.handlePublicFeedEvent)
 		// Tours (event_series): shown to a feed through its visible events.
+		r.Get("/public/feeds/{feed_token}/site", s.handlePublicFeedSite)
 		r.Get("/public/feeds/{feed_token}/series", s.handlePublicFeedSeries)
 		r.Get("/public/feeds/{feed_token}/series/{series_id}", s.handlePublicFeedSeriesItem)
 		// Hosted tour page; "series" is a fixed segment of three, so it never
@@ -318,6 +319,8 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 		r.Patch("/public/checkout/{checkout_token}/consent", s.handlePublicCheckoutConsent)
 		// The buyer's "Refer a friend" code and share link (spec 52).
 		r.Get("/public/checkout/{checkout_token}/referral", s.handlePublicCheckoutReferral)
+		// The thank-you page subscribes the order's buyer to the organizer's mailings.
+		r.Post("/public/checkout/{checkout_token}/marketing", s.handlePublicCheckoutMarketing)
 	}
 	if s.checkoutQueries != nil && s.ticketQueries != nil && s.credentialQueries != nil {
 		r.Get("/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf", s.handlePublicTicketPDF)

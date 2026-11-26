@@ -527,6 +527,7 @@
   }
 
   function onWheel(e: WheelEvent): void {
+    // The wheel zooms the plan inside its own clipped window (owner decision 24.11, as Ticket Tailor does).
     e.preventDefault();
     if (!svgContainer) return;
     hideSeatCard();

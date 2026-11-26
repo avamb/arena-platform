@@ -687,6 +687,9 @@ Public page materials, seller block, terms, consent, statistics beacon, widget l
 * The organizer's terms of sale are a template plus…
 * The hosted page's statistics beacon (task 2-3, HP-…
 * Content translations (migration 0220): one table for events and series, a manual text is never overwritten by the machine
+* The widget thank-you page: /site, page_url, a separate newsletter consent by checkout token with its own text version
+* The widget bundle is an ES module: an organizer's site needs ACAO on /widget/v1/ and its origin in API CORS
+* GET /v1/public/feeds/{feed_token}/site returns only thank_you from the channel's site settings
 
 ### [Posters, formatted text and the Telegram mini app](docs/agents/posters-rich-text-miniapp.md)
 
