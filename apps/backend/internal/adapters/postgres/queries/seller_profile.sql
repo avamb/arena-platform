@@ -22,7 +22,8 @@ SELECT id, name,
        COALESCE(settings #>> '{hosted_page,show_seller}', '') = 'true' AS show_seller,
        COALESCE(settings #>> '{hosted_page,seller_hidden}', '') = 'true' AS seller_hidden,
        settings #> '{hosted_page,public_contact}' AS public_contact,
-       COALESCE(settings #>> '{hosted_page,consent_required}', '') = 'true' AS consent_required
+       COALESCE(settings #>> '{hosted_page,consent_required}', '') = 'true' AS consent_required,
+       COALESCE(settings #> '{site,thank_you_posters}' <> 'false'::jsonb, true) AS thank_you_posters
 FROM sales_channels
 WHERE org_id = $1
   AND deleted_at IS NULL
@@ -163,6 +164,21 @@ SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{hosted_page}',
              THEN COALESCE(settings -> 'hosted_page', '{}'::jsonb) || jsonb_build_object('consent_required', true)
              ELSE COALESCE(settings -> 'hosted_page', '{}'::jsonb) - 'consent_required'
         END, true),
+    updated_at = now()
+WHERE id = $1
+  AND org_id = $2
+  AND deleted_at IS NULL
+  AND settings #>> '{hosted_page,enabled}' = 'true';
+
+-- name: SetChannelThankYouPosters :execrows
+-- SetChannelThankYouPosters writes the boolean settings.site.thank_you_posters
+-- ($3) of a hosted-page channel of the organization: whether the "You may also
+-- like" block of the thank-you page shows posters. Every other settings key is
+-- left as it is.
+UPDATE sales_channels
+SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{site}',
+        CASE WHEN jsonb_typeof(settings -> 'site') = 'object' THEN settings -> 'site' ELSE '{}'::jsonb END
+        || jsonb_build_object('thank_you_posters', $3::boolean), true),
     updated_at = now()
 WHERE id = $1
   AND org_id = $2

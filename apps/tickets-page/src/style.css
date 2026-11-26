@@ -291,6 +291,12 @@ a {
    ratio decide the height. The height cap is in vh, not px, so a tall
    portrait poster still leaves the date/ticket block visible without a
    scroll on a phone. */
+/* Paid order: the poster and the description give way to "Payment successful". */
+.asa-hero--paid .asa-hero-image,
+.asa-hero--paid .asa-hero-description {
+  display: none;
+}
+
 .asa-hero-image {
   display: block;
   width: auto;

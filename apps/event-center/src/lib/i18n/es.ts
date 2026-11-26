@@ -1108,6 +1108,7 @@ export const es: Record<MessageKey, string> = {
   "orgData.page.phone": "Teléfono público",
   "orgData.page.phone.hint": "Con el prefijo del país, por ejemplo +34 600 000 000. Puedes dejarlo vacío.",
   "orgData.page.personal": "Parece un buzón personal. Te sugerimos una dirección aparte para entradas, por ejemplo tickets@tu-web.com. Si lo prefieres, puedes dejar esta.",
+  "orgData.page.thankYouPosters": "Mostrar los carteles en el bloque \"Quizá también te guste\" después de la compra",
   "orgData.page.save": "Guardar el contacto de la página",
   "orgData.tg.title": "Mensajes de compradores",
   "orgData.tg.on": "Los mensajes de compradores llegan al correo de la página de venta y también a tu chat de ventas en Telegram.",

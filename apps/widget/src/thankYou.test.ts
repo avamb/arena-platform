@@ -71,19 +71,29 @@ describe('thank-you visibility', () => {
 });
 
 describe('related events', () => {
-  it('keeps future events with page_url and poster, excludes the current one, nearest first, max 3', () => {
+  it('keeps future events with a page_url (poster not needed), excludes the current one, nearest first, max 3', () => {
     const d = (iso: string) => ({ first_session_at: iso, last_session_at: iso });
     const list = [
       ev({ id: 'cur' }),
       ev({ id: 'past', ...d('2026-01-01T00:00:00Z') }),
       ev({ id: 'nopage', page_url: '' }),
-      ev({ id: 'noposter', poster_url: null, image_url: null }),
       ev({ id: 'late', ...d('2027-03-01T00:00:00Z') }),
-      ev({ id: 'soon', ...d('2026-11-30T00:00:00Z') }),
+      ev({ id: 'soon', poster_url: null, image_url: null, ...d('2026-11-30T00:00:00Z') }),
       ev({ id: 'mid1', ...d('2026-12-10T00:00:00Z') }),
       ev({ id: 'mid2', ...d('2026-12-20T00:00:00Z') }),
     ];
     expect(pickRelatedEvents(list, 'cur', NOW).map((e) => e.id)).toEqual(['soon', 'mid1', 'mid2']);
+  });
+  it('takes the zone of the venue holding the chosen session, else the first zone, else null', () => {
+    const iso = '2026-12-05T18:00:00Z';
+    const v = (timezone: string | null, starts: string[]) =>
+      ({ name: 'V', country: null, city: null, address: null, postal_code: null, timezone, session_starts: starts });
+    const d = { first_session_at: iso, last_session_at: iso };
+    const pick = (venues: unknown) =>
+      pickRelatedEvents([ev({ id: 'a', ...d, venues } as Partial<FeedEventSummary>)], 'cur', NOW)[0]!.timezone;
+    expect(pick([v('Europe/Madrid', ['2027-01-01T00:00:00Z']), v('Europe/Prague', [iso])])).toBe('Europe/Prague');
+    expect(pick([v(null, []), v('Asia/Jerusalem', ['2030-01-01T00:00:00Z'])])).toBe('Asia/Jerusalem');
+    expect(pick(undefined)).toBeNull();
   });
   it('is empty when nothing fits', () => {
     expect(pickRelatedEvents([ev({ id: 'cur' })], 'cur', NOW)).toEqual([]);

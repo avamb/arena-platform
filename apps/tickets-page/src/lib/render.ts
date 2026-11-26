@@ -328,6 +328,20 @@ export function renderEvent(
   widgetSection.appendChild(widget);
   container.appendChild(widgetSection);
 
+  // A paid order (fresh, or a return from the hosted payment page with an
+  // already-paid checkout_token: the widget fires the event on both paths)
+  // drops the poster and description so "Payment successful" is what the
+  // buyer sees; the title and the date/venue line stay.
+  widget.addEventListener('arena:order_paid', () => {
+    hero.classList.add('asa-hero--paid');
+    const reduce =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (typeof widgetSection.scrollIntoView === 'function') {
+      widgetSection.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+    }
+  });
+
   // Gallery, videos, map, other sellers and the photo report — under the
   // purchase card so the buying flow keeps the top of the page, and only the
   // sections the event has data for (an older backend sends none).

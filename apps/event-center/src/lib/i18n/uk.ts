@@ -1071,6 +1071,7 @@ export const uk: Record<MessageKey, string> = {
   "orgData.page.phone": "Телефон на сторінці",
   "orgData.page.phone.hint": "З кодом країни, наприклад +34 600 000 000. Можна залишити порожнім.",
   "orgData.page.personal": "Схоже, це особиста адреса e-mail. Для квитків радимо іншу адресу, наприклад tickets@your-site.com. Цю адресу можна залишити.",
+  "orgData.page.thankYouPosters": "Показувати афіші в блоці «Вам може сподобатися» після покупки",
   "orgData.page.save": "Зберегти контакт сторінки",
   "orgData.tg.title": "Повідомлення покупців",
   "orgData.tg.on": "Ми надсилаємо повідомлення покупців на e-mail сторінки продажу та у ваш чат продажів у Telegram.",

@@ -44,6 +44,9 @@ type SellerChannelRow struct {
 	// ConsentRequired: the buyer must accept the sale terms at checkout
 	// (settings.hosted_page.consent_required, P2).
 	ConsentRequired bool
+	// ThankYouPosters: the thank-you page's "You may also like" block shows
+	// posters (settings.site.thank_you_posters; true when absent).
+	ThankYouPosters bool
 	// PublicContact is settings.hosted_page.public_contact as raw JSON, nil
 	// when the channel has none.
 	PublicContact []byte
@@ -54,7 +57,8 @@ SELECT id, name,
        COALESCE(settings #>> '{hosted_page,show_seller}', '') = 'true' AS show_seller,
        COALESCE(settings #>> '{hosted_page,seller_hidden}', '') = 'true' AS seller_hidden,
        settings #> '{hosted_page,public_contact}' AS public_contact,
-       COALESCE(settings #>> '{hosted_page,consent_required}', '') = 'true' AS consent_required
+       COALESCE(settings #>> '{hosted_page,consent_required}', '') = 'true' AS consent_required,
+       COALESCE(settings #> '{site,thank_you_posters}' <> 'false'::jsonb, true) AS thank_you_posters
 FROM sales_channels
 WHERE org_id = $1
   AND deleted_at IS NULL
@@ -72,7 +76,7 @@ func (q *Queries) ListSellerChannels(ctx context.Context, orgID uuid.UUID) ([]Se
 	var out []SellerChannelRow
 	for rows.Next() {
 		var r SellerChannelRow
-		if err := rows.Scan(&r.ID, &r.Name, &r.ShowSeller, &r.SellerHidden, &r.PublicContact, &r.ConsentRequired); err != nil {
+		if err := rows.Scan(&r.ID, &r.Name, &r.ShowSeller, &r.SellerHidden, &r.PublicContact, &r.ConsentRequired, &r.ThankYouPosters); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -154,6 +158,28 @@ WHERE id = $1
 // it only while the seller profile is complete.
 func (q *Queries) SetChannelConsentRequired(ctx context.Context, channelID, orgID uuid.UUID, required bool) (bool, error) {
 	tag, err := q.db.Exec(ctx, setChannelConsentRequired, channelID, orgID, required)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+const setChannelThankYouPosters = `-- name: SetChannelThankYouPosters :execrows
+UPDATE sales_channels
+SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{site}',
+        CASE WHEN jsonb_typeof(settings -> 'site') = 'object' THEN settings -> 'site' ELSE '{}'::jsonb END
+        || jsonb_build_object('thank_you_posters', $3::boolean), true),
+    updated_at = now()
+WHERE id = $1
+  AND org_id = $2
+  AND deleted_at IS NULL
+  AND settings #>> '{hosted_page,enabled}' = 'true'`
+
+// SetChannelThankYouPosters writes settings.site.thank_you_posters of a
+// hosted-page channel of the organization and reports whether such a channel
+// was updated. Every other settings key is kept.
+func (q *Queries) SetChannelThankYouPosters(ctx context.Context, channelID, orgID uuid.UUID, posters bool) (bool, error) {
+	tag, err := q.db.Exec(ctx, setChannelThankYouPosters, channelID, orgID, posters)
 	if err != nil {
 		return false, err
 	}

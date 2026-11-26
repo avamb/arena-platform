@@ -89,7 +89,10 @@ type Channel struct {
 	// ConsentActive: checkout asks for the consent now (ConsentRequired and
 	// Complete - an incomplete profile turns the question off, exactly as the
 	// checkout decides it).
-	ConsentActive      bool     `json:"consent_active"`
+	ConsentActive bool `json:"consent_active"`
+	// ThankYouPosters: the thank-you page's "You may also like" block shows
+	// posters (settings.site.thank_you_posters; true when never set).
+	ThankYouPosters    bool     `json:"thank_you_posters"`
 	PublicContact      *Contact `json:"public_contact"`
 	EmailLooksPersonal bool     `json:"email_looks_personal"`
 	// Missing lists what must be filled before ShowSeller may be turned on
@@ -268,6 +271,7 @@ func (h *Handler) loadProfile(ctx context.Context, orgID uuid.UUID) (Profile, ge
 		ch.Complete = len(ch.Missing) == 0
 		ch.SellerShown = ch.Complete && !ch.SellerHidden
 		ch.ConsentRequired = row.ConsentRequired
+		ch.ThankYouPosters = row.ThankYouPosters
 		ch.ConsentActive = ch.ConsentRequired && ch.Complete
 		p.SellerShown = p.SellerShown || ch.SellerShown
 		if c != nil && c.Email != "" {
@@ -364,6 +368,7 @@ type displayPatch struct {
 	SellerHidden    optional[bool]         `json:"seller_hidden"`
 	PublicContact   optional[contactPatch] `json:"public_contact"`
 	ConsentRequired optional[bool]         `json:"consent_required"`
+	ThankYouPosters optional[bool]         `json:"thank_you_posters"`
 }
 
 // HandlePatchDisplay serves PATCH
@@ -408,6 +413,10 @@ func (h *Handler) HandlePatchDisplay(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.ConsentRequired.Present && req.ConsentRequired.Null {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails("seller.invalid_body", "consent_required must be true or false", r, map[string]any{"field": "consent_required"}))
+		return
+	}
+	if req.ThankYouPosters.Present && req.ThankYouPosters.Null {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails("seller.invalid_body", "thank_you_posters must be true or false", r, map[string]any{"field": "thank_you_posters"}))
 		return
 	}
 	if req.SellerHidden.Present && req.SellerHidden.Null {
@@ -545,6 +554,16 @@ func (h *Handler) HandlePatchDisplay(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	posters := cur.ThankYouPosters
+	if req.ThankYouPosters.Present {
+		posters = req.ThankYouPosters.Value
+		if posters != cur.ThankYouPosters {
+			if _, err := h.queries.WithTx(tx).SetChannelThankYouPosters(ctx, channelID, orgID, posters); err != nil {
+				h.writeFailed(w, r, orgID, err)
+				return
+			}
+		}
+	}
 	hidden := cur.SellerHidden
 	if hiddenChanged {
 		hidden = req.SellerHidden.Value
@@ -567,13 +586,14 @@ func (h *Handler) HandlePatchDisplay(w http.ResponseWriter, r *http.Request) {
 			TraceID:      logging.TraceID(ctx),
 			IP:           httputil.ExtractClientIP(r),
 			Metadata: map[string]any{
-				"org_id":           orgID.String(),
-				"show_seller":      show,
-				"seller_hidden":    hidden,
-				"consent_required": consent,
-				"contact_changed":  contactChanged,
-				"has_email":        next.Email != "",
-				"has_phone":        next.Phone != "",
+				"org_id":            orgID.String(),
+				"show_seller":       show,
+				"seller_hidden":     hidden,
+				"consent_required":  consent,
+				"thank_you_posters": posters,
+				"contact_changed":   contactChanged,
+				"has_email":         next.Email != "",
+				"has_phone":         next.Phone != "",
 			},
 		}); err != nil {
 			h.writeFailed(w, r, orgID, err)

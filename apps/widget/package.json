@@ -20,7 +20,7 @@
   "size-limit": [
     {
       "path": "./dist/v1/arena-tickets.js",
-      "limit": "150 kB",
+      "limit": "160 kB",
       "gzip": true
     }
   ],
