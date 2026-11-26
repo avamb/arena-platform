@@ -855,6 +855,20 @@ export interface CheckoutI18nStrings {
   seatmap_reset_title: string;
   /** Accessible label for the "reset view" button. */
   seatmap_reset_aria: string;
+  /** Seat map toolbar: "expand to full screen" button text. */
+  seatmap_expand: string;
+  /** Accessible label of the expand button. */
+  seatmap_expand_aria: string;
+  /** Seat map toolbar: "close full screen" button text. */
+  seatmap_close: string;
+  /** Accessible label of the close button. */
+  seatmap_close_aria: string;
+  /** Seat map toolbar: "rotate plan 90 degrees" button text. */
+  seatmap_rotate: string;
+  /** Accessible label of the rotate button. */
+  seatmap_rotate_aria: string;
+  /** Accessible name of the expanded (full screen) seat map dialog. */
+  seatmap_dialog_label: string;
   /** Seat card: the word before a sector name. */
   seatcard_sector: string;
   /** Seat card: the word before a row name. */
@@ -940,6 +954,13 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     seatmap_fit_aria: 'Fit seat map to screen',
     seatmap_reset_title: 'Reset view',
     seatmap_reset_aria: 'Reset seat map view',
+    seatmap_expand: 'Expand',
+    seatmap_expand_aria: 'Expand the seat map to full screen',
+    seatmap_close: 'Close',
+    seatmap_close_aria: 'Close the full screen seat map',
+    seatmap_rotate: 'Rotate plan',
+    seatmap_rotate_aria: 'Rotate the seat map by 90 degrees',
+    seatmap_dialog_label: 'Seat map, full screen',
     seatcard_sector: 'Sector',
     seatcard_row: 'Row',
     seatcard_seat: 'Seat',
@@ -1009,6 +1030,13 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     seatmap_fit_aria: 'Вписать схему зала в экран',
     seatmap_reset_title: 'Сбросить вид',
     seatmap_reset_aria: 'Сбросить вид схемы зала',
+    seatmap_expand: 'Развернуть',
+    seatmap_expand_aria: 'Развернуть схему зала на весь экран',
+    seatmap_close: 'Закрыть',
+    seatmap_close_aria: 'Закрыть схему зала на весь экран',
+    seatmap_rotate: 'Повернуть схему',
+    seatmap_rotate_aria: 'Повернуть схему зала на 90 градусов',
+    seatmap_dialog_label: 'Схема зала на весь экран',
     seatcard_sector: 'Сектор',
     seatcard_row: 'Ряд',
     seatcard_seat: 'Место',
@@ -1078,6 +1106,13 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     seatmap_fit_aria: 'Přizpůsobit mapu sedadel obrazovce',
     seatmap_reset_title: 'Obnovit zobrazení',
     seatmap_reset_aria: 'Obnovit zobrazení mapy sedadel',
+    seatmap_expand: 'Zvětšit',
+    seatmap_expand_aria: 'Zvětšit mapu sedadel na celou obrazovku',
+    seatmap_close: 'Zavřít',
+    seatmap_close_aria: 'Zavřít mapu sedadel na celou obrazovku',
+    seatmap_rotate: 'Otočit plán',
+    seatmap_rotate_aria: 'Otočit mapu sedadel o 90 stupňů',
+    seatmap_dialog_label: 'Mapa sedadel na celou obrazovku',
     seatcard_sector: 'Sektor',
     seatcard_row: 'Řada',
     seatcard_seat: 'Sedadlo',
@@ -1146,6 +1181,13 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     seatmap_fit_aria: 'התאם מפת מושבים למסך',
     seatmap_reset_title: 'אפס תצוגה',
     seatmap_reset_aria: 'אפס תצוגת מפת המושבים',
+    seatmap_expand: 'הרחב',
+    seatmap_expand_aria: 'הרחב את מפת המושבים למסך מלא',
+    seatmap_close: 'סגור',
+    seatmap_close_aria: 'סגור את מפת המושבים במסך מלא',
+    seatmap_rotate: 'סובב מפה',
+    seatmap_rotate_aria: 'סובב את מפת המושבים ב-90 מעלות',
+    seatmap_dialog_label: 'מפת מושבים במסך מלא',
     seatcard_sector: 'אזור',
     seatcard_row: 'שורה',
     seatcard_seat: 'מושב',
@@ -1214,6 +1256,13 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     seatmap_fit_aria: 'Ajustar el plano de asientos a la pantalla',
     seatmap_reset_title: 'Restablecer vista',
     seatmap_reset_aria: 'Restablecer la vista del plano de asientos',
+    seatmap_expand: 'Ampliar',
+    seatmap_expand_aria: 'Ampliar el plano de asientos a pantalla completa',
+    seatmap_close: 'Cerrar',
+    seatmap_close_aria: 'Cerrar el plano de asientos a pantalla completa',
+    seatmap_rotate: 'Girar plano',
+    seatmap_rotate_aria: 'Girar el plano de asientos 90 grados',
+    seatmap_dialog_label: 'Plano de asientos a pantalla completa',
     seatcard_sector: 'Sector',
     seatcard_row: 'Fila',
     seatcard_seat: 'Asiento',

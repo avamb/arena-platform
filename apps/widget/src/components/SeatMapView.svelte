@@ -12,6 +12,7 @@
    */
 
   import { onMount, onDestroy, tick } from 'svelte';
+  import type { Snippet } from 'svelte';
   import type { FeedSession, CategoryPrice, SeatStatusValue } from '../types.js';
   import { fetchSessionSchema } from '../api.js';
   import { getCheckoutI18n } from '../lib/checkout.js';
@@ -81,9 +82,11 @@
      * cross-origin embeds reach the correct backend.
      */
     apiBase?: string;
+    /** Drawn at the bottom of the map ONLY while it is expanded to full screen (the cart bar). */
+    footer?: Snippet;
   }
 
-  const { session, locale = 'en', conflictKeys, selectedKeys = new Set(), heldKeys = new Set(), pendingKeys = new Set(), holdDraw = null, onSeatTap, onGaAreaTap, onSchemaLoaded, apiBase = '' }: Props = $props();
+  const { session, locale = 'en', conflictKeys, selectedKeys = new Set(), heldKeys = new Set(), pendingKeys = new Set(), holdDraw = null, onSeatTap, onGaAreaTap, onSchemaLoaded, apiBase = '', footer }: Props = $props();
 
   // ── i18n ────────────────────────────────────────────────────────────────────
   const t = $derived(getCheckoutI18n(locale));
@@ -263,12 +266,176 @@
     if (!svgContainer) return;
     hideSeatCard();
     const { offsetWidth: w, offsetHeight: h } = svgContainer;
-    transform = fitTransform(canvasW, canvasH, w, h);
+    // A rotated plan is canvasH wide and canvasW tall on the screen.
+    transform = rotated ? fitTransform(canvasH, canvasW, w, h) : fitTransform(canvasW, canvasH, w, h);
   }
 
   function applyReset(): void {
     hideSeatCard();
     transform = IDENTITY;
+  }
+
+  // ── Expand (full screen inside the page) and rotate ─────────────────────────
+  // The same DOM stays: only a class on the wrapper changes, so the SVG is never
+  // rebuilt. Needed because Telegram's in-app browser has no element fullscreen.
+
+  let expanded = $state(false);
+  let rotated = $state(false);
+  let vpPortrait = $state(false);
+  let wrapEl: HTMLDivElement | undefined = $state();
+  let expandBtn: HTMLButtonElement | undefined = $state();
+  let closeBtn: HTMLButtonElement | undefined = $state();
+
+  let savedBodyOverflow = '';
+  let savedHtmlOverflow = '';
+  let scrollLocked = false;
+  let pushedState = false;
+  let fsEntered = false;
+
+  // The rotate button is offered for a wide plan on a portrait screen only.
+  const canRotate = $derived(expanded && canvasW > canvasH && vpPortrait);
+
+  $effect(() => {
+    if (!canRotate && rotated) {
+      rotated = false;
+      void tick().then(applyFit);
+    }
+  });
+
+  function updateViewport(): void {
+    vpPortrait = window.innerHeight > window.innerWidth;
+  }
+
+  function lockScroll(): void {
+    if (scrollLocked) return;
+    scrollLocked = true;
+    savedBodyOverflow = document.body.style.overflow;
+    savedHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+  }
+
+  function unlockScroll(): void {
+    if (!scrollLocked) return;
+    scrollLocked = false;
+    document.body.style.overflow = savedBodyOverflow;
+    document.documentElement.style.overflow = savedHtmlOverflow;
+  }
+
+  function onPopState(): void {
+    // The Back button already popped our history entry.
+    closeExpanded(true);
+  }
+
+  function onFullscreenChange(): void {
+    if (fsEntered && expanded && !document.fullscreenElement) {
+      fsEntered = false;
+      closeExpanded();
+    }
+  }
+
+  function removeExpandListeners(): void {
+    if (typeof window === 'undefined') return;
+    window.removeEventListener('popstate', onPopState);
+    window.removeEventListener('resize', updateViewport);
+    document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }
+
+  async function openExpanded(): Promise<void> {
+    if (expanded) return;
+    expanded = true;
+    hideSeatCard();
+    updateViewport();
+    lockScroll();
+    try {
+      history.pushState({ arenaSeatmap: true }, '');
+      pushedState = true;
+    } catch {
+      pushedState = false;
+    }
+    window.addEventListener('popstate', onPopState);
+    window.addEventListener('resize', updateViewport);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    await tick();
+    closeBtn?.focus();
+    // Real fullscreen is only an enhancement: iOS and Telegram do not have it.
+    try {
+      const req = wrapEl?.requestFullscreen?.();
+      if (req) {
+        fsEntered = true;
+        req.catch(() => {
+          fsEntered = false;
+        });
+      }
+    } catch {
+      fsEntered = false;
+    }
+    applyFit();
+  }
+
+  function closeExpanded(fromPop = false): void {
+    if (!expanded) return;
+    expanded = false;
+    rotated = false;
+    hideSeatCard();
+    removeExpandListeners();
+    unlockScroll();
+    if (fromPop) {
+      pushedState = false;
+    } else if (pushedState) {
+      pushedState = false;
+      if (history.state?.arenaSeatmap) history.back();
+    }
+    fsEntered = false;
+    if (document.fullscreenElement) {
+      try {
+        void document.exitFullscreen?.()?.catch(() => {});
+      } catch {
+        /* nothing to exit */
+      }
+    }
+    void tick().then(() => {
+      applyFit();
+      expandBtn?.focus();
+    });
+  }
+
+  /** Leave the full screen view (the parent calls it before opening the cart sheet). */
+  export function collapse(): void {
+    closeExpanded();
+  }
+
+  async function toggleRotate(): Promise<void> {
+    rotated = !rotated;
+    await tick();
+    applyFit();
+  }
+
+  const FOCUSABLE =
+    'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+  function onWrapKeydown(e: KeyboardEvent): void {
+    if (!expanded || !wrapEl) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeExpanded();
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    const items = Array.from(wrapEl.querySelectorAll<HTMLElement>(FOCUSABLE));
+    if (items.length === 0) return;
+    const first = items[0]!;
+    const last = items[items.length - 1]!;
+    const active = (wrapEl.getRootNode() as Document | ShadowRoot).activeElement;
+    if (e.shiftKey) {
+      if (active === first || !active || !wrapEl.contains(active)) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (active === last || !active || !wrapEl.contains(active)) {
+      e.preventDefault();
+      first.focus();
+    }
   }
 
   // ── Pointer / wheel events ──────────────────────────────────────────────────
@@ -616,6 +783,15 @@
   });
 
   onDestroy(() => {
+    removeExpandListeners();
+    unlockScroll();
+    if (typeof document !== 'undefined' && document.fullscreenElement) {
+      try {
+        void document.exitFullscreen?.()?.catch(() => {});
+      } catch {
+        /* nothing to exit */
+      }
+    }
     poller?.stop();
     pulser?.dispose();
     seatCard?.destroy();
@@ -701,12 +877,24 @@
   });
 </script>
 
-<div class="seat-map-wrap" data-locale={locale}>
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<div
+  class="seat-map-wrap"
+  class:expanded
+  data-locale={locale}
+  bind:this={wrapEl}
+  role={expanded ? 'dialog' : undefined}
+  aria-modal={expanded ? 'true' : undefined}
+  aria-label={expanded ? t.seatmap_dialog_label : undefined}
+  onkeydown={onWrapKeydown}
+>
   <!-- ── Toolbar ── -->
   <div class="seat-map-toolbar" aria-label={t.seatmap_controls_label}>
     <button class="ctrl-btn" onclick={applyFit} title={t.seatmap_fit_title} aria-label={t.seatmap_fit_aria}>
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <path d="M1 5V2h3M12 1h3v3M15 11v3h-3M4 15H1v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="1" y="1" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/>
+        <rect x="5" y="5.5" width="6" height="5" rx="0.5" stroke="currentColor" stroke-width="1.2"/>
       </svg>
     </button>
     <button class="ctrl-btn" onclick={applyReset} title={t.seatmap_reset_title} aria-label={t.seatmap_reset_aria}>
@@ -714,6 +902,46 @@
         <path d="M8 1v3l3-3-3-3v3a6 6 0 1 0 5.66 4H12a4 4 0 1 1-4-4z" fill="currentColor"/>
       </svg>
     </button>
+    {#if canRotate}
+      <button
+        class="ctrl-btn ctrl-btn-text"
+        onclick={toggleRotate}
+        aria-pressed={rotated}
+        aria-label={t.seatmap_rotate_aria}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <rect x="1.5" y="6" width="8.5" height="8.5" rx="1" stroke="currentColor" stroke-width="1.4"/>
+          <path d="M6 2.5h4.5a3 3 0 0 1 3 3V8M11.5 6l2 2 2-2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>{t.seatmap_rotate}</span>
+      </button>
+    {/if}
+    {#if expanded}
+      <button
+        class="ctrl-btn ctrl-btn-text ctrl-btn-end"
+        bind:this={closeBtn}
+        onclick={() => closeExpanded()}
+        aria-label={t.seatmap_close_aria}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        <span>{t.seatmap_close}</span>
+      </button>
+    {:else}
+      <button
+        class="ctrl-btn ctrl-btn-text ctrl-btn-end"
+        bind:this={expandBtn}
+        onclick={openExpanded}
+        title={t.seatmap_expand_aria}
+        aria-label={t.seatmap_expand_aria}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M1 5V2h3M12 1h3v3M15 11v3h-3M4 15H1v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>{t.seatmap_expand}</span>
+      </button>
+    {/if}
   </div>
 
   <!-- ── Map container ──
@@ -725,7 +953,7 @@
        comment is needed.  The accessible name is supplied by aria-label. -->
   <div
     class="seat-map-container"
-    style="aspect-ratio: {canvasW} / {canvasH}"
+    style={expanded ? undefined : `aspect-ratio: ${canvasW} / ${canvasH}`}
     bind:this={svgContainer}
     onpointerdown={onPointerDown}
     onpointermove={onPointerMove}
@@ -750,11 +978,14 @@
            NOT aria-hidden: the SVG inside carries interactive, focusable seats
            (role="button"/tabindex) and an accessible group name; only the
            decorative decor layer inside the SVG is aria-hidden. -->
-      <div class="seat-map-inner" style="transform: {cssTransform}">
+      <div class="seat-map-inner" style="transform: {cssTransform}{rotated ? ` translate(${canvasH}px, 0) rotate(90deg)` : ''}">
         {@html svgHTML}
       </div>
     {/if}
   </div>
+  {#if expanded && footer}
+    <div class="seat-map-footer">{@render footer()}</div>
+  {/if}
 </div>
 
 <style>
@@ -766,8 +997,53 @@
     position: relative;
   }
 
+  .seat-map-wrap.expanded {
+    position: fixed;
+    inset: 0;
+    height: 100dvh;
+    z-index: 2147483000;
+    background: var(--_bg, #fff);
+    color: inherit;
+    flex: none;
+  }
+
+  .seat-map-wrap.expanded .seat-map-container {
+    aspect-ratio: auto !important;
+    max-height: none;
+    min-height: 0;
+    flex: 1 1 0;
+  }
+
+  .seat-map-footer {
+    flex: none;
+    position: relative;
+  }
+
+  .seat-map-footer :global(.ga-popover) {
+    bottom: 100%;
+    inset-inline-start: 0.75rem;
+  }
+
+  .seat-map-footer :global(.mini-cart) {
+    position: static;
+  }
+
+  /* Two classes: .ctrl-btn below sets width 32px with the same specificity. */
+  .ctrl-btn.ctrl-btn-text {
+    width: auto;
+    gap: 0.375rem;
+    padding: 0 0.625rem;
+    font-size: 0.8125rem;
+    white-space: nowrap;
+  }
+
+  .ctrl-btn-end {
+    margin-inline-start: auto;
+  }
+
   .seat-map-toolbar {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.375rem;
     padding: 0.5rem 0.75rem;
     border-bottom: 1px solid var(--_border, #e5e7eb);
