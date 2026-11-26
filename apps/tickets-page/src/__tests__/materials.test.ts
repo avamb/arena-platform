@@ -354,3 +354,11 @@ describe('widget mount — no second copy of the materials', () => {
     expect(c.querySelectorAll('.asa-materials').length).toBe(1);
   });
 });
+
+describe('widget mount — one-step checkout', () => {
+  it('the event page widget has no separate cart screen', () => {
+    const c = document.createElement('div');
+    renderEvent(c, page(EMPTY), 'en', { apiBase: '', resumingCheckout: false });
+    expect(c.querySelector('arena-tickets')?.getAttribute('checkout')).toBe('one-step');
+  });
+});
