@@ -67,7 +67,8 @@ describe('preload-payment="checkout"', () => {
     expect(widgetSource).toContain("window.addEventListener('pagehide', onPageHide)");
     expect(widgetSource).toContain('preparedCtl.pageHide()');
     expect(widgetSource).toContain('preparedCtl.destroy()');
-    expect(widgetSource).toContain('postCheckoutCancel(token, resolvedApiBase, { keepalive: true })');
+    // Spec 67: with a hold the cancel keeps the seats in it (keep_hold); without one it is the old cancel.
+    expect(widgetSource).toContain('postCheckoutCancel(token, resolvedApiBase, { keepalive: true, keepHold: holdView.holdToken !== null })');
   });
 
   it('counts the sheet down to the prepared hold', () => {

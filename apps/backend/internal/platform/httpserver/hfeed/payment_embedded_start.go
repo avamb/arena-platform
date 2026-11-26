@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -31,6 +32,13 @@ type paymentStartAnswer struct {
 // definitively refused the embedded session — the hosted page exactly as
 // before. On failure it has written the HTTP error and reports false.
 func (h *Handler) startPayment(ctx context.Context, w http.ResponseWriter, r *http.Request, in hostedPaymentInput, wantsEmbedded bool) (paymentStartAnswer, bool) {
+	if in.KeepHold && holdTooLateForPage(in.ExpiresAt, time.Now().UTC()) {
+		// No provider page for a hold about to end: the order is closed, the
+		// seats stay in the hold until it ends.
+		h.releaseRefusedCheckout(context.WithoutCancel(ctx), r, in)
+		writeHoldExpired(w, r)
+		return paymentStartAnswer{}, false
+	}
 	if wantsEmbedded && h.embeddedCheckout {
 		if block, handled, ok := h.tryEmbeddedPayment(ctx, w, r, in); handled {
 			return paymentStartAnswer{embedded: block}, ok
@@ -100,9 +108,14 @@ func (h *Handler) tryEmbeddedPayment(ctx context.Context, w http.ResponseWriter,
 	}
 
 	csID := in.Session.ID
-	if _, err := h.checkoutQueries.InsertEmbeddedPaymentIntent(ctx,
-		&csID, in.CheckCtx.OrgID, res.Provider, res.SessionID, in.Breakdown.Total, in.Breakdown.Currency,
-	); err != nil {
+	// The attempt and its page expiry in one row; on the hold path under the
+	// hold's row lock, refused when the hold closed meanwhile.
+	_, err = h.recordPageAttempt(ctx, newPageAttempt(in, res.Provider, res.SessionID, ""))
+	if errors.Is(err, errHoldClosedForPage) {
+		h.refuseClosedHoldPage(ctx, w, r, in.CheckCtx.OrgID, in.CheckCtx.SalesChannelID, csID, res.Provider, res.SessionID)
+		return nil, true, false
+	}
+	if err != nil {
 		// Same rule as the hosted path: money against a row that does not
 		// exist would be lost, so the buyer gets no form.
 		h.logger.Error("public_feed_checkout: recording the embedded payment intent failed; no payment form handed out",
@@ -146,7 +159,7 @@ func (h *Handler) embeddedCheckoutRequest(ctx context.Context, in hostedPaymentI
 		BuyerName:         derefOr(in.Buyer.Name),
 		BuyerPhone:        derefOr(in.Buyer.Phone),
 		ReturnURL:         in.ReturnBase,
-		ExpiresAtUnix:     in.ExpiresAt.Add(-h.paymentGrace).Unix(),
+		ExpiresAtUnix:     in.pageExpiry(h.paymentGrace).Unix(),
 		BuyerLocale:       in.Buyer.Locale,
 	}
 }

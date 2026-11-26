@@ -230,7 +230,7 @@ export async function fetchSeatStatusDelta(
  * Build the {@link ApiError} for a non-2xx response, reading the arena error
  * envelope when the body has one. `label` names the call in the message.
  */
-async function apiErrorFromResponse(res: Response, label: string): Promise<ApiError> {
+export async function apiErrorFromResponse(res: Response, label: string): Promise<ApiError> {
   let detail = '';
   let code: string | undefined;
   let details: Record<string, unknown> | undefined;
@@ -359,10 +359,16 @@ export async function postCheckoutBuyer(
 export async function postCheckoutCancel(
   checkoutToken: string,
   apiBase = '',
-  opts: { keepalive?: boolean } = {},
+  opts: { keepalive?: boolean; keepHold?: boolean } = {},
 ): Promise<CheckoutCancelResponse | null> {
   const url = `${apiBase}/v1/public/checkout/${encodeURIComponent(checkoutToken)}/cancel`;
-  const res = await fetch(url, { method: 'POST', keepalive: opts.keepalive === true });
+  // Spec 67 §4.5: `keep_hold` cancels the order and leaves the places in the hold.
+  const init: RequestInit = { method: 'POST', keepalive: opts.keepalive === true };
+  if (opts.keepHold === true) {
+    init.headers = { 'Content-Type': 'application/json' };
+    init.body = JSON.stringify({ keep_hold: true });
+  }
+  const res = await fetch(url, init);
   if (!res.ok) throw await apiErrorFromResponse(res, 'postCheckoutCancel');
   try {
     return (await res.json()) as CheckoutCancelResponse;

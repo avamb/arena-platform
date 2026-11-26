@@ -199,7 +199,7 @@ func (f *fakeStore) FindOpenOrderByCustomerSession(_ context.Context, _, _ uuid.
 	return *f.openOrder, nil
 }
 
-func (f *fakeStore) ListExpirableOrders(_ context.Context, _ time.Time, limit int32) ([]gen.OrderRow, error) {
+func (f *fakeStore) ListExpirableOrders(_ context.Context, _ time.Time, _ time.Duration, limit int32) ([]gen.OrderRow, error) {
 	if int32(len(f.expirable)) <= limit {
 		return f.expirable, nil
 	}

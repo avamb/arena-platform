@@ -175,6 +175,11 @@ type Handler struct {
 	// cartConversions queues the cart's AddToCart / InitiateCheckout for
 	// Meta and GA4 (WithCartConversions, cart_conversions.go); nil = off.
 	cartConversions CartConversions
+
+	// holdPricedHook runs between the pricing and the confirmation
+	// transaction of a checkout from a hold of the click (WithHoldPricedHook,
+	// checkout_hold.go). Tests only; nil in production.
+	holdPricedHook func(reservationID uuid.UUID)
 }
 
 // WithContactForm configures the hosted page's "Write to the organizer" form:

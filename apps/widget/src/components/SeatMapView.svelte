@@ -25,6 +25,7 @@
     buildCategoryColorMap,
     buildPriceLabel,
   } from '../lib/seatmap-render.js';
+  import type { HoldDraw, SeatPulser } from '../lib/holdDraw.js';
   import { createSeatCard, seatCardModel, type SeatCard, type SeatCardInput } from '../lib/seat-card.js';
   import {
     IDENTITY,
@@ -51,6 +52,18 @@
     conflictKeys?: ReadonlySet<string>;
     /** Set of currently selected seat keys for highlight rendering. */
     selectedKeys?: ReadonlySet<string>;
+    /**
+     * Spec 67: seats held for THIS buyer (drawn in the own-hold colour, taken
+     * from the hold's answer, not from the poll) and seats whose click is on its
+     * way (drawn half transparent).
+     */
+    heldKeys?: ReadonlySet<string>;
+    pendingKeys?: ReadonlySet<string>;
+    /**
+     * Spec 67: the drawing of the own hold, from the lazy hold chunk. Null until
+     * that chunk is loaded; there is no hold to draw before it.
+     */
+    holdDraw?: HoldDraw | null;
     /** Called when user taps/clicks a seat circle. */
     onSeatTap?: (seatKey: string, status: SeatStatusValue) => void;
     /**
@@ -70,7 +83,7 @@
     apiBase?: string;
   }
 
-  const { session, locale = 'en', conflictKeys, selectedKeys = new Set(), onSeatTap, onGaAreaTap, onSchemaLoaded, apiBase = '' }: Props = $props();
+  const { session, locale = 'en', conflictKeys, selectedKeys = new Set(), heldKeys = new Set(), pendingKeys = new Set(), holdDraw = null, onSeatTap, onGaAreaTap, onSchemaLoaded, apiBase = '' }: Props = $props();
 
   // ── i18n ────────────────────────────────────────────────────────────────────
   const t = $derived(getCheckoutI18n(locale));
@@ -210,7 +223,11 @@
         // WID-T4: pass current conflictKeys so the poller does not overwrite
         // the WCAG-AA error-red conflict highlight on seats still in conflict.
         if (svgContainer) {
-          applySeatStatusUpdate(svgContainer, seats, catColorMap, conflictKeys ?? new Set());
+          // The buyer's own seats are drawn from the hold, not from the poll
+          // (which reports them as somebody's hold): skip them like conflicts.
+          let skip: ReadonlySet<string> = conflictKeys ?? new Set();
+          if (heldKeys.size > 0 || pendingKeys.size > 0) skip = new Set([...skip, ...heldKeys, ...pendingKeys]);
+          applySeatStatusUpdate(svgContainer, seats, catColorMap, skip);
         }
       },
       onError(err) {
@@ -219,6 +236,25 @@
       },
     });
     poller.start();
+  }
+
+  // ── Spec 67: refresh at once, light the nearest free seats ──────────────────
+
+  /** Ask the seat-status route now (after a click found its seat taken). */
+  export async function refreshStatuses(): Promise<void> {
+    await poller?.refresh();
+  }
+
+  let pulser: SeatPulser | null = null;
+
+  /**
+   * Pulse up to 4 free seats of the tapped seat's category and price for 6 s
+   * (holdDraw.createPulser). Returns how many seats were lit.
+   */
+  export function highlightNearest(seatKey: string): number {
+    if (!holdDraw) return 0;
+    pulser ??= holdDraw.createPulser(() => svgContainer);
+    return pulser.highlight(seatKey, categoryPrices);
   }
 
   // ── Fit/reset ───────────────────────────────────────────────────────────────
@@ -581,6 +617,7 @@
 
   onDestroy(() => {
     poller?.stop();
+    pulser?.dispose();
     seatCard?.destroy();
     seatCard = null;
     if (svgContainer) {
@@ -608,6 +645,27 @@
     if (!svgContainer || !svgHTML) return;
     applySelectionHighlights(svgContainer, selectedKeys, prevSelectedKeys);
     prevSelectedKeys = selectedKeys;
+  });
+
+  // ── Own hold (spec 67) ──────────────────────────────────────────────────────
+  // Plain variables: writing them inside the effect must not re-run it.
+  let prevHoldKeys: ReadonlySet<string> = new Set();
+  let prevHoldSvg = '';
+
+  $effect(() => {
+    if (!svgContainer || !svgHTML) return;
+    const held = heldKeys;
+    const pending = pendingKeys;
+    // No hold chunk yet: no hold either, nothing to draw.
+    const draw = holdDraw;
+    if (!draw) return;
+    // A new plan was drawn: nothing of the old marks is on it.
+    if (prevHoldSvg !== svgHTML) {
+      prevHoldSvg = svgHTML;
+      prevHoldKeys = new Set();
+    }
+    draw.applyHoldStyles(svgContainer, held, pending, prevHoldKeys, catColorMap, seatStatuses);
+    prevHoldKeys = new Set([...held, ...pending]);
   });
 
   // ── Conflict highlight (WID-S2) ─────────────────────────────────────────────

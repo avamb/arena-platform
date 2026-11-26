@@ -815,6 +815,22 @@ type hostedPaymentInput struct {
 	Buyer         publicOrderBuyer
 	ReturnBase    string
 	ExpiresAt     time.Time
+	// PageExpiresAt, when set, is the expiry of the provider page of a seat
+	// hold of the click (spec 67 section 3.3), written to the payment
+	// attempt's page_expires_at. Zero on the old path: the page dies at
+	// ExpiresAt minus the grace.
+	PageExpiresAt time.Time
+	// KeepHold: the checkout is of a seat hold of the click, so a refused
+	// payment start closes the order but keeps the seats in the hold.
+	KeepHold bool
+}
+
+// pageExpiry is the expiry the provider page is created with.
+func (in hostedPaymentInput) pageExpiry(grace time.Duration) time.Time {
+	if !in.PageExpiresAt.IsZero() {
+		return in.PageExpiresAt
+	}
+	return in.ExpiresAt.Add(-grace)
 }
 
 // hostedPaymentStartTimeout bounds the post-commit payment step (provider
@@ -902,7 +918,7 @@ func (h *Handler) startHostedPayment(
 		BuyerName:         derefOr(in.Buyer.Name),
 		BuyerPhone:        derefOr(in.Buyer.Phone),
 		ReturnURL:         in.ReturnBase,
-		ExpiresAtUnix:     in.ExpiresAt.Add(-h.paymentGrace).Unix(),
+		ExpiresAtUnix:     in.pageExpiry(h.paymentGrace).Unix(),
 		BuyerLocale:       in.Buyer.Locale,
 		RecordAttempt:     recordAttempt,
 	})
@@ -972,11 +988,14 @@ func (h *Handler) startHostedPayment(
 	} else if h.checkoutQueries != nil {
 		// The hosted SESSION id (cs_…) is the provider_payment_id: it is what
 		// every checkout.session.* webhook event identifies this payment by.
-		if _, err := h.checkoutQueries.InsertHostedPaymentIntent(ctx,
-			&csID, in.CheckCtx.OrgID, result.Provider,
-			result.SessionID, in.Breakdown.Total, in.Breakdown.Currency,
-			result.RedirectURL,
-		); err != nil {
+		// The attempt and its page expiry in one row; on the hold path under
+		// the hold's row lock, refused when the hold closed meanwhile.
+		_, err := h.recordPageAttempt(ctx, newPageAttempt(in, result.Provider, result.SessionID, result.RedirectURL))
+		if errors.Is(err, errHoldClosedForPage) {
+			h.refuseClosedHoldPage(ctx, w, r, in.CheckCtx.OrgID, in.CheckCtx.SalesChannelID, csID, result.Provider, result.SessionID)
+			return "", false
+		}
+		if err != nil {
 			// The buyer's money would arrive against a payment intent that
 			// does not exist and the webhook would 404 it, so this is fatal
 			// — better to lose the cart now than the payment later.
@@ -1034,6 +1053,7 @@ func (h *Handler) releaseRefusedCheckout(ctx context.Context, r *http.Request, i
 		CheckoutSessionID: in.Session.ID,
 		ActorLabel:        paymentStartRefusedActor,
 		Reason:            hcheckout.PaymentStartRefusedReason,
+		KeepHold:          in.KeepHold,
 		Via:               via,
 		IP:                h.clientIP(r),
 		Now:               time.Now().UTC(),

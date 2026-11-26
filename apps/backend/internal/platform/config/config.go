@@ -272,6 +272,21 @@ type Config struct {
 	// embedded sessions keep working.
 	StripeElementsEnabled bool `env:"STRIPE_ELEMENTS_ENABLED" required:"false" default:"true"`
 
+	// HoldOnClickEnabled switches on the public seat hold at the click (spec
+	// 08_architecture/67, section 4): POST /v1/public/feeds/{feed_token}/holds
+	// and the /v1/public/holds/{hold_token} routes. Off (the default) every
+	// one of them answers 404 hold.disabled.
+	HoldOnClickEnabled bool `env:"HOLD_ON_CLICK_ENABLED" required:"false" default:"false"`
+	// HoldIPLimitEnabled switches on the per-address limits of the hold at
+	// the click (spec 67 section 6.1): the open holds per address and the
+	// address pause of a request without a device id. Off until the client
+	// address behind Cloudflare and Traefik is verified.
+	HoldIPLimitEnabled bool `env:"HOLD_IP_LIMIT_ENABLED" required:"false" default:"false"`
+	// HoldVisitorKey keys the HMAC-SHA256 of the visitor's device id and
+	// address and derives the hold tokens (spec 67 section 6.1). Required when
+	// HOLD_ON_CLICK_ENABLED is on; at least 32 characters in production.
+	HoldVisitorKey string `env:"HOLD_VISITOR_KEY" required:"false" default:""`
+
 	// FlittAPIBaseURL is the same seam for Flitt (default
 	// https://pay.flitt.com/api). TEST AND DEVELOPMENT ONLY: Validate()
 	// refuses a non-empty value under APP_ENV=production, for the reason
@@ -1240,6 +1255,19 @@ func LoadFor(role Role) (*Config, error) {
 	} else {
 		cfg.StripeElementsEnabled = elements
 	}
+	// HOLD_ON_CLICK_ENABLED / HOLD_IP_LIMIT_ENABLED / HOLD_VISITOR_KEY — the
+	// seat hold at the click (spec 67), off by default.
+	if v, err := getenvBool("HOLD_ON_CLICK_ENABLED", false); err != nil {
+		parseErrs = append(parseErrs, err)
+	} else {
+		cfg.HoldOnClickEnabled = v
+	}
+	if v, err := getenvBool("HOLD_IP_LIMIT_ENABLED", false); err != nil {
+		parseErrs = append(parseErrs, err)
+	} else {
+		cfg.HoldIPLimitEnabled = v
+	}
+	cfg.HoldVisitorKey = strings.TrimSpace(getenv("HOLD_VISITOR_KEY", ""))
 	// FLITT_API_BASE_URL — test/dev only, rejected in production by Validate.
 	cfg.FlittAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("FLITT_API_BASE_URL", "")), "/")
 	// ALLPAY_API_BASE_URL — test/dev only, rejected in production by Validate.
@@ -1708,6 +1736,9 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// --- Seat hold at the click (api, spec 67) -------------------------------
+	errs = append(errs, c.validateHoldOnClick()...)
+
 	// --- Meta connection (api, worker) ------------------------------------
 	if c.uses(capMeta) && c.MetaGraphVersion != "" && !metaGraphVersionPattern.MatchString(c.MetaGraphVersion) {
 		errs = append(errs, fmt.Errorf(
@@ -1733,6 +1764,24 @@ func (c *Config) Validate() error {
 		return nil
 	}
 	return errors.Join(errs...)
+}
+
+// validateHoldOnClick checks the settings of the seat hold at the click
+// (spec 67): with HOLD_ON_CLICK_ENABLED on, arena-api needs HOLD_VISITOR_KEY,
+// at least 32 characters in production. Only the api role reads them.
+func (c *Config) validateHoldOnClick() []error {
+	if !c.uses(capEdge) || !c.HoldOnClickEnabled {
+		return nil
+	}
+	key := strings.TrimSpace(c.HoldVisitorKey)
+	switch {
+	case key == "":
+		return []error{errors.New("HOLD_VISITOR_KEY is required when HOLD_ON_CLICK_ENABLED is true")}
+	case c.IsProduction() && len(key) < 32:
+		return []error{fmt.Errorf(
+			"HOLD_VISITOR_KEY must be at least 32 characters in production (got %d)", len(key))}
+	}
+	return nil
 }
 
 // validateOutbox checks OUTBOX_MODE and the settings its webhook mode needs.

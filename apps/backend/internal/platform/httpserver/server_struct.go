@@ -93,6 +93,7 @@ type Server struct {
 	publicFeedQueries     *gen.Queries
 	publicFeedRL          *publicFeedRateLimiter
 	funnelDedupe          salesfunnel.Deduper // duplicate filter of POST /v1/public/funnel, one per process
+	holdPricedHook        func(uuid.UUID)     // tests only: runs between the pricing and the confirmation of a hold checkout
 	shortLinks            *hgo.Handler        // GET /go/{code}, one per process (mount_go.go)
 	analytics             *analytics.Writer   // product analytics buffer, one per process, built on first use (mount_analytics.go)
 	analyticsMu           sync.Mutex          // guards analytics and analyticsClosed

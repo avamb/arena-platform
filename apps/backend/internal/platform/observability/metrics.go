@@ -305,6 +305,13 @@ type Metrics struct {
 	// Metric name: arena_short_link_total.
 	ShortLinkTotal *prometheus.CounterVec
 
+	// HoldCreatedTotal counts POST /v1/public/feeds/{feed_token}/holds (the
+	// seat hold at the click, spec 67) by a closed result set (see
+	// hold_metrics.go).
+	//
+	// Metric name: arena_hold_created_total.
+	HoldCreatedTotal *prometheus.CounterVec
+
 	// TelegramMiniappLoginTotal counts requests of the Telegram Mini App
 	// sign-in (POST /v1/auth/telegram-miniapp) by a closed outcome set (ok,
 	// invalid, expired, not_linked, forbidden, not_configured, rate_limited,
@@ -573,6 +580,15 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 			[]string{LabelOutcome},
 		),
 
+		HoldCreatedTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: MetricsNamespace,
+				Name:      subsystemHold + "_created_total",
+				Help:      "Total seat hold requests at the click (POST /v1/public/feeds/{feed_token}/holds), by result.",
+			},
+			[]string{LabelResult},
+		),
+
 		TelegramMiniappLoginTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: MetricsNamespace,
@@ -620,6 +636,7 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 		m.AnalyticsFlushFailedTotal,
 		m.AnalyticsRollupFailedTotal,
 		m.ShortLinkTotal,
+		m.HoldCreatedTotal,
 		m.TelegramMiniappLoginTotal,
 	} {
 		if err := reg.Register(c); err != nil {

@@ -67,6 +67,9 @@
   import { initialAddToCartState, trackCartChange, withAddToCart } from './lib/addToCart.js';
   import { createFunnel, parseFunnelHost, type Funnel, type FunnelStep } from './lib/funnel.js';
   import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
+  import { holdSecondsLeft, postCheckoutPaying } from './lib/holdBasics.js';
+  // Types only: the hold runtime loads lazily (lib/holdRuntime.ts, spec 67).
+  import type { HoldController, HoldView } from './lib/holds.js';
   import { dispatchWidgetEvent, ARENA_EVENTS } from './lib/events.js';
   import {
     saveCheckoutToken,
@@ -459,6 +462,7 @@
   function clearPaymentBlock(): void {
     paymentBlock = null;
     paymentAwaitReturn = false;
+    payingNotice = false;
   }
   let orderActionLoading = $state(false);
   let orderActionError = $state<string | null>(null);
@@ -484,7 +488,7 @@
    * postCheckoutStart / postCheckoutRecover so the countdown timer in
    * MiniCart and CartSheet has a real value to tick down from.
    */
-  const effectiveCart = $derived({ ...cart, expiresAt: holdExpiresAt });
+  const effectiveCart = $derived({ ...cart, expiresAt: cartExpiresAt });
 
   const cartCount = $derived(totalSelectionCount(selectedSeatKeys, gaQuantities));
 
@@ -627,6 +631,178 @@
     untrack(() => void marketingQuoter.refresh(ticked));
   });
 
+  // ── Seat hold on click (spec 67) ───────────────────────────────────────────
+  //
+  // On a seated session a click on a free seat holds it at once (lib/holds.ts).
+  // The seats of the cart ARE the hold's seats (held + clicked-but-not-answered),
+  // and the order sheet starts the checkout with the hold's key instead of the
+  // seat list. Without a feed token or a plan the old path (seats at checkout)
+  // stays.
+
+  const emptyHoldView: HoldView = {
+    held: new Set(),
+    pending: new Set(),
+    holdToken: null,
+    step: null,
+    expiresAt: null,
+    extendAvailable: false,
+    policy: null,
+    expired: false,
+    busy: false,
+  };
+  let holdView = $state.raw<HoldView>(emptyHoldView);
+  // A plain variable: the controller of the selected session (one per session).
+  let holdCtl: HoldController | null = null;
+  // The platform answered hold.disabled: for the rest of this page view the
+  // selection lives in memory and the seats go with the order, as before.
+  let holdDisabled = false;
+  // The words under the map after a click (taken seat, limit, extension, ...).
+  let holdNotice = $state<string | null>(null);
+  let holdNoticeTimer: ReturnType<typeof setTimeout> | null = null;
+  // "Payment in progress" was sent to the platform: the screen says so.
+  let payingNotice = $state(false);
+  let nowMs = $state(Date.now());
+  // Rendered seat map: refresh the statuses now, light the nearest free seats.
+  let seatMap = $state<{ refreshStatuses(): Promise<void>; highlightNearest(seatKey: string): number } | null>(null);
+  // seat key -> "row/number" for the list of seats taken meanwhile.
+  let seatLabels = new Map<string, string>();
+
+  // The hold code is a lazy chunk, loaded only for a session with a plan.
+  type HoldRuntime = typeof import('./lib/holdRuntime.js');
+  let holdRt = $state.raw<HoldRuntime | null>(null);
+  let holdRtLoad: Promise<HoldRuntime> | null = null;
+  function loadHoldRuntime(): Promise<HoldRuntime> {
+    if (!holdRtLoad) {
+      const p = import('./lib/holdRuntime.js').then((m) => {
+        holdRt = m;
+        return m;
+      });
+      holdRtLoad = p;
+      p.catch(() => {
+        if (holdRtLoad === p) holdRtLoad = null;
+      });
+    }
+    return holdRtLoad;
+  }
+  // A late chunk of an older session switch starts nothing.
+  let holdGen = 0;
+  let holdLoadingSid = '';
+  // Taps while the chunk loads, replayed in order once it is there.
+  let holdTapQueue: { sid: string; seatKey: string; status: SeatStatusValue }[] = [];
+
+  const holdShown = $derived(holdView.held.size > 0 && holdView.expiresAt !== null);
+  // One expiry for the sheet and the bar: the hold's own (spec 67 §3.3).
+  const cartExpiresAt = $derived(holdView.holdToken ? holdView.expiresAt : holdExpiresAt);
+
+  function showHoldNotice(text: string | null, forMs = 0): void {
+    if (holdNoticeTimer) clearTimeout(holdNoticeTimer);
+    holdNoticeTimer = null;
+    holdNotice = text;
+    if (text && forMs > 0) {
+      holdNoticeTimer = setTimeout(() => {
+        holdNotice = null;
+      }, forMs);
+    }
+  }
+
+  function applyHoldView(v: HoldView): void {
+    holdView = v;
+    selectedSeatKeys = new Set([...v.held, ...v.pending]);
+  }
+
+  function switchHold(sessionId: string, feed: string, base: string): void {
+    holdGen += 1;
+    holdCtl?.destroy();
+    holdCtl = null;
+    holdView = emptyHoldView;
+    payingNotice = false;
+    holdLoadingSid = '';
+    holdTapQueue = [];
+    if (!sessionId || !feed || holdDisabled) return;
+    if (holdRt) {
+      startHold(holdRt, sessionId, feed, base);
+      return;
+    }
+    const gen = holdGen;
+    holdLoadingSid = sessionId;
+    loadHoldRuntime().then(
+      (rt) => {
+        if (gen !== holdGen) return;
+        holdLoadingSid = '';
+        startHold(rt, sessionId, feed, base);
+        replayHoldTaps();
+      },
+      () => {
+        if (gen !== holdGen) return;
+        holdLoadingSid = '';
+        // No chunk: the plain seat choice for this page view, as hold.disabled.
+        holdDisabled = true;
+        replayHoldTaps();
+      },
+    );
+  }
+
+  function replayHoldTaps(): void {
+    const taps = holdTapQueue;
+    holdTapQueue = [];
+    for (const tap of taps) {
+      if (selectedSession?.id === tap.sid) seatTapNow(tap.seatKey, tap.status);
+    }
+  }
+
+  function startHold(rt: HoldRuntime, sessionId: string, feed: string, base: string): void {
+    const ctl: HoldController = rt.startWidgetHold({
+      sessionId,
+      feed,
+      base,
+      locale: () => normLocale,
+      current: (c) => holdCtl === c,
+      beforeMutate: async () => {
+        preparedCtl.update(false, cartKey);
+        await preparedCtl.settled();
+      },
+      view: applyHoldView,
+      disabled: (c, keys) => {
+        holdDisabled = true;
+        holdCtl = null;
+        c.destroy();
+        holdView = emptyHoldView;
+        selectedSeatKeys = new Set([...selectedSeatKeys, ...keys]);
+      },
+      notice: showHoldNotice,
+      seatMap: () => seatMap,
+      seatLabel: (k) => seatLabels.get(k),
+    });
+    holdCtl = ctl;
+    void ctl.restore();
+  }
+
+  // One controller per session on a plan; a date switch leaves the old hold to
+  // run out on its own (its key stays in storage and comes back with the date).
+  $effect(() => {
+    const sid = selectedSession?.schema_url ? selectedSession.id : '';
+    const feed = normFeedToken;
+    const base = resolvedApiBase;
+    untrack(() => switchHold(sid, feed, base));
+  });
+
+  // The hold's clock: one tick a second while there is something to count; at
+  // zero the platform is asked whether the hold is over (spec 67 §8.1).
+  $effect(() => {
+    if (!holdView.expiresAt) return;
+    nowMs = Date.now();
+    const id = setInterval(() => {
+      nowMs = Date.now();
+      if (holdSecondsLeft(holdView.expiresAt, nowMs) === 0) void holdCtl?.checkExpiry();
+    }, 1000);
+    return () => clearInterval(id);
+  });
+
+  /** The order sheet's answer carried the hold's clock on its payment step. */
+  function noteOrderExpiry(expiresAt: string | null | undefined): void {
+    holdCtl?.noteExpiry(expiresAt, 'payment');
+  }
+
   // ── Early order (preload-payment="checkout") ───────────────────────────────
   //
   // A plain cart (no promo code, no marketing tick, total > 0) is prepared when
@@ -638,11 +814,15 @@
   // memory only, like paymentBlock).
   let preparedView = $state.raw<PreparedCheckout | null>(null);
 
+  // Spec 67: not while a click on a seat is still on its way (the hold would be
+  // out of date). Comments sit outside the expressions: inside they ship.
   const prepareWanted = $derived(
     preload === 'checkout' &&
       cartSheetOpen &&
       stage === 'selecting' &&
       !checkoutToken &&
+      !holdView.busy &&
+      !holdView.expired &&
       !!selectedSession &&
       !!normFeedToken &&
       isPlainCart({
@@ -663,7 +843,9 @@
     };
     const seats = [...selectedSeatKeys];
     const gaItems = buildGaItems(gaQuantities);
-    if (seats.length > 0) payload.seats = seats;
+    // Spec 67 §4.4: seats come from the hold, never both.
+    if (holdView.holdToken) payload.hold_token = holdView.holdToken;
+    else if (seats.length > 0) payload.seats = seats;
     if (gaItems.length > 0) payload.ga_items = gaItems;
     const returnUrl = buildReturnUrl();
     if (returnUrl) payload.return_url = returnUrl;
@@ -680,15 +862,24 @@
     return attribution ? { ...payload, attribution } : payload;
   }
 
+  // True while "Pay" takes the prepared order over (it is not cancelled then).
+  let consumingPrepared = false;
+
+  // Spec 67 §4.5 (cancel): with a hold the order goes and the seats stay in the hold.
   const preparedCtl = createPreparedCheckout({
     prepare: (idempotencyKey) =>
       postCheckoutPrepare(normFeedToken, buildPreparePayload(), resolvedApiBase, idempotencyKey),
     attach: (token, body) => postCheckoutBuyer(token, body, resolvedApiBase),
-    cancel: (token) => postCheckoutCancel(token, resolvedApiBase, { keepalive: true }),
+    cancel: (token) =>
+      postCheckoutCancel(token, resolvedApiBase, { keepalive: true, keepHold: holdView.holdToken !== null }),
     onChange: (p) => {
+      const had = preparedView !== null;
       preparedView = p;
       // The sheet's countdown runs on the prepared hold.
       if (!checkoutToken) holdExpiresAt = p ? p.expiresAt : null;
+      if (p) noteOrderExpiry(p.expiresAt);
+      // The order went (not to be paid): the hold is back on its selection step.
+      else if (had && !consumingPrepared) void preparedCtl.settled().then(() => holdCtl?.refresh());
     },
   });
 
@@ -712,6 +903,9 @@
       window.removeEventListener('pagehide', onPageHide);
       window.removeEventListener('pageshow', onPageShow);
       preparedCtl.destroy();
+      holdGen += 1;
+      holdCtl?.destroy();
+      if (holdNoticeTimer) clearTimeout(holdNoticeTimer);
     };
   });
 
@@ -920,6 +1114,14 @@
   // ── Schema loaded callback ─────────────────────────────────────────────────
 
   function onSchemaLoaded(geometry: Geometry, categoryPrices: CategoryPrice[]): void {
+    // Spec 67: "row/seat" names for the list of seats taken meanwhile.
+    const labels = new Map<string, string>();
+    for (const section of geometry.sections) {
+      for (const row of section.rows) {
+        for (const seat of row.seats) labels.set(seat.key, `${row.name}/${seat.number}`);
+      }
+    }
+    seatLabels = labels;
     seatCategoryIndex = buildSeatCategoryIndex(geometry);
     categoryByCategoryIndex = buildCategoryByIndex(categoryPrices);
     tierById = selectedSession ? buildTierById(selectedSession.tiers) : new Map();
@@ -960,7 +1162,40 @@
 
   function onSeatTap(seatKey: string, status: SeatStatusValue): void {
     openedSession();
+    if (holdLoadingSid && selectedSession?.schema_url && selectedSession.id === holdLoadingSid) {
+      holdTapQueue.push({ sid: holdLoadingSid, seatKey, status });
+      return;
+    }
+    seatTapNow(seatKey, status);
+  }
+
+  function seatTapNow(seatKey: string, status: SeatStatusValue): void {
     const prev = selectedSeatKeys;
+    // Spec 67: on a plan the click holds the seat (or lets an own seat go).
+    const ctl = holdCtl;
+    if (ctl && selectedSession?.schema_url) {
+      showHoldNotice(null);
+      const own = holdView.held.has(seatKey) || holdView.pending.has(seatKey);
+      if (!own && status !== 'available') return;
+      if (!own && seatCapBlocks(prev, seatKey, status, MAX_CART_SEATS)) {
+        cartLimitNotice = seatCapMessage(normLocale);
+        return;
+      }
+      cartLimitNotice = null;
+      const sid = selectedSession.id;
+      const done = ctl.tap(seatKey);
+      if (done === 'add') {
+        dispatchWidgetEvent(host, ARENA_EVENTS.SEAT_SELECTED, { seatKey, sessionId: sid });
+      } else if (done === 'remove') {
+        if (conflictKeys.has(seatKey)) {
+          const remainingConflicts = new Set(conflictKeys);
+          remainingConflicts.delete(seatKey);
+          conflictKeys = remainingConflicts;
+        }
+        dispatchWidgetEvent(host, ARENA_EVENTS.SEAT_RELEASED, { seatKey, sessionId: sid });
+      }
+      return;
+    }
     // One order holds at most MAX_CART_SEATS seats (the platform refuses more):
     // say so instead of letting the buyer find out at the payment step.
     if (seatCapBlocks(prev, seatKey, status, MAX_CART_SEATS)) {
@@ -1016,7 +1251,13 @@
     const line = cart.lines[idx];
     if (!line) return;
     const sessionId = selectedSession?.id ?? '';
-    if (line.type === 'seated') {
+    if (line.type === 'seated' && holdCtl && selectedSession?.schema_url) {
+      // Spec 67: the seats go off the hold; the selection follows its answer.
+      holdCtl.release(line.seatKeys);
+      for (const key of line.seatKeys) {
+        dispatchWidgetEvent(host, ARENA_EVENTS.SEAT_RELEASED, { seatKey: key, sessionId });
+      }
+    } else if (line.type === 'seated') {
       // Remove these specific seat keys from selection.
       const next = new Set(selectedSeatKeys);
       for (const key of line.seatKeys) {
@@ -1084,10 +1325,13 @@
     const p = outcome.prepared;
     // All in one synchronous step: the payment screen keeps its key (the token)
     // while it turns from hidden to shown, so Stripe is not mounted again.
+    consumingPrepared = true;
     preparedCtl.consume(p.token);
+    consumingPrepared = false;
     rememberCheckoutToken(p.token);
     checkoutToken = p.token;
     holdExpiresAt = outcome.attach?.expires_at ?? p.expiresAt;
+    noteOrderExpiry(holdExpiresAt);
     dispatchWidgetEvent(host, ARENA_EVENTS.PAYMENT_STARTED, {
       checkoutToken: p.token,
       sessionId: session.id,
@@ -1128,7 +1372,10 @@
     checkoutSubmitting = true;
     checkoutError = null;
     try {
-      const seats = [...selectedSeatKeys];
+      // Spec 67: a click still on its way is answered first, so the hold is the cart.
+      if (holdCtl) await holdCtl.idle();
+      const holdToken = holdCtl?.view.holdToken ?? null;
+      const seats = holdToken ? [] : [...selectedSeatKeys];
       const gaItems = buildGaItems(gaQuantities);
       const payload = buildCheckoutPayload(
         selectedSession.id,
@@ -1142,6 +1389,7 @@
       // only — the backend appends `?checkout_token=…` itself, which is what
       // `getCheckoutTokenFromSearch` reads on the next load, so any query
       // string or hash we sent along would be dropped or would collide.
+      if (holdToken) payload.hold_token = holdToken;
       const returnUrl = buildReturnUrl();
       if (returnUrl) payload.return_url = returnUrl;
       // Spec 65: say the widget can pay on its own page. A platform that does
@@ -1182,6 +1430,7 @@
       // Store the hold expiry so MiniCart/CartSheet can show the countdown
       // during the brief redirecting stage (WID-S1 fix #3 + #4).
       holdExpiresAt = response.expires_at;
+      noteOrderExpiry(response.expires_at);
       // WID-S5: notify host page that payment flow has started.
       dispatchWidgetEvent(host, ARENA_EVENTS.PAYMENT_STARTED, {
         checkoutToken: response.checkout_token,
@@ -1262,6 +1511,18 @@
         conflictKeys = new Set();
         checkoutError = makeCheckoutError('other', marketingErrorMessage(err.code, normLocale) ?? '');
         if (isMarketingRewardRefusal(err.code)) marketingDiscountUsedFor = selectedSession?.id ?? null;
+      } else if (err instanceof ApiError && err.code.startsWith('hold.')) {
+        // Spec 67: the hold is over (hold.expired) or sits on another order.
+        conflictKeys = new Set();
+        if (err.code === 'hold.expired') {
+          cartSheetOpen = false;
+          void holdCtl?.checkExpiry();
+        }
+        // A hold.* answer comes for a hold_token, so the hold chunk is there.
+        checkoutError = makeCheckoutError(
+          'other',
+          holdRt?.holdErrorText(err.code, normLocale, err.details) ?? buyerErrorText(err, normLocale, t.error_checkout),
+        );
       } else if (err instanceof ApiError && cartLimitMessage(err.code, normLocale) !== null) {
         // The platform refused the size of the cart: say so in the buyer's language.
         conflictKeys = new Set();
@@ -1323,6 +1584,8 @@
         forgetCheckoutToken();
       }
       if (status === 'paid') {
+        // The hold became the order: its key is of no use any more.
+        holdCtl?.forget();
         dispatchWidgetEvent(host, ARENA_EVENTS.ORDER_PAID, {
           checkoutToken: token,
           // The order number of the ticket e-mail and the PDF.
@@ -1447,8 +1710,19 @@
    * The Stripe secret is dropped.
    */
   function backToContacts(): void {
+    const leaving = checkoutToken;
     clearPaymentBlock();
     checkoutError = null;
+    if (leaving && holdView.holdToken) {
+      // Spec 67 section 4.5: the order goes, the seats stay in the hold; the next
+      // "continue" starts a new order on the same hold.
+      const hold = holdCtl;
+      forgetCheckoutToken();
+      checkoutToken = null;
+      void postCheckoutCancel(leaving, resolvedApiBase, { keepalive: true, keepHold: true })
+        .catch(() => null)
+        .then(() => hold?.refresh());
+    }
     stage = 'selecting';
     cartSheetOpen = true;
   }
@@ -1465,7 +1739,9 @@
     forgetCheckoutToken();
     checkoutToken = null;
     orderStatus = null;
-    selectedSeatKeys = new Set();
+    // Spec 67: the seats are the hold's; ask the platform what is left of it.
+    if (holdCtl && holdView.holdToken) void holdCtl.refresh();
+    else selectedSeatKeys = new Set();
     gaQuantities = new Map();
     holdExpiresAt = null;
     conflictKeys = new Set(); // WID-S2: clear conflict highlights on retry
@@ -1489,6 +1765,7 @@
     clearPaymentBlock();
     checkoutToken = null;
     orderStatus = null;
+    holdCtl?.forget();
     selectedSeatKeys = new Set();
     gaQuantities = new Map();
     holdExpiresAt = null;
@@ -1591,6 +1868,8 @@
             // from a different session don't carry over (WID-S1 fix #6).
             if (s?.id !== selectedSession?.id) {
               selectedSeatKeys = new Set();
+              holdView = emptyHoldView;
+              showHoldNotice(null);
               gaQuantities = new Map();
               holdExpiresAt = null;
               conflictKeys = new Set();
@@ -1623,6 +1902,9 @@
         {#if cartLimitNotice}
           <p class="arena-tickets-limit" role="status">{cartLimitNotice}</p>
         {/if}
+        {#if holdNotice}
+          <p class="arena-tickets-limit" role="status" data-testid="hold-notice">{holdNotice}</p>
+        {/if}
         <!-- A date sold by a partner box office: no map, no steppers, no cart; one button to the partner's site. -->
         {#if salesExternal && selectedSession}
           <ExternalSaleNotice session={selectedSession} locale={normLocale} />
@@ -1646,6 +1928,10 @@
               session={selectedSession}
               locale={normLocale}
               selectedKeys={selectedSeatKeys}
+              heldKeys={holdView.held}
+              pendingKeys={holdView.pending}
+              holdDraw={holdRt}
+              bind:this={seatMap}
               {conflictKeys}
               {onSeatTap}
               {onGaAreaTap}
@@ -1678,11 +1964,23 @@
           </div>
         {/if}
 
+        <!-- Spec 67: the hold's clock, the extension and the end of the hold -->
+        {#if holdRt}
+          <holdRt.HoldClock
+            view={holdView}
+            locale={normLocale}
+            {nowMs}
+            shown={holdShown}
+            onRehold={() => void holdCtl?.rehold()}
+            onExtend={() => void holdCtl?.extend()}
+          />
+        {/if}
+
         <!-- Mini cart bar -->
         {#if selectedSession && !salesClosed && (!salesPaused || cart.lines.length > 0)}
           <MiniCart
             lines={cart.lines}
-            expiresAt={holdExpiresAt}
+            expiresAt={holdShown ? null : holdExpiresAt}
             locale={normLocale}
             onOpen={openCartSheet}
             cta={t.continue_to_payment}
@@ -1797,11 +2095,20 @@
             shown={payView.shown}
             onHandle={preparedCtl.setHandle}
             onDeferredFailure={preparedCtl.markFailed}
+            onBeforeConfirm={(token) => {
+              // Spec 67 section 4.8: tell the platform the payment is going on (never awaited).
+              if (!holdView.holdToken) return;
+              postCheckoutPaying(token, resolvedApiBase);
+              payingNotice = true;
+            }}
             onPaid={finishPayment}
             onTerminal={finishPayment}
             onRestart={restartPayment}
             onBack={cart.lines.length > 0 ? backToContacts : undefined}
           />
+          {#if payingNotice && payView.shown}
+            <p class="arena-tickets-limit" role="status" data-testid="hold-paying">{holdRt?.getHoldStrings(normLocale).hold_paying}</p>
+          {/if}
         </div>
       </div>
     {/key}

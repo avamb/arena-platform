@@ -28,6 +28,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -128,6 +129,13 @@ func (h *Handler) startPreparedPayment(ctx context.Context, w http.ResponseWrite
 		writePrepareUnavailable(w, r, http.StatusConflict, prepareReasonNotEmbeddable)
 		return nil, false
 	}
+	if in.KeepHold && holdTooLateForPage(in.ExpiresAt, time.Now().UTC()) {
+		// No provider page for a hold about to end: the order is closed, the
+		// seats stay in the hold until it ends.
+		h.releaseRefusedCheckout(pctx, r, in)
+		writeHoldExpired(w, r)
+		return nil, false
+	}
 
 	res, err := es.StartEmbeddedCheckout(pctx, h.embeddedCheckoutRequest(pctx, in))
 	if err != nil {
@@ -146,9 +154,14 @@ func (h *Handler) startPreparedPayment(ctx context.Context, w http.ResponseWrite
 	}
 
 	csID := in.Session.ID
-	if _, err := h.checkoutQueries.InsertEmbeddedPaymentIntent(pctx,
-		&csID, in.CheckCtx.OrgID, res.Provider, res.SessionID, in.Breakdown.Total, in.Breakdown.Currency,
-	); err != nil {
+	// The attempt and its page expiry in one row; on the hold path under the
+	// hold's row lock, refused when the hold closed meanwhile.
+	_, err = h.recordPageAttempt(pctx, newPageAttempt(in, res.Provider, res.SessionID, ""))
+	if errors.Is(err, errHoldClosedForPage) {
+		h.refuseClosedHoldPage(pctx, w, r, in.CheckCtx.OrgID, in.CheckCtx.SalesChannelID, csID, res.Provider, res.SessionID)
+		return nil, false
+	}
+	if err != nil {
 		// Money against a row that does not exist would be lost: the
 		// session is closed at the provider (best effort, it was never
 		// handed out) and the order is cancelled.

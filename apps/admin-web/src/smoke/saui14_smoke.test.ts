@@ -234,6 +234,7 @@ const ROUTE_REGISTRY: Readonly<
   "/billing/invoices": { routeId: "BillingInvoicesRoute", file: "billingInvoices.tsx" },
   "/billing/payment-fees": { routeId: "BillingPaymentFeesRoute", file: "billingPaymentFees.tsx" },
   "/billing/bank": { routeId: "BillingBankRoute", file: "billingBank.tsx" },
+  "/hold-policy": { routeId: "HoldPolicyRoute", file: "holdPolicy.tsx" },
   "/analytics/flows": { routeId: "AnalyticsFlowsRoute", file: "analyticsFlows.tsx" },
   "/analytics/errors": { routeId: "AnalyticsErrorsRoute", file: "analyticsErrors.tsx" },
 };

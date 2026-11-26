@@ -66,6 +66,12 @@ export const STATUS_COLORS: Readonly<Record<string, string>> = {
   unavailable: '#d1d5db',
 } as const;
 
+/**
+ * Fill of a seat that is held for THIS buyer (spec 67 §8.1). Deliberately not
+ * the amber of somebody else's hold (`held`) and not a category colour.
+ */
+export const OWN_HOLD_COLOR = '#0f766e';
+
 /** Fallback color when a seat's category index is not resolved. */
 export const FALLBACK_COLOR = '#d1d5db';
 
@@ -524,3 +530,6 @@ export function clearConflictHighlight(
     applySeatStatusUpdate(container, delta, catColorMap);
   }
 }
+
+// The own-hold drawing (spec 67: applyHoldStyles, setPulse) lives in
+// lib/holdDraw.ts, part of the lazy hold chunk.

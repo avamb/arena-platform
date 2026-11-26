@@ -63,6 +63,8 @@
     onHandle?: (token: string, handle: DeferredPaymentHandle | null) => void;
     /** Deferred: the hidden form failed; the widget pays the classic way. */
     onDeferredFailure?: (token: string) => void;
+    /** Spec 67 §4.8: called right before Stripe confirms (never awaited). */
+    onBeforeConfirm?: (token: string) => void;
   }
 
   const {
@@ -87,6 +89,7 @@
     shown = true,
     onHandle,
     onDeferredFailure,
+    onBeforeConfirm,
   }: Props = $props();
 
   const s = $derived(getPaymentStrings(locale));
@@ -178,6 +181,7 @@
       lateSettleMaxMs: lateSettleMs(),
       deferred: mountedDeferred,
       onDeferredFailure: () => failCb?.(mountedToken),
+      onBeforeConfirm: () => onBeforeConfirm?.(mountedToken),
     });
     if (mountedDeferred) {
       handleCb?.(mountedToken, {

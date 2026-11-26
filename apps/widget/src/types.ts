@@ -144,6 +144,8 @@ export interface SeatStatusResponse {
   status_version: number;
   seats: Record<string, SeatStatusValue>;
   delta: boolean;
+  /** Spec 67 §4.9: how often to ask again (3000 usually, 1500 at high demand). */
+  poll_interval_ms?: number;
 }
 
 // ─── Feed (public event list / detail) ───────────────────────────────────────

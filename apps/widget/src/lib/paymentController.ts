@@ -135,6 +135,12 @@ export interface PaymentControllerOptions {
   deferred?: boolean;
   /** Deferred mode: the form cannot be used; the widget pays the classic way. */
   onDeferredFailure?: () => void;
+  /**
+   * Called right before Stripe confirms (card button and wallets alike), so
+   * the widget can tell the platform "payment is going on" (spec 67 §4.8). It
+   * must not wait for anything: the payment never depends on it.
+   */
+  onBeforeConfirm?: () => void;
 }
 
 /** What the widget holds of a hidden (deferred) payment screen. */
@@ -480,6 +486,12 @@ export function createPaymentController(opts: PaymentControllerOptions): Payment
     const failWallet = (): void => safely(() => wallet?.paymentFailed?.({ reason: 'fail' }));
     let result;
     try {
+      // Fire and forget: a failure here must never stop the payment.
+      try {
+        opts.onBeforeConfirm?.();
+      } catch {
+        /* nothing to do */
+      }
       // `if_required`: without it Stripe always leaves the page, even after a
       // successful card payment (spec 65 §3.2).
       result = await actions.confirm({ redirect: 'if_required', ...extra });

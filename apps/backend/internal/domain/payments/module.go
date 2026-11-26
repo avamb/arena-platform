@@ -121,6 +121,13 @@ type Capabilities struct {
 	// (spec 62 П-3) is not applied to such a provider: the deployment-wide
 	// widget window stays its floor. Zero means no floor.
 	MinPageLifetimeSeconds int
+	// CanExpirePage: arena can close the provider's payment page itself
+	// before its own expiry (Stripe POST /v1/checkout/sessions/{id}/expire),
+	// so a seat hold of the click gets the short payment step and the page
+	// is closed when the hold ends (spec 67 section 5.5). A provider without
+	// it keeps the channel's payment window plus the grace on the payment
+	// step.
+	CanExpirePage bool
 	// EmbeddedCheckout: the module can also create a checkout session the
 	// buyer pays inside arena's own page (EmbeddedCheckoutProvider, spec 65).
 	// It is used only when the config holds the public browser key named by

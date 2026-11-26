@@ -100,6 +100,10 @@ type stubStripe struct {
 	// failElementsCreates makes the next N embedded (ui_mode=elements)
 	// session creations answer 400, as a Stripe refusal would.
 	failElementsCreates int
+	// onHostedCreate, when set, runs after a hosted (non-elements) session
+	// is created and before Stripe answers, with the new session id: a test
+	// makes something happen "while the page is being created".
+	onHostedCreate func(id string)
 }
 
 // failNextElementsCreates makes the next n embedded session creations fail.
@@ -293,6 +297,9 @@ func newStubStripe(t *testing.T) *stubStripe {
 			_, _ = fmt.Fprintf(w, `{"id":%q,"object":"checkout.session","ui_mode":"elements","url":null,"client_secret":%q,"status":"open","payment_status":"unpaid","payment_intent":null,"expires_at":%d}`,
 				id, secret, time.Now().Add(31*time.Minute).Unix())
 			return
+		}
+		if s.onHostedCreate != nil {
+			s.onHostedCreate(id)
 		}
 		_, _ = fmt.Fprintf(w, `{"id":%q,"url":"https://checkout.stripe.test/c/pay/%s","payment_intent":null,"expires_at":%d}`,
 			id, id, time.Now().Add(31*time.Minute).Unix())

@@ -74,7 +74,8 @@ func (s *Server) feedHandler() *hfeed.Handler {
 		WithTicketAccessLog(s.ticketAccessRecorder()).
 		WithCheckoutIdempotency(s.checkoutStartIdempotency()).
 		WithPaymentApplier(s.confirmedPaymentApplier()).
-		WithCartConversions(s.cartConversions())
+		WithCartConversions(s.cartConversions()).
+		WithHoldPricedHook(s.holdPricedHook)
 }
 
 // cartConversions queues the widget cart's AddToCart / InitiateCheckout; nil
