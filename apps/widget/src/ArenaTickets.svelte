@@ -663,7 +663,7 @@
   let payingNotice = $state(false);
   let nowMs = $state(Date.now());
   // Rendered seat map: refresh the statuses now, light the nearest free seats.
-  let seatMap = $state<{ refreshStatuses(): Promise<void>; highlightNearest(seatKey: string): number } | null>(null);
+  let seatMap = $state<{ refreshStatuses(): Promise<void>; highlightNearest(seatKey: string): number; collapse(): void } | null>(null);
   // seat key -> "row/number" for the list of seats taken meanwhile.
   let seatLabels = new Map<string, string>();
 
@@ -1921,6 +1921,30 @@
           </div>
         {/if}
 
+        <!-- Footer of the full screen seat map: the same cart bar, and the GA popover so it shows over the map. -->
+        {#snippet footer()}
+          {#if openGaArea}
+            <GaAreaPopover
+              area={openGaArea}
+              quantity={gaQuantities.get(openGaArea.tierId) ?? 0}
+              onQuantityChange={onGaQuantityChange}
+              onClose={closeGaAreaPopover}
+            />
+          {/if}
+          {#if selectedSession && !salesClosed && (!salesPaused || cart.lines.length > 0)}
+            <MiniCart
+              lines={cart.lines}
+              expiresAt={holdShown ? null : holdExpiresAt}
+              locale={normLocale}
+              onOpen={() => {
+                seatMap?.collapse();
+                openCartSheet();
+              }}
+              cta={t.continue_to_payment}
+            />
+          {/if}
+        {/snippet}
+
         <!-- Seat map (only for sessions with schema_url) -->
         {#if !salesClosed && !salesPaused && selectedSession && selectedSession.schema_url}
           <div class="arena-tickets-map-wrap">
@@ -1937,6 +1961,7 @@
               {onGaAreaTap}
               {onSchemaLoaded}
               apiBase={resolvedApiBase}
+              {footer}
             />
             {#if openGaArea}
               <GaAreaPopover
