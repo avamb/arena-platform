@@ -1,0 +1,40 @@
+{
+  "name": "vinoandco",
+  "host": "vinoandco.events",
+  "cert_resolver": "letsencrypt",
+  "site_url": null,
+  "wp_url": null,
+  "site_always_rule": "PathPrefix(`/order-status/`) || PathPrefix(`/my-tickets/`) || PathPrefix(`/en/order-status/`) || PathPrefix(`/en/my-tickets/`) || PathPrefix(`/he/order-status/`) || PathPrefix(`/he/my-tickets/`) || PathPrefix(`/_site/`)",
+  "wp_routes": [
+    {
+      "name": "wp-allpay-ipn",
+      "priority": 2000,
+      "rule": "Query(`wc-api`, `allpay`) || PathPrefix(`/wc-api/allpay`)"
+    },
+    {
+      "name": "wp-lops-rest",
+      "priority": 2000,
+      "rule": "PathPrefix(`/wp-json/lops/`)"
+    },
+    {
+      "name": "wp-pay-back",
+      "priority": 2000,
+      "rule": "QueryRegexp(`vino_pay_back`, `.+`)"
+    },
+    {
+      "name": "wp-old-order-pages",
+      "priority": 2000,
+      "rule": "(PathPrefix(`/payment-successful/`) || PathPrefix(`/my-account/`) || PathPrefix(`/en/payment-successful/`) || PathPrefix(`/en/my-account/`) || PathPrefix(`/he/hthshlw-hslyx/`) || PathPrefix(`/he/hxshbw-shly/`)) && (QueryRegexp(`order_id`, `.+`) || QueryRegexp(`order_key`, `.+`) || QueryRegexp(`key`, `.+`) || QueryRegexp(`login`, `.+`))"
+    },
+    {
+      "name": "wp-admin",
+      "priority": 2000,
+      "rule": "PathPrefix(`/wp-admin/`) || Path(`/wp-login.php`)"
+    }
+  ],
+  "wp_cookie_assets": {
+    "cookie": "wordpress_logged_in_",
+    "priority": 1500,
+    "rule": "PathPrefix(`/wp-json/`) || PathPrefix(`/wp-content/`) || PathPrefix(`/wp-includes/`)"
+  }
+}

@@ -1,0 +1,52 @@
+# Route probes for lampyrisevents.com (spec 63 section 7.3 and section 10.2 step 6).
+# GET and HEAD only (-I). No probe sends a body: the Stripe webhook /?wc-api=wc_stripe is a GET
+# here, never a live POST (lesson U-19). Run once after the route is live, not in a loop.
+# Paths have no spaces and no quotes: the runner splits each line on spaces.
+# Locale prefixes: /cs/ is an example of the site locales (the route rules accept any two letters).
+
+# ---- the new site always, also during a rollback
+SITE /order-status/
+SITE /cs/order-status/
+SITE /order-status/?order_id=1
+SITE /my-tickets/
+SITE /my-tickets/?t=abc
+SITE /cs/my-tickets/
+SITE /_site/assets/x.js
+
+# ---- the rest of the host is the new site
+SITE /
+SITE /cs/
+SITE /tours/
+SITE /past-events/
+SITE /robots.txt
+SITE /?wc-api=other
+SITE /sitemap.xml
+
+# ---- old order pages WITHOUT old-order parameters: the site (301 to the new pages)
+SITE /payment-successful/
+SITE /my-account/
+SITE /cs/my-account/
+
+# ---- old order pages WITH old-order parameters: WordPress
+WP /payment-successful/?order_id=1 -I
+WP /payment-successful/?order_key=wc_order_x -I
+WP /my-account/?key=wc_order_x -I
+WP /cs/my-account/?login=a -I
+
+# ---- checkout of an old order and the webhooks: WordPress (HEAD only)
+WP /checkout/order-pay/1/ -I
+WP /?wc-api=wc_stripe -I
+WP /wp-json/bil24/v1/notification -I
+WP /wp-json/lops/v1/brevo -I
+
+# ---- operator: WordPress
+WP /wp-login.php -I
+WP /wp-admin/ -I
+
+# ---- WordPress REST and assets: WordPress only with the operator's login cookie
+SITE /wp-json/ -I
+SITE /wp-content/plugins/woocommerce/readme.txt -I
+SITE /wp-includes/js/jquery/jquery.min.js -I
+WP /wp-json/ -I -H Cookie:wordpress_logged_in_x=1
+WP /wp-includes/js/jquery/jquery.min.js -I -H Cookie:wordpress_logged_in_x=1
+WP /wp-content/plugins/woocommerce/readme.txt -I -H Cookie:wordpress_logged_in_x=1
