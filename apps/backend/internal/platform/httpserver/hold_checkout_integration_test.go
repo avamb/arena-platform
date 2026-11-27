@@ -174,6 +174,10 @@ func postHoldStart(t *testing.T, srv *Server, f *seatHoldFixture, extra map[stri
 		}
 		payload[k] = v
 	}
+	// A prepared order has no buyer yet: the tick comes at attach.
+	if payload["prepare"] == true {
+		delete(payload, "consent")
+	}
 	raw, _ := json.Marshal(payload)
 	req := httptest.NewRequest(http.MethodPost, "/v1/public/feeds/"+f.feedToken+"/checkout/start", bytes.NewReader(raw))
 	req.Header.Set("Content-Type", "application/json")
