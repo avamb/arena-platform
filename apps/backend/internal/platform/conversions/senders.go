@@ -61,11 +61,14 @@ type PurchaseItem struct {
 	EventID   string    `json:"event_id,omitempty"`
 	EventName string    `json:"event_name,omitempty"`
 	StartAt   time.Time `json:"start_at"` // zero when unknown
-	Venue     string    `json:"venue,omitempty"`
-	City      string    `json:"city,omitempty"`
-	Country   string    `json:"country,omitempty"`
-	Quantity  int       `json:"quantity"`
-	Price     float64   `json:"price"`
+	// SessionDate is the YYYY-MM-DD of StartAt in the venue's time zone (UTC
+	// fallback); Meta custom_data and GA4 params carry it as session_date.
+	SessionDate string  `json:"session_date,omitempty"`
+	Venue       string  `json:"venue,omitempty"`
+	City        string  `json:"city,omitempty"`
+	Country     string  `json:"country,omitempty"`
+	Quantity    int     `json:"quantity"`
+	Price       float64 `json:"price"`
 }
 
 // purchaseItems maps the order's sessions to Purchase items.
@@ -77,32 +80,32 @@ func purchaseItems(od OrderData) []PurchaseItem {
 		}
 		out = append(out, PurchaseItem{
 			SessionID: s.SessionID, EventID: s.EventID, EventName: s.EventName, StartAt: s.StartAt,
-			Venue: s.Venue, City: s.City, Country: s.Country, Quantity: s.Quantity,
+			SessionDate: s.SessionDate, Venue: s.Venue, City: s.City, Country: s.Country, Quantity: s.Quantity,
 			Price: money.MajorScale(s.UnitPrice, money.ScaleFor(od.Currency)),
 		})
 	}
 	return out
 }
 
-// contentName is "<event name> — <city>, <YYYY-MM-DD>"; the city and the date
-// are left out when unknown, and it is empty without an event name.
+// contentName is "<event name> — <city>" without a date (the date travels as
+// session_date, spec 68 §3.5); the city is left out when unknown, and it is
+// empty without an event name.
 func (it PurchaseItem) contentName() string {
 	if it.EventName == "" {
 		return ""
 	}
-	date := ""
-	if !it.StartAt.IsZero() {
-		date = it.StartAt.UTC().Format("2006-01-02") // allow:timeformat: a date inside the human content_name, not a wire timestamp
-	}
-	switch {
-	case it.City != "" && date != "":
-		return it.EventName + " — " + it.City + ", " + date
-	case it.City != "":
+	if it.City != "" {
 		return it.EventName + " — " + it.City
-	case date != "":
-		return it.EventName + " — " + date
 	}
 	return it.EventName
+}
+
+// addSessionDate puts the first item's session_date into m (Meta custom_data
+// or GA4 params) when it is known.
+func addSessionDate(m map[string]any, items []PurchaseItem) {
+	if len(items) > 0 && items[0].SessionDate != "" {
+		m["session_date"] = items[0].SessionDate
+	}
 }
 
 // addMetaItems adds the what/where/when of the purchase to Meta custom_data.
@@ -126,6 +129,7 @@ func addMetaItems(custom map[string]any, items []PurchaseItem) {
 	if n := first.contentName(); n != "" {
 		custom["content_name"] = n
 	}
+	addSessionDate(custom, items)
 	for k, v := range map[string]string{
 		"event_id": first.EventID, "event_name": first.EventName, "city": first.City,
 		"country": first.Country, "venue": first.Venue,
@@ -332,6 +336,7 @@ func (g GA4Sender) Send(ctx context.Context, measurementID, apiSecret string, p 
 	}
 	if len(p.Items) > 0 {
 		params["items"] = ga4Items(p.Items)
+		addSessionDate(params, p.Items)
 	}
 	body, err := json.Marshal(map[string]any{
 		"client_id": cid,
@@ -355,6 +360,19 @@ var metaEventNames = map[string]string{
 	KindLead:             "Lead",
 	KindSubscribe:        "CompleteRegistration",
 	KindAddToCart:        "AddToCart",
+	KindTicketsClick:     "TicketsClick",
+	KindAddPaymentInfo:   "AddPaymentInfo",
+	KindAcceptTerms:      "AcceptTerms",
+}
+
+// cartKind reports a kind that carries a widget cart's sessions (items) and
+// value like a Purchase does.
+func cartKind(kind string) bool {
+	switch kind {
+	case KindAddToCart, KindInitiateCheckout, KindAddPaymentInfo, KindAcceptTerms:
+		return true
+	}
+	return false
 }
 
 var ga4EventNames = map[string]string{
@@ -364,6 +382,9 @@ var ga4EventNames = map[string]string{
 	KindLead:             "generate_lead",
 	KindSubscribe:        "sign_up",
 	KindAddToCart:        "add_to_cart",
+	KindTicketsClick:     "tickets_click",
+	KindAddPaymentInfo:   "add_payment_info",
+	KindAcceptTerms:      "accept_terms",
 }
 
 func eventTime(ev SiteEvent) time.Time {
@@ -417,12 +438,19 @@ func (m MetaSender) SendEvent(ctx context.Context, pixelID, token, testEventCode
 	}
 	custom := map[string]any{}
 	switch ev.Kind {
-	case KindViewContent:
+	case KindViewContent, KindTicketsClick:
+		// An event page or a site names what was viewed or clicked: its own
+		// content id and name first, the session items otherwise.
+		addMetaItems(custom, ev.Items)
 		if ev.ContentID != "" {
 			custom["content_ids"] = []string{ev.ContentID}
 		}
+		if ev.ContentName != "" {
+			custom["content_name"] = ev.ContentName
+		}
 		custom["content_type"] = "product"
-	case KindInitiateCheckout:
+	}
+	if ev.Kind == KindInitiateCheckout || ev.Kind == KindTicketsClick {
 		if ev.Seller != "" {
 			custom["seller"] = ev.Seller
 		}
@@ -432,12 +460,12 @@ func (m MetaSender) SendEvent(ctx context.Context, pixelID, token, testEventCode
 		if ev.CheckoutType != "" {
 			custom["checkout_type"] = ev.CheckoutType
 		}
-		if ev.ContentID != "" {
+		if ev.Kind == KindInitiateCheckout && ev.ContentID != "" {
 			custom["content_ids"] = []string{ev.ContentID}
 		}
 	}
 	// A widget cart names its sessions like a Purchase does (what, where, when).
-	if ev.Kind == KindAddToCart || ev.Kind == KindInitiateCheckout {
+	if cartKind(ev.Kind) {
 		addMetaItems(custom, ev.Items)
 		if ev.SeatsConsidered > 0 {
 			custom["seats_considered"] = ev.SeatsConsidered
@@ -497,15 +525,20 @@ func (g GA4Sender) SendEvent(ctx context.Context, measurementID, apiSecret strin
 		params["page_location"] = ev.Context.PageURL
 	}
 	switch ev.Kind {
-	case KindViewContent, KindInitiateCheckout:
+	case KindViewContent, KindInitiateCheckout, KindTicketsClick:
 		if ev.ContentID != "" || ev.ContentName != "" {
 			params["items"] = []any{map[string]any{"item_id": ev.ContentID, "item_name": ev.ContentName}}
 		}
 	}
-	if (ev.Kind == KindAddToCart || ev.Kind == KindInitiateCheckout) && len(ev.Items) > 0 {
+	itemKind := cartKind(ev.Kind) ||
+		((ev.Kind == KindViewContent || ev.Kind == KindTicketsClick) && ev.ContentID == "" && ev.ContentName == "")
+	if itemKind && len(ev.Items) > 0 {
 		params["items"] = ga4Items(ev.Items)
 	}
-	if ev.Kind == KindInitiateCheckout {
+	if len(ev.Items) > 0 && (cartKind(ev.Kind) || ev.Kind == KindViewContent || ev.Kind == KindTicketsClick) {
+		addSessionDate(params, ev.Items)
+	}
+	if ev.Kind == KindInitiateCheckout || ev.Kind == KindTicketsClick {
 		if ev.Seller != "" {
 			params["affiliation"] = ev.Seller
 		}

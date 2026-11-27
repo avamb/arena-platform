@@ -81,8 +81,21 @@ func TestCleanTrack_OutboundClickFields(t *testing.T) {
 		t.Errorf("dirty values must be dropped: %+v", e)
 	}
 	se, ok := e.ToSiteEvent("203.0.113.9", "Mozilla/5.0")
-	if !ok || se.Kind != conversions.KindInitiateCheckout || se.ContentID != trackEventUUID || se.Context.ClientIP != "203.0.113.9" {
+	if !ok || se.Kind != conversions.KindTicketsClick || se.ContentID != trackEventUUID || se.Context.ClientIP != "203.0.113.9" {
 		t.Errorf("site event: %+v ok=%v", se, ok)
+	}
+}
+
+func TestCleanTrack_CheckoutOpenStaysInitiateCheckout(t *testing.T) {
+	r := TrackRequest{Event: TrackCheckoutOpen, EventID: "c1", PageURL: "https://lampyrisevents.com/t"}
+	r.Data.EventID = trackEventUUID
+	e, ok := CleanTrack(r, trackChannel())
+	if !ok {
+		t.Fatal("checkout_open must pass")
+	}
+	se, ok := e.ToSiteEvent("", "")
+	if !ok || se.Kind != conversions.KindInitiateCheckout {
+		t.Errorf("checkout_open: kind = %s ok=%v", se.Kind, ok)
 	}
 }
 

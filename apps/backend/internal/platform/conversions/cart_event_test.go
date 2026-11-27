@@ -62,7 +62,7 @@ func TestMetaSendEvent_AddToCartCustomData(t *testing.T) {
 	}
 	cd := e["custom_data"].(map[string]any)
 	if cd["content_ids"].([]any)[0] != "S-1" || cd["content_type"] != "product" || cd["num_items"].(float64) != 3 ||
-		cd["content_name"] != "Concert — Prague, 2026-12-01" || cd["city"] != "Prague" || cd["country"] != "CZ" ||
+		cd["content_name"] != "Concert — Prague" || cd["city"] != "Prague" || cd["country"] != "CZ" ||
 		cd["event_id"] != "E-1" || cd["event_name"] != "Concert" || cd["venue"] != "Hall" ||
 		cd["value"].(float64) != 61.5 || cd["currency"] != "EUR" || cd["seats_considered"].(float64) != 7 {
 		t.Fatalf("custom_data: %v", cd)
@@ -101,5 +101,70 @@ func TestGA4SendEvent_AddToCartItems(t *testing.T) {
 			it["item_category"] != "Prague" {
 			t.Fatalf("%s: %v", kind, e)
 		}
+	}
+}
+
+func TestMetaSendEvent_PaymentInfoAndTermsCarryCart(t *testing.T) {
+	var got map[string]any
+	srv := captureServer(t, &got)
+	defer srv.Close()
+	for kind, name := range map[string]string{KindAddPaymentInfo: "AddPaymentInfo", KindAcceptTerms: "AcceptTerms"} {
+		ev := testCartEvent(kind, 0)
+		ev.Items[0].SessionDate = "2026-12-01"
+		if err := (MetaSender{BaseURL: srv.URL}).SendEvent(context.Background(), "px", "tok", "", ev); err != nil {
+			t.Fatal(err)
+		}
+		e := got["data"].([]any)[0].(map[string]any)
+		cd := e["custom_data"].(map[string]any)
+		if e["event_name"] != name || cd["content_ids"].([]any)[0] != "S-1" || cd["content_type"] != "product" ||
+			cd["num_items"].(float64) != 3 || cd["content_name"] != "Concert — Prague" ||
+			cd["session_date"] != "2026-12-01" || cd["value"].(float64) != 61.5 || cd["currency"] != "EUR" {
+			t.Fatalf("%s: %v", kind, e)
+		}
+	}
+}
+
+func TestGA4SendEvent_PaymentInfoAndTermsCarryCart(t *testing.T) {
+	var got map[string]any
+	srv := captureServer(t, &got)
+	defer srv.Close()
+	for _, kind := range []string{KindAddPaymentInfo, KindAcceptTerms} {
+		ev := testCartEvent(kind, 0)
+		ev.Items[0].SessionDate = "2026-12-01"
+		if err := (GA4Sender{BaseURL: srv.URL}).SendEvent(context.Background(), "G-X", "sec", ev); err != nil {
+			t.Fatal(err)
+		}
+		e := got["events"].([]any)[0].(map[string]any)
+		p := e["params"].(map[string]any)
+		it := p["items"].([]any)[0].(map[string]any)
+		if e["name"] != kind || p["value"].(float64) != 61.5 || p["currency"] != "EUR" ||
+			p["session_date"] != "2026-12-01" || it["item_id"] != "S-1" || it["quantity"].(float64) != 3 ||
+			it["item_name"] != "Concert — Prague" {
+			t.Fatalf("%s: %v", kind, e)
+		}
+	}
+}
+
+func TestSendEvent_ViewContentFromItems(t *testing.T) {
+	var got map[string]any
+	srv := captureServer(t, &got)
+	defer srv.Close()
+	ev := testCartEvent(KindViewContent, 0)
+	ev.Value, ev.Currency = 0, ""
+	ev.Items[0].SessionDate = "2026-12-02"
+	if err := (MetaSender{BaseURL: srv.URL}).SendEvent(context.Background(), "px", "tok", "", ev); err != nil {
+		t.Fatal(err)
+	}
+	cd := got["data"].([]any)[0].(map[string]any)["custom_data"].(map[string]any)
+	if cd["content_name"] != "Concert — Prague" || cd["session_date"] != "2026-12-02" ||
+		cd["content_ids"].([]any)[0] != "S-1" || cd["content_type"] != "product" {
+		t.Fatalf("meta view_content: %v", cd)
+	}
+	if err := (GA4Sender{BaseURL: srv.URL}).SendEvent(context.Background(), "G-X", "sec", ev); err != nil {
+		t.Fatal(err)
+	}
+	p := got["events"].([]any)[0].(map[string]any)["params"].(map[string]any)
+	if p["session_date"] != "2026-12-02" || p["items"].([]any)[0].(map[string]any)["item_id"] != "S-1" {
+		t.Fatalf("ga4 view_item: %v", p)
 	}
 }

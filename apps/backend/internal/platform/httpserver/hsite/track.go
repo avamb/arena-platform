@@ -298,7 +298,9 @@ func (e TrackEvent) ToSiteEvent(ip, ua string) (conversions.SiteEvent, bool) {
 		kind = conversions.KindPageView
 	case TrackViewEvent:
 		kind = conversions.KindViewContent
-	case TrackOutboundClick, TrackCheckoutOpen:
+	case TrackOutboundClick:
+		kind = conversions.KindTicketsClick
+	case TrackCheckoutOpen:
 		kind = conversions.KindInitiateCheckout
 	case TrackLead:
 		kind = conversions.KindLead

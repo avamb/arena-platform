@@ -16,7 +16,7 @@ func sampleSessions() []OrderSession {
 	return []OrderSession{{
 		SessionID: "sess-1", EventID: "evt-1", EventName: "Silver Hoof", Venue: "Palac Akropolis",
 		City: "Prague", Country: "CZ", Quantity: 2, UnitPrice: 1890,
-		StartAt: time.Date(2026, 12, 19, 18, 0, 0, 0, time.UTC),
+		StartAt: time.Date(2026, 12, 19, 18, 0, 0, 0, time.UTC), SessionDate: "2026-12-19",
 	}}
 }
 
@@ -42,9 +42,9 @@ func TestMetaPurchase_CarriesEventSessionCityAndContents(t *testing.T) {
 	want := map[string]any{
 		"currency": "ILS", "value": 18.9, "order_id": "1000000501",
 		"content_ids": []any{"sess-1"}, "content_type": "product",
-		"content_name": "Silver Hoof — Prague, 2026-12-19",
-		"contents":     []any{map[string]any{"id": "sess-1", "quantity": 2.0, "item_price": 18.9}},
-		"num_items":    2.0, "event_id": "evt-1", "event_name": "Silver Hoof",
+		"content_name": "Silver Hoof — Prague", "session_date": "2026-12-19",
+		"contents":  []any{map[string]any{"id": "sess-1", "quantity": 2.0, "item_price": 18.9}},
+		"num_items": 2.0, "event_id": "evt-1", "event_name": "Silver Hoof",
 		"city": "Prague", "country": "CZ", "venue": "Palac Akropolis",
 	}
 	if !reflect.DeepEqual(cd, want) {
@@ -114,10 +114,42 @@ func TestGA4Purchase_Items(t *testing.T) {
 	}
 	p := got["events"].([]any)[0].(map[string]any)["params"].(map[string]any)
 	want := []any{map[string]any{
-		"item_id": "sess-1", "item_name": "Silver Hoof — Prague, 2026-12-19",
+		"item_id": "sess-1", "item_name": "Silver Hoof — Prague",
 		"item_category": "Prague", "quantity": 2.0, "price": 18.9,
 	}}
 	if !reflect.DeepEqual(p["items"], want) {
 		t.Fatalf("items: got %v want %v", p["items"], want)
+	}
+	if p["session_date"] != "2026-12-19" {
+		t.Fatalf("session_date = %v", p["session_date"])
+	}
+}
+
+func TestSessionDate_VenueZone(t *testing.T) {
+	late := time.Date(2026, 12, 19, 23, 30, 0, 0, time.UTC)
+	cases := []struct{ tz, want string }{
+		{"Asia/Jerusalem", "2026-12-20"}, // UTC+2: already the next day at the venue
+		{"America/New_York", "2026-12-19"},
+		{"", "2026-12-19"},          // unknown zone: UTC
+		{"Not/AZone", "2026-12-19"}, // bad zone: UTC
+	}
+	for _, c := range cases {
+		if got := SessionDate(late, c.tz); got != c.want {
+			t.Errorf("SessionDate(%q) = %q, want %q", c.tz, got, c.want)
+		}
+	}
+	if got := SessionDate(time.Time{}, "Asia/Jerusalem"); got != "" {
+		t.Errorf("zero start: %q", got)
+	}
+}
+
+func TestContentName_NoDate(t *testing.T) {
+	it := PurchaseItem{EventName: "Show", City: "Haifa", StartAt: time.Date(2026, 12, 19, 18, 0, 0, 0, time.UTC)}
+	if got := it.contentName(); got != "Show — Haifa" {
+		t.Fatalf("contentName = %q", got)
+	}
+	it.City = ""
+	if got := it.contentName(); got != "Show" {
+		t.Fatalf("contentName without city = %q", got)
 	}
 }
