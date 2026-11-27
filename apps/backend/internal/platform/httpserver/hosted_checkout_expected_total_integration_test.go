@@ -27,6 +27,7 @@ func (f *hostedOrgFixture) startCheckoutExpecting(t *testing.T, srv *Server, exp
 		},
 		"return_url":     hostedTicketsBaseURL + "/shows",
 		"expected_total": expected,
+		"consent":        map[string]any{"accepted": true},
 	})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)

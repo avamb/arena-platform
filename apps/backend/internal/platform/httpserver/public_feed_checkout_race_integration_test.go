@@ -216,6 +216,7 @@ func TestPublicFeedCheckout_ConcurrentSameNewBuyer_NoRaceAbortedTx(t *testing.T)
 					"name":  "Race Buyer", // SAME name — irrelevant to the race
 					"phone": f.buyerPhone, // SAME new phone for both goroutines
 				},
+				"consent": map[string]any{"accepted": true},
 			})
 			if err != nil {
 				bodies[i] = "marshal error: " + err.Error()

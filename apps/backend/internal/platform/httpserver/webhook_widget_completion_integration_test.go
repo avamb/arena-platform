@@ -234,6 +234,7 @@ func TestWebhookWidgetCompletion_StripeEnvelopeSuccess_CompletesCheckoutAndPaysO
 			"name":  "Webhook Widget Buyer",
 			"phone": f.buyerPhone,
 		},
+		"consent": map[string]any{"accepted": true},
 	})
 	if err != nil {
 		t.Fatalf("marshal checkout/start request: %v", err)
@@ -466,6 +467,7 @@ func TestWebhookWidgetCompletion_FlatBodyStillWorksEndToEnd(t *testing.T) {
 			"name":  "Flat Body Buyer",
 			"phone": f.buyerPhone,
 		},
+		"consent": map[string]any{"accepted": true},
 	})
 	if err != nil {
 		t.Fatalf("marshal checkout/start request: %v", err)
@@ -557,6 +559,7 @@ func TestWebhookWidgetCompletion_PaymentAfterExpiry_ParksForManualReview(t *test
 			"name":  "Late Payment Buyer",
 			"phone": f.buyerPhone,
 		},
+		"consent": map[string]any{"accepted": true},
 	})
 	if err != nil {
 		t.Fatalf("marshal checkout/start request: %v", err)

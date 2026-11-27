@@ -86,6 +86,7 @@ func startOne(t *testing.T, srv *Server, f *hostedOrgFixture, caps []string) emb
 			"name":  "Embedded Buyer",
 			"phone": f.buyerPhone,
 		},
+		"consent": map[string]any{"accepted": true},
 	}
 	if caps != nil {
 		payload["capabilities"] = caps
@@ -529,6 +530,7 @@ func TestEmbeddedCheckout_IdempotentReplayNeverStoresTheSecret(t *testing.T) {
 		"return_url":   hostedTicketsBaseURL + "/shows/embedded",
 		"buyer":        map[string]any{"email": f.buyerMail, "name": "Embedded Buyer", "phone": f.buyerPhone},
 		"capabilities": []string{"stripe_elements"},
+		"consent":      map[string]any{"accepted": true},
 	})
 	send := func() embeddedStartResponse {
 		req := httptest.NewRequest(http.MethodPost, "/v1/public/feeds/"+f.feedToken+"/checkout/start", bytes.NewReader(payload))

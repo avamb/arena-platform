@@ -266,6 +266,16 @@ func (s *Server) handlePublicPageTrack(w http.ResponseWriter, r *http.Request) {
 	s.feedHandler().HandlePublicPageTrack(w, r)
 }
 
+// handlePublicPageConversion queues ViewContent / TicketsClick of an event page (spec 68).
+func (s *Server) handlePublicPageConversion(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandlePublicPageConversion(w, r)
+}
+
+// handlePublicSeriesPageConversion is the same for a tour page (spec 68).
+func (s *Server) handlePublicSeriesPageConversion(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandlePublicSeriesPageConversion(w, r)
+}
+
 // handlePublicFunnel counts one step of the buyer funnel (spec 50 A7).
 func (s *Server) handlePublicFunnel(w http.ResponseWriter, r *http.Request) {
 	s.feedHandler().HandlePublicFunnel(w, r)

@@ -209,6 +209,7 @@ func TestW1A6c_PublicFeedPurchase_OrderItemsAndOrderPaid(t *testing.T) {
 			"name":  "Wanda Buyer",
 			"phone": f.buyerPhone,
 		},
+		"consent": map[string]any{"accepted": true},
 	})
 	if err != nil {
 		t.Fatalf("marshal request: %v", err)

@@ -342,6 +342,7 @@ func TestSupersede_PerCustomerPromoCountsTheKeptOrder(t *testing.T) {
 			"return_url": hostedTicketsBaseURL + "/shows/late",
 			"promo_code": code,
 			"buyer":      map[string]any{"email": f.buyerMail, "name": "Late Buyer", "phone": f.buyerPhone},
+			"consent":    map[string]any{"accepted": true},
 		})
 		req := httptest.NewRequest(http.MethodPost, "/v1/public/feeds/"+f.feedToken+"/checkout/start", bytes.NewReader(raw))
 		req.Header.Set("Content-Type", "application/json")

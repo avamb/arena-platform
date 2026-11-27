@@ -12430,9 +12430,9 @@ components:
         consent_active:
           type: boolean
           description: |
-            Whether checkout asks for the consent now: `consent_required` and
-            the data is complete. A profile emptied after the switch was set
-            turns the question off until it is complete again.
+            Whether the stored switch and the data allow the consent. Since
+            spec 68 section 5.1 it no longer decides checkout: the tick is
+            required for every paid sale (a free order needs none).
         thank_you_posters:
           type: boolean
           description: |
@@ -12621,8 +12621,10 @@ components:
         consent_required:
           type: boolean
           description: |
-            True makes checkout ask the buyer to accept the organizer's sale
-            terms and the platform policy before paying (P2); a cart without
+            The stored switch of the buyer consent (P2). Since spec 68 section
+            5.1 checkout asks every buyer of a paid sale to accept the
+            organizer's sale terms and the platform policy whatever this
+            switch says (a free order needs no tick); a paid cart without
             the tick is refused with 422 `checkout.consent_required`. May be
             switched on only while the seller data is complete (422
             `seller.incomplete` with details.missing). False switches it off.
@@ -13381,6 +13383,32 @@ components:
         next_cursor:
           type: [string, "null"]
           description: Pass it as `cursor` to get the next, older page. Null on the last page.
+
+    PageConversionRequest:
+      type: object
+      required: [kind, event_id]
+      description: |
+        Body of POST /v1/public/pages/{org_slug}/{event_slug}/conversion and
+        of the tour page's twin (spec 68 section 3.4). Unknown fields are
+        ignored.
+      properties:
+        kind:
+          type: string
+          description: What the visitor did, `view_content` or `tickets_click`. Any other value is refused with 400 `track.invalid_body`.
+          example: "view_content"
+        event_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: "^[A-Za-z0-9_-]+$"
+          description: The page's id of this moment, the dedup key of the event. 1 to 64 characters of `A-Za-z0-9_-`.
+        buyer_context:
+          description: |
+            The browser's tracking context, the object `checkout/start` takes.
+            Nothing is queued unless its `tracking_consent` is true with
+            `tracking_consent_text_version`. A malformed object is ignored.
+          allOf:
+            - $ref: "#/components/schemas/PublicCheckoutBuyerContext"
 
     PageTrackRequest:
       type: object
@@ -19572,12 +19600,11 @@ components:
           description: |
             The buyer's tick on "I accept the sale terms (seller: <legal
             name>) and the privacy policy" (P2). Required (with
-            `accepted: true`) when the feed session's `consent.required` is
-            true. Only then is it recorded with the checkout session, together
+            `accepted: true`) for every paid sale (spec 68 section 5.1; a
+            free order needs none). A ticked consent is recorded with the checkout session, together
             with the buyer's IP address and browser string at purchase, the
             site the buyer bought on and what the checkbox showed (dispute
-            evidence, never answered on a public route). Sent to a channel
-            that does not ask for it, it is ignored and nothing is stored.
+            evidence, never answered on a public route).
           allOf:
             - $ref: "#/components/schemas/PublicCheckoutConsent"
         attribution:
@@ -20683,13 +20710,14 @@ components:
         whether the widget must show the checkbox "I accept the sale terms
         (seller: <seller_legal_name>) and the privacy policy" with links to
         `terms_url` and `privacy_url`, and keep the pay button disabled until
-        it is ticked. Required only while the sales channel's
-        `consent_required` switch is on AND the seller data is complete; a
-        seller block hidden by the operator does not switch it off.
+        it is ticked. Since spec 68 section 5.1 the tick is required for
+        every paid sale on every channel: the channel's `consent_required`
+        switch and the completeness of the seller data no longer decide it.
+        A free order (total 0) needs no tick.
       properties:
         required:
           type: boolean
-          description: True when checkout/start refuses a cart without the consent.
+          description: True when checkout/start refuses a paid cart without the consent (always true since spec 68; a free cart is never refused).
         seller_legal_name:
           type: string
           description: Legal name of the seller the checkbox names; present only when `required` is true.
@@ -21129,9 +21157,18 @@ components:
         The cart to price, in the shape of `PublicFeedCheckoutStartRequest`
         (seated `seats`, general-admission `ga_items`, or both) plus the
         optional promo code. The quote takes no buyer details; the optional
-        tracking fields only feed the cart's AddToCart event.
+        tracking fields only feed the cart's AddToCart or InitiateCheckout
+        event.
       required: [session_id]
       properties:
+        cart_event:
+          type: string
+          description: |
+            Which event the cart queues for Meta / GA4 (spec 68 section 3.1):
+            `add_to_cart` (the default when absent) or `initiate_checkout`
+            (dedup id `ic:<add_to_cart_id>`, `seats_considered` is not used).
+            Any other value queues nothing and never fails the quote.
+          example: "add_to_cart"
         session_id:
           type: string
           format: uuid
@@ -61210,6 +61247,113 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/public/pages/{org_slug}/{event_slug}/conversion:
+    post:
+      operationId: postPublicPageConversion
+      summary: Report ViewContent or TicketsClick of a hosted page
+      description: |
+        Spec 68 section 3.4. The page tells the organization's Meta / GA4
+        conversions that the visitor saw the event (`view_content`) or went
+        on to the tickets (`tickets_click`). No JWT. Nothing is queued and
+        nothing is stored without an explicit yes to tracking in
+        `buyer_context` (`tracking_consent` true with its text version);
+        the answer is 204 either way. `event_id` is the dedup key.
+
+        The page is resolved like `POST .../track` and every miss answers the
+        same `404 page.not_found`. Rate limited by the page and by client IP
+        (429 `track.rate_limited`).
+      tags: [PublicFeed]
+      parameters:
+        - name: org_slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Organization or promoter slug, matched case-insensitively.
+        - name: event_slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Event slug, matched case-insensitively.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PageConversionRequest"
+      responses:
+        "204":
+          description: Accepted (queued or ignored for lack of consent).
+        "400":
+          description: The body is not a JSON object, the kind is not allowed or the event_id is not usable (`track.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Page not found (`page.not_found`), one outcome for every miss.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limit exceeded (`track.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/pages/{org_slug}/series/{series_slug}/conversion:
+    post:
+      operationId: postPublicSeriesPageConversion
+      summary: Report ViewContent or TicketsClick of a tour page
+      description: |
+        Spec 68 section 3.4, the same as
+        `POST /v1/public/pages/{org_slug}/{event_slug}/conversion` for the
+        page of a tour. `404 page.not_found` for every miss.
+      tags: [PublicFeed]
+      parameters:
+        - name: org_slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Organization or promoter slug, matched case-insensitively.
+        - name: series_slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Tour slug, matched case-insensitively.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PageConversionRequest"
+      responses:
+        "204":
+          description: Accepted (queued or ignored for lack of consent).
+        "400":
+          description: The body is not a JSON object, the kind is not allowed or the event_id is not usable (`track.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Page not found (`page.not_found`), one outcome for every miss.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limit exceeded (`track.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/public/pages/{org_slug}:
     get:
       operationId: getPublicPromoterPage
@@ -61599,9 +61743,10 @@ paths:
             BEFORE the reservation becomes durable, so a refused checkout
             leaves no hold, no held seats and no reserved capacity behind.
 
-            `checkout.consent_required` when the session's `consent.required`
-            is true and the body carries no `consent` with `accepted: true`;
-            refused before any hold is taken.
+            `checkout.consent_required` when the cart is paid (total above
+            zero) and the body carries no `consent` with `accepted: true`
+            (spec 68 section 5.1: every paid sale, a free order needs no
+            tick); refused before any hold is taken.
 
             `checkout.prepare_unavailable` for `prepare: true` without the
             `stripe_elements` capability or with a buyer, a promo code, a
@@ -64229,6 +64374,49 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: "Database or audit log unavailable (`dependency.database_unavailable`, `dependency.audit_unavailable`); nothing was changed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/checkout/{checkout_token}/payment-info:
+    post:
+      operationId: postPublicCheckoutPaymentInfo
+      summary: The buyer's payment form is complete
+      description: |
+        Spec 68 section 3.2. The widget sends it once when the embedded
+        payment form reports it is complete. The body is empty (or `{}`) and
+        no card data travels. The server queues AddPaymentInfo for the
+        organization's Meta / GA4 from what the checkout stored, only with
+        the checkout's explicit yes to tracking. A repeat is a no-op. The
+        answer is 204 whatever was queued.
+
+        No JWT: the `checkout_token` is the credential.
+      tags: [PublicFeed]
+      parameters:
+        - name: checkout_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Opaque checkout token from `checkout/start`.
+      responses:
+        "204":
+          description: Accepted.
+        "404":
+          description: No checkout for this token (`checkout.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limit exceeded (`checkout.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable (`dependency.database_unavailable`) or the checkout could not be read (`checkout.unavailable`); retry.
           content:
             application/json:
               schema:

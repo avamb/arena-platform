@@ -8,8 +8,8 @@
 // Stripe.
 //
 // The checks are those of checkout/start: a valid e-mail address, the name
-// and phone the channel requires, the sale-terms consent the channel asks
-// for. Then, in ONE transaction (checkout row, then order row locked, the
+// and phone the channel requires, the sale-terms consent of a paid order
+// (spec 68 section 5.1). Then, in ONE transaction (checkout row, then order row locked, the
 // order a cancel locks): the order's buyer columns, the customer resolution
 // behind a SAVEPOINT, the reservation's customer, the buyer's previous open
 // order on the session superseded, the consent recorded.
@@ -33,6 +33,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/conversions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailaddr"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
@@ -197,12 +198,15 @@ func (h *Handler) HandlePublicCheckoutBuyer(w http.ResponseWriter, r *http.Reque
 		))
 		return
 	}
-	if consentRefused(consentRequired, req.Consent) {
-		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
-			"checkout.consent_required",
-			"Please accept the sale terms of the organizer and the platform policy, then try again.", r,
-			map[string]any{"field": "consent.accepted"},
-		))
+	// The tick is required for a paid order only (spec 68 section 5.1); a
+	// free one is never refused, a tick sent with it is recorded.
+	// An unknown total counts as paid: the tick is asked rather than skipped.
+	orderTotal := int64(1)
+	if pc.Total != nil {
+		orderTotal = *pc.Total
+	}
+	if consentRequired && consentMissing(orderTotal, req.Consent) {
+		writeConsentRequired(w, r)
 		return
 	}
 	var consent *pendingConsent
@@ -234,8 +238,11 @@ func (h *Handler) HandlePublicCheckoutBuyer(w http.ResponseWriter, r *http.Reque
 	default:
 		h.logger.Info("public_checkout_buyer: the buyer was attached to a prepared order",
 			slog.String("checkout_session_id", cs.ID.String()))
-		// InitiateCheckout of the prepared order fires now (checkout_buyer_track.go).
-		h.queueAttachedInitiateCheckout(ctx, cs.ID, pc)
+		// AcceptTerms fires once the consent row is committed
+		// (checkout_buyer_track.go); InitiateCheckout came from checkout/quote.
+		if consent != nil {
+			h.queueStoredCheckoutEvent(ctx, cs.ID, pc, conversions.KindAcceptTerms, termsEventIDPfx+cs.ID.String())
+		}
 		h.writeAttachAnswer(w, checkoutToken, pc, grace)
 	}
 }

@@ -298,6 +298,8 @@ export interface CheckoutQuotePayload {
   add_to_cart_id?: string;
   /** Distinct seats toggled in this cart plus the GA tickets in it (0..1000). */
   seats_considered?: number;
+  /** Which funnel event the tracked quote is: absent or add_to_cart, or initiate_checkout (spec 68). */
+  cart_event?: 'add_to_cart' | 'initiate_checkout';
 }
 
 /**

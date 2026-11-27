@@ -72,10 +72,65 @@ export function withAddToCart(
   buyerContext: BuyerContextPayload | null,
   state: AddToCartState,
   gaQuantities: ReadonlyMap<string, number>,
+  cartEvent?: 'add_to_cart' | 'initiate_checkout',
 ): CheckoutQuotePayload {
   if (buyerContext?.tracking_consent !== true || !state.id) return payload;
   const out: CheckoutQuotePayload = { ...payload, buyer_context: buyerContext, add_to_cart_id: state.id };
   const seats = seatsConsidered(state, gaQuantities);
   if (seats > 0) out.seats_considered = seats;
+  if (cartEvent === 'initiate_checkout') out.cart_event = 'initiate_checkout';
   return out;
+}
+
+/** The selection must stay unchanged this long before AddToCart is sent. */
+export const ADD_TO_CART_DELAY_MS = 1500;
+
+/**
+ * AddToCart starts only after an explicit buyer action in this cart: `touch`
+ * (seat click, quantity change) marks the cart; `cartChanged` schedules only a
+ * touched, non-empty cart. A preset, default or restored cart never starts it.
+ * An empty cart drops the mark, so the next cart needs its own action.
+ */
+export function createAddToCartTrigger(
+  fire: () => void,
+  delayMs: number = ADD_TO_CART_DELAY_MS,
+): { touch: () => void; cartChanged: (count: number) => void; cancel: () => void } {
+  const scheduler = createAddToCartScheduler(fire, delayMs);
+  let touched = false;
+  return {
+    cancel: scheduler.cancel,
+    touch: () => {
+      touched = true;
+    },
+    cartChanged: (count: number) => {
+      if (count <= 0) {
+        touched = false;
+        scheduler.cancel();
+      } else if (touched) {
+        scheduler.schedule();
+      }
+    },
+  };
+}
+
+/** A restartable one-shot timer: `schedule` replaces a pending run, `cancel` drops it. */
+export function createAddToCartScheduler(
+  fire: () => void,
+  delayMs: number = ADD_TO_CART_DELAY_MS,
+): { schedule: () => void; cancel: () => void } {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const cancel = (): void => {
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+  };
+  return {
+    cancel,
+    schedule: () => {
+      cancel();
+      timer = setTimeout(() => {
+        timer = null;
+        fire();
+      }, delayMs);
+    },
+  };
 }

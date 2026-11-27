@@ -123,6 +123,7 @@ test.describe('promo code — real backend', () => {
       if (type === 'email') await input.fill('promo-e2e@arena-e2e.test');
       else if (type === 'tel') await input.fill('+420777000111');
       else if (type === 'text') await input.fill('Promo E2E Buyer');
+      else if (type === 'checkbox') await input.check();
     }
     await sheet.locator('button[type="submit"]').click();
     await expect.poll(() => startStatus).toBe(201);

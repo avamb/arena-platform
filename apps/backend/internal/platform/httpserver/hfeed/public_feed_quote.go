@@ -53,13 +53,17 @@ type PublicFeedCheckoutQuoteRequest struct {
 	// MarketingConsent is the buyer's tick on the organizer's mailings
 	// (spec 51-1); ticked, it may earn the organizer's reward code.
 	MarketingConsent *PublicMarketingConsent `json:"marketing_consent,omitempty"`
-	// BuyerContext, AddToCartID and SeatsConsidered feed the cart's AddToCart
-	// for Meta / GA4 (cart_conversions.go): queued only when buyer_context
-	// says tracking_consent true and add_to_cart_id is usable. They are read
-	// leniently: a wrong value drops the event, never the quote.
+	// BuyerContext, AddToCartID, SeatsConsidered and CartEvent feed the
+	// cart's AddToCart or InitiateCheckout for Meta / GA4 (cart_conversions.go,
+	// spec 68 section 3.1): queued only when buyer_context says
+	// tracking_consent true and add_to_cart_id is usable. cart_event is
+	// "add_to_cart" (the default) or "initiate_checkout"; any other value
+	// queues nothing. They are read leniently: a wrong value drops the event,
+	// never the quote.
 	BuyerContext    json.RawMessage `json:"buyer_context,omitempty"`
 	AddToCartID     json.RawMessage `json:"add_to_cart_id,omitempty"`
 	SeatsConsidered json.RawMessage `json:"seats_considered,omitempty"`
+	CartEvent       json.RawMessage `json:"cart_event,omitempty"`
 }
 
 // PublicFeedCheckoutQuoteResponse is the 200 body.
@@ -348,15 +352,22 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 	h.queueQuoteAddToCart(r, checkCtx.OrgID, sessionID, req, bd)
 }
 
-// queueQuoteAddToCart queues the cart's AddToCart once per add_to_cart_id
-// (the event id dedups repeats), only with the buyer's explicit yes.
+// queueQuoteAddToCart queues the cart's AddToCart ("atc:<id>") or, with
+// cart_event "initiate_checkout", its InitiateCheckout ("ic:<id>") once per
+// add_to_cart_id (the event id dedups repeats), only with the buyer's
+// explicit yes.
 func (h *Handler) queueQuoteAddToCart(r *http.Request, orgID, sessionID uuid.UUID,
 	req PublicFeedCheckoutQuoteRequest, bd hcheckout.PricingBreakdown) {
 	id := parseAddToCartID(req.AddToCartID)
-	if id == "" || h.cartConversions == nil || !buyerContextConsents(req.BuyerContext) {
+	kind := parseCartEvent(req.CartEvent)
+	if id == "" || kind == "" || h.cartConversions == nil || !buyerContextConsents(req.BuyerContext) {
 		return
 	}
 	cleaned := conversions.CleanBuyerContext(req.BuyerContext, httputil.TrustedClientIP(r, 0), r.UserAgent())
-	h.queueCartEvent(r.Context(), orgID, conversions.KindAddToCart, addToCartEventIDPfx+id,
-		sessionID, bd, cleaned, parseSeatsConsidered(req.SeatsConsidered))
+	eventID, seats := addToCartEventIDPfx+id, parseSeatsConsidered(req.SeatsConsidered)
+	if kind == conversions.KindInitiateCheckout {
+		// seats_considered belongs to AddToCart only.
+		eventID, seats = checkoutEventIDPfx+id, 0
+	}
+	h.queueCartEvent(r.Context(), orgID, kind, eventID, sessionID, bd, cleaned, seats)
 }

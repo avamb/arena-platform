@@ -8,11 +8,12 @@
 //     complete; GET .../seller-profile answers it per channel.
 //   - GET .../events/{id}: every session carries consent.required, the
 //     seller's legal name and the two links.
-//   - POST .../checkout/start: without the tick 422 checkout.consent_required
-//     and no hold; with it 201 and a checkout_consents row carrying the
-//     request's peer address (never X-Forwarded-For), the browser string, the
-//     site, what the checkbox showed and the withdrawal flag the feed answered.
-//   - Flag off: 201 and no row, even with a tick sent (data minimization).
+//   - POST .../checkout/start of a free cart: without the tick 201 and no
+//     row (spec 68 section 5.1: only a paid sale needs it); with it 201 and
+//     a checkout_consents row carrying the request's peer address (never
+//     X-Forwarded-For), the browser string, the site, what the checkbox
+//     showed and the withdrawal flag the feed answered.
+//   - Flag off: the feed still asks; a tick sent is recorded.
 //   - GET .../orders/{order_id}/consents answers the row to the order's
 //     organization (users) and the platform superadmin; an organization API
 //     key is refused with 403 orders.consents_api_key_forbidden.
@@ -252,8 +253,10 @@ func TestCheckoutConsent_FlagOnRequiresAndRecordsTheConsent(t *testing.T) {
 	if code != http.StatusUnprocessableEntity || !strings.Contains(string(raw), `"seller.incomplete"`) || !strings.Contains(string(raw), `"tax_id"`) {
 		t.Fatalf("consent on while incomplete: %d %s", code, raw)
 	}
-	if s := f.feedSession(t, srv); s.Consent.Required {
-		t.Fatalf("a refused switch must leave the feed without the consent: %+v", s.Consent)
+	// Spec 68 section 5.1: the feed asks for the tick whatever the switch,
+	// naming the organization while the profile has no legal name.
+	if s := f.feedSession(t, srv); !s.Consent.Required || s.Consent.SellerLegalName == "" {
+		t.Fatalf("the feed must always ask for the consent: %+v", s.Consent)
 	}
 
 	// ── complete profile: switched on, the profile says so ─────────────────
@@ -292,18 +295,17 @@ func TestCheckoutConsent_FlagOnRequiresAndRecordsTheConsent(t *testing.T) {
 		t.Fatal("a Spanish seller shows the withdrawal notice")
 	}
 
-	// ── without the tick: 422 before any hold ─────────────────────────────
+	// ── without the tick: a FREE cart is never refused (spec 68 5.1) and
+	// stores no consent; the paid refusal is covered by
+	// TestFunnelV2_ConversionRowsOnlyWithConsent. ─────────────────────────
 	for _, c := range []map[string]any{nil, {"accepted": false}} {
 		code, raw = f.startWithConsent(t, srv, c)
-		if code != http.StatusUnprocessableEntity || buyerFieldsErrorCode(t, raw) != "checkout.consent_required" {
-			t.Fatalf("checkout without consent %v: %d %s", c, code, raw)
-		}
-		if fp := f.footprint(t, ctx); fp.reservations != 0 || fp.unavailable != 0 {
-			t.Fatalf("a refused checkout took inventory: %+v", fp)
+		if code != http.StatusCreated {
+			t.Fatalf("free checkout without consent %v: %d %s", c, code, raw)
 		}
 	}
 	if n := countConsents(t, ctx, pool, f.orgID); n != 0 {
-		t.Fatalf("a refused checkout wrote %d consents", n)
+		t.Fatalf("a checkout without the tick wrote %d consents", n)
 	}
 
 	// ── with the tick: 201 and the evidence row ───────────────────────────
@@ -427,7 +429,11 @@ func TestCheckoutConsent_FlagOnRequiresAndRecordsTheConsent(t *testing.T) {
 	}
 }
 
-func TestCheckoutConsent_FlagOffNeedsNoConsentAndStoresNone(t *testing.T) {
+// TestCheckoutConsent_FlagOffStillAsksAndAFreeCartNeedsNone: since spec 68
+// section 5.1 the channel switch no longer decides. The feed asks for the
+// tick with the seller's legal name; a free cart goes through without it
+// and stores nothing, and a tick sent with a free cart is recorded.
+func TestCheckoutConsent_FlagOffStillAsksAndAFreeCartNeedsNone(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := t.Context()
 	srv := buildConsentServer(t, pool)
@@ -435,25 +441,23 @@ func TestCheckoutConsent_FlagOffNeedsNoConsentAndStoresNone(t *testing.T) {
 	defer f.close()
 	f.completeProfile(t, ctx)
 
-	if s := f.feedSession(t, srv); s.Consent.Required || s.Consent.SellerLegalName != "" {
+	if s := f.feedSession(t, srv); !s.Consent.Required || s.Consent.SellerLegalName != "Consent Teatro S.L." {
 		t.Fatalf("flag off: feed consent = %+v", s.Consent)
 	}
 	code, raw := f.startWithConsent(t, srv, nil)
 	if code != http.StatusCreated {
-		t.Fatalf("checkout without consent, flag off: %d %s", code, raw)
+		t.Fatalf("free checkout without consent, flag off: %d %s", code, raw)
 	}
 	if n := countConsents(t, ctx, pool, f.orgID); n != 0 {
 		t.Fatalf("no consent sent, yet %d rows", n)
 	}
 
-	// A tick sent to a channel that does not ask for it is ignored: the
-	// sale goes through and nothing of the buyer is stored.
 	code, raw = f.startWithConsent(t, srv, map[string]any{"accepted": true})
 	if code != http.StatusCreated {
-		t.Fatalf("checkout with an unrequested consent: %d %s", code, raw)
+		t.Fatalf("free checkout with a tick: %d %s", code, raw)
 	}
-	if n := countConsents(t, ctx, pool, f.orgID); n != 0 {
-		t.Fatalf("an unrequested tick stored %d rows", n)
+	if n := countConsents(t, ctx, pool, f.orgID); n != 1 {
+		t.Fatalf("a tick with a free cart stored %d rows, want 1", n)
 	}
 }
 

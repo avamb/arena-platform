@@ -183,7 +183,7 @@ export interface PaymentStepsRegistry {
 }
 
 export function createPaymentStepsRegistry(
-  onEvent: (event: PaymentStepEvent) => void,
+  onEvent: (event: PaymentStepEvent, token: string) => void,
   storage: Pick<Storage, 'getItem' | 'setItem'> | null = defaultStorage(),
 ): PaymentStepsRegistry {
   let currentToken: string | null = null;
@@ -192,7 +192,7 @@ export function createPaymentStepsRegistry(
     forToken(token) {
       if (current && currentToken === token) return current;
       const bus = createPaymentSteps(storage ? storageMarks(storage, token) : undefined);
-      bus.subscribe(onEvent);
+      bus.subscribe((event) => onEvent(event, token));
       currentToken = token;
       current = bus;
       return bus;

@@ -63,6 +63,20 @@ afterEach(() => {
 
 const box = () => host?.querySelector<HTMLInputElement>('[data-testid="seller-thank-you-posters"]') ?? null;
 
+describe("the sale-terms reminder on the channel card", () => {
+  it("shows the reminder under the missing list when data is missing, and not when complete", () => {
+    mount({ ...channel(false), complete: false, missing: ["legal_name"] });
+    const reminder = host?.querySelector('[data-testid="seller-channel-missing-reminder"]');
+    expect(reminder?.textContent).toContain("Buyers already tick the sale terms");
+    act(() => root?.unmount());
+    host?.remove();
+    root = null;
+
+    mount(channel(false));
+    expect(host?.querySelector('[data-testid="seller-channel-missing-reminder"]')).toBeNull();
+  });
+});
+
 describe("the thank-you posters switch on the channel card", () => {
   it("shows the stored value, with the label in the owner's language", () => {
     mount(channel(true), "ru");

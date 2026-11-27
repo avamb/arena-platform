@@ -694,6 +694,7 @@ Public page materials, seller block, terms, consent, statistics beacon, widget l
 * The widget thank-you page: /site, page_url, a separate newsletter consent by checkout token with its own text version
 * The widget bundle is an ES module: an organizer's site needs ACAO on /widget/v1/ and its origin in API CORS
 * GET /v1/public/feeds/{feed_token}/site returns only thank_you from the channel's site settings
+* Since spec 68 every paid sale needs the sale-terms tick; funnel event moments and ids (atc:, ic:, terms:, api:, page conversion route)
 
 ### [Posters, formatted text and the Telegram mini app](docs/agents/posters-rich-text-miniapp.md)
 

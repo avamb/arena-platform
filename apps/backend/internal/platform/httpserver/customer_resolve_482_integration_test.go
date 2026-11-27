@@ -126,6 +126,7 @@ func TestW1A4d_482_PublicFeedCheckoutResolvesCustomerAndOrgSurfaceSeesIt(t *test
 			"name":  buyerName,
 			"phone": f.buyerPhone,
 		},
+		"consent": map[string]any{"accepted": true},
 	})
 	if err != nil {
 		t.Fatalf("marshal request: %v", err)

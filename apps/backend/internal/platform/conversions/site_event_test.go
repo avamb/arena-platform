@@ -44,7 +44,7 @@ func TestMetaSendEvent_Mapping(t *testing.T) {
 	defer srv.Close()
 	names := map[string]string{
 		KindPageView: "PageView", KindViewContent: "ViewContent", KindInitiateCheckout: "InitiateCheckout",
-		KindLead: "Lead", KindSubscribe: "CompleteRegistration",
+		KindLead: "Lead", KindSubscribe: "CompleteRegistration", KindTicketsClick: "TicketsClick",
 	}
 	for kind, want := range names {
 		ev := testSiteEvent(kind)
@@ -70,8 +70,14 @@ func TestMetaSendEvent_Mapping(t *testing.T) {
 		cd, _ := e["custom_data"].(map[string]any)
 		switch kind {
 		case KindViewContent:
-			if cd["content_type"] != "product" || cd["content_ids"].([]any)[0] != "E-1" {
+			if cd["content_type"] != "product" || cd["content_ids"].([]any)[0] != "E-1" || cd["content_name"] != "Concert" {
 				t.Fatalf("view_content custom: %v", cd)
+			}
+		case KindTicketsClick:
+			if cd["content_type"] != "product" || cd["content_ids"].([]any)[0] != "E-1" || cd["content_name"] != "Concert" ||
+				cd["seller"] != "Box" || cd["city"] != "Prague" || cd["checkout_type"] != "external" ||
+				cd["value"].(float64) != 12.5 || cd["currency"] != "EUR" {
+				t.Fatalf("tickets_click custom: %v", cd)
 			}
 		case KindInitiateCheckout:
 			if cd["seller"] != "Box" || cd["city"] != "Prague" || cd["checkout_type"] != "external" ||
@@ -104,7 +110,7 @@ func TestGA4SendEvent_Mapping(t *testing.T) {
 	defer srv.Close()
 	names := map[string]string{
 		KindPageView: "page_view", KindViewContent: "view_item", KindInitiateCheckout: "begin_checkout",
-		KindLead: "generate_lead", KindSubscribe: "sign_up",
+		KindLead: "generate_lead", KindSubscribe: "sign_up", KindTicketsClick: "tickets_click",
 	}
 	for kind, want := range names {
 		if err := (GA4Sender{BaseURL: srv.URL}).SendEvent(context.Background(), "G-X", "sec", testSiteEvent(kind)); err != nil {
@@ -121,6 +127,12 @@ func TestGA4SendEvent_Mapping(t *testing.T) {
 		if kind == KindInitiateCheckout && (p["affiliation"] != "Box" || p["checkout_type"] != "external" ||
 			p["value"].(float64) != 12.5 || p["currency"] != "EUR" || p["items"] == nil) {
 			t.Fatalf("begin_checkout: %v", p)
+		}
+		if kind == KindTicketsClick && (p["affiliation"] != "Box" || p["checkout_type"] != "external" ||
+			p["value"].(float64) != 12.5 || p["currency"] != "EUR" ||
+			p["items"].([]any)[0].(map[string]any)["item_id"] != "E-1" ||
+			p["items"].([]any)[0].(map[string]any)["item_name"] != "Concert") {
+			t.Fatalf("tickets_click: %v", p)
 		}
 		if kind == KindViewContent && p["items"].([]any)[0].(map[string]any)["item_id"] != "E-1" {
 			t.Fatalf("view_item: %v", p)

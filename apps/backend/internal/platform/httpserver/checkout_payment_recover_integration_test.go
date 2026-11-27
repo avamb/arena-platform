@@ -46,6 +46,7 @@ func startCheckoutWithKey(t *testing.T, srv *Server, f *allpayFixture, key, retu
 		"qty":        2,
 		"return_url": returnURL,
 		"buyer":      map[string]any{"email": f.buyerMail, "name": "Recover Buyer", "phone": f.buyerPhone},
+		"consent":    map[string]any{"accepted": true},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/v1/public/feeds/"+f.feedToken+"/checkout/start", bytes.NewReader(raw))
 	req.Header.Set("Content-Type", "application/json")

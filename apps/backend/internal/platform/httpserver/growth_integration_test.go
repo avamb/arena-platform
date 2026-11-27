@@ -129,6 +129,8 @@ func (f *hostedOrgFixture) startWith(t *testing.T, srv *Server, mail, promo stri
 		"qty":        2,
 		"buyer":      map[string]any{"email": mail, "name": "Growth Buyer", "phone": f.buyerPhone},
 		"return_url": hostedTicketsBaseURL + "/shows/growth",
+		// Every paid sale needs the tick on the sale terms (spec 68 5.1).
+		"consent": map[string]any{"accepted": true},
 	}
 	if promo != "" {
 		body["promo_code"] = promo

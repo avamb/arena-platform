@@ -268,9 +268,10 @@ type growthCheckout struct {
 	// (spec 62 §8.1, П-20); nil when the site sent none or one arena
 	// could not read (never a reason to refuse the purchase).
 	tracking *trackingconsent.Consent
-	// trackCart: the buyer said an explicit yes to tracking, so the created
-	// checkout is queued as InitiateCheckout (cart_conversions.go).
-	trackCart bool
+	// trackTerms: the buyer ticked the sale terms and said an explicit yes to
+	// tracking, so the committed consent is queued as AcceptTerms
+	// (cart_conversions.go, spec 68 section 3.3).
+	trackTerms bool
 }
 
 // recordGrowthTx stores, in the checkout-confirmation transaction, the buyer's

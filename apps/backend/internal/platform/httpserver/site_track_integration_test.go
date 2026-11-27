@@ -115,7 +115,7 @@ const (
 	qTrackFunnel     = `SELECT COALESCE(sum(hits), 0)::int FROM sales_funnel_daily WHERE org_id = $1 AND step = 'outbound_click' AND surface = 'external_site'`
 	qTrackSuspect    = `SELECT COALESCE(sum(suspect_hits), 0)::int FROM sales_funnel_daily WHERE org_id = $1`
 	qTrackOutbound   = `SELECT COALESCE(sum(hits), 0)::int FROM outbound_clicks_daily WHERE org_id = $1 AND seller = 'Karabas'`
-	qTrackDeliveries = `SELECT count(*)::int FROM conversion_deliveries WHERE org_id = $1 AND kind = 'initiate_checkout'`
+	qTrackDeliveries = `SELECT count(*)::int FROM conversion_deliveries WHERE org_id = $1 AND kind = 'tickets_click'`
 )
 
 func TestSiteTrack_ValidKeyCountsAndQueuesBothProviders(t *testing.T) {

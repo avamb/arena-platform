@@ -870,7 +870,9 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	paymentWindow := h.paymentWindow
 	promoCodesAvailable := false
 	embeddedPayment := false
-	consentRequired, consentLegalName := false, ""
+	// The tick on the sale terms is required for every paid sale (spec 68
+	// section 5.1), whatever the channel's flags say or whether they read.
+	consentRequired, consentLegalName := true, ""
 	if h.publicFeedQueries != nil {
 		flags, flagsErr := h.publicFeedQueries.GetFeedTokenBuyerFlags(ctx, feedToken)
 		if flagsErr == nil {

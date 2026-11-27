@@ -22,7 +22,29 @@ const (
 	// KindAddToCart is the widget's priced cart (checkout/quote, migration
 	// 0225); queued only with the buyer's explicit tracking consent.
 	KindAddToCart = "add_to_cart"
+	// KindTicketsClick is a click on a "tickets" button of an event page or a
+	// static site (spec 68, migration 0228).
+	KindTicketsClick = "tickets_click"
+	// KindAddPaymentInfo is the buyer's complete payment form (spec 68 §3.2).
+	KindAddPaymentInfo = "add_payment_info"
+	// KindAcceptTerms is the buyer's ticked terms of sale (spec 68 §3.3).
+	KindAcceptTerms = "accept_terms"
 )
+
+// SessionDate is the YYYY-MM-DD of start in the venue's time zone tz (an
+// IANA name); an empty or unknown zone falls back to UTC. Empty when start is zero.
+func SessionDate(start time.Time, tz string) string {
+	if start.IsZero() {
+		return ""
+	}
+	loc := time.UTC
+	if tz != "" {
+		if l, err := time.LoadLocation(tz); err == nil {
+			loc = l
+		}
+	}
+	return start.In(loc).Format("2006-01-02") // allow:timeformat: the venue-local session date, a calendar date not a wire timestamp
+}
 
 // SiteEvent is one event of a static site (spec 63 section 19), stored in
 // conversion_deliveries.payload until the sweep sends it. The consent decision
@@ -130,9 +152,11 @@ func CartEvent(kind, eventID string, session PurchaseItem, quantity int, maxUnit
 func (s *PGStore) SessionItem(ctx context.Context, sessionID uuid.UUID) (PurchaseItem, bool) {
 	var it PurchaseItem
 	var evID *string
+	var tz string
 	err := s.pool.QueryRow(ctx, `
 		SELECT s.id::text, e.id::text, COALESCE(e.name, ''), s.start_at,
-		       COALESCE(v.name, ''), COALESCE(t_en.value, ci.slug, ''), COALESCE(co.iso2::text, '')
+		       COALESCE(v.name, ''), COALESCE(t_en.value, ci.slug, ''), COALESCE(co.iso2::text, ''),
+		       COALESCE(v.timezone, '')
 		  FROM sessions s
 		  LEFT JOIN events e ON e.id = s.event_id
 		  LEFT JOIN venues v ON v.id = s.venue_id
@@ -141,7 +165,7 @@ func (s *PGStore) SessionItem(ctx context.Context, sessionID uuid.UUID) (Purchas
 		  LEFT JOIN i18n_text t_en ON t_en.namespace = 'geo.cities'
 		         AND t_en.key = ci.slug AND t_en.locale = 'en'
 		 WHERE s.id = $1`, sessionID).
-		Scan(&it.SessionID, &evID, &it.EventName, &it.StartAt, &it.Venue, &it.City, &it.Country)
+		Scan(&it.SessionID, &evID, &it.EventName, &it.StartAt, &it.Venue, &it.City, &it.Country, &tz)
 	if err != nil {
 		return PurchaseItem{}, false
 	}
@@ -149,5 +173,6 @@ func (s *PGStore) SessionItem(ctx context.Context, sessionID uuid.UUID) (Purchas
 		it.EventID = *evID
 	}
 	it.StartAt = it.StartAt.UTC()
+	it.SessionDate = SessionDate(it.StartAt, tz)
 	return it, true
 }

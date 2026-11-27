@@ -124,11 +124,11 @@ type PublicFeedCheckoutStartRequest struct {
 	// dropped rather than rejected, because a buyer must never lose a sale
 	// over the language tag their browser reported.
 	Locale string `json:"locale,omitempty"`
-	// Consent is the buyer's tick on "I accept the sale terms" (P2). A channel
-	// that asks for it refuses a cart without accepted:true with 422
-	// checkout.consent_required before any hold. A ticked consent is recorded
-	// in checkout_consents only when the channel asks for it; one sent to a
-	// channel that does not is ignored (nothing of the buyer is stored).
+	// Consent is the buyer's tick on "I accept the sale terms" (P2). Every
+	// paid cart without accepted:true is refused with 422
+	// checkout.consent_required once it is priced, before its hold commits
+	// (spec 68 section 5.1); a free cart needs none. A ticked consent is
+	// recorded in checkout_consents.
 	Consent *PublicCheckoutConsent `json:"consent,omitempty"`
 	// Attribution is the sales link and utm labels that brought the buyer
 	// (spec 43 section 4.4), optional. It is cleaned and its ref resolved to
@@ -504,11 +504,12 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 	// ── 6b. Validate buyer fields against channel flags (WID-0d) ────────────────
 	// Fetch the buyer-field flags for this feed token and enforce them.
 	// A missing row (token had no linked channel, unlikely but defensive)
-	// degrades to name and phone optional and no consent. A failed read is
-	// refused (503 checkout.unavailable): it decides whether the buyer must
-	// accept the sale terms (P2), so it fails closed rather than sell without
-	// a consent the channel asks for.
-	var collectName, collectPhone, consentRequired bool
+	// degrades to name and phone optional; the consent of a paid sale is
+	// required regardless (spec 68 section 5.1). A failed read is refused
+	// (503 checkout.unavailable): it names the seller the buyer accepts, so
+	// it fails closed.
+	var collectName, collectPhone bool
+	consentRequired := true
 	var consentSeller string
 	if h.publicFeedQueries != nil {
 		flags, flagsErr := h.publicFeedQueries.GetFeedTokenBuyerFlags(ctx, feedToken)
@@ -565,23 +566,14 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	// ── 6c. Buyer consent (P2) ───────────────────────────────────────────────
-	// A channel that asks for the consent refuses a cart without the tick
-	// here, before any hold is taken. A ticked consent of such a channel is
-	// recorded later, in the checkout-confirmation transaction; everything it
-	// needs (address, browser, site, what the checkbox showed, the withdrawal
-	// notice the feed showed) is gathered now, on the pool, before any
-	// transaction opens. A tick sent to a channel that does not ask for it is
-	// ignored: nothing of the buyer is stored without a reason.
-	if !req.Prepare && consentRefused(consentRequired, req.Consent) {
-		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
-			"checkout.consent_required",
-			"Please accept the sale terms of the organizer and the platform policy, then try again.",
-			r,
-			map[string]any{"field": "consent.accepted"},
-		))
-		return
-	}
+	// ── 6c. Buyer consent (P2, spec 68 section 5.1) ──────────────────────────
+	// Every PAID sale needs the tick; a free one does not. Whether the cart is
+	// paid is known only once it is priced (a seated cart inside the hold
+	// transaction), so the refusal sits in confirmPublicCheckout, before its
+	// transaction commits. A ticked consent is recorded there, in the
+	// checkout-confirmation transaction; everything it needs (address,
+	// browser, site, what the checkbox showed, the withdrawal notice the feed
+	// showed) is gathered now, on the pool, before any transaction opens.
 	var consent *pendingConsent
 	if consentRecorded(consentRequired, req.Consent) {
 		consent = newPendingConsent(r, checkCtx.OrgID, req.Consent.Locale, buyerLocale,
@@ -659,9 +651,10 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 		// carries the time of the choice.
 		growth.tracking = h.trackingConsentFromStart(conversions.ConsentFromBuyerContext(req.BuyerContext))
 	}
-	// A prepared checkout fires InitiateCheckout at the buyer attach instead
-	// (checkout_buyer_track.go): its order opens long before anybody pays.
-	growth.trackCart = !req.Prepare && checkoutTracksCart(growth.tracking, req.BuyerContext)
+	// AcceptTerms of a recorded consent is queued after the commit, only with
+	// the buyer's explicit yes. InitiateCheckout is no longer queued here: the
+	// widget sends it through checkout/quote (spec 68 section 3.1).
+	growth.trackTerms = consent != nil && checkoutTracksCart(growth.tracking, req.BuyerContext)
 
 	// ── 9. Mint checkout_token ────────────────────────────────────────────────
 	checkoutToken, err := mintCheckoutToken()
@@ -789,6 +782,11 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 		}
 		if req.Prepare && bd.Total <= 0 {
 			writePrepareUnavailable(w, r, http.StatusConflict, prepareReasonFree)
+			return
+		}
+		// A paid cart without the tick on the sale terms (spec 68 section
+		// 5.1): refused here, and the deferred rollback takes nothing.
+		if refuseMissingConsent(w, r, req.Prepare, bd.Total, req.Consent) {
 			return
 		}
 		if !h.applyPaymentPreflight(ctx, w, r, checkCtx, bd.Total, preflight) {
@@ -1097,6 +1095,11 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 			writePrepareUnavailable(w, r, http.StatusConflict, prepareReasonFree)
 			return // the deferred rollback releases the holds
 		}
+		// A paid cart without the tick on the sale terms (spec 68 section
+		// 5.1): refused here, and the deferred rollback takes nothing.
+		if refuseMissingConsent(w, r, req.Prepare, bd.Total, req.Consent) {
+			return
+		}
 		if !h.applyPaymentPreflight(ctx, w, r, checkCtx, bd.Total, preflight) {
 			return
 		}
@@ -1270,6 +1273,11 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 		// A free order would complete without a buyer.
 		writePrepareUnavailable(w, r, http.StatusConflict, prepareReasonFree)
 		return // the deferred rollback releases the holds
+	}
+	// A paid cart without the tick on the sale terms (spec 68 section
+	// 5.1): refused here, and the deferred rollback takes nothing.
+	if refuseMissingConsent(w, r, req.Prepare, bd.Total, req.Consent) {
+		return
 	}
 	if !h.applyPaymentPreflight(ctx, w, r, checkCtx, bd.Total, preflight) {
 		return
@@ -1559,6 +1567,24 @@ func (h *Handler) confirmPublicCheckout(
 	// first means a misconfigured embed fails before it has an order and a
 	// confirmed checkout to abandon.
 	paid := bd.Total > 0
+	// A paid sale needs the buyer's tick on the sale terms (spec 68 section
+	// 5.1); a free one does not. The total is known only now, so the refusal
+	// is here, before this transaction opens: nothing of the checkout is
+	// written. A prepared order has no buyer yet; its tick is checked at the
+	// buyer attach. The hold of the old path is released at once; a hold of
+	// the click keeps its seats (spec 67: a seat is never taken away).
+	if paid && !prepare && consent == nil {
+		if hold == nil {
+			if _, relErr := hcheckout.ReleaseHold(ctx, h.pool, h.reservationQueries, reservationID); relErr != nil {
+				h.logger.Warn("public_feed_checkout: release hold after a missing consent failed",
+					slog.String("reservation_id", reservationID.String()),
+					slog.String("error", relErr.Error()),
+				)
+			}
+		}
+		writeConsentRequired(w, r)
+		return
+	}
 	var returnBase string
 	if paid {
 		base, rErr := h.returnURLPolicy.Resolve(returnURL)
@@ -1811,10 +1837,10 @@ func (h *Handler) confirmPublicCheckout(
 		return
 	}
 
-	// The checkout exists: InitiateCheckout for Meta / GA4, on the pool now
-	// that no transaction is open, and only with the buyer's explicit yes.
-	if growth.trackCart {
-		h.queueCartEvent(ctx, checkCtx.OrgID, conversions.KindInitiateCheckout, checkoutEventIDPfx+cs.ID.String(),
+	// The consent row is committed: AcceptTerms for Meta / GA4, on the pool
+	// now that no transaction is open, and only with the buyer's explicit yes.
+	if growth.trackTerms {
+		h.queueCartEvent(ctx, checkCtx.OrgID, conversions.KindAcceptTerms, termsEventIDPfx+cs.ID.String(),
 			checkCtx.SessionID, bd, attr.buyerCtx, 0)
 	}
 

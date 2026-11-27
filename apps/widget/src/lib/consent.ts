@@ -50,6 +50,16 @@ export function forceConsent(c: SessionConsent | null | undefined, forced: boole
   return { ...(c ?? {}), required: true };
 }
 
+/**
+ * The consent block for a cart of this total (minor units). The platform
+ * asks for the consent on every paid sale (spec 68 §5.1), so a free order
+ * (total 0) shows no box, requires no tick and sends no consent.
+ */
+export function consentForTotal(c: SessionConsent | null | undefined, total: number): SessionConsent | null {
+  if (!c) return null;
+  return total > 0 ? c : { ...c, required: false };
+}
+
 /** Whether the pay button waits for the box. */
 export function consentPayBlocked(required: boolean, accepted: boolean): boolean {
   return required && !accepted;

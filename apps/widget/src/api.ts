@@ -344,6 +344,22 @@ export async function postCheckoutBuyer(
 }
 
 /**
+ * POST /v1/public/checkout/{checkoutToken}/payment-info
+ *
+ * AddPaymentInfo for server-side Meta / GA4 (spec 68): the payment details
+ * are complete. Empty body, best effort; the caller ignores failures.
+ */
+export async function postCheckoutPaymentInfo(checkoutToken: string, apiBase = ''): Promise<void> {
+  const url = `${apiBase}/v1/public/checkout/${encodeURIComponent(checkoutToken)}/payment-info`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  if (!res.ok) throw await apiErrorFromResponse(res, 'postCheckoutPaymentInfo');
+}
+
+/**
  * POST /v1/public/checkout/{checkoutToken}/cancel
  *
  * Cancels an unfinished checkout: the platform expires its embedded Stripe

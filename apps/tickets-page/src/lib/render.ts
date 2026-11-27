@@ -772,6 +772,8 @@ export function renderCatalogCard(
 
   const a = document.createElement('a');
   a.className = 'asa-card';
+  // Leads to ticket selection of that event: a TicketsClick for the conversion events.
+  if (!past) a.setAttribute('data-asa-tickets-click', '1');
   a.href = `/${encodeURIComponent(orgSlug)}/${encodeURIComponent(event.slug)}${currentSearch()}`;
 
   const imageURL = event.poster_url ?? event.image_url;

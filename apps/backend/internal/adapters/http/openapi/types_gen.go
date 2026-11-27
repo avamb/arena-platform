@@ -15674,6 +15674,22 @@ type OutboundClicksSource struct {
 	UtmSource string `json:"utm_source"`
 }
 
+// PageConversionRequest Body of POST /v1/public/pages/{org_slug}/{event_slug}/conversion and
+// of the tour page's twin (spec 68 section 3.4). Unknown fields are
+// ignored.
+type PageConversionRequest struct {
+	// BuyerContext The browser's tracking context, the object `checkout/start` takes.
+	// Nothing is queued unless its `tracking_consent` is true with
+	// `tracking_consent_text_version`. A malformed object is ignored.
+	BuyerContext *PublicCheckoutBuyerContext `json:"buyer_context,omitempty"`
+
+	// EventId The page's id of this moment, the dedup key of the event. 1 to 64 characters of `A-Za-z0-9_-`.
+	EventId string `json:"event_id"`
+
+	// Kind What the visitor did, `view_content` or `tickets_click`. Any other value is refused with 400 `track.invalid_body`.
+	Kind string `json:"kind"`
+}
+
 // PageStatsCounts A pair of counters of one kind.
 type PageStatsCounts struct {
 	// Hits Hits that looked like a person with a browser.
@@ -17147,7 +17163,8 @@ type PublicEventVenue struct {
 // PublicFeedCheckoutQuoteRequest The cart to price, in the shape of `PublicFeedCheckoutStartRequest`
 // (seated `seats`, general-admission `ga_items`, or both) plus the
 // optional promo code. The quote takes no buyer details; the optional
-// tracking fields only feed the cart's AddToCart event.
+// tracking fields only feed the cart's AddToCart or InitiateCheckout
+// event.
 type PublicFeedCheckoutQuoteRequest struct {
 	// AddToCartId The widget's id of this cart, optional. It is the dedup key of
 	// the AddToCart event (`atc:<id>`): quotes that repeat the same id
@@ -17163,6 +17180,12 @@ type PublicFeedCheckoutQuoteRequest struct {
 	// User-Agent itself. Nothing of it is stored with the quote. A
 	// malformed object is ignored, never an error.
 	BuyerContext *PublicCheckoutBuyerContext `json:"buyer_context,omitempty"`
+
+	// CartEvent Which event the cart queues for Meta / GA4 (spec 68 section 3.1):
+	// `add_to_cart` (the default when absent) or `initiate_checkout`
+	// (dedup id `ic:<add_to_cart_id>`, `seats_considered` is not used).
+	// Any other value queues nothing and never fails the quote.
+	CartEvent *string `json:"cart_event,omitempty"`
 
 	// GaItems GA items for GA or hybrid sessions.
 	GaItems *[]PublicGAItem `json:"ga_items,omitempty"`
@@ -17249,12 +17272,11 @@ type PublicFeedCheckoutStartRequest struct {
 
 	// Consent The buyer's tick on "I accept the sale terms (seller: <legal
 	// name>) and the privacy policy" (P2). Required (with
-	// `accepted: true`) when the feed session's `consent.required` is
-	// true. Only then is it recorded with the checkout session, together
+	// `accepted: true`) for every paid sale (spec 68 section 5.1; a
+	// free order needs none). A ticked consent is recorded with the checkout session, together
 	// with the buyer's IP address and browser string at purchase, the
 	// site the buyer bought on and what the checkbox showed (dispute
-	// evidence, never answered on a public route). Sent to a channel
-	// that does not ask for it, it is ignored and nothing is stored.
+	// evidence, never answered on a public route).
 	Consent *PublicCheckoutConsent `json:"consent,omitempty"`
 
 	// ExpectedTotal Optional. The cart total, in minor units, that the selling site
@@ -20380,9 +20402,9 @@ type SellerProfileChannel struct {
 	// Complete True when no required data is missing for this channel (`missing` is empty).
 	Complete bool `json:"complete"`
 
-	// ConsentActive Whether checkout asks for the consent now: `consent_required` and
-	// the data is complete. A profile emptied after the switch was set
-	// turns the question off until it is complete again.
+	// ConsentActive Whether the stored switch and the data allow the consent. Since
+	// spec 68 section 5.1 it no longer decides checkout: the tick is
+	// required for every paid sale (a free order needs none).
 	ConsentActive bool `json:"consent_active"`
 
 	// ConsentRequired The stored switch `settings.hosted_page.consent_required` (P2): the
@@ -24760,8 +24782,10 @@ type UpdateSeatingPlanRequestVisibility string
 // data is empty, and so is clearing the e-mail of a channel that keeps
 // the consent on.
 type UpdateSellerDisplayRequest struct {
-	// ConsentRequired True makes checkout ask the buyer to accept the organizer's sale
-	// terms and the platform policy before paying (P2); a cart without
+	// ConsentRequired The stored switch of the buyer consent (P2). Since spec 68 section
+	// 5.1 checkout asks every buyer of a paid sale to accept the
+	// organizer's sale terms and the platform policy whatever this
+	// switch says (a free order needs no tick); a paid cart without
 	// the tick is refused with 422 `checkout.consent_required`. May be
 	// switched on only while the seller data is complete (422
 	// `seller.incomplete` with details.missing). False switches it off.
@@ -28987,6 +29011,12 @@ type ExchangePublicMyTicketsLinkJSONRequestBody = MyTicketsExchangeRequest
 
 // SendOrganizerContactJSONRequestBody defines body for SendOrganizerContact for application/json ContentType.
 type SendOrganizerContactJSONRequestBody = OrganizerContactRequest
+
+// PostPublicSeriesPageConversionJSONRequestBody defines body for PostPublicSeriesPageConversion for application/json ContentType.
+type PostPublicSeriesPageConversionJSONRequestBody = PageConversionRequest
+
+// PostPublicPageConversionJSONRequestBody defines body for PostPublicPageConversion for application/json ContentType.
+type PostPublicPageConversionJSONRequestBody = PageConversionRequest
 
 // PostPublicPageTrackJSONRequestBody defines body for PostPublicPageTrack for application/json ContentType.
 type PostPublicPageTrackJSONRequestBody = PageTrackRequest

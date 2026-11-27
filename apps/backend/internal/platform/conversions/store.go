@@ -70,11 +70,14 @@ type OrderSession struct {
 	EventID   string
 	EventName string
 	StartAt   time.Time // zero when unknown
-	Venue     string
-	City      string // English name, falling back to cities.slug
-	Country   string // ISO 3166-1 alpha-2
-	Quantity  int
-	UnitPrice int64 // minor units, the highest unit price among the tickets
+	// SessionDate is the YYYY-MM-DD of StartAt in the venue's time zone (UTC
+	// when the zone is unknown); empty when StartAt is unknown.
+	SessionDate string
+	Venue       string
+	City        string // English name, falling back to cities.slug
+	Country     string // ISO 3166-1 alpha-2
+	Quantity    int
+	UnitPrice   int64 // minor units, the highest unit price among the tickets
 }
 
 // Delivery is one claimed conversion_deliveries row.
@@ -311,7 +314,7 @@ func (s *PGStore) orderSessions(ctx context.Context, orderID uuid.UUID) []OrderS
 	rows, err := s.pool.Query(ctx, `
 		SELECT s.id::text, e.id::text, COALESCE(e.name, ''), s.start_at,
 		       COALESCE(v.name, ''), COALESCE(t_en.value, ci.slug, ''), COALESCE(co.iso2::text, ''),
-		       count(*), COALESCE(max(oi.unit_price), 0)
+		       COALESCE(v.timezone, ''), count(*), COALESCE(max(oi.unit_price), 0)
 		  FROM order_items oi
 		  JOIN orders o ON o.id = oi.order_id
 		  LEFT JOIN tickets tk ON tk.id = oi.ticket_id
@@ -324,7 +327,7 @@ func (s *PGStore) orderSessions(ctx context.Context, orderID uuid.UUID) []OrderS
 		  LEFT JOIN i18n_text t_en ON t_en.namespace = 'geo.cities'
 		         AND t_en.key = ci.slug AND t_en.locale = 'en'
 		 WHERE oi.order_id = $1 AND oi.kind = 'ticket'
-		 GROUP BY s.id, e.id, e.name, s.start_at, v.name, t_en.value, ci.slug, co.iso2
+		 GROUP BY s.id, e.id, e.name, s.start_at, v.name, v.timezone, t_en.value, ci.slug, co.iso2
 		 ORDER BY s.start_at, s.id`, orderID)
 	if err != nil {
 		return nil
@@ -334,14 +337,16 @@ func (s *PGStore) orderSessions(ctx context.Context, orderID uuid.UUID) []OrderS
 	for rows.Next() {
 		var os OrderSession
 		var evID *string
+		var tz string
 		if err := rows.Scan(&os.SessionID, &evID, &os.EventName, &os.StartAt, &os.Venue, &os.City, &os.Country,
-			&os.Quantity, &os.UnitPrice); err != nil {
+			&tz, &os.Quantity, &os.UnitPrice); err != nil {
 			return nil
 		}
 		if evID != nil {
 			os.EventID = *evID
 		}
 		os.StartAt = os.StartAt.UTC()
+		os.SessionDate = SessionDate(os.StartAt, tz)
 		out = append(out, os)
 	}
 	if rows.Err() != nil {

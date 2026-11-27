@@ -35,23 +35,81 @@ func TestConsentFromFlags(t *testing.T) {
 		t.Fatalf("complete profile + switch on: got (%v, %q), want (true, legal name)", req, name)
 	}
 
+	// Spec 68 section 5.1: the channel switch no longer decides.
 	off := completeFlags()
 	off.ConsentRequired = false
-	if req, name := consentFromFlags(off); req || name != "" {
-		t.Fatalf("switch off: got (%v, %q), want (false, \"\")", req, name)
+	if req, name := consentFromFlags(off); !req || name != "Teatro Demo S.L." {
+		t.Fatalf("switch off: got (%v, %q), want (true, legal name)", req, name)
 	}
 
-	// The switch stays stored, but a profile emptied afterwards turns the
-	// question off: no seller block, no consent (plan 8.9).
+	// An incomplete profile still requires the tick; it never blocks the sale.
 	noTax := completeFlags()
 	noTax.TaxID = nil
-	if req, _ := consentFromFlags(noTax); req {
-		t.Fatal("incomplete profile (no tax id) must not require consent")
+	if req, name := consentFromFlags(noTax); !req || name != "Teatro Demo S.L." {
+		t.Fatalf("incomplete profile (no tax id): got (%v, %q)", req, name)
 	}
 	noEmail := completeFlags()
 	noEmail.PublicContact = nil
-	if req, _ := consentFromFlags(noEmail); req {
-		t.Fatal("a channel without a public e-mail must not require consent")
+	if req, _ := consentFromFlags(noEmail); !req {
+		t.Fatal("a channel without a public e-mail still requires the consent")
+	}
+
+	// No legal name: the organization's name.
+	noLegal := completeFlags()
+	noLegal.LegalName = strp("   ")
+	noLegal.ConsentRequired = false
+	if req, name := consentFromFlags(noLegal); !req || name != "Teatro Demo" {
+		t.Fatalf("no legal name: got (%v, %q), want (true, org name)", req, name)
+	}
+	if req, name := consentFromFlags(gen.FeedTokenBuyerFlagsRow{}); !req || name != "" {
+		t.Fatalf("empty flags: got (%v, %q), want (true, \"\")", req, name)
+	}
+}
+
+func TestConsentMissing_PaidOnly(t *testing.T) {
+	t.Parallel()
+	ticked := &PublicCheckoutConsent{Accepted: true}
+	cases := []struct {
+		name    string
+		total   int64
+		consent *PublicCheckoutConsent
+		want    bool
+	}{
+		{"paid, nothing sent", 4100, nil, true},
+		{"paid, not ticked", 4100, &PublicCheckoutConsent{}, true},
+		{"paid, ticked", 4100, ticked, false},
+		{"free, nothing sent", 0, nil, false},
+		{"free, ticked", 0, ticked, false},
+	}
+	for _, c := range cases {
+		if got := consentMissing(c.total, c.consent); got != c.want {
+			t.Fatalf("%s: consentMissing = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestRefuseMissingConsent(t *testing.T) {
+	t.Parallel()
+	r := httptest.NewRequest("POST", "/v1/public/feeds/x/checkout/start", nil)
+	w := httptest.NewRecorder()
+	if !refuseMissingConsent(w, r, false, 100, nil) || w.Code != 422 ||
+		!strings.Contains(w.Body.String(), "checkout.consent_required") {
+		t.Fatalf("paid cart without tick: %d %s", w.Code, w.Body.String())
+	}
+	for _, c := range []struct {
+		name    string
+		prepare bool
+		total   int64
+		consent *PublicCheckoutConsent
+	}{
+		{"free", false, 0, nil},
+		{"prepared", true, 100, nil},
+		{"ticked", false, 100, &PublicCheckoutConsent{Accepted: true}},
+	} {
+		w := httptest.NewRecorder()
+		if refuseMissingConsent(w, r, c.prepare, c.total, c.consent) || w.Body.Len() != 0 {
+			t.Fatalf("%s: refused", c.name)
+		}
 	}
 }
 
@@ -146,14 +204,14 @@ func TestNewPendingConsent(t *testing.T) {
 	}
 }
 
-func TestConsentRecorded_OnlyWhenTheChannelAsks(t *testing.T) {
+func TestConsentRecorded_OnlyATick(t *testing.T) {
 	t.Parallel()
 	ticked := &PublicCheckoutConsent{Accepted: true}
 	if !consentRecorded(true, ticked) {
-		t.Fatal("a ticked consent of a channel that asks for it is recorded")
+		t.Fatal("a ticked consent is recorded")
 	}
 	if consentRecorded(false, ticked) {
-		t.Fatal("a tick sent to a channel that does not ask for it must store nothing")
+		t.Fatal("not required stores nothing")
 	}
 	if consentRecorded(true, &PublicCheckoutConsent{}) || consentRecorded(true, nil) {
 		t.Fatal("an unticked consent is never recorded")
