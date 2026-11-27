@@ -140,6 +140,30 @@ export interface TrackingOptions {
 
 let observer: MutationObserver | null = null;
 let current: boolean | null = null;
+const listeners = new Set<(granted: boolean) => void>();
+
+/** The choice in force now: true granted, false denied, null none (or tracking off). */
+export function getTrackingConsent(): boolean | null {
+  return current;
+}
+
+/** Calls fn whenever a choice becomes known (made now, or read from storage). Returns the unsubscribe. */
+export function onConsentChange(fn: (granted: boolean) => void): () => void {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+
+function notifyConsent(granted: boolean): void {
+  for (const fn of [...listeners]) {
+    try {
+      fn(granted);
+    } catch {
+      /* a listener must never break the banner */
+    }
+  }
+}
 
 function safeLocalStorage(): Storage | null {
   try {
@@ -157,6 +181,7 @@ function decide(granted: boolean): void {
   current = granted;
   applyConsentToAll(document, granted);
   removeBanner();
+  notifyConsent(granted);
 }
 
 function removeBanner(): void {
@@ -241,6 +266,7 @@ export function initTracking(opts: TrackingOptions): void {
     // only if they are missing.
     if (stored.granted) setTrackingCookies();
     applyConsentToAll(document, stored.granted);
+    notifyConsent(stored.granted);
   } else {
     showBanner(opts);
   }

@@ -12,6 +12,7 @@ import widgetSource from '../ArenaTickets.svelte?raw';
 import {
   CONSENT_REQUIRED_CODE,
   consentErrorMessage,
+  consentForTotal,
   consentPayBlocked,
   consentPayload,
   consentRequired,
@@ -43,6 +44,14 @@ describe('consent rules', () => {
     expect(consentRequired({ required: false })).toBe(false);
     expect(consentRequired(undefined)).toBe(false);
     expect(consentRequired(null)).toBe(false);
+  });
+
+  it('needs no tick when the cart total is 0, and shows no box', () => {
+    expect(consentRequired(consentForTotal(REQUIRED, 0))).toBe(false);
+    expect(consentPayBlocked(consentRequired(consentForTotal(REQUIRED, 0)), false)).toBe(false);
+    expect(consentRequired(consentForTotal(REQUIRED, 1500))).toBe(true);
+    expect(consentForTotal(null, 0)).toBeNull();
+    expect(formHtml({ consent: consentForTotal(REQUIRED, 0) })).not.toContain('checkout-consent-box');
   });
 
   it('holds the pay button only while a required box is unticked', () => {
@@ -165,7 +174,8 @@ describe('consent checkbox in the buyer form', () => {
     expect(buyerFormSource).not.toMatch(/localStorage|sessionStorage/);
     expect(buyerFormSource).toContain('values.consentAccepted = consentAccepted');
     expect(cartSheetSource).toContain('{consent}');
-    expect(widgetSource).toContain('consent={forceConsent(selectedSession.consent, consentForcedFor === selectedSession.id)}');
+    expect(widgetSource).toContain('forceConsent(selectedSession.consent, consentForcedFor === selectedSession.id)');
+    expect(widgetSource).toContain('consent={consentForTotal(');
     expect(widgetSource).toContain('consentForcedFor = selectedSession?.id ?? null');
     expect(widgetSource).toContain('consentPayload(values.consentAccepted === true, normLocale)');
     expect(widgetSource).toContain('consentErrorMessage(err.code, normLocale)');

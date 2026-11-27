@@ -1104,6 +1104,7 @@ export const en = {
   "orgData.page.hidden": "The platform operator does not show the seller data on this page",
   "orgData.page.where": "Buyers see the phone on this sales page when the page shows the seller data. The page does not show the e-mail. Buyers write to you through the form on the page, and the messages go to this address.",
   "orgData.page.missing": "Missing:",
+  "orgData.page.missingReminder": "Buyers already tick the sale terms, with the platform policy for now. Fill in the missing data so the tick shows your own terms.",
   "orgData.page.email": "E-mail on the page",
   "orgData.page.phone": "Phone on the page",
   "orgData.page.phone.hint": "With the country code, for example +34 600 000 000. You can keep it empty.",

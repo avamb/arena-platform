@@ -1104,6 +1104,7 @@ export const es: Record<MessageKey, string> = {
   "orgData.page.hidden": "El operador de la plataforma ocultó los datos del vendedor en esta página",
   "orgData.page.where": "Los compradores ven el teléfono en esta página de venta cuando se muestran los datos del vendedor. La página no muestra el correo: los compradores te escriben por el formulario de la página y los mensajes llegan a esta dirección.",
   "orgData.page.missing": "Aún falta:",
+  "orgData.page.missingReminder": "Los compradores ya marcan la casilla de las condiciones de venta, por ahora con la política de la plataforma. Completa los datos que faltan para que la casilla muestre tus propias condiciones.",
   "orgData.page.email": "Correo público",
   "orgData.page.phone": "Teléfono público",
   "orgData.page.phone.hint": "Con el prefijo del país, por ejemplo +34 600 000 000. Puedes dejarlo vacío.",

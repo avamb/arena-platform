@@ -7,6 +7,7 @@ import { renderSeriesPage, resolveEventOrSeries, seriesDescriptionPlain } from '
 import { renderSellerFooter } from './lib/seller.ts';
 import { contactFallbackURL, openContactFromHash, renderContactFooter } from './lib/contact.ts';
 import { initTracking } from './lib/tracking.ts';
+import { initConversion, trackTicketsClick } from './lib/conversion.ts';
 import { trackFunnelView, trackPageView, trackPartnerClick, trackVideoPlay } from './lib/track.ts';
 
 /** Resolved at build time by Vite from the VITE_API_BASE_URL build arg
@@ -113,7 +114,8 @@ async function main(): Promise<void> {
           title: sdata.series.name,
           descriptionPlain: seriesDescriptionPlain(sdata.series.description_html),
         });
-        renderSeriesPage(mainEl, sdata, seriesLocale, { orgSlug: route.orgSlug });
+        // An outside box office link of the tour page is a TicketsClick too.
+        renderSeriesPage(mainEl, sdata, seriesLocale, { orgSlug: route.orgSlug, onPartnerClick: () => trackTicketsClick() });
         renderSellerFooter(sdata.seller, seriesLocale);
         const seriesContact = {
           apiBase: API_BASE,
@@ -124,6 +126,7 @@ async function main(): Promise<void> {
         };
         renderContactFooter(seriesContact);
         openContactFromHash(seriesContact);
+        initConversion({ apiBase: API_BASE, slug: route.orgSlug, seriesSlug: route.eventSlug, enabled: sdata.org.tracking_enabled });
         initTracking({ enabled: sdata.org.tracking_enabled, locale: seriesLocale, privacyUrl: sdata.contact_form?.privacy_url });
         return;
       }
@@ -144,7 +147,10 @@ async function main(): Promise<void> {
         apiBase: API_BASE,
         resumingCheckout,
         onVideoPlay: () => trackVideoPlay(trackCtx),
-        onPartnerClick: () => trackPartnerClick(trackCtx),
+        onPartnerClick: () => {
+          trackPartnerClick(trackCtx);
+          trackTicketsClick();
+        },
       });
       renderSellerFooter(data.seller, pageLocale);
       const contactCtx = {
@@ -158,6 +164,15 @@ async function main(): Promise<void> {
       };
       renderContactFooter(contactCtx);
       openContactFromHash(contactCtx);
+      // Meta/GA4 funnel through the server: only with tracking on and consent granted.
+      // Before initTracking, which announces a stored choice. Coming back from
+      // the payment page is not a new view.
+      initConversion({
+        apiBase: API_BASE,
+        slug: route.orgSlug,
+        eventSlug: route.eventSlug,
+        enabled: resumingCheckout ? false : data.org.tracking_enabled,
+      });
       initTracking({ enabled: data.org.tracking_enabled, locale: pageLocale, privacyUrl: data.contact_form?.privacy_url });
       // Page statistics (HP-2a): one anonymous page view per shown event page.
       // Coming back from the payment page is not a new view.

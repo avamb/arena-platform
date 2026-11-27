@@ -99,6 +99,9 @@ export function SellerChannelCard({ orgId, channel }: { orgId: string; channel: 
               <li key={k}>{t(k)}</li>
             ))}
           </ul>
+          <p className="notice" role="status" data-testid="seller-channel-missing-reminder">
+            {t("orgData.page.missingReminder")}
+          </p>
         </>
       )}
       <p className="muted">{t("orgData.page.where")}</p>
