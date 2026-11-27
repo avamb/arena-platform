@@ -8688,6 +8688,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/pages/{org_slug}/{event_slug}/conversion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report ViewContent or TicketsClick of a hosted page
+         * @description Spec 68 section 3.4. The page tells the organization's Meta / GA4
+         *     conversions that the visitor saw the event (`view_content`) or went
+         *     on to the tickets (`tickets_click`). No JWT. Nothing is queued and
+         *     nothing is stored without an explicit yes to tracking in
+         *     `buyer_context` (`tracking_consent` true with its text version);
+         *     the answer is 204 either way. `event_id` is the dedup key.
+         *
+         *     The page is resolved like `POST .../track` and every miss answers the
+         *     same `404 page.not_found`. Rate limited by the page and by client IP
+         *     (429 `track.rate_limited`).
+         */
+        post: operations["postPublicPageConversion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/pages/{org_slug}/series/{series_slug}/conversion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report ViewContent or TicketsClick of a tour page
+         * @description Spec 68 section 3.4, the same as
+         *     `POST /v1/public/pages/{org_slug}/{event_slug}/conversion` for the
+         *     page of a tour. `404 page.not_found` for every miss.
+         */
+        post: operations["postPublicSeriesPageConversion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/pages/{org_slug}": {
         parameters: {
             query?: never;
@@ -9846,6 +9897,33 @@ export interface paths {
          */
         put: operations["putAdminEventHoldProfile"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/checkout/{checkout_token}/payment-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The buyer's payment form is complete
+         * @description Spec 68 section 3.2. The widget sends it once when the embedded
+         *     payment form reports it is complete. The body is empty (or `{}`) and
+         *     no card data travels. The server queues AddPaymentInfo for the
+         *     organization's Meta / GA4 from what the checkout stored, only with
+         *     the checkout's explicit yes to tracking. A repeat is a no-op. The
+         *     answer is 204 whatever was queued.
+         *
+         *     No JWT: the `checkout_token` is the credential.
+         */
+        post: operations["postPublicCheckoutPaymentInfo"];
         delete?: never;
         options?: never;
         head?: never;
@@ -26141,9 +26219,9 @@ export interface components {
              */
             consent_required: boolean;
             /**
-             * @description Whether checkout asks for the consent now: `consent_required` and
-             *     the data is complete. A profile emptied after the switch was set
-             *     turns the question off until it is complete again.
+             * @description Whether the stored switch and the data allow the consent. Since
+             *     spec 68 section 5.1 it no longer decides checkout: the tick is
+             *     required for every paid sale (a free order needs none).
              */
             consent_active: boolean;
             /**
@@ -26284,8 +26362,10 @@ export interface components {
             /** @description True keeps the seller block off this channel's sales page even when the data is complete; false shows it again. Only a platform superadmin (with `X-Admin-Reason`) may change it. */
             seller_hidden?: boolean;
             /**
-             * @description True makes checkout ask the buyer to accept the organizer's sale
-             *     terms and the platform policy before paying (P2); a cart without
+             * @description The stored switch of the buyer consent (P2). Since spec 68 section
+             *     5.1 checkout asks every buyer of a paid sale to accept the
+             *     organizer's sale terms and the platform policy whatever this
+             *     switch says (a free order needs no tick); a paid cart without
              *     the tick is refused with 422 `checkout.consent_required`. May be
              *     switched on only while the seller data is complete (422
              *     `seller.incomplete` with details.missing). False switches it off.
@@ -26843,6 +26923,26 @@ export interface components {
             events: components["schemas"]["AnalyticsTimelineEvent"][];
             /** @description Pass it as `cursor` to get the next, older page. Null on the last page. */
             next_cursor: string | null;
+        };
+        /**
+         * @description Body of POST /v1/public/pages/{org_slug}/{event_slug}/conversion and
+         *     of the tour page's twin (spec 68 section 3.4). Unknown fields are
+         *     ignored.
+         */
+        PageConversionRequest: {
+            /**
+             * @description What the visitor did, `view_content` or `tickets_click`. Any other value is refused with 400 `track.invalid_body`.
+             * @example view_content
+             */
+            kind: string;
+            /** @description The page's id of this moment, the dedup key of the event. 1 to 64 characters of `A-Za-z0-9_-`. */
+            event_id: string;
+            /**
+             * @description The browser's tracking context, the object `checkout/start` takes.
+             *     Nothing is queued unless its `tracking_consent` is true with
+             *     `tracking_consent_text_version`. A malformed object is ignored.
+             */
+            buyer_context?: components["schemas"]["PublicCheckoutBuyerContext"];
         };
         /**
          * @description Body of POST /v1/public/pages/{org_slug}/{event_slug}/track, the hosted
@@ -32042,12 +32142,11 @@ export interface components {
             /**
              * @description The buyer's tick on "I accept the sale terms (seller: <legal
              *     name>) and the privacy policy" (P2). Required (with
-             *     `accepted: true`) when the feed session's `consent.required` is
-             *     true. Only then is it recorded with the checkout session, together
+             *     `accepted: true`) for every paid sale (spec 68 section 5.1; a
+             *     free order needs none). A ticked consent is recorded with the checkout session, together
              *     with the buyer's IP address and browser string at purchase, the
              *     site the buyer bought on and what the checkbox showed (dispute
-             *     evidence, never answered on a public route). Sent to a channel
-             *     that does not ask for it, it is ignored and nothing is stored.
+             *     evidence, never answered on a public route).
              */
             consent?: components["schemas"]["PublicCheckoutConsent"];
             /**
@@ -32959,12 +33058,13 @@ export interface components {
          *     whether the widget must show the checkbox "I accept the sale terms
          *     (seller: <seller_legal_name>) and the privacy policy" with links to
          *     `terms_url` and `privacy_url`, and keep the pay button disabled until
-         *     it is ticked. Required only while the sales channel's
-         *     `consent_required` switch is on AND the seller data is complete; a
-         *     seller block hidden by the operator does not switch it off.
+         *     it is ticked. Since spec 68 section 5.1 the tick is required for
+         *     every paid sale on every channel: the channel's `consent_required`
+         *     switch and the completeness of the seller data no longer decide it.
+         *     A free order (total 0) needs no tick.
          */
         PublicCheckoutConsentBlock: {
-            /** @description True when checkout/start refuses a cart without the consent. */
+            /** @description True when checkout/start refuses a paid cart without the consent (always true since spec 68; a free cart is never refused). */
             required: boolean;
             /**
              * @description Legal name of the seller the checkbox names; present only when `required` is true.
@@ -33361,9 +33461,18 @@ export interface components {
          * @description The cart to price, in the shape of `PublicFeedCheckoutStartRequest`
          *     (seated `seats`, general-admission `ga_items`, or both) plus the
          *     optional promo code. The quote takes no buyer details; the optional
-         *     tracking fields only feed the cart's AddToCart event.
+         *     tracking fields only feed the cart's AddToCart or InitiateCheckout
+         *     event.
          */
         PublicFeedCheckoutQuoteRequest: {
+            /**
+             * @description Which event the cart queues for Meta / GA4 (spec 68 section 3.1):
+             *     `add_to_cart` (the default when absent) or `initiate_checkout`
+             *     (dedup id `ic:<add_to_cart_id>`, `seats_considered` is not used).
+             *     Any other value queues nothing and never fails the quote.
+             * @example add_to_cart
+             */
+            cart_event?: string;
             /**
              * Format: uuid
              * @description UUID of the event session the cart belongs to.
@@ -72357,6 +72466,114 @@ export interface operations {
             };
         };
     };
+    postPublicPageConversion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization or promoter slug, matched case-insensitively. */
+                org_slug: string;
+                /** @description Event slug, matched case-insensitively. */
+                event_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PageConversionRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted (queued or ignored for lack of consent). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body is not a JSON object, the kind is not allowed or the event_id is not usable (`track.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Page not found (`page.not_found`), one outcome for every miss. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded (`track.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postPublicSeriesPageConversion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization or promoter slug, matched case-insensitively. */
+                org_slug: string;
+                /** @description Tour slug, matched case-insensitively. */
+                series_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PageConversionRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted (queued or ignored for lack of consent). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body is not a JSON object, the kind is not allowed or the event_id is not usable (`track.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Page not found (`page.not_found`), one outcome for every miss. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded (`track.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getPublicPromoterPage: {
         parameters: {
             query?: never;
@@ -72658,9 +72875,10 @@ export interface operations {
              *     BEFORE the reservation becomes durable, so a refused checkout
              *     leaves no hold, no held seats and no reserved capacity behind.
              *
-             *     `checkout.consent_required` when the session's `consent.required`
-             *     is true and the body carries no `consent` with `accepted: true`;
-             *     refused before any hold is taken.
+             *     `checkout.consent_required` when the cart is paid (total above
+             *     zero) and the body carries no `consent` with `accepted: true`
+             *     (spec 68 section 5.1: every paid sale, a free order needs no
+             *     tick); refused before any hold is taken.
              *
              *     `checkout.prepare_unavailable` for `prepare: true` without the
              *     `stripe_elements` capability or with a buyer, a promo code, a
@@ -75344,6 +75562,54 @@ export interface operations {
                 };
             };
             /** @description Database or audit log unavailable (`dependency.database_unavailable`, `dependency.audit_unavailable`); nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postPublicCheckoutPaymentInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque checkout token from `checkout/start`. */
+                checkout_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No checkout for this token (`checkout.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded (`checkout.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable (`dependency.database_unavailable`) or the checkout could not be read (`checkout.unavailable`); retry. */
             503: {
                 headers: {
                     [name: string]: unknown;
