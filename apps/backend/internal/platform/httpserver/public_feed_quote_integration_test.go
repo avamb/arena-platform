@@ -61,6 +61,16 @@ type quoteErrBody struct {
 
 func (f *hostedOrgFixture) postJSON(t *testing.T, srv *Server, token, path string, payload map[string]any) (int, []byte) {
 	t.Helper()
+	if path == "/checkout/start" {
+		// Every paid sale needs the tick on the sale terms (spec 68 5.1).
+		if _, ok := payload["consent"]; !ok {
+			merged := map[string]any{"consent": map[string]any{"accepted": true}}
+			for k, v := range payload {
+				merged[k] = v
+			}
+			payload = merged
+		}
+	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		t.Fatalf("marshal request: %v", err)

@@ -164,6 +164,8 @@ func postHoldStart(t *testing.T, srv *Server, f *seatHoldFixture, extra map[stri
 		"session_id": f.sessionID.String(),
 		"hold_token": f.holdToken,
 		"return_url": hostedTicketsBaseURL + "/shows/hold",
+		// Every paid sale needs the tick on the sale terms (spec 68 5.1).
+		"consent": map[string]any{"accepted": true},
 	}
 	for k, v := range extra {
 		if v == nil {

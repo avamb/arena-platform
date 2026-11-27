@@ -81,6 +81,8 @@ func lateStartCheckout(t *testing.T, srv *Server, f *allpayFixture, extra map[st
 		"qty":        2,
 		"return_url": hostedTicketsBaseURL + "/shows/late",
 		"buyer":      map[string]any{"email": f.buyerMail, "name": "Late Buyer", "phone": f.buyerPhone},
+		// Every paid sale needs the tick on the sale terms (spec 68 5.1).
+		"consent": map[string]any{"accepted": true},
 	}
 	for k, v := range extra {
 		body[k] = v

@@ -49,6 +49,7 @@ func TestW1A6c_PublicFeed_SecondCheckoutSameBuyerSupersedesOpenOrder(t *testing.
 				"name":  "Wanda Buyer",
 				"phone": f.buyerPhone,
 			},
+			"consent": map[string]any{"accepted": true},
 		})
 		if err != nil {
 			t.Fatalf("marshal request: %v", err)

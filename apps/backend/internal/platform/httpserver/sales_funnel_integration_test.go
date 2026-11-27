@@ -248,6 +248,7 @@ func (fx *funnelFixture) startCheckout(email string, qty int, attribution map[st
 		"qty":        qty,
 		"buyer":      map[string]any{"email": email, "name": "Funnel Buyer", "phone": fmt.Sprintf("+3633%07d", time.Now().UnixNano()%10_000_000)},
 		"return_url": hostedTicketsBaseURL + "/shows/funnel",
+		"consent":    map[string]any{"accepted": true},
 	}
 	if attribution != nil {
 		payload["attribution"] = attribution

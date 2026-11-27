@@ -59,6 +59,7 @@ func (f *hostedOrgFixture) startCheckoutAs(t *testing.T, srv *Server, email stri
 		"qty":        2,
 		"return_url": hostedTicketsBaseURL + "/shows",
 		"buyer":      map[string]any{"email": email, "name": "Invalid Email Buyer", "phone": f.buyerPhone},
+		"consent":    map[string]any{"accepted": true},
 	})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
