@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { ADD_TO_CART_DELAY_MS, createAddToCartScheduler, initialAddToCartState, trackCartChange, withAddToCart } from './addToCart.js';
+import { ADD_TO_CART_DELAY_MS, createAddToCartScheduler, createAddToCartTrigger, initialAddToCartState, trackCartChange, withAddToCart } from './addToCart.js';
 import { createPaymentInfoNotifier } from './paymentInfo.js';
 import type { BuyerContextPayload } from './buyerContext.js';
 import widgetSource from '../ArenaTickets.svelte?raw';
@@ -34,6 +34,42 @@ describe('AddToCart debounce (spec 68)', () => {
     s.cancel();
     vi.advanceTimersByTime(3000);
     expect(fire).not.toHaveBeenCalled();
+  });
+});
+
+describe('AddToCart starts only after a buyer action (spec 68)', () => {
+  it('a preset quantity alone never fires; a buyer change fires once after 1.5 s', () => {
+    vi.useFakeTimers();
+    const fire = vi.fn();
+    const t = createAddToCartTrigger(fire);
+    t.cartChanged(1); // preset single-category quantity
+    vi.advanceTimersByTime(5000);
+    expect(fire).not.toHaveBeenCalled();
+    t.touch(); // buyer changes the quantity
+    t.cartChanged(2);
+    vi.advanceTimersByTime(1499);
+    expect(fire).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(fire).toHaveBeenCalledTimes(1);
+  });
+
+  it('an emptied cart forgets the action: the next preset cart stays silent', () => {
+    vi.useFakeTimers();
+    const fire = vi.fn();
+    const t = createAddToCartTrigger(fire);
+    t.touch();
+    t.cartChanged(1);
+    t.cartChanged(0);
+    vi.advanceTimersByTime(5000);
+    expect(fire).not.toHaveBeenCalled();
+    t.cartChanged(1);
+    vi.advanceTimersByTime(5000);
+    expect(fire).not.toHaveBeenCalled();
+  });
+
+  it('the widget marks the touch only in the buyer handlers', () => {
+    expect(widgetSource).toMatch(/function onGaQuantityChange\([^)]*\): void \{\s*openedSession\(\);\s*addToCartScheduler\.touch\(\);/);
+    expect(widgetSource).toMatch(/function seatTapNow\([^)]*\): void \{\s*const prev = selectedSeatKeys;\s*addToCartScheduler\.touch\(\);/);
   });
 });
 

@@ -85,6 +85,34 @@ export function withAddToCart(
 /** The selection must stay unchanged this long before AddToCart is sent. */
 export const ADD_TO_CART_DELAY_MS = 1500;
 
+/**
+ * AddToCart starts only after an explicit buyer action in this cart: `touch`
+ * (seat click, quantity change) marks the cart; `cartChanged` schedules only a
+ * touched, non-empty cart. A preset, default or restored cart never starts it.
+ * An empty cart drops the mark, so the next cart needs its own action.
+ */
+export function createAddToCartTrigger(
+  fire: () => void,
+  delayMs: number = ADD_TO_CART_DELAY_MS,
+): { touch: () => void; cartChanged: (count: number) => void; cancel: () => void } {
+  const scheduler = createAddToCartScheduler(fire, delayMs);
+  let touched = false;
+  return {
+    cancel: scheduler.cancel,
+    touch: () => {
+      touched = true;
+    },
+    cartChanged: (count: number) => {
+      if (count <= 0) {
+        touched = false;
+        scheduler.cancel();
+      } else if (touched) {
+        scheduler.schedule();
+      }
+    },
+  };
+}
+
 /** A restartable one-shot timer: `schedule` replaces a pending run, `cancel` drops it. */
 export function createAddToCartScheduler(
   fire: () => void,

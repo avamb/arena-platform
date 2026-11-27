@@ -65,7 +65,7 @@
   import { isMarketingRewardRefusal, marketingErrorMessage, marketingPayload } from './lib/marketing.js';
   import { captureAttribution, type AttributionPayload } from './lib/attribution.js';
   import { buildBuyerContext, captureClickIds, isTrackingGranted, persistClickIds, readBrowserCookies, type BuyerContextPayload, type ClickIds } from './lib/buyerContext.js';
-  import { createAddToCartScheduler, initialAddToCartState, trackCartChange, withAddToCart } from './lib/addToCart.js';
+  import { createAddToCartTrigger, initialAddToCartState, trackCartChange, withAddToCart } from './lib/addToCart.js';
   import { createFunnel, parseFunnelHost, type Funnel, type FunnelStep } from './lib/funnel.js';
   import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
   import { holdSecondsLeft, postCheckoutPaying } from './lib/holdBasics.js';
@@ -574,17 +574,16 @@
   }
 
   // AddToCart goes out once the selection has stayed unchanged for 1.5 s.
-  const addToCartScheduler = createAddToCartScheduler(() => {
+  // Only after an explicit buyer action in this cart (seat click, quantity
+  // change): a preset or restored cart never starts it.
+  const addToCartScheduler = createAddToCartTrigger(() => {
     if (cartCount > 0) sendAddToCart();
   });
 
   $effect(() => {
     void cartKey;
     const n = cartCount;
-    untrack(() => {
-      if (n > 0) addToCartScheduler.schedule();
-      else addToCartScheduler.cancel();
-    });
+    untrack(() => addToCartScheduler.cartChanged(n));
   });
 
   // ── Promo code ─────────────────────────────────────────────────────────────
@@ -1216,6 +1215,7 @@
 
   function seatTapNow(seatKey: string, status: SeatStatusValue): void {
     const prev = selectedSeatKeys;
+    addToCartScheduler.touch();
     // Spec 67: on a plan the click holds the seat (or lets an own seat go).
     const ctl = holdCtl;
     if (ctl && selectedSession?.schema_url) {
@@ -1269,6 +1269,7 @@
 
   function onGaQuantityChange(tierId: string, qty: number): void {
     openedSession();
+    addToCartScheduler.touch();
     const next = new Map(gaQuantities);
     next.set(tierId, qty);
     gaQuantities = next;
