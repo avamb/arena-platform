@@ -162,6 +162,7 @@ async function createCheckout(
         holder_email: 'buyer@arena-e2e.test',
         buyer:        { email: 'buyer@arena-e2e.test', name: 'E2E Buyer' },
         seats:        seatsArg,
+        consent:      { accepted: true },
       };
       if (gaQtyArg > 0) {
         body['ga_items'] = [{ tier_id: galerieTierId, quantity: gaQtyArg }];
@@ -432,6 +433,7 @@ test.describe('3 — Concurrent 409 from second browser context (REAL)', () => {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({
+              consent: { accepted: true },
               session_id:   sessionId,
               holder_email: 'buyer-ctx1@arena-e2e.test',
               buyer:        { email: 'buyer-ctx1@arena-e2e.test', name: 'Test Buyer' },
@@ -453,6 +455,7 @@ test.describe('3 — Concurrent 409 from second browser context (REAL)', () => {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({
+              consent: { accepted: true },
               session_id:   sessionId,
               holder_email: 'buyer-ctx2@arena-e2e.test',
               buyer:        { email: 'buyer-ctx2@arena-e2e.test', name: 'Test Buyer 2' },
@@ -513,6 +516,7 @@ test.describe('3 — Concurrent 409 from second browser context (REAL)', () => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              consent: { accepted: true },
               session_id:   sessionId,
               holder_email: 'e2e-ctx1-e@arena-e2e.test',
               buyer: { email: 'e2e-ctx1-e@arena-e2e.test', name: 'WID-S2 Buyer 1' },
@@ -532,6 +536,7 @@ test.describe('3 — Concurrent 409 from second browser context (REAL)', () => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              consent: { accepted: true },
               session_id:   sessionId,
               holder_email: 'e2e-ctx2-e@arena-e2e.test',
               buyer: { email: 'e2e-ctx2-e@arena-e2e.test', name: 'WID-S2 Buyer 2' },
@@ -603,6 +608,7 @@ test.describe('4 — Checkout start contract (real backend)', () => {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({
+            consent: { accepted: true },
             session_id:   sessionId,
             holder_email: 'buyer-c@arena-e2e.test',
             buyer:        { email: 'buyer-c@arena-e2e.test', name: 'E2E Buyer C' },
