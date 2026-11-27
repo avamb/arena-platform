@@ -200,7 +200,8 @@ func (h *Handler) HandlePublicCheckoutBuyer(w http.ResponseWriter, r *http.Reque
 	}
 	// The tick is required for a paid order only (spec 68 section 5.1); a
 	// free one is never refused, a tick sent with it is recorded.
-	var orderTotal int64
+	// An unknown total counts as paid: the tick is asked rather than skipped.
+	orderTotal := int64(1)
 	if pc.Total != nil {
 		orderTotal = *pc.Total
 	}

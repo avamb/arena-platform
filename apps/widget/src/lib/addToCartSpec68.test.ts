@@ -57,6 +57,21 @@ describe('InitiateCheckout quote (spec 68)', () => {
   });
 });
 
+describe('AddToCart marks the cart only when sent (spec 68)', () => {
+  it('sets addToCartSentFor only after postTrackedQuote reports a send', () => {
+    expect(widgetSource).toMatch(/function postTrackedQuote\(event: 'add_to_cart' \| 'initiate_checkout'\): boolean \{/);
+    expect(widgetSource).toMatch(/if \(!isTrackingGranted\(trackingConsent\)\) return false;/);
+    expect(widgetSource).toMatch(/if \(!tracked\.add_to_cart_id\) return false;/);
+    expect(widgetSource).toMatch(/void postCheckoutQuote\(normFeedToken, tracked, resolvedApiBase\)\.catch\(\(\) => \{\}\);\s*return true;/);
+    expect(widgetSource).toContain("if (postTrackedQuote('add_to_cart')) addToCartSentFor = addToCart.id;");
+    expect(widgetSource).not.toContain("addToCartSentFor = addToCart.id;\n    postTrackedQuote('add_to_cart');");
+  });
+
+  it('a buyer who grants tracking after the debounce still gets AddToCart from the checkout', () => {
+    expect(widgetSource).toMatch(/function sendInitiateCheckout\(\): void \{[\s\S]*?addToCartScheduler\.cancel\(\);\s*sendAddToCart\(\);/);
+  });
+});
+
 describe('AddPaymentInfo (spec 68)', () => {
   it('posts once per token on payment_details_complete, with consent only', async () => {
     const send = vi.fn().mockResolvedValue(undefined);

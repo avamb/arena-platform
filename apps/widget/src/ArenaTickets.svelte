@@ -541,21 +541,27 @@
     return postCheckoutQuote(normFeedToken, payload, resolvedApiBase, signal);
   }
 
-  /** The tracked quote of this cart: AddToCart, or InitiateCheckout. Best effort. */
-  function postTrackedQuote(event: 'add_to_cart' | 'initiate_checkout'): void {
-    if (!normFeedToken || !selectedSession || !addToCart.id) return;
-    if (!isTrackingGranted(trackingConsent)) return;
+  /**
+   * The tracked quote of this cart: AddToCart, or InitiateCheckout. Best effort.
+   * Returns true only when the quote went out with its tracking fields.
+   */
+  function postTrackedQuote(event: 'add_to_cart' | 'initiate_checkout'): boolean {
+    if (!normFeedToken || !selectedSession || !addToCart.id) return false;
+    if (!isTrackingGranted(trackingConsent)) return false;
     const payload = buildQuotePayload(selectedSession.id, [...selectedSeatKeys], buildGaItems(gaQuantities), promo.code);
     const tracked = withAddToCart(payload, buyerContextNow(), addToCart, gaQuantities, event);
-    if (!tracked.add_to_cart_id) return;
+    if (!tracked.add_to_cart_id) return false;
     void postCheckoutQuote(normFeedToken, tracked, resolvedApiBase).catch(() => {});
+    return true;
   }
 
-  /** AddToCart: once per cart id. */
+  /**
+   * AddToCart: once per cart id. The id is marked only when the quote was
+   * sent, so a buyer who grants tracking later still gets it.
+   */
   function sendAddToCart(): void {
     if (!addToCart.id || addToCartSentFor === addToCart.id) return;
-    addToCartSentFor = addToCart.id;
-    postTrackedQuote('add_to_cart');
+    if (postTrackedQuote('add_to_cart')) addToCartSentFor = addToCart.id;
   }
 
   /** InitiateCheckout: once per cart id; AddToCart goes first if its debounce has not fired. */
@@ -2094,7 +2100,7 @@
         promoExpanded={wantedPromo !== null}
         promoPrefill={wantedPromo ?? ''}
         showWithdrawalNotice={selectedSession.show_withdrawal_notice === true}
-        consent={consentForTotal(forceConsent(selectedSession.consent, consentForcedFor === selectedSession.id), cartTotal(cart.lines).amount)}
+        consent={forceConsent(consentForTotal(selectedSession.consent, cartTotal(cart.lines).amount), consentForcedFor === selectedSession.id)}
         marketing={selectedSession.marketing_optin ?? null}
         marketingDiscountUsed={marketingDiscountUsedFor === selectedSession.id}
         {marketingTicked}

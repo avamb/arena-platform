@@ -84,6 +84,18 @@ describe('consent rules', () => {
     expect(forceConsent(undefined, false)).toBeNull();
   });
 
+  it('a box forced by a refusal shows even when the widget total is 0', () => {
+    // The widget's order: the total rule first, the forced state last.
+    const forcedAt0 = (c: typeof REQUIRED | { required: boolean } | undefined) =>
+      consentRequired(forceConsent(consentForTotal(c, 0), true));
+    expect(forcedAt0(undefined)).toBe(true);
+    expect(forcedAt0({ required: false })).toBe(true);
+    expect(forcedAt0(REQUIRED)).toBe(true);
+    // Not forced: a total of 0 still shows no box.
+    expect(consentRequired(forceConsent(consentForTotal(REQUIRED, 0), false))).toBe(false);
+    expect(consentRequired(forceConsent(consentForTotal(undefined, 0), false))).toBe(false);
+  });
+
   it('links only to http(s) pages', () => {
     expect(safeConsentUrl('https://arenasoldout.com/legal/terms')).toBe('https://arenasoldout.com/legal/terms');
     expect(safeConsentUrl('javascript:alert(1)')).toBeNull();
@@ -174,8 +186,7 @@ describe('consent checkbox in the buyer form', () => {
     expect(buyerFormSource).not.toMatch(/localStorage|sessionStorage/);
     expect(buyerFormSource).toContain('values.consentAccepted = consentAccepted');
     expect(cartSheetSource).toContain('{consent}');
-    expect(widgetSource).toContain('forceConsent(selectedSession.consent, consentForcedFor === selectedSession.id)');
-    expect(widgetSource).toContain('consent={consentForTotal(');
+    expect(widgetSource).toContain('consent={forceConsent(consentForTotal(selectedSession.consent, cartTotal(cart.lines).amount), consentForcedFor === selectedSession.id)}');
     expect(widgetSource).toContain('consentForcedFor = selectedSession?.id ?? null');
     expect(widgetSource).toContain('consentPayload(values.consentAccepted === true, normLocale)');
     expect(widgetSource).toContain('consentErrorMessage(err.code, normLocale)');
