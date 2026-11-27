@@ -1,20 +1,19 @@
 // checkout_consent.go is the buyer consent at checkout (task P2 of
-// 08_architecture/40, plan 8.9): a sales channel may ask the buyer to tick
-// "I accept the sale terms of the organizer <legal name> and the platform
-// policy" before paying.
+// 08_architecture/40, plan 8.9): the buyer ticks "I accept the sale terms of
+// the organizer <legal name> and the platform policy" before paying.
 //
-// The switch is settings.hosted_page.consent_required of the channel, written
-// only by the seller-display route and only while the seller profile is
-// complete. The checkout asks for the consent while the switch is on AND the
-// profile is still complete (consentFromFlags): an organizer whose legal data
-// was emptied afterwards sells without the seller block and without the
-// question, exactly as the plan says.
+// Since the owner decision of 2026-11-27 (spec 68 section 5.1) the tick is
+// required for EVERY paid sale, on every channel: the channel switch
+// settings.hosted_page.consent_required and the completeness of the seller
+// profile no longer decide it (consentFromFlags). An incomplete profile does
+// not block the sale: the checkbox names the profile's legal name, else the
+// organization's name, and links the platform policy. A free order (total 0)
+// needs no tick; a tick sent with one may be recorded, never refused.
 //
 // The record (checkout_consents, migration 0155) is dispute evidence. It
 // stores the buyer's real IP address and browser string (owner decision
 // 2026-10-15), the site the buyer bought on and what the checkbox showed. It
-// is written only when the channel asks for the consent: a tick sent to a
-// channel that does not is ignored (data minimization). This code never
+// is written only for a ticked consent. This code never
 // writes the address or browser to a log, an audit row, a public answer or a
 // Telegram message; only GET .../orders/{order_id}/consents answers them, to
 // the order's organization (users, not API keys) and the platform operator.
@@ -38,7 +37,6 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/sellerinfo"
 )
 
 // PlatformTermsVersion names the platform terms a buyer accepts at checkout
@@ -89,32 +87,44 @@ func (h *Handler) WithCheckoutConsent(termsURL, privacyURL string) *Handler {
 }
 
 // consentFromFlags decides the consent from the buyer-flags row of the feed
-// token's channel: required while the channel's switch is on and the seller
-// profile is complete (sellerinfo.Missing is empty - the same rule the seller
-// block and the seller-display route apply). legalName is what the checkbox
-// names; it falls back to the organization's name.
+// token's channel: always required (spec 68 section 5.1, every paid sale),
+// whatever the channel's switch and the seller profile say. legalName is what
+// the checkbox names: the profile's legal name, else the organization's name.
+// Whether a given cart needs the tick is consentMissing's decision: a free
+// order does not.
 func consentFromFlags(f gen.FeedTokenBuyerFlagsRow) (required bool, legalName string) {
-	if !f.ConsentRequired {
-		return false, ""
-	}
-	p := sellerinfo.Profile{
-		LegalName:   deref(f.LegalName),
-		TaxID:       deref(f.TaxID),
-		AddressLine: deref(f.AddressLine1),
-		City:        deref(f.AddressCity),
-		PostalCode:  deref(f.AddressPostalCode),
-	}
-	if c := parsePublicContact(f.PublicContact); c != nil {
-		p.PublicEmail = c.Email
-	}
-	if len(sellerinfo.Missing(p)) > 0 {
-		return false, ""
-	}
-	legalName = p.LegalName
+	legalName = strings.TrimSpace(deref(f.LegalName))
 	if legalName == "" {
 		legalName = strings.TrimSpace(f.OrgName)
 	}
 	return true, legalName
+}
+
+// consentMissing is the rule of a cart whose total is known: a paid cart
+// (total > 0) without a ticked consent is refused; a free one never is.
+func consentMissing(total int64, c *PublicCheckoutConsent) bool {
+	return total > 0 && !consentAccepted(c)
+}
+
+// refuseMissingConsent answers 422 checkout.consent_required for a priced
+// checkout/start cart that is paid and carries no tick, and reports whether
+// it did. A prepared order (no buyer yet) is checked at the buyer attach.
+func refuseMissingConsent(w http.ResponseWriter, r *http.Request, prepare bool, total int64, c *PublicCheckoutConsent) bool {
+	if prepare || !consentMissing(total, c) {
+		return false
+	}
+	writeConsentRequired(w, r)
+	return true
+}
+
+// writeConsentRequired is the refusal of a paid sale without the tick.
+func writeConsentRequired(w http.ResponseWriter, r *http.Request) {
+	httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+		"checkout.consent_required",
+		"Please accept the sale terms of the organizer and the platform policy, then try again.",
+		r,
+		map[string]any{"field": "consent.accepted"},
+	))
 }
 
 // consentBlock is the feed session's consent member for one channel decision.
@@ -137,14 +147,15 @@ func consentAccepted(c *PublicCheckoutConsent) bool {
 	return c != nil && c.Accepted
 }
 
-// consentRefused is the pre-flight rule of checkout/start: a channel that
-// asks for the consent refuses a body without a ticked one, before any hold.
+// consentRefused reports a body without a ticked consent where one is
+// required. checkout/start and the buyer attach apply it only once the cart
+// is known to be paid (consentMissing).
 func consentRefused(required bool, c *PublicCheckoutConsent) bool {
 	return required && !consentAccepted(c)
 }
 
-// consentRecorded reports whether checkout/start stores a consent row: only
-// a ticked consent for a channel that asks for it. Anything else stores
+// consentRecorded reports whether a consent row is stored: only a ticked
+// consent (required is always true since spec 68). Anything else stores
 // nothing of the buyer.
 func consentRecorded(required bool, c *PublicCheckoutConsent) bool {
 	return required && consentAccepted(c)

@@ -601,6 +601,8 @@ func (f *hostedOrgFixture) startCheckoutWithLocale(t *testing.T, srv *Server, re
 			"name":  "Hosted Checkout Buyer",
 			"phone": f.buyerPhone,
 		},
+		// Every paid sale needs the tick on the sale terms (spec 68 5.1).
+		"consent": map[string]any{"accepted": true},
 	}
 	if returnURL != "" {
 		payload["return_url"] = returnURL

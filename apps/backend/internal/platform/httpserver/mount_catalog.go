@@ -281,6 +281,10 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 		// Page statistics beacon (HP-2a): counts a page view, a video play
 		// or a partner click. No login, no cookie, no stored address.
 		r.Post("/public/pages/{org_slug}/{event_slug}/track", s.handlePublicPageTrack)
+		// Meta / GA4 ViewContent and TicketsClick of a page (spec 68 3.4);
+		// queued only with the visitor's explicit tracking consent.
+		r.Post("/public/pages/{org_slug}/{event_slug}/conversion", s.handlePublicPageConversion)
+		r.Post("/public/pages/{org_slug}/series/{series_slug}/conversion", s.handlePublicSeriesPageConversion)
 		// Buyer funnel beacon (spec 50 A7): counts view / session_open /
 		// seats_chosen per event and day. No login, no cookie, no stored address.
 		r.Post("/public/funnel", s.handlePublicFunnel)
@@ -317,6 +321,8 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 		r.Post("/public/checkout/{checkout_token}/buyer", s.handlePublicCheckoutBuyer)
 		// "The payment is in progress": the seat hold is not closed (spec 67 section 4.8).
 		r.Post("/public/checkout/{checkout_token}/paying", s.handlePublicCheckoutPaying)
+		// The payment form is complete: AddPaymentInfo for Meta / GA4 (spec 68 section 3.2).
+		r.Post("/public/checkout/{checkout_token}/payment-info", s.handlePublicCheckoutPaymentInfo)
 		// The buyer's cookie consent changed while the order is open (П-20).
 		r.Patch("/public/checkout/{checkout_token}/consent", s.handlePublicCheckoutConsent)
 		// The buyer's "Refer a friend" code and share link (spec 52).

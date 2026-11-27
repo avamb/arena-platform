@@ -15,7 +15,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/conversions"
 )
 
-// trackFakeDB answers the three reads of queueAttachedInitiateCheckout.
+// trackFakeDB answers the three reads of queueStoredCheckoutEvent.
 type trackFakeDB struct {
 	granted    *bool
 	buyerCtx   []byte
@@ -93,7 +93,7 @@ func trackPC() gen.CheckoutPaymentContextRow {
 
 func boolPtr(b bool) *bool { return &b }
 
-func TestQueueAttachedInitiateCheckout(t *testing.T) {
+func TestQueueStoredCheckoutEvent(t *testing.T) {
 	cleaned := conversions.CleanBuyerContext([]byte(ctxYes), "203.0.113.5", "UA/1")
 	groups := []orderItemGroup{{TierID: "a", UnitPrice: 2000, Quantity: 2}}
 	cases := []struct {
@@ -112,7 +112,7 @@ func TestQueueAttachedInitiateCheckout(t *testing.T) {
 		c.db.sessionID = uuid.New()
 		h := trackHandler(c.db, f)
 		cs := uuid.New()
-		h.queueAttachedInitiateCheckout(context.Background(), cs, trackPC())
+		h.queueStoredCheckoutEvent(context.Background(), cs, trackPC(), conversions.KindAcceptTerms, "terms:"+cs.String())
 		if len(f.queued) != c.want {
 			t.Fatalf("%s: queued %d, want %d", c.name, len(f.queued), c.want)
 		}
@@ -120,21 +120,21 @@ func TestQueueAttachedInitiateCheckout(t *testing.T) {
 			continue
 		}
 		ev := f.queued[0]
-		if ev.Kind != conversions.KindInitiateCheckout || ev.EventID != "ic:"+cs.String() || ev.Value != 41 ||
+		if ev.Kind != conversions.KindAcceptTerms || ev.EventID != "terms:"+cs.String() || ev.Value != 41 ||
 			ev.Context.ClientIP != "203.0.113.5" {
 			t.Fatalf("%s: event %+v", c.name, ev)
 		}
-		// A second attach of the same checkout is deduplicated by the id.
-		h.queueAttachedInitiateCheckout(context.Background(), cs, trackPC())
+		// A second call for the same checkout is deduplicated by the id.
+		h.queueStoredCheckoutEvent(context.Background(), cs, trackPC(), conversions.KindAcceptTerms, "terms:"+cs.String())
 		if len(f.queued) != 1 {
 			t.Fatalf("%s: repeat queued again", c.name)
 		}
 	}
 }
 
-func TestQueueAttachedInitiateCheckout_NilQueuerIsQuiet(_ *testing.T) {
+func TestQueueStoredCheckoutEvent_NilQueuerIsQuiet(_ *testing.T) {
 	h := &Handler{logger: slog.Default()}
-	h.queueAttachedInitiateCheckout(context.Background(), uuid.New(), trackPC())
+	h.queueStoredCheckoutEvent(context.Background(), uuid.New(), trackPC(), conversions.KindAddPaymentInfo, "api:x")
 }
 
 func TestBreakdownFromItems(t *testing.T) {

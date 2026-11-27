@@ -207,3 +207,52 @@ func TestInitiateCheckoutEvent_IDAndPayload(t *testing.T) {
 		t.Fatalf("event: %+v", ev)
 	}
 }
+
+func TestParseCartEvent(t *testing.T) {
+	cases := map[string]string{
+		"":                    conversions.KindAddToCart,
+		"null":                conversions.KindAddToCart,
+		`"add_to_cart"`:       conversions.KindAddToCart,
+		`"initiate_checkout"`: conversions.KindInitiateCheckout,
+		`"purchase"`:          "",
+		`"Initiate_Checkout"`: "",
+		`""`:                  "",
+		`1`:                   "",
+		`{"x":1}`:             "",
+	}
+	for in, want := range cases {
+		if got := parseCartEvent(json.RawMessage(in)); got != want {
+			t.Errorf("%q = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestQuoteCartEvent_InitiateCheckoutUsesTheCartID(t *testing.T) {
+	f := &fakeCartConversions{}
+	h := &Handler{logger: slog.Default(), cartConversions: f}
+	r := httptest.NewRequest("POST", "/quote", nil)
+	org, sess := uuid.New(), uuid.New()
+	atc := quoteReq(ctxYes, `"cart-1"`, `4`)
+	ic := atc
+	ic.CartEvent = json.RawMessage(`"initiate_checkout"`)
+	h.queueQuoteAddToCart(r, org, sess, atc, quoteBD())
+	h.queueQuoteAddToCart(r, org, sess, ic, quoteBD())
+	h.queueQuoteAddToCart(r, org, sess, ic, quoteBD()) // repeat dedups
+	if len(f.queued) != 2 {
+		t.Fatalf("queued %d, want 2", len(f.queued))
+	}
+	ev := f.queued[1]
+	if ev.Kind != conversions.KindInitiateCheckout || ev.EventID != "ic:cart-1" || ev.SeatsConsidered != 0 || ev.Value != 61.5 {
+		t.Fatalf("initiate checkout: %+v", ev)
+	}
+	// An unknown cart_event queues nothing, a no queues nothing.
+	bad := quoteReq(ctxYes, `"cart-9"`, "")
+	bad.CartEvent = json.RawMessage(`"view"`)
+	h.queueQuoteAddToCart(r, org, sess, bad, quoteBD())
+	no := quoteReq(ctxNo, `"cart-8"`, "")
+	no.CartEvent = json.RawMessage(`"initiate_checkout"`)
+	h.queueQuoteAddToCart(r, org, sess, no, quoteBD())
+	if len(f.queued) != 2 {
+		t.Fatalf("unknown cart_event or a no queued: %+v", f.queued)
+	}
+}

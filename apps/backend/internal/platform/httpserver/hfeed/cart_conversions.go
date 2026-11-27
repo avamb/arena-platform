@@ -1,5 +1,8 @@
-// cart_conversions.go queues the widget cart's AddToCart (checkout/quote) and
-// InitiateCheckout (checkout/start) for Meta CAPI and GA4 from the server.
+// cart_conversions.go queues the widget cart's events for Meta CAPI and GA4
+// from the server (spec 68): AddToCart and InitiateCheckout through
+// checkout/quote (cart_event), AcceptTerms when a checkout_consents row is
+// written (checkout/start, buyer attach) and AddPaymentInfo through
+// POST /v1/public/checkout/{checkout_token}/payment-info.
 //
 // Only an explicit yes counts: buyer_context.tracking_consent must be true
 // (with its text version, conversions.ConsentFromBuyerContext). No answer, a
@@ -40,7 +43,35 @@ const (
 	maxSeatsConsidered  = 1000
 	addToCartEventIDPfx = "atc:"
 	checkoutEventIDPfx  = "ic:"
+	termsEventIDPfx     = "terms:"
+	paymentInfoIDPfx    = "api:"
 )
+
+// Values of the quote's cart_event.
+const (
+	cartEventAddToCart        = "add_to_cart"
+	cartEventInitiateCheckout = "initiate_checkout"
+)
+
+// parseCartEvent reads the quote's cart_event and answers the conversion
+// kind it queues: absent (or JSON null) is AddToCart, "initiate_checkout" is
+// InitiateCheckout, anything else is "" (no event), never an error.
+func parseCartEvent(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return conversions.KindAddToCart
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return ""
+	}
+	switch s {
+	case cartEventAddToCart:
+		return conversions.KindAddToCart
+	case cartEventInitiateCheckout:
+		return conversions.KindInitiateCheckout
+	}
+	return ""
+}
 
 // buyerContextConsents reports an explicit yes in buyer_context.
 func buyerContextConsents(raw json.RawMessage) bool {
@@ -48,7 +79,7 @@ func buyerContextConsents(raw json.RawMessage) bool {
 	return in != nil && in.Granted != nil && *in.Granted
 }
 
-// checkoutTracksCart decides InitiateCheckout for checkout/start: an explicit
+// checkoutTracksCart decides AcceptTerms for checkout/start: an explicit
 // yes in buyer_context, not overruled by the stored answer (a top-level
 // tracking_consent wins when readable).
 func checkoutTracksCart(stored *trackingconsent.Consent, buyerContext json.RawMessage) bool {

@@ -116,7 +116,9 @@ func prepErrCode(out map[string]any) string {
 
 func attachBuyer(t *testing.T, srv *Server, token string, buyer map[string]any, extra map[string]any) (int, map[string]any) {
 	t.Helper()
-	payload := map[string]any{"buyer": buyer}
+	// A paid sale needs the tick (spec 68 5.1): sent unless extra names
+	// "consent" itself (nil there sends none).
+	payload := map[string]any{"buyer": buyer, "consent": map[string]any{"accepted": true}}
 	for k, v := range extra {
 		payload[k] = v
 	}
@@ -277,7 +279,7 @@ func TestCheckoutPrepare_AttachThenCompletedWebhookPaysWithBuyerEmail(t *testing
 		t.Fatalf("consent switch: %v", err)
 	}
 	buyer := map[string]any{"email": f.buyerMail, "name": "Prepared Buyer", "phone": f.buyerPhone}
-	if code, out := attachBuyer(t, srv, tok, buyer, nil); code != http.StatusUnprocessableEntity || prepErrCode(out) != "checkout.consent_required" {
+	if code, out := attachBuyer(t, srv, tok, buyer, map[string]any{"consent": nil}); code != http.StatusUnprocessableEntity || prepErrCode(out) != "checkout.consent_required" {
 		t.Fatalf("missing consent = %d %v", code, out)
 	}
 	if o := orderOf(t, ctx, pool, start.CheckoutSess.ID); o.BuyerEmail != nil {

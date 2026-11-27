@@ -1,12 +1,15 @@
-// checkout_buyer_track.go — InitiateCheckout of a prepared (spec 65) checkout.
+// checkout_buyer_track.go — conversion events of an existing checkout read
+// from what the checkout stored (spec 68).
 //
-// The embedded checkout opens its order when the order sheet opens, long
-// before anybody pays, so checkout/start with "prepare" does not queue
-// InitiateCheckout. The event fires when the buyer is attached at "Pay"
-// (checkout_buyer_attach.go), with the same event id as the classic path
-// ("ic:<checkout id>"), so the dedup holds. Everything here runs on the pool
-// after the attach transaction has committed, is bounded, and never changes
-// the buyer's answer.
+// AcceptTerms of a prepared (spec 65) checkout fires when the buyer attach
+// writes the checkout_consents row (checkout_buyer_attach.go), and
+// AddPaymentInfo fires when the widget reports a complete payment form
+// (checkout_payment_info.go). Both read the checkout's stored explicit yes,
+// its stored buyer context and the order's cart; without the yes or the
+// context nothing is queued. InitiateCheckout no longer fires here: the
+// widget queues it through checkout/quote ("ic:<add_to_cart_id>").
+// Everything here runs on the pool after any transaction of the request has
+// committed, is bounded, and never changes the buyer's answer.
 package hfeed
 
 import (
@@ -19,7 +22,6 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/conversions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/trackingconsent"
 )
@@ -88,10 +90,11 @@ func readStoredBuyerContext(ctx context.Context, db gen.DBTX, csID uuid.UUID) ([
 	return raw, nil
 }
 
-// queueAttachedInitiateCheckout queues InitiateCheckout for a prepared order
-// whose buyer was just attached. It needs the checkout's stored explicit yes
-// and a stored buyer context; without either nothing is queued. Best effort.
-func (h *Handler) queueAttachedInitiateCheckout(ctx context.Context, csID uuid.UUID, pc gen.CheckoutPaymentContextRow) {
+// queueStoredCheckoutEvent queues one event (kind, eventID) of the checkout
+// csID whose order is pc. It needs the checkout's stored explicit yes and a
+// stored buyer context; without either nothing is queued. The event id
+// dedups repeats. Best effort.
+func (h *Handler) queueStoredCheckoutEvent(ctx context.Context, csID uuid.UUID, pc gen.CheckoutPaymentContextRow, kind, eventID string) {
 	if h.cartConversions == nil || h.checkoutQueries == nil {
 		return
 	}
@@ -100,17 +103,17 @@ func (h *Handler) queueAttachedInitiateCheckout(ctx context.Context, csID uuid.U
 	db := h.checkoutQueries.DB()
 	stored, err := trackingconsent.ForCheckout(rctx, db, csID)
 	if err != nil || !stored.Allows() {
-		h.logAttachTrackSkip(err, csID)
+		h.logAttachTrackSkip(err, csID, kind)
 		return
 	}
 	buyerCtx, err := readStoredBuyerContext(rctx, db, csID)
 	if err != nil || len(buyerCtx) == 0 {
-		h.logAttachTrackSkip(err, csID)
+		h.logAttachTrackSkip(err, csID, kind)
 		return
 	}
 	sessionID, groups, err := readOrderCart(rctx, db, pc.OrderID)
 	if err != nil {
-		h.logAttachTrackSkip(err, csID)
+		h.logAttachTrackSkip(err, csID, kind)
 		return
 	}
 	var total int64
@@ -122,16 +125,16 @@ func (h *Handler) queueAttachedInitiateCheckout(ctx context.Context, csID uuid.U
 		currency = *pc.Currency
 	}
 	bd := breakdownFromItems(total, currency, groups)
-	h.queueCartEvent(ctx, pc.OrgID, conversions.KindInitiateCheckout, checkoutEventIDPfx+csID.String(),
-		sessionID, bd, buyerCtx, 0)
+	h.queueCartEvent(ctx, pc.OrgID, kind, eventID, sessionID, bd, buyerCtx, 0)
 }
 
 // logAttachTrackSkip logs a failed read (never the buyer's data); a plain
 // "no row / no consent" is silent.
-func (h *Handler) logAttachTrackSkip(err error, csID uuid.UUID) {
+func (h *Handler) logAttachTrackSkip(err error, csID uuid.UUID, kind string) {
 	if err == nil || h.logger == nil || errors.Is(err, pgx.ErrNoRows) {
 		return
 	}
-	h.logger.Warn("public_checkout_buyer: initiate-checkout inputs not read",
+	h.logger.Warn("public_checkout: conversion event inputs not read",
+		slog.String("kind", kind),
 		slog.String("checkout_session_id", csID.String()), slog.String("error", err.Error()))
 }
