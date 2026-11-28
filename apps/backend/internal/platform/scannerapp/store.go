@@ -51,7 +51,8 @@ var (
 	ErrExpired = errors.New("scannerapp: device access token expired")
 	// ErrAccessEnded: the right to scan is gone (organization archived, the
 	// person lost scan.perform in the organization, the pass was revoked or
-	// its window ended). A refresh does not help.
+	// its window ended and the upload term after it is over too). A refresh
+	// does not help.
 	ErrAccessEnded = errors.New("scannerapp: access to scanning ended")
 )
 
@@ -96,6 +97,12 @@ type Device struct {
 	// PairConfirmed is false from a refresh until the device first uses the
 	// new access token; the device-token middleware then calls ConfirmPair.
 	PairConfirmed bool
+	// State is StateActive, or StateUploadOnly for a device of a closed pass
+	// inside its upload term (DeviceStateOf).
+	State DeviceState
+	// PassClosedAt and PassUploadUntil are set for StateUploadOnly only.
+	PassClosedAt    *time.Time
+	PassUploadUntil *time.Time
 }
 
 // Me is what a device is told about itself.
@@ -113,7 +120,12 @@ type MePass struct {
 	Kind       string // PassKindStandard | PassKindDemo
 	ValidFrom  *time.Time
 	ValidUntil *time.Time
-	Sessions   []MePassSession
+	// State is PassStateActive or PassStateClosed; ClosedAt and UploadUntil
+	// are set for a closed pass only.
+	State       string
+	ClosedAt    *time.Time
+	UploadUntil *time.Time
+	Sessions    []MePassSession
 }
 
 // MePassSession is one date a pass may check. AllTiers true: every category
@@ -130,7 +142,10 @@ type MePassSession struct {
 // refuses it when the device is revoked (ErrRevoked), when the right to scan
 // ended (ErrAccessEnded) or when the access token expired (ErrExpired, checked
 // last: a refresh helps only when nothing else is wrong). A pass device whose
-// window has not started yet still authenticates.
+// window has not started yet still authenticates. A device of a closed pass
+// (turned off, or its window ended) authenticates with State StateUploadOnly
+// until the upload term of the pass ends, then ErrAccessEnded
+// (DeviceStateOf).
 func Authenticate(ctx context.Context, db gen.DBTX, raw string, now time.Time) (Device, error) {
 	if !LooksLikeDeviceToken(raw) {
 		return Device{}, ErrMalformed
@@ -159,6 +174,7 @@ func Authenticate(ctx context.Context, db gen.DBTX, raw string, now time.Time) (
 
 		ControllerName: row.ControllerName,
 		PairConfirmed:  row.PairConfirmed,
+		State:          StateActive,
 	}
 	switch {
 	case row.UserID != nil:
@@ -167,11 +183,17 @@ func Authenticate(ctx context.Context, db gen.DBTX, raw string, now time.Time) (
 		}
 		d.Kind = KindOrganizer
 	case row.PassID != nil:
-		if row.PassKind == nil || row.PassRevoked {
+		if row.PassKind == nil {
 			return Device{}, ErrAccessEnded
 		}
-		if *row.PassKind != PassKindDemo && (row.PassValidUntil == nil || !now.Before(*row.PassValidUntil)) {
-			return Device{}, ErrAccessEnded
+		state, c, err := DeviceStateOf(*row.PassKind, row.PassValidUntil, row.PassRevokedAt, now)
+		if err != nil {
+			return Device{}, err
+		}
+		d.State = state
+		if c != nil {
+			closed, upload := c.ClosedAt, c.UploadUntil
+			d.PassClosedAt, d.PassUploadUntil = &closed, &upload
 		}
 		d.Kind = KindPass
 	default:
@@ -195,7 +217,9 @@ func TouchLastSeen(ctx context.Context, db gen.DBTX, deviceID uuid.UUID, now tim
 
 // Describe tells a device its organization and, for a pass device, its pass
 // and the dates of the pass. Every date is re-read through sessions -> events
-// and kept only when it belongs to the device's organization.
+// and kept only when it belongs to the device's organization. The state of
+// the pass comes from d (State, PassClosedAt, PassUploadUntil, set by
+// Authenticate): closed for StateUploadOnly, active otherwise.
 func Describe(ctx context.Context, db gen.DBTX, d Device) (Me, error) {
 	q := gen.New(db)
 	name, err := q.GetOrganizationNameForScanner(ctx, d.OrgID)
@@ -220,7 +244,13 @@ func Describe(ctx context.Context, db gen.DBTX, d Device) (Me, error) {
 	mp := &MePass{
 		ID: p.ID, Label: p.Label, Kind: p.Kind,
 		ValidFrom: p.ValidFrom, ValidUntil: p.ValidUntil,
+		State:    PassStateActive,
 		Sessions: make([]MePassSession, 0, len(rows)),
+	}
+	if d.State == StateUploadOnly {
+		// The state the device was authenticated with: one decision per
+		// request, by DeviceStateOf.
+		mp.State, mp.ClosedAt, mp.UploadUntil = PassStateClosed, d.PassClosedAt, d.PassUploadUntil
 	}
 	for _, r := range rows {
 		tiers := r.TierIDs
@@ -436,7 +466,7 @@ func CreateOrganizerDevice(ctx context.Context, db gen.DBTX, params DeviceParams
 	if err != nil {
 		return Device{}, "", fmt.Errorf("scannerapp: insert device: %w", err)
 	}
-	return Device{ID: id, OrgID: params.OrgID, UserID: &userID, Kind: KindOrganizer, Label: label, Platform: params.Platform, PairConfirmed: true}, raw, nil
+	return Device{ID: id, OrgID: params.OrgID, UserID: &userID, Kind: KindOrganizer, Label: label, Platform: params.Platform, PairConfirmed: true, State: StateActive}, raw, nil
 }
 
 // CreatePassDevice stores a device of a pass of params.OrgID and returns it
@@ -489,7 +519,7 @@ func CreatePassDevice(ctx context.Context, db TxDB, params DeviceParams, now tim
 		if err != nil {
 			return fmt.Errorf("scannerapp: insert device: %w", err)
 		}
-		d = Device{ID: id, OrgID: params.OrgID, PassID: &passID, Kind: KindPass, Label: label, Platform: params.Platform, PairConfirmed: true}
+		d = Device{ID: id, OrgID: params.OrgID, PassID: &passID, Kind: KindPass, Label: label, Platform: params.Platform, PairConfirmed: true, State: StateActive}
 		return nil
 	})
 	if err != nil {
@@ -515,8 +545,9 @@ func RevokeDevice(ctx context.Context, db gen.DBTX, orgID, deviceID uuid.UUID, b
 	return n > 0, nil
 }
 
-// RevokePass takes a pass of orgID back; its devices stop authenticating
-// (ErrAccessEnded). It reports false when there was nothing to revoke.
+// RevokePass takes a pass of orgID back; its devices go to StateUploadOnly
+// for PassUploadGrace, then stop authenticating (ErrAccessEnded). It reports
+// false when there was nothing to revoke.
 func RevokePass(ctx context.Context, db gen.DBTX, orgID, passID uuid.UUID, by *uuid.UUID, now time.Time) (bool, error) {
 	n, err := gen.New(db).RevokeScannerPass(ctx, passID, orgID, now, by)
 	if err != nil {

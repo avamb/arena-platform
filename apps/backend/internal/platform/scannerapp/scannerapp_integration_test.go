@@ -492,9 +492,20 @@ func TestPasses_LiveDB(t *testing.T) {
 		if _, err := scannerapp.Authenticate(ctx, pool, raw, until.Add(-time.Second)); err != nil {
 			t.Fatalf("Authenticate inside the window: %v", err)
 		}
-		// The access token still has half an hour; the window decides.
-		if _, err := scannerapp.Authenticate(ctx, pool, raw, until); !errors.Is(err, scannerapp.ErrAccessEnded) {
-			t.Fatalf("Authenticate at valid_until: err = %v, want ErrAccessEnded", err)
+		// The access token still has half an hour; the window decides: the
+		// device is upload only until the upload term ends.
+		d, err := scannerapp.Authenticate(ctx, pool, raw, until)
+		if err != nil || d.State != scannerapp.StateUploadOnly || d.PassClosedAt == nil || !d.PassClosedAt.Equal(until) ||
+			d.PassUploadUntil == nil || !d.PassUploadUntil.Equal(until.Add(scannerapp.PassUploadGrace)) {
+			t.Fatalf("Authenticate at valid_until = %+v, %v, want upload only", d, err)
+		}
+		me, err := scannerapp.Describe(ctx, pool, d)
+		if err != nil || me.Pass == nil || me.Pass.State != scannerapp.PassStateClosed ||
+			me.Pass.ClosedAt == nil || !me.Pass.ClosedAt.Equal(until) || me.Pass.UploadUntil == nil {
+			t.Fatalf("Describe of a closed pass = %+v, %v", me.Pass, err)
+		}
+		if _, err := scannerapp.Authenticate(ctx, pool, raw, until.Add(scannerapp.PassUploadGrace)); !errors.Is(err, scannerapp.ErrAccessEnded) {
+			t.Fatalf("Authenticate after the upload term: err = %v, want ErrAccessEnded", err)
 		}
 		_, _, err = scannerapp.CreatePassDevice(ctx, pool, scannerapp.DeviceParams{
 			OrgID: a.org, PassID: passID, Platform: scannerapp.PlatformIOS,
@@ -522,8 +533,11 @@ func TestPasses_LiveDB(t *testing.T) {
 		if ok, err := scannerapp.RevokePass(ctx, pool, a.org, passID, &admin, now); err != nil || !ok {
 			t.Fatalf("RevokePass = %v, %v", ok, err)
 		}
-		if _, err := scannerapp.Authenticate(ctx, pool, raw, now); !errors.Is(err, scannerapp.ErrAccessEnded) {
-			t.Fatalf("Authenticate after the revoke: err = %v, want ErrAccessEnded", err)
+		if d, err := scannerapp.Authenticate(ctx, pool, raw, now); err != nil || d.State != scannerapp.StateUploadOnly {
+			t.Fatalf("Authenticate after the revoke = %+v, %v, want upload only", d, err)
+		}
+		if _, err := scannerapp.Authenticate(ctx, pool, raw, now.Add(scannerapp.PassUploadGrace)); !errors.Is(err, scannerapp.ErrAccessEnded) {
+			t.Fatalf("Authenticate after the upload term: err = %v, want ErrAccessEnded", err)
 		}
 		if _, _, err := newPassDevice(t, passID); !errors.Is(err, scannerapp.ErrPassRevoked) {
 			t.Fatalf("CreatePassDevice of a revoked pass: err = %v, want ErrPassRevoked", err)

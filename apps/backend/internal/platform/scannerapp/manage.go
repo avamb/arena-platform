@@ -103,6 +103,12 @@ type Pass struct {
 	Accepted  int
 	CreatedAt time.Time
 	RevokedAt *time.Time
+	// State is PassStateActive or PassStateClosed at the moment of the read
+	// (ClosureOf); ClosedAt and UploadUntil are set for a closed pass only:
+	// its devices work in StateUploadOnly until UploadUntil.
+	State       string
+	ClosedAt    *time.Time
+	UploadUntil *time.Time
 	// Sessions are the live dates of the pass in the organization (see
 	// MePassSession); never nil.
 	Sessions []MePassSession
@@ -122,18 +128,20 @@ type PassDevice struct {
 
 // ListPasses lists up to PassListLimit passes of orgID, newest first,
 // revoked ones included, each with its dates and live devices. A non-nil
-// eventID keeps only the passes with a live date of that event.
-func ListPasses(ctx context.Context, db gen.DBTX, orgID uuid.UUID, eventID *uuid.UUID) ([]Pass, error) {
+// eventID keeps only the passes with a live date of that event. The state
+// of each pass is the one at now.
+func ListPasses(ctx context.Context, db gen.DBTX, orgID uuid.UUID, eventID *uuid.UUID, now time.Time) ([]Pass, error) {
 	rows, err := gen.New(db).ListScannerPassesOfOrg(ctx, orgID, eventID, PassListLimit)
 	if err != nil {
 		return nil, fmt.Errorf("scannerapp: list passes: %w", err)
 	}
-	return fillPasses(ctx, db, orgID, rows)
+	return fillPasses(ctx, db, orgID, rows, now)
 }
 
 // GetPass reads one pass of orgID with its dates and live devices; a pass
-// of another organization is ErrPassNotFound.
-func GetPass(ctx context.Context, db gen.DBTX, orgID, passID uuid.UUID) (Pass, error) {
+// of another organization is ErrPassNotFound. The state of the pass is the
+// one at now.
+func GetPass(ctx context.Context, db gen.DBTX, orgID, passID uuid.UUID, now time.Time) (Pass, error) {
 	row, err := gen.New(db).GetScannerPassFull(ctx, passID, orgID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Pass{}, ErrPassNotFound
@@ -141,14 +149,14 @@ func GetPass(ctx context.Context, db gen.DBTX, orgID, passID uuid.UUID) (Pass, e
 	if err != nil {
 		return Pass{}, fmt.Errorf("scannerapp: read pass: %w", err)
 	}
-	out, err := fillPasses(ctx, db, orgID, []gen.ScannerPassFullRow{row})
+	out, err := fillPasses(ctx, db, orgID, []gen.ScannerPassFullRow{row}, now)
 	if err != nil {
 		return Pass{}, err
 	}
 	return out[0], nil
 }
 
-func fillPasses(ctx context.Context, db gen.DBTX, orgID uuid.UUID, rows []gen.ScannerPassFullRow) ([]Pass, error) {
+func fillPasses(ctx context.Context, db gen.DBTX, orgID uuid.UUID, rows []gen.ScannerPassFullRow, now time.Time) ([]Pass, error) {
 	out := make([]Pass, 0, len(rows))
 	if len(rows) == 0 {
 		return out, nil
@@ -163,8 +171,13 @@ func fillPasses(ctx context.Context, db gen.DBTX, orgID uuid.UUID, rows []gen.Sc
 			ValidFrom: r.ValidFrom, ValidUntil: r.ValidUntil,
 			MaxDevices: int(r.MaxDevices), Accepted: int(r.Accepted),
 			CreatedAt: r.CreatedAt, RevokedAt: r.RevokedAt,
+			State:    PassStateActive,
 			Sessions: []MePassSession{}, Devices: []PassDevice{},
 		})
+		if c, closed := ClosureOf(r.Kind, r.ValidUntil, r.RevokedAt, now); closed {
+			closedAt, upload := c.ClosedAt, c.UploadUntil
+			out[i].State, out[i].ClosedAt, out[i].UploadUntil = PassStateClosed, &closedAt, &upload
+		}
 	}
 	q := gen.New(db)
 	sessions, err := q.ListScannerPassSessionsOfPasses(ctx, ids, orgID)
@@ -210,35 +223,48 @@ type UpdatePassParams struct {
 	// Sessions, when non-nil, replaces the dates of the pass as a whole; it
 	// must name at least one date.
 	Sessions *[]CreatePassSession
+	// Now is the clock of the change; zero is time.Now.
+	Now time.Time
 }
 
 // UpdatePass changes a pass of orgID in ONE nested transaction under the
-// pass row lock. Refused: ErrPassNotFound (not of the organization),
-// ErrPassRevoked, ErrInvalidPass (blank or long label, max_devices outside
-// 1..MaxPassDevices, an empty date list), ErrInvalidWindow (valid_until not
-// after valid_from, or any window on a demo pass), ErrMaxDevicesBelowAccepted,
-// ErrForeignSession and ErrForeignTier. Nothing is written on a refusal.
-func UpdatePass(ctx context.Context, db TxDB, p UpdatePassParams) error {
+// pass row lock. A turned-off pass is changed too and stays off (only a new
+// link turns it on). When the change gives access back to devices whose
+// upload term had already ended at Now (a window moved past Now on a pass
+// closed by its window long enough ago), those devices are revoked first
+// (pass_ended) and returned, so they never get their access back and are not
+// counted against max_devices; any other change revokes nothing. The caller
+// writes a v1.scanner_app.device_revoke audit event for each returned
+// device. Refused: ErrPassNotFound (not of the organization), ErrInvalidPass
+// (blank or long label, max_devices outside 1..MaxPassDevices, an empty date
+// list), ErrInvalidWindow (valid_until not after valid_from, or any window
+// on a demo pass), ErrMaxDevicesBelowAccepted, ErrForeignSession and
+// ErrForeignTier. Nothing is written on a refusal.
+func UpdatePass(ctx context.Context, db TxDB, p UpdatePassParams) (revoked []uuid.UUID, err error) {
 	var label *string
 	if p.Label != nil {
 		l := strings.TrimSpace(*p.Label)
 		if l == "" || len([]rune(l)) > MaxLabelLen {
-			return ErrInvalidPass
+			return nil, ErrInvalidPass
 		}
 		label = &l
 	}
 	if p.MaxDevices != nil && (*p.MaxDevices < 1 || *p.MaxDevices > MaxPassDevices) {
-		return ErrInvalidPass
+		return nil, ErrInvalidPass
 	}
 	var ps *passSessions
 	if p.Sessions != nil {
 		if len(*p.Sessions) == 0 {
-			return ErrInvalidPass
+			return nil, ErrInvalidPass
 		}
 		v := preparePassSessions(*p.Sessions)
 		ps = &v
 	}
-	return inTx(ctx, db, func(tx pgx.Tx) error {
+	now := p.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	err = inTx(ctx, db, func(tx pgx.Tx) error {
 		q := gen.New(tx)
 		row, err := q.LockScannerPassRow(ctx, p.PassID, p.OrgID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -246,9 +272,6 @@ func UpdatePass(ctx context.Context, db TxDB, p UpdatePassParams) error {
 		}
 		if err != nil {
 			return fmt.Errorf("scannerapp: lock pass: %w", err)
-		}
-		if row.RevokedAt != nil {
-			return ErrPassRevoked
 		}
 		newLabel := row.Label
 		if label != nil {
@@ -268,6 +291,12 @@ func UpdatePass(ctx context.Context, db TxDB, p UpdatePassParams) error {
 			if from == nil || until == nil || !until.After(*from) {
 				return ErrInvalidWindow
 			}
+		}
+		// A window moved past now may give access back; the devices whose
+		// upload term already ended stay out (and are not counted below).
+		revoked, err = revokeDevicesIfReopened(ctx, q, row.ID, row.Kind, row.ValidUntil, row.RevokedAt, until, row.RevokedAt, now)
+		if err != nil {
+			return err
 		}
 		maxDevices := row.MaxDevices
 		if p.MaxDevices != nil {
@@ -296,25 +325,20 @@ func UpdatePass(ctx context.Context, db TxDB, p UpdatePassParams) error {
 		}
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	return revoked, nil
 }
 
-// PassRevokeResult is what RevokePassWithDevices did.
-type PassRevokeResult struct {
-	// JustRevoked is true when this call turned the pass off (false: it was
-	// already off).
-	JustRevoked bool
-	// RevokedDeviceIDs are the devices this call took back (pass_revoked).
-	RevokedDeviceIDs []uuid.UUID
-}
-
-// RevokePassWithDevices turns a pass of orgID off, takes back every live
-// device of it (reason pass_revoked, revoked_by_user_id = by) and deletes its
-// pairing codes, in ONE nested transaction under the pass row lock. A pass
-// that is already off is swept again and reports JustRevoked false. A pass
-// of another organization is ErrPassNotFound.
-func RevokePassWithDevices(ctx context.Context, db TxDB, orgID, passID uuid.UUID, by *uuid.UUID, now time.Time) (PassRevokeResult, error) {
-	var res PassRevokeResult
-	err := inTx(ctx, db, func(tx pgx.Tx) error {
+// DisablePass turns a pass of orgID off (revoked_at = now) and deletes its
+// pairing codes, in ONE nested transaction under the pass row lock. Its
+// devices are NOT revoked: they go to StateUploadOnly until the upload term
+// of the pass ends (spec 69 B.1). justDisabled is false when the pass was
+// already off (its codes are deleted again). A pass of another organization
+// is ErrPassNotFound.
+func DisablePass(ctx context.Context, db TxDB, orgID, passID uuid.UUID, by *uuid.UUID, now time.Time) (justDisabled bool, err error) {
+	err = inTx(ctx, db, func(tx pgx.Tx) error {
 		q := gen.New(tx)
 		row, err := q.LockScannerPassRow(ctx, passID, orgID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -328,25 +352,38 @@ func RevokePassWithDevices(ctx context.Context, db TxDB, orgID, passID uuid.UUID
 			if err != nil {
 				return fmt.Errorf("scannerapp: revoke pass: %w", err)
 			}
-			res.JustRevoked = n > 0
+			justDisabled = n > 0
 		}
-		ids, err := q.RevokeScannerDevicesOfPass(ctx, row.ID, now, by, ReasonPassRevoked)
-		if err != nil {
-			return fmt.Errorf("scannerapp: revoke pass devices: %w", err)
-		}
-		res.RevokedDeviceIDs = ids
 		if err := q.DeleteScannerPassCodes(ctx, row.ID); err != nil {
 			return fmt.Errorf("scannerapp: delete pass codes: %w", err)
 		}
 		return nil
 	})
 	if err != nil {
-		return PassRevokeResult{}, err
+		return false, err
 	}
-	if res.RevokedDeviceIDs == nil {
-		res.RevokedDeviceIDs = []uuid.UUID{}
+	return justDisabled, nil
+}
+
+// revokeDevicesIfReopened revokes (pass_ended) the live devices of a locked
+// pass before a write that changes its window or revoke time, when that
+// write gives access back to them: at now their access had ended under the
+// old (oldUntil, oldRevoked) and does not under the new (newUntil,
+// newRevoked). A device that lost its access never gets it back. Any other
+// write (the pass stays as closed as it was, or it was open or inside its
+// upload term) revokes nothing. Returns the revoked devices.
+func revokeDevicesIfReopened(ctx context.Context, q *gen.Queries, passID uuid.UUID, kind string, oldUntil, oldRevoked, newUntil, newRevoked *time.Time, now time.Time) ([]uuid.UUID, error) {
+	if _, _, err := DeviceStateOf(kind, oldUntil, oldRevoked, now); !errors.Is(err, ErrAccessEnded) {
+		return nil, nil
 	}
-	return res, nil
+	if _, _, err := DeviceStateOf(kind, newUntil, newRevoked, now); errors.Is(err, ErrAccessEnded) {
+		return nil, nil
+	}
+	ids, err := q.RevokeScannerDevicesOfPass(ctx, passID, now, nil, ReasonPassEnded)
+	if err != nil {
+		return nil, fmt.Errorf("scannerapp: revoke devices past upload: %w", err)
+	}
+	return ids, nil
 }
 
 // DefaultPassWindow is the window of a new standard pass when the request

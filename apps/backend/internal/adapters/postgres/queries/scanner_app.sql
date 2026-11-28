@@ -105,7 +105,7 @@ SELECT d.id, d.org_id, d.user_id, d.pass_id, d.label, d.platform, d.last_seen_at
            JOIN   permissions p       ON p.id = rp.permission_id AND p.name = 'scan.perform'
            WHERE  m.user_id = d.user_id AND m.org_id = d.org_id AND m.status = 'active'
              AND  m.role NOT IN ('platform_superadmin', 'platform_operator'))),
-       COALESCE(sp.revoked_at IS NOT NULL, false), sp.kind, sp.valid_from, sp.valid_until
+       COALESCE(sp.revoked_at IS NOT NULL, false), sp.kind, sp.valid_from, sp.valid_until, sp.revoked_at
 FROM   scanner_devices d
 JOIN   organizations o ON o.id = d.org_id
 LEFT   JOIN scanner_passes sp ON sp.id = d.pass_id AND sp.org_id = d.org_id
@@ -136,6 +136,12 @@ DELETE FROM scanner_pairing_codes WHERE pass_id = $1;
 -- name: InsertScannerPairingCode :exec
 INSERT INTO scanner_pairing_codes (code_hash, org_id, user_id, pass_id, created_by_user_id, created_at, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7);
+
+-- name: GetScannerPairingCode :one
+SELECT c.id, c.org_id, c.user_id, c.pass_id, c.expires_at, c.used_at, (o.deleted_at IS NOT NULL)
+FROM   scanner_pairing_codes c
+JOIN   organizations o ON o.id = c.org_id
+WHERE  c.code_hash = $1;
 
 -- name: LockScannerPairingCode :one
 SELECT c.id, c.org_id, c.user_id, c.pass_id, c.expires_at, c.used_at, (o.deleted_at IS NOT NULL)
@@ -254,7 +260,7 @@ SELECT d.id, d.org_id, d.user_id, d.pass_id, d.refresh_token_hash, d.prev_refres
            JOIN   permissions p       ON p.id = rp.permission_id AND p.name = 'scan.perform'
            WHERE  m.user_id = d.user_id AND m.org_id = d.org_id AND m.status = 'active'
              AND  m.role NOT IN ('platform_superadmin', 'platform_operator'))),
-       COALESCE(sp.revoked_at IS NOT NULL, false), sp.kind, sp.valid_until
+       COALESCE(sp.revoked_at IS NOT NULL, false), sp.kind, sp.valid_until, sp.revoked_at
 FROM   scanner_devices d
 JOIN   organizations o ON o.id = d.org_id
 LEFT   JOIN scanner_passes sp ON sp.id = d.pass_id AND sp.org_id = d.org_id

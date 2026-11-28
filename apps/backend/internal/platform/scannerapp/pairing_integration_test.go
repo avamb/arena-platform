@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/scannerapp"
@@ -262,7 +263,7 @@ func TestPair_LiveDB(t *testing.T) {
 	})
 	t.Run("pass revoked, then a new link turns it back on", func(t *testing.T) {
 		passID, code := standardPass(t, pool, a, "Back on", now.Add(-time.Hour), now.Add(5*time.Hour), 2, now)
-		if _, err := scannerapp.RevokePassWithDevices(ctx, pool, a.org, passID, nil, now); err != nil {
+		if _, err := scannerapp.DisablePass(ctx, pool, a.org, passID, nil, now); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := scannerapp.Pair(ctx, pool, pairParams(code), now); !errors.Is(err, scannerapp.ErrCodeNotFound) {
@@ -541,11 +542,36 @@ func TestRefresh_LiveDB(t *testing.T) {
 		if _, err := scannerapp.Refresh(ctx, pool, r0.RefreshToken, until.Add(-time.Second)); err != nil {
 			t.Fatalf("Refresh inside the window: %v", err)
 		}
+		// The window ended: upload only, the refresh still works.
 		// The previous token (r0) is still live: the new pair was not used.
-		_, err = scannerapp.Refresh(ctx, pool, r0.RefreshToken, until)
+		r1, err := scannerapp.Refresh(ctx, pool, r0.RefreshToken, until)
+		if err != nil {
+			t.Fatalf("Refresh at the end of the window: %v", err)
+		}
+		if !r1.AccessExpiresAt.Equal(until.Add(scannerapp.AccessTokenTTL)) {
+			t.Fatalf("access_expires_at = %v", r1.AccessExpiresAt)
+		}
+		d, err := scannerapp.Authenticate(ctx, pool, r1.AccessToken, until)
+		if err != nil || d.State != scannerapp.StateUploadOnly || d.PassClosedAt == nil || !d.PassClosedAt.Equal(until) ||
+			d.PassUploadUntil == nil || !d.PassUploadUntil.Equal(until.Add(scannerapp.PassUploadGrace)) {
+			t.Fatalf("Authenticate after the window = %+v, %v", d, err)
+		}
+		// Near the end of the upload term the access token ends with it.
+		uploadUntil := until.Add(scannerapp.PassUploadGrace)
+		r2, err := scannerapp.Refresh(ctx, pool, r1.RefreshToken, uploadUntil.Add(-time.Minute))
+		if err != nil {
+			t.Fatalf("Refresh near the end of the upload term: %v", err)
+		}
+		if !r2.AccessExpiresAt.Equal(uploadUntil) {
+			t.Fatalf("access_expires_at = %v, want %v", r2.AccessExpiresAt, uploadUntil)
+		}
+		if _, err := scannerapp.Authenticate(ctx, pool, r2.AccessToken, uploadUntil); !errors.Is(err, scannerapp.ErrAccessEnded) {
+			t.Fatalf("Authenticate after the upload term: err = %v, want ErrAccessEnded", err)
+		}
+		_, err = scannerapp.Refresh(ctx, pool, r2.RefreshToken, uploadUntil)
 		wantRevoked(t, err, scannerapp.ReasonPassEnded, true)
 	})
-	t.Run("revoked pass takes its devices back", func(t *testing.T) {
+	t.Run("turned-off pass: devices upload only for 24 h, then revoked", func(t *testing.T) {
 		admin := newUser(t, pool)
 		passID, code := standardPass(t, pool, a, "Off", now.Add(-time.Hour), now.Add(5*time.Hour), 3, now)
 		r1, err := scannerapp.Pair(ctx, pool, pairParams(code), now)
@@ -556,31 +582,195 @@ func TestRefresh_LiveDB(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		res, err := scannerapp.RevokePassWithDevices(ctx, pool, a.org, passID, &admin, now)
-		if err != nil || !res.JustRevoked || len(res.RevokedDeviceIDs) != 2 {
-			t.Fatalf("RevokePassWithDevices = %+v, %v", res, err)
+		just, err := scannerapp.DisablePass(ctx, pool, a.org, passID, &admin, now)
+		if err != nil || !just {
+			t.Fatalf("DisablePass = %v, %v", just, err)
 		}
+		uploadUntil := now.Add(scannerapp.PassUploadGrace)
 		for _, r := range []scannerapp.PairResult{r1, r2} {
-			if _, err := scannerapp.Authenticate(ctx, pool, r.AccessToken, later); !errors.Is(err, scannerapp.ErrRevoked) {
-				t.Fatalf("Authenticate: err = %v, want ErrRevoked", err)
+			d, err := scannerapp.Authenticate(ctx, pool, r.AccessToken, later)
+			if err != nil || d.State != scannerapp.StateUploadOnly || d.PassClosedAt == nil || !d.PassClosedAt.Equal(now) ||
+				d.PassUploadUntil == nil || !d.PassUploadUntil.Equal(uploadUntil) {
+				t.Fatalf("Authenticate = %+v, %v, want upload only", d, err)
 			}
-			if rr := revokeReason(t, pool, r.Device.ID); rr != scannerapp.ReasonPassRevoked {
-				t.Fatalf("revoke_reason = %q", rr)
+			if rr := revokeReason(t, pool, r.Device.ID); rr != "" {
+				t.Fatalf("revoke_reason = %q, want not revoked", rr)
 			}
-			_, err := scannerapp.Refresh(ctx, pool, r.RefreshToken, later)
-			wantRevoked(t, err, scannerapp.ReasonPassRevoked, false)
 		}
+		rr1, err := scannerapp.Refresh(ctx, pool, r1.RefreshToken, later)
+		if err != nil || !rr1.AccessExpiresAt.Equal(later.Add(scannerapp.AccessTokenTTL)) {
+			t.Fatalf("Refresh inside the upload term = %+v, %v", rr1, err)
+		}
+		if _, err := scannerapp.Authenticate(ctx, pool, rr1.AccessToken, uploadUntil); !errors.Is(err, scannerapp.ErrAccessEnded) {
+			t.Fatalf("Authenticate after the upload term: err = %v, want ErrAccessEnded", err)
+		}
+		_, err = scannerapp.Refresh(ctx, pool, rr1.RefreshToken, uploadUntil)
+		wantRevoked(t, err, scannerapp.ReasonPassRevoked, true)
+		_, err = scannerapp.Refresh(ctx, pool, r2.RefreshToken, uploadUntil)
+		wantRevoked(t, err, scannerapp.ReasonPassRevoked, true)
 		var codes int
 		if err := pool.QueryRow(ctx, `SELECT count(*) FROM scanner_pairing_codes WHERE pass_id = $1`, passID).Scan(&codes); err != nil || codes != 0 {
 			t.Fatalf("codes left = %d, %v", codes, err)
 		}
-		again, err := scannerapp.RevokePassWithDevices(ctx, pool, a.org, passID, &admin, now)
-		if err != nil || again.JustRevoked || len(again.RevokedDeviceIDs) != 0 {
-			t.Fatalf("second RevokePassWithDevices = %+v, %v", again, err)
+		again, err := scannerapp.DisablePass(ctx, pool, a.org, passID, &admin, now)
+		if err != nil || again {
+			t.Fatalf("second DisablePass = %v, %v", again, err)
 		}
 		b := newOrg(t, pool)
-		if _, err := scannerapp.RevokePassWithDevices(ctx, pool, b.org, passID, nil, now); !errors.Is(err, scannerapp.ErrPassNotFound) {
+		if _, err := scannerapp.DisablePass(ctx, pool, b.org, passID, nil, now); !errors.Is(err, scannerapp.ErrPassNotFound) {
 			t.Fatalf("from another organization: err = %v", err)
+		}
+	})
+	t.Run("a revoked device of a closed pass is out at once", func(t *testing.T) {
+		admin := newUser(t, pool)
+		passID, code := standardPass(t, pool, a, "Lost phone", now.Add(-time.Hour), now.Add(5*time.Hour), 1, now)
+		r0, err := scannerapp.Pair(ctx, pool, pairParams(code), now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := scannerapp.DisablePass(ctx, pool, a.org, passID, &admin, now); err != nil {
+			t.Fatal(err)
+		}
+		if just, err := scannerapp.RevokeDeviceOf(ctx, pool, a.org, r0.Device.ID, nil, &admin, now); err != nil || !just {
+			t.Fatalf("RevokeDeviceOf = %v, %v", just, err)
+		}
+		if _, err := scannerapp.Authenticate(ctx, pool, r0.AccessToken, later); !errors.Is(err, scannerapp.ErrRevoked) {
+			t.Fatalf("Authenticate: err = %v, want ErrRevoked", err)
+		}
+		_, err = scannerapp.Refresh(ctx, pool, r0.RefreshToken, later)
+		wantRevoked(t, err, scannerapp.ReasonRevokedByUser, false)
+	})
+	t.Run("a new link reopens: devices in the upload term come back, older ones are revoked", func(t *testing.T) {
+		// Inside the upload term.
+		passID, code := standardPass(t, pool, a, "Reopen soon", now.Add(-time.Hour), now.Add(72*time.Hour), 2, now)
+		r0, err := scannerapp.Pair(ctx, pool, pairParams(code), now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := scannerapp.DisablePass(ctx, pool, a.org, passID, nil, now); err != nil {
+			t.Fatal(err)
+		}
+		soon := now.Add(2 * time.Hour)
+		if c, err := scannerapp.IssuePassCode(ctx, pool, a.org, passID, nil, soon); err != nil || !c.PassReenabled || len(c.RevokedDevices) != 0 {
+			t.Fatalf("IssuePassCode = %+v, %v", c, err)
+		}
+		d, err := scannerapp.Authenticate(ctx, pool, r0.AccessToken, now.Add(30*time.Minute))
+		if err != nil || d.State != scannerapp.StateActive || d.PassClosedAt != nil || d.PassUploadUntil != nil {
+			t.Fatalf("Authenticate after reopen = %+v, %v, want active", d, err)
+		}
+		if rr := revokeReason(t, pool, r0.Device.ID); rr != "" {
+			t.Fatalf("revoke_reason = %q", rr)
+		}
+
+		// After the upload term.
+		passID2, code2 := standardPass(t, pool, a, "Reopen late", now.Add(-time.Hour), now.Add(72*time.Hour), 2, now)
+		s0, err := scannerapp.Pair(ctx, pool, pairParams(code2), now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := scannerapp.DisablePass(ctx, pool, a.org, passID2, nil, now); err != nil {
+			t.Fatal(err)
+		}
+		late := now.Add(scannerapp.PassUploadGrace + time.Hour)
+		if c, err := scannerapp.IssuePassCode(ctx, pool, a.org, passID2, nil, late); err != nil || !c.PassReenabled ||
+			len(c.RevokedDevices) != 1 || c.RevokedDevices[0] != s0.Device.ID {
+			t.Fatalf("IssuePassCode late = %+v, %v", c, err)
+		}
+		if rr := revokeReason(t, pool, s0.Device.ID); rr != scannerapp.ReasonPassEnded {
+			t.Fatalf("revoke_reason = %q, want %q", rr, scannerapp.ReasonPassEnded)
+		}
+		if _, err := scannerapp.Authenticate(ctx, pool, s0.AccessToken, now.Add(30*time.Minute)); !errors.Is(err, scannerapp.ErrRevoked) {
+			t.Fatalf("Authenticate: err = %v, want ErrRevoked", err)
+		}
+		got, err := scannerapp.GetPass(ctx, pool, a.org, passID2, late)
+		if err != nil || got.Accepted != 0 || got.State != scannerapp.PassStateActive {
+			t.Fatalf("reopened pass = %+v, %v", got, err)
+		}
+	})
+	t.Run("a PATCH moving an ended window reopens the same way", func(t *testing.T) {
+		until := now.Add(time.Hour)
+		passID, code := standardPass(t, pool, a, "Extend soon", now.Add(-time.Hour), until, 2, now)
+		r0, err := scannerapp.Pair(ctx, pool, pairParams(code), now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		soon := until.Add(2 * time.Hour)
+		if rev, err := scannerapp.UpdatePass(ctx, pool, scannerapp.UpdatePassParams{OrgID: a.org, PassID: passID, ValidUntil: ptr(soon.Add(5 * time.Hour)), Now: soon}); err != nil || len(rev) != 0 {
+			t.Fatalf("UpdatePass = %v, %v", rev, err)
+		}
+		d, err := scannerapp.Authenticate(ctx, pool, r0.AccessToken, now.Add(30*time.Minute))
+		if err != nil || d.State != scannerapp.StateActive {
+			t.Fatalf("Authenticate = %+v, %v", d, err)
+		}
+		if rr := revokeReason(t, pool, r0.Device.ID); rr != "" {
+			t.Fatalf("revoke_reason = %q", rr)
+		}
+
+		passID2, code2 := standardPass(t, pool, a, "Extend late", now.Add(-time.Hour), until, 2, now)
+		s0, err := scannerapp.Pair(ctx, pool, pairParams(code2), now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s1, err := scannerapp.Pair(ctx, pool, pairParams(code2), now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		late := until.Add(scannerapp.PassUploadGrace + time.Hour)
+		// A change that leaves the pass closed revokes nothing.
+		if rev, err := scannerapp.UpdatePass(ctx, pool, scannerapp.UpdatePassParams{OrgID: a.org, PassID: passID2, Label: ptr("Extend late, renamed"), Now: late}); err != nil || len(rev) != 0 {
+			t.Fatalf("UpdatePass label = %v, %v", rev, err)
+		}
+		if rev, err := scannerapp.UpdatePass(ctx, pool, scannerapp.UpdatePassParams{OrgID: a.org, PassID: passID2, ValidUntil: ptr(until.Add(30 * time.Minute)), Now: late}); err != nil || len(rev) != 0 {
+			t.Fatalf("UpdatePass window still ended = %v, %v", rev, err)
+		}
+		if rr := revokeReason(t, pool, s0.Device.ID); rr != "" {
+			t.Fatalf("revoke_reason after a closed change = %q", rr)
+		}
+		rev, err := scannerapp.UpdatePass(ctx, pool, scannerapp.UpdatePassParams{OrgID: a.org, PassID: passID2, ValidUntil: ptr(late.Add(5 * time.Hour)), MaxDevices: ptr(1), Now: late})
+		if err != nil || len(rev) != 2 {
+			t.Fatalf("UpdatePass late = %v, %v", rev, err)
+		}
+		for _, d := range []uuid.UUID{s0.Device.ID, s1.Device.ID} {
+			if rr := revokeReason(t, pool, d); rr != scannerapp.ReasonPassEnded {
+				t.Fatalf("revoke_reason = %q, want %q", rr, scannerapp.ReasonPassEnded)
+			}
+		}
+		// The pass is open now: a further change revokes nothing.
+		if rev, err := scannerapp.UpdatePass(ctx, pool, scannerapp.UpdatePassParams{OrgID: a.org, PassID: passID2, Label: ptr("Open"), Now: late}); err != nil || len(rev) != 0 {
+			t.Fatalf("UpdatePass of an open pass = %v, %v", rev, err)
+		}
+	})
+	t.Run("a turned-off pass with an ended window is changed and stays off", func(t *testing.T) {
+		until := now.Add(time.Hour)
+		passID, code := standardPass(t, pool, a, "Off and over", now.Add(-time.Hour), until, 2, now)
+		r0, err := scannerapp.Pair(ctx, pool, pairParams(code), now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := scannerapp.DisablePass(ctx, pool, a.org, passID, nil, now.Add(30*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+		late := until.Add(scannerapp.PassUploadGrace + time.Hour)
+		if _, err := scannerapp.IssuePassCode(ctx, pool, a.org, passID, nil, late); !errors.Is(err, scannerapp.ErrPassWindowEnded) {
+			t.Fatalf("new link of an ended pass: err = %v, want ErrPassWindowEnded", err)
+		}
+		// The PATCH moves the window although the pass is off; the pass stays off,
+		// and the revoke time still closes it, so nothing is revoked.
+		rev, err := scannerapp.UpdatePass(ctx, pool, scannerapp.UpdatePassParams{OrgID: a.org, PassID: passID, Label: ptr("Moved"), ValidUntil: ptr(late.Add(5 * time.Hour)), Now: late})
+		if err != nil || len(rev) != 0 {
+			t.Fatalf("UpdatePass of a turned-off pass = %v, %v", rev, err)
+		}
+		got, err := scannerapp.GetPass(ctx, pool, a.org, passID, late)
+		if err != nil || got.RevokedAt == nil || got.State != scannerapp.PassStateClosed || got.Label != "Moved" {
+			t.Fatalf("pass after PATCH = %+v, %v", got, err)
+		}
+		// Only the new link turns it on, and the device past its term is out.
+		c, err := scannerapp.IssuePassCode(ctx, pool, a.org, passID, nil, late)
+		if err != nil || !c.PassReenabled || len(c.RevokedDevices) != 1 || c.RevokedDevices[0] != r0.Device.ID {
+			t.Fatalf("IssuePassCode after PATCH = %+v, %v", c, err)
+		}
+		if rr := revokeReason(t, pool, r0.Device.ID); rr != scannerapp.ReasonPassEnded {
+			t.Fatalf("revoke_reason = %q, want %q", rr, scannerapp.ReasonPassEnded)
 		}
 	})
 	t.Run("pass revoked outside the store: refresh revokes", func(t *testing.T) {
@@ -592,9 +782,73 @@ func TestRefresh_LiveDB(t *testing.T) {
 		if ok, err := scannerapp.RevokePass(ctx, pool, a.org, passID, nil, now); err != nil || !ok {
 			t.Fatalf("RevokePass = %v, %v", ok, err)
 		}
-		_, err = scannerapp.Refresh(ctx, pool, r0.RefreshToken, later)
+		if _, err := scannerapp.Refresh(ctx, pool, r0.RefreshToken, later); err != nil {
+			t.Fatalf("Refresh inside the upload term: %v", err)
+		}
+		_, err = scannerapp.Refresh(ctx, pool, r0.RefreshToken, now.Add(scannerapp.PassUploadGrace))
 		wantRevoked(t, err, scannerapp.ReasonPassRevoked, true)
 	})
+}
+
+// TestPairLockOrder_LiveDB runs Pair at the same time as IssuePassCode and
+// DisablePass on one pass, over and over: the three take the pass before the
+// code, so no run ends in a deadlock (40P01); Pair only ever loses with
+// ErrCodeNotFound.
+func TestPairLockOrder_LiveDB(t *testing.T) {
+	pool := livePool(t)
+	ctx := context.Background()
+	now := testNow()
+	a := newOrg(t, pool)
+	passID, code := standardPass(t, pool, a, "Race", now.Add(-time.Hour), now.Add(5*time.Hour), scannerapp.MaxPassDevices, now)
+
+	const rounds, pairsPerRound = 20, 2
+	for i := 0; i < rounds; i++ {
+		if i > 0 {
+			c, err := scannerapp.IssuePassCode(ctx, pool, a.org, passID, nil, now)
+			if err != nil {
+				t.Fatalf("round %d: IssuePassCode: %v", i, err)
+			}
+			code = c.Code
+		}
+		start := make(chan struct{})
+		errs := make(chan error, pairsPerRound+1)
+		var wg sync.WaitGroup
+		for j := 0; j < pairsPerRound; j++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				_, err := scannerapp.Pair(ctx, pool, pairParams(code), now)
+				if err != nil && !errors.Is(err, scannerapp.ErrCodeNotFound) {
+					errs <- err
+				}
+			}()
+		}
+		wg.Add(1)
+		go func(disable bool) {
+			defer wg.Done()
+			<-start
+			var err error
+			if disable {
+				_, err = scannerapp.DisablePass(ctx, pool, a.org, passID, nil, now)
+			} else {
+				_, err = scannerapp.IssuePassCode(ctx, pool, a.org, passID, nil, now)
+			}
+			if err != nil {
+				errs <- err
+			}
+		}(i%2 == 1)
+		close(start)
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			var pe *pgconn.PgError
+			if errors.As(err, &pe) && pe.Code == "40P01" {
+				t.Fatalf("round %d: deadlock: %v", i, err)
+			}
+			t.Fatalf("round %d: %v", i, err)
+		}
+	}
 }
 
 func TestPairLimit_LiveDB(t *testing.T) {
@@ -790,7 +1044,7 @@ func TestDevicesAndPasses_LiveDB(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		got, err := scannerapp.GetPass(ctx, pool, c.org, p1)
+		got, err := scannerapp.GetPass(ctx, pool, c.org, p1, now)
 		if err != nil {
 			t.Fatalf("GetPass: %v", err)
 		}
@@ -799,25 +1053,26 @@ func TestDevicesAndPasses_LiveDB(t *testing.T) {
 			len(got.Sessions) != 1 || got.Sessions[0].SessionID != c.session || got.Sessions[0].EventID != c.event || !got.Sessions[0].AllTiers {
 			t.Fatalf("pass = %+v", got)
 		}
-		if _, err := scannerapp.GetPass(ctx, pool, b.org, p1); !errors.Is(err, scannerapp.ErrPassNotFound) {
+		if _, err := scannerapp.GetPass(ctx, pool, b.org, p1, now); !errors.Is(err, scannerapp.ErrPassNotFound) {
 			t.Fatalf("GetPass from another organization: err = %v", err)
 		}
-		list, err := scannerapp.ListPasses(ctx, pool, c.org, nil)
+		list, err := scannerapp.ListPasses(ctx, pool, c.org, nil, now)
 		if err != nil || len(list) != 2 || list[0].ID != p2 || list[1].ID != p1 || list[0].Devices == nil {
 			t.Fatalf("ListPasses = %+v, %v", list, err)
 		}
-		list, err = scannerapp.ListPasses(ctx, pool, c.org, &event2)
+		list, err = scannerapp.ListPasses(ctx, pool, c.org, &event2, now)
 		if err != nil || len(list) != 1 || list[0].ID != p2 {
 			t.Fatalf("ListPasses of event 2 = %+v, %v", list, err)
 		}
-		list, err = scannerapp.ListPasses(ctx, pool, b.org, nil)
+		list, err = scannerapp.ListPasses(ctx, pool, b.org, nil, now)
 		if err != nil || len(list) != 0 {
 			t.Fatalf("ListPasses of another organization = %+v, %v", list, err)
 		}
 
 		upd := func(p scannerapp.UpdatePassParams) error {
-			p.OrgID, p.PassID = c.org, p1
-			return scannerapp.UpdatePass(ctx, pool, p)
+			p.OrgID, p.PassID, p.Now = c.org, p1, now
+			_, err := scannerapp.UpdatePass(ctx, pool, p)
+			return err
 		}
 		if err := upd(scannerapp.UpdatePassParams{MaxDevices: ptr(0)}); !errors.Is(err, scannerapp.ErrInvalidPass) {
 			t.Fatalf("max 0: err = %v", err)
@@ -847,7 +1102,7 @@ func TestDevicesAndPasses_LiveDB(t *testing.T) {
 		if err := upd(scannerapp.UpdatePassParams{Sessions: &[]scannerapp.CreatePassSession{{SessionID: c.session, TierIDs: []uuid.UUID{c.tier2}}}}); !errors.Is(err, scannerapp.ErrForeignTier) {
 			t.Fatalf("category of another date: err = %v", err)
 		}
-		if err := scannerapp.UpdatePass(ctx, pool, scannerapp.UpdatePassParams{OrgID: b.org, PassID: p1, Label: ptr("X")}); !errors.Is(err, scannerapp.ErrPassNotFound) {
+		if _, err := scannerapp.UpdatePass(ctx, pool, scannerapp.UpdatePassParams{OrgID: b.org, PassID: p1, Label: ptr("X"), Now: now}); !errors.Is(err, scannerapp.ErrPassNotFound) {
 			t.Fatalf("from another organization: err = %v", err)
 		}
 		until := now.Add(48 * time.Hour)
@@ -857,7 +1112,7 @@ func TestDevicesAndPasses_LiveDB(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("UpdatePass: %v", err)
 		}
-		got, err = scannerapp.GetPass(ctx, pool, c.org, p1)
+		got, err = scannerapp.GetPass(ctx, pool, c.org, p1, now)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -879,15 +1134,21 @@ func TestDevicesAndPasses_LiveDB(t *testing.T) {
 				t.Fatalf("unexpected date %+v", s)
 			}
 		}
-		if _, err := scannerapp.RevokePassWithDevices(ctx, pool, c.org, p1, &admin, now); err != nil {
+		if got.State != scannerapp.PassStateActive || got.ClosedAt != nil || got.UploadUntil != nil {
+			t.Fatalf("open pass state = %q %v %v", got.State, got.ClosedAt, got.UploadUntil)
+		}
+		off := now.Add(time.Minute)
+		if _, err := scannerapp.DisablePass(ctx, pool, c.org, p1, &admin, off); err != nil {
 			t.Fatal(err)
 		}
-		if err := upd(scannerapp.UpdatePassParams{Label: ptr("Late")}); !errors.Is(err, scannerapp.ErrPassRevoked) {
-			t.Fatalf("revoked pass: err = %v", err)
+		if err := upd(scannerapp.UpdatePassParams{Label: ptr("Late")}); err != nil {
+			t.Fatalf("change of a turned-off pass: err = %v", err)
 		}
-		got, err = scannerapp.GetPass(ctx, pool, c.org, p1)
-		if err != nil || got.RevokedAt == nil || got.Accepted != 0 || len(got.Devices) != 0 {
-			t.Fatalf("revoked pass = %+v, %v", got, err)
+		got, err = scannerapp.GetPass(ctx, pool, c.org, p1, off)
+		if err != nil || got.Label != "Late" || got.RevokedAt == nil || got.Accepted != 2 || len(got.Devices) != 2 ||
+			got.State != scannerapp.PassStateClosed || got.ClosedAt == nil || !got.ClosedAt.Equal(off) ||
+			got.UploadUntil == nil || !got.UploadUntil.Equal(off.Add(scannerapp.PassUploadGrace)) {
+			t.Fatalf("turned-off pass = %+v, %v", got, err)
 		}
 	})
 	t.Run("demo pass refuses a window", func(t *testing.T) {
@@ -898,7 +1159,7 @@ func TestDevicesAndPasses_LiveDB(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := scannerapp.UpdatePass(ctx, pool, scannerapp.UpdatePassParams{OrgID: a.org, PassID: id, ValidUntil: ptr(now)}); !errors.Is(err, scannerapp.ErrInvalidWindow) {
+		if _, err := scannerapp.UpdatePass(ctx, pool, scannerapp.UpdatePassParams{OrgID: a.org, PassID: id, ValidUntil: ptr(now), Now: now}); !errors.Is(err, scannerapp.ErrInvalidWindow) {
 			t.Fatalf("err = %v, want ErrInvalidWindow", err)
 		}
 		// A demo pass has no window, so a new link never says it ended.

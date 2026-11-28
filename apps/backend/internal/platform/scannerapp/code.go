@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"net/netip"
 	"strings"
 	"time"
 )
@@ -85,11 +86,34 @@ func HashCode(raw string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// HashIP is the SHA-256 hex of a client address, as stored in
-// scanner_pair_attempts.ip_hash; the address itself is never stored.
+// HashIP is the SHA-256 hex of the limit key of a client address
+// (IPLimitKey), as stored in scanner_pair_attempts.ip_hash; the address
+// itself is never stored.
 func HashIP(ip string) string {
-	sum := sha256.Sum256([]byte(ip))
+	sum := sha256.Sum256([]byte(IPLimitKey(ip)))
 	return hex.EncodeToString(sum[:])
+}
+
+// IPLimitKey is the key the pairing attempt limit counts a client address
+// by. An IPv4 address (an IPv4-mapped IPv6 one too) is the address itself;
+// an IPv6 address is its /64 prefix, since one subscriber gets a whole /64
+// and could otherwise step around the limit by changing the low bits. A
+// string that is not an address is kept as it is.
+func IPLimitKey(ip string) string {
+	s := strings.TrimSpace(ip)
+	a, err := netip.ParseAddr(s)
+	if err != nil {
+		return s
+	}
+	a = a.WithZone("").Unmap()
+	if a.Is4() {
+		return a.String()
+	}
+	p, err := a.Prefix(64)
+	if err != nil {
+		return s
+	}
+	return p.String()
 }
 
 // PairLink is the link a phone opens to pair: <base>/scan/pair#<code>. The

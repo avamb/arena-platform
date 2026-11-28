@@ -293,6 +293,7 @@ type ScannerDeviceAuthRow struct {
 	PassKind        *string    `json:"pass_kind"`
 	PassValidFrom   *time.Time `json:"pass_valid_from"`
 	PassValidUntil  *time.Time `json:"pass_valid_until"`
+	PassRevokedAt   *time.Time `json:"pass_revoked_at"`
 }
 
 const getScannerDeviceForAuth = `-- name: GetScannerDeviceForAuth :one
@@ -308,7 +309,7 @@ SELECT d.id, d.org_id, d.user_id, d.pass_id, d.label, d.platform, d.last_seen_at
            JOIN   permissions p       ON p.id = rp.permission_id AND p.name = 'scan.perform'
            WHERE  m.user_id = d.user_id AND m.org_id = d.org_id AND m.status = 'active'
              AND  m.role NOT IN ('platform_superadmin', 'platform_operator'))),
-       COALESCE(sp.revoked_at IS NOT NULL, false), sp.kind, sp.valid_from, sp.valid_until
+       COALESCE(sp.revoked_at IS NOT NULL, false), sp.kind, sp.valid_from, sp.valid_until, sp.revoked_at
 FROM   scanner_devices d
 JOIN   organizations o ON o.id = d.org_id
 LEFT   JOIN scanner_passes sp ON sp.id = d.pass_id AND sp.org_id = d.org_id
@@ -324,7 +325,7 @@ func (q *Queries) GetScannerDeviceForAuth(ctx context.Context, accessTokenHash s
 		&r.ID, &r.OrgID, &r.UserID, &r.PassID, &r.Label, &r.Platform, &r.LastSeenAt,
 		&r.ControllerName, &r.PairConfirmed,
 		&r.Revoked, &r.AccessExpiresAt, &r.OrgArchived, &r.UserCanScan,
-		&r.PassRevoked, &r.PassKind, &r.PassValidFrom, &r.PassValidUntil)
+		&r.PassRevoked, &r.PassKind, &r.PassValidFrom, &r.PassValidUntil, &r.PassRevokedAt)
 	return r, err
 }
 
@@ -428,6 +429,24 @@ type ScannerPairingCodeLockRow struct {
 	ExpiresAt   time.Time  `json:"expires_at"`
 	UsedAt      *time.Time `json:"used_at"`
 	OrgArchived bool       `json:"org_archived"`
+}
+
+const getScannerPairingCode = `-- name: GetScannerPairingCode :one
+SELECT c.id, c.org_id, c.user_id, c.pass_id, c.expires_at, c.used_at, (o.deleted_at IS NOT NULL)
+FROM   scanner_pairing_codes c
+JOIN   organizations o ON o.id = c.org_id
+WHERE  c.code_hash = $1
+`
+
+// GetScannerPairingCode reads a code by its hash WITHOUT a lock, with
+// whether its organization is archived. Unknown hash: pgx.ErrNoRows. Pair
+// reads it first to learn the lock order (a pass code locks the pass before
+// the code).
+func (q *Queries) GetScannerPairingCode(ctx context.Context, codeHash string) (ScannerPairingCodeLockRow, error) {
+	var r ScannerPairingCodeLockRow
+	err := q.db.QueryRow(ctx, getScannerPairingCode, codeHash).Scan(
+		&r.ID, &r.OrgID, &r.UserID, &r.PassID, &r.ExpiresAt, &r.UsedAt, &r.OrgArchived)
+	return r, err
 }
 
 const lockScannerPairingCode = `-- name: LockScannerPairingCode :one
@@ -800,6 +819,7 @@ type ScannerDeviceRefreshRow struct {
 	PassRevoked          bool       `json:"pass_revoked"`
 	PassKind             *string    `json:"pass_kind"`
 	PassValidUntil       *time.Time `json:"pass_valid_until"`
+	PassRevokedAt        *time.Time `json:"pass_revoked_at"`
 }
 
 const lockScannerDeviceForRefresh = `-- name: LockScannerDeviceForRefresh :one
@@ -815,7 +835,7 @@ SELECT d.id, d.org_id, d.user_id, d.pass_id, d.refresh_token_hash, d.prev_refres
            JOIN   permissions p       ON p.id = rp.permission_id AND p.name = 'scan.perform'
            WHERE  m.user_id = d.user_id AND m.org_id = d.org_id AND m.status = 'active'
              AND  m.role NOT IN ('platform_superadmin', 'platform_operator'))),
-       COALESCE(sp.revoked_at IS NOT NULL, false), sp.kind, sp.valid_until
+       COALESCE(sp.revoked_at IS NOT NULL, false), sp.kind, sp.valid_until, sp.revoked_at
 FROM   scanner_devices d
 JOIN   organizations o ON o.id = d.org_id
 LEFT   JOIN scanner_passes sp ON sp.id = d.pass_id AND sp.org_id = d.org_id
@@ -830,7 +850,7 @@ func (q *Queries) LockScannerDeviceForRefresh(ctx context.Context, id uuid.UUID)
 	err := q.db.QueryRow(ctx, lockScannerDeviceForRefresh, id).Scan(
 		&r.ID, &r.OrgID, &r.UserID, &r.PassID, &r.RefreshTokenHash, &r.PrevRefreshTokenHash,
 		&r.PairConfirmed, &r.RefreshExpiresAt, &r.RevokedAt, &r.RevokeReason,
-		&r.OrgArchived, &r.UserCanScan, &r.PassRevoked, &r.PassKind, &r.PassValidUntil)
+		&r.OrgArchived, &r.UserCanScan, &r.PassRevoked, &r.PassKind, &r.PassValidUntil, &r.PassRevokedAt)
 	return r, err
 }
 

@@ -100,12 +100,17 @@ type MeOrganization struct {
 
 // MePass is the controller pass of a pass device.
 type MePass struct {
-	ID         uuid.UUID       `json:"id"`
-	Label      string          `json:"label"`
-	Kind       string          `json:"kind"`
-	ValidFrom  *time.Time      `json:"valid_from"`
-	ValidUntil *time.Time      `json:"valid_until"`
-	Sessions   []MePassSession `json:"sessions"`
+	ID         uuid.UUID  `json:"id"`
+	Label      string     `json:"label"`
+	Kind       string     `json:"kind"`
+	ValidFrom  *time.Time `json:"valid_from"`
+	ValidUntil *time.Time `json:"valid_until"`
+	// State is "active" or "closed" (turned off or its window ended); a
+	// closed pass leaves its devices "upload only" until UploadUntil.
+	State       string          `json:"state"`
+	ClosedAt    *time.Time      `json:"closed_at"`
+	UploadUntil *time.Time      `json:"upload_until"`
+	Sessions    []MePassSession `json:"sessions"`
 }
 
 // MePassSession is one date the pass may check. AllTiers true: every
@@ -156,7 +161,11 @@ func BuildMeResponse(d scannerapp.Device, me scannerapp.Me) MeResponse {
 		p := &MePass{
 			ID: me.Pass.ID, Label: me.Pass.Label, Kind: me.Pass.Kind,
 			ValidFrom: utcPtr(me.Pass.ValidFrom), ValidUntil: utcPtr(me.Pass.ValidUntil),
+			State: me.Pass.State, ClosedAt: utcPtr(me.Pass.ClosedAt), UploadUntil: utcPtr(me.Pass.UploadUntil),
 			Sessions: make([]MePassSession, 0, len(me.Pass.Sessions)),
+		}
+		if p.State == "" {
+			p.State = scannerapp.PassStateActive
 		}
 		for _, s := range me.Pass.Sessions {
 			tiers := s.TierIDs

@@ -19213,6 +19213,11 @@ type ScannerAppPairResponse struct {
 
 // ScannerAppPass The controller pass of a pass device.
 type ScannerAppPass struct {
+	// ClosedAt When the pass closed, in UTC: the time it was turned off, or
+	// `valid_until` when the window ended first. Null while it is
+	// active.
+	ClosedAt *time.Time `json:"closed_at"`
+
 	// Id Id of the controller pass.
 	Id openapi_types.UUID `json:"id"`
 
@@ -19226,12 +19231,24 @@ type ScannerAppPass struct {
 	// Sessions The dates that the pass may check, in date order.
 	Sessions []ScannerAppPassSession `json:"sessions"`
 
+	// State `active` while the pass is open; `closed` once it is turned off
+	// or its window ended. The device of a closed pass is in "upload
+	// only" until `upload_until`: it stops scanning, uploads the scans
+	// it kept offline and may refresh its tokens. Other scanner-app
+	// routes answer it `403 scanner_app.pass_closed`.
+	State string `json:"state"`
+
+	// UploadUntil End of "upload only", in UTC: `closed_at` plus 24 hours. After
+	// it the device is revoked (`401`). Null while the pass is active.
+	UploadUntil *time.Time `json:"upload_until"`
+
 	// ValidFrom Start of the time window of a standard pass, in UTC. Null for a
 	// demo pass.
 	ValidFrom *time.Time `json:"valid_from"`
 
-	// ValidUntil End of the time window of a standard pass, in UTC; the device
-	// stops working at this time. JSON `null` for a demo pass.
+	// ValidUntil End of the time window of a standard pass, in UTC; at this time
+	// the pass closes and the device goes to "upload only". JSON
+	// `null` for a demo pass.
 	ValidUntil *time.Time `json:"valid_until"`
 }
 
@@ -19338,6 +19355,10 @@ type ScannerPass struct {
 	// Accepted How many live phones use the pass now (N).
 	Accepted int `json:"accepted"`
 
+	// ClosedAt When the pass closed, in UTC: `revoked_at`, or `valid_until` when
+	// the window ended first. Null while it is active.
+	ClosedAt *time.Time `json:"closed_at"`
+
 	// CreatedAt When the pass was created, in UTC.
 	CreatedAt time.Time `json:"created_at"`
 
@@ -19361,6 +19382,15 @@ type ScannerPass struct {
 
 	// Sessions The live dates of the pass in the organization.
 	Sessions []ScannerAppPassSession `json:"sessions"`
+
+	// State `active` while the pass is open; `closed` once it is turned off
+	// or its window ended. The phones of a closed pass only upload the
+	// scans they kept offline until `upload_until`.
+	State string `json:"state"`
+
+	// UploadUntil End of "upload only" for the phones of a closed pass, in UTC:
+	// `closed_at` plus 24 hours. Null while the pass is active.
+	UploadUntil *time.Time `json:"upload_until"`
 
 	// ValidFrom Start of the window, in UTC; null for a demo pass.
 	ValidFrom *time.Time `json:"valid_from"`

@@ -1,6 +1,8 @@
 package scannerapp
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -71,6 +73,37 @@ func TestPairLink(t *testing.T) {
 		if got := PairLink(base, "ABCDEFGH"); got != "https://api.example.com/scan/pair#ABCDEFGH" {
 			t.Errorf("PairLink(%q) = %q", base, got)
 		}
+	}
+}
+
+func TestIPLimitKey(t *testing.T) {
+	for in, want := range map[string]string{
+		"203.0.113.7":                   "203.0.113.7",
+		" 203.0.113.7 ":                 "203.0.113.7",
+		"::ffff:203.0.113.7":            "203.0.113.7",
+		"2001:db8:1:2:aaaa:bbbb:cccc:1": "2001:db8:1:2::/64",
+		"2001:db8:1:2::ffff":            "2001:db8:1:2::/64",
+		"fe80::1%eth0":                  "fe80::/64",
+		"not an address":                "not an address",
+		"":                              "",
+	} {
+		if got := IPLimitKey(in); got != want {
+			t.Errorf("IPLimitKey(%q) = %q, want %q", in, got, want)
+		}
+	}
+	// One /64 is one key; the next /64 is another; IPv4 is counted as before.
+	if HashIP("2001:db8:1:2::1") != HashIP("2001:db8:1:2:ffff:ffff:ffff:ffff") {
+		t.Error("two addresses of one /64 hash apart")
+	}
+	if HashIP("2001:db8:1:2::1") == HashIP("2001:db8:1:3::1") {
+		t.Error("two /64 prefixes hash the same")
+	}
+	if HashIP("::ffff:198.51.100.1") != HashIP("198.51.100.1") || HashIP("198.51.100.1") == HashIP("198.51.100.2") {
+		t.Error("IPv4 is not hashed by the address")
+	}
+	sum := sha256.Sum256([]byte("198.51.100.1"))
+	if HashIP("198.51.100.1") != hex.EncodeToString(sum[:]) {
+		t.Error("IPv4 hash changed")
 	}
 }
 

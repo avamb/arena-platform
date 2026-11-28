@@ -40,7 +40,12 @@ type RefreshResult struct {
 //     call revoked it, JustRevoked is true and the revoke is COMMITTED with
 //     the reason: refresh_token_reuse (a retired token came back),
 //     refresh_expired, org_archived, membership_ended, pass_revoked or
-//     pass_ended.
+//     pass_ended. A closed pass revokes its devices only once its upload
+//     term ended (DeviceStateOf): pass_revoked when it was turned off,
+//     pass_ended when its window ended.
+//
+// Inside the upload term of a closed pass the refresh succeeds and the new
+// access token expires at the end of the term at the latest.
 func Refresh(ctx context.Context, db TxDB, raw string, now time.Time) (RefreshResult, error) {
 	if !LooksLikeRefreshToken(raw) {
 		return RefreshResult{}, ErrMalformed
@@ -80,7 +85,8 @@ func Refresh(ctx context.Context, db TxDB, raw string, now time.Time) (RefreshRe
 			refusal, err = revokeOnRetired(ctx, q, h, now)
 			return err
 		}
-		if reason := refreshRefusal(row, now); reason != "" {
+		reason, uploadUntil := refreshRefusal(row, now)
+		if reason != "" {
 			n, err := q.RevokeScannerDevice(ctx, row.ID, row.OrgID, now, nil, &reason)
 			if err != nil {
 				return fmt.Errorf("scannerapp: revoke device: %w", err)
@@ -123,8 +129,14 @@ func Refresh(ctx context.Context, db TxDB, raw string, now time.Time) (RefreshRe
 		if err != nil {
 			return fmt.Errorf("scannerapp: new refresh token: %w", err)
 		}
+		accessExp := now.Add(AccessTokenTTL)
+		if uploadUntil != nil && uploadUntil.Before(accessExp) {
+			// A device of a closed pass: its access token never outlives
+			// the upload term.
+			accessExp = *uploadUntil
+		}
 		rot := gen.RotateScannerDeviceTokensParams{
-			ID: row.ID, AccessTokenHash: accessHash, AccessExpiresAt: now.Add(AccessTokenTTL),
+			ID: row.ID, AccessTokenHash: accessHash, AccessExpiresAt: accessExp,
 			RefreshTokenHash: refreshHash, RefreshExpiresAt: now.Add(RefreshTokenTTL),
 			PrevRefreshTokenHash: prev, RefreshedAt: now,
 		}
@@ -173,28 +185,38 @@ func revokeOnRetired(ctx context.Context, q *gen.Queries, h string, now time.Tim
 }
 
 // refreshRefusal is the revoke reason when the device may no longer refresh,
-// "" when it may.
-func refreshRefusal(row gen.ScannerDeviceRefreshRow, now time.Time) string {
+// "" when it may. For a device of a closed pass inside its upload term it
+// also returns the end of that term, the latest access_expires_at the new
+// pair may get (nil: no cap).
+func refreshRefusal(row gen.ScannerDeviceRefreshRow, now time.Time) (string, *time.Time) {
 	switch {
 	case row.RefreshExpiresAt == nil || !row.RefreshExpiresAt.After(now):
-		return ReasonRefreshExpired
+		return ReasonRefreshExpired, nil
 	case row.OrgArchived:
-		return ReasonOrgArchived
+		return ReasonOrgArchived, nil
 	case row.UserID != nil:
 		if !row.UserCanScan {
-			return ReasonMembershipEnded
+			return ReasonMembershipEnded, nil
 		}
 	case row.PassID != nil:
-		if row.PassKind == nil || row.PassRevoked {
-			return ReasonPassRevoked
+		if row.PassKind == nil {
+			return ReasonPassRevoked, nil
 		}
-		if windowEnded(*row.PassKind, row.PassValidUntil, now) {
-			return ReasonPassEnded
+		_, c, err := DeviceStateOf(*row.PassKind, row.PassValidUntil, row.PassRevokedAt, now)
+		if err != nil {
+			if c != nil && c.Revoked {
+				return ReasonPassRevoked, nil
+			}
+			return ReasonPassEnded, nil
+		}
+		if c != nil {
+			upload := c.UploadUntil
+			return "", &upload
 		}
 	default:
-		return ReasonMembershipEnded
+		return ReasonMembershipEnded, nil
 	}
-	return ""
+	return "", nil
 }
 
 // ConfirmPair marks the current token pair of a device confirmed once the

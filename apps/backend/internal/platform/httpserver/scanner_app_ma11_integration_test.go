@@ -29,6 +29,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/clock"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/scannerapp"
 )
@@ -133,15 +134,18 @@ type ma11Tokens struct {
 }
 
 type ma11Pass struct {
-	ID         string     `json:"id"`
-	Label      string     `json:"label"`
-	Kind       string     `json:"kind"`
-	ValidFrom  *time.Time `json:"valid_from"`
-	ValidUntil *time.Time `json:"valid_until"`
-	MaxDevices int        `json:"max_devices"`
-	Accepted   int        `json:"accepted"`
-	RevokedAt  *time.Time `json:"revoked_at"`
-	Sessions   []struct {
+	ID          string     `json:"id"`
+	Label       string     `json:"label"`
+	Kind        string     `json:"kind"`
+	ValidFrom   *time.Time `json:"valid_from"`
+	ValidUntil  *time.Time `json:"valid_until"`
+	MaxDevices  int        `json:"max_devices"`
+	Accepted    int        `json:"accepted"`
+	RevokedAt   *time.Time `json:"revoked_at"`
+	State       string     `json:"state"`
+	ClosedAt    *time.Time `json:"closed_at"`
+	UploadUntil *time.Time `json:"upload_until"`
+	Sessions    []struct {
 		SessionID string   `json:"session_id"`
 		EventID   string   `json:"event_id"`
 		AllTiers  bool     `json:"all_tiers"`
@@ -652,8 +656,11 @@ func TestScannerAppMA11_Passes(t *testing.T) {
 		}
 	})
 
-	t.Run("delete kills its devices, a new link turns it on", func(t *testing.T) {
+	t.Run("delete leaves its devices upload only, a new link turns it on", func(t *testing.T) {
 		p, link := e.createPass(t, a.org, tok, ma11PassBody("Night", 3, ma11Session(a.session)))
+		if p.State != scannerapp.PassStateActive || p.ClosedAt != nil || p.UploadUntil != nil {
+			t.Fatalf("new pass state = %+v", p)
+		}
 		d1, d2 := e.pair(t, link.Code, "One"), e.pair(t, link.Code, "Two")
 		for _, d := range []ma11Tokens{d1, d2} {
 			if st := e.meStatus(t, d.AccessToken); st != http.StatusOK {
@@ -661,20 +668,37 @@ func TestScannerAppMA11_Passes(t *testing.T) {
 			}
 		}
 		e.want(t, http.StatusNoContent, "", http.MethodDelete, base+"/passes/"+p.ID, tok, "")
+		var closed ma11Pass
+		ma11Decode(t, e.want(t, http.StatusOK, "", http.MethodGet, base+"/passes/"+p.ID, tok, ""), &closed)
+		if closed.State != scannerapp.PassStateClosed || closed.RevokedAt == nil || closed.ClosedAt == nil || !closed.ClosedAt.Equal(*closed.RevokedAt) ||
+			closed.UploadUntil == nil || !closed.UploadUntil.Equal(closed.ClosedAt.Add(scannerapp.PassUploadGrace)) || closed.Accepted != 2 {
+			t.Fatalf("turned-off pass = %+v", closed)
+		}
 		for _, d := range []ma11Tokens{d1, d2} {
-			if st := e.meStatus(t, d.AccessToken); st != http.StatusUnauthorized {
-				t.Fatalf("/me after delete: %d, want 401", st)
+			me, body := e.me(t, d.AccessToken, "")
+			if me.Pass == nil || me.Pass.State != scannerapp.PassStateClosed || me.Pass.ClosedAt == nil || !me.Pass.ClosedAt.Equal(*closed.ClosedAt) ||
+				me.Pass.UploadUntil == nil || !me.Pass.UploadUntil.Equal(*closed.UploadUntil) {
+				t.Fatalf("/me after delete = %s, want pass closed", body)
 			}
-			if rev, reason := e.deviceRevoke(t, d.Me.Device.ID); !rev || reason != scannerapp.ReasonPassRevoked {
-				t.Fatalf("device = %v %q, want pass_revoked", rev, reason)
+			if rev, _ := e.deviceRevoke(t, d.Me.Device.ID); rev {
+				t.Fatalf("device %s revoked by the delete", d.Me.Device.ID)
 			}
 		}
+		st, r1, out := e.refresh(t, d1.RefreshToken)
+		if st != http.StatusOK || r1.AccessExpiresAt.After(*closed.UploadUntil) {
+			t.Fatalf("refresh inside the upload term: %d %s", st, out)
+		}
 		e.want(t, http.StatusNoContent, "", http.MethodDelete, base+"/passes/"+p.ID, tok, "")
-		st, _, out := e.call(t, http.MethodPost, "/v1/scanner-app/pair", "", ma11IP(), pairBody(link.Code, "Late"))
+		st, _, out = e.call(t, http.MethodPost, "/v1/scanner-app/pair", "", ma11IP(), pairBody(link.Code, "Late"))
 		if st != http.StatusNotFound {
 			t.Fatalf("old link after delete: %d %s, want 404", st, out)
 		}
-		e.want(t, http.StatusConflict, "scanner_pass.revoked", http.MethodPatch, base+"/passes/"+p.ID, tok, `{"label":"Again"}`)
+		// A turned-off pass is changed and stays off; only a new link turns it on.
+		var renamed ma11Pass
+		ma11Decode(t, e.want(t, http.StatusOK, "", http.MethodPatch, base+"/passes/"+p.ID, tok, `{"label":"Again"}`), &renamed)
+		if renamed.Label != "Again" || renamed.RevokedAt == nil || renamed.State != scannerapp.PassStateClosed {
+			t.Fatalf("turned-off pass after PATCH = %+v", renamed)
+		}
 		var fresh ma11Pairing
 		ma11Decode(t, e.want(t, http.StatusOK, "", http.MethodPost, base+"/passes/"+p.ID+"/link", tok, ""), &fresh)
 		if fresh.Code == "" || fresh.Code == link.Code {
@@ -682,8 +706,12 @@ func TestScannerAppMA11_Passes(t *testing.T) {
 		}
 		var got ma11Pass
 		ma11Decode(t, e.want(t, http.StatusOK, "", http.MethodGet, base+"/passes/"+p.ID, tok, ""), &got)
-		if got.RevokedAt != nil || got.Accepted != 0 {
+		if got.RevokedAt != nil || got.Accepted != 2 || got.State != scannerapp.PassStateActive || got.ClosedAt != nil || got.UploadUntil != nil {
 			t.Fatalf("pass after a new link = %+v", got)
+		}
+		// Inside the upload term the devices work in full again.
+		if me, body := e.me(t, d2.AccessToken, ""); me.Pass == nil || me.Pass.State != scannerapp.PassStateActive || me.Pass.ClosedAt != nil {
+			t.Fatalf("/me after a new link = %s", body)
 		}
 		e.pair(t, fresh.Code, "Three")
 		if len(e.audits(t, "v1.scanner_pass.revoke", p.ID)) != 1 || len(e.audits(t, "v1.scanner_pass.link", p.ID)) != 1 {
@@ -692,6 +720,69 @@ func TestScannerAppMA11_Passes(t *testing.T) {
 		// The window is over: a new link is refused until it is moved.
 		e.want(t, http.StatusOK, "", http.MethodPatch, base+"/passes/"+p.ID, tok, `{"valid_from":"2020-01-01T00:00:00Z","valid_until":"2020-01-02T00:00:00Z"}`)
 		e.want(t, http.StatusUnprocessableEntity, "scanner_pass.window_ended", http.MethodPost, base+"/passes/"+p.ID+"/link", tok, "")
+	})
+
+	t.Run("after the upload term: 401, revoked; a new link revokes the rest", func(t *testing.T) {
+		start := time.Now().UTC().Truncate(time.Second)
+		body := fmt.Sprintf(`{"label":"Late","max_devices":3,"valid_from":%q,"valid_until":%q,"sessions":[%s]}`,
+			start.Add(-time.Hour).Format(time.RFC3339), start.Add(72*time.Hour).Format(time.RFC3339), ma11Session(a.session))
+		p, link := e.createPass(t, a.org, tok, body)
+		d1, d2 := e.pair(t, link.Code, "One"), e.pair(t, link.Code, "Two")
+		e.want(t, http.StatusNoContent, "", http.MethodDelete, base+"/passes/"+p.ID, tok, "")
+		// A second pass whose window ends in 30 seconds, with one phone.
+		short, shortLink := e.createPass(t, a.org, tok, fmt.Sprintf(`{"label":"Short","max_devices":2,"valid_from":%q,"valid_until":%q,"sessions":[%s]}`,
+			start.Add(-time.Hour).Format(time.RFC3339), start.Add(30*time.Second).Format(time.RFC3339), ma11Session(a.session)))
+		d3 := e.pair(t, shortLink.Code, "Three")
+
+		// The scanner routes read the server clock; move it past the term.
+		old := e.srv.clk
+		t.Cleanup(func() { e.srv.clk = old })
+		moved := time.Now().Add(scannerapp.PassUploadGrace + time.Minute)
+		e.srv.clk = clock.NewFake(moved)
+
+		// A PATCH that leaves the short pass closed revokes nothing; one that
+		// opens it revokes the phone past its term, audited by the person.
+		e.want(t, http.StatusOK, "", http.MethodPatch, base+"/passes/"+short.ID, tok, `{"label":"Short, renamed"}`)
+		if rev, _ := e.deviceRevoke(t, d3.Me.Device.ID); rev {
+			t.Fatal("a PATCH that leaves the pass closed revoked its phone")
+		}
+		e.want(t, http.StatusOK, "", http.MethodPatch, base+"/passes/"+short.ID, tok,
+			fmt.Sprintf(`{"valid_until":%q}`, moved.Add(5*time.Hour).UTC().Format(time.RFC3339)))
+		if rev, reason := e.deviceRevoke(t, d3.Me.Device.ID); !rev || reason != scannerapp.ReasonPassEnded {
+			t.Fatalf("device of the reopened pass = %v %q, want pass_ended", rev, reason)
+		}
+		if got := e.audits(t, "v1.scanner_app.device_revoke", d3.Me.Device.ID); len(got) != 1 || got[0].ActorType != "user" ||
+			got[0].ActorID != owner.String() || got[0].Reason != scannerapp.ReasonPassEnded {
+			t.Fatalf("device_revoke audit of the PATCH = %+v", got)
+		}
+
+		if st := e.meStatus(t, d1.AccessToken); st != http.StatusUnauthorized {
+			t.Fatalf("/me after the upload term: %d, want 401", st)
+		}
+		st, _, out := e.refresh(t, d1.RefreshToken)
+		if st != http.StatusUnauthorized || sec1Code(out) != "scanner_app.device_revoked" {
+			t.Fatalf("refresh after the upload term: %d %s, want 401 scanner_app.device_revoked", st, out)
+		}
+		if rev, reason := e.deviceRevoke(t, d1.Me.Device.ID); !rev || reason != scannerapp.ReasonPassRevoked {
+			t.Fatalf("device = %v %q, want pass_revoked", rev, reason)
+		}
+		if got := e.audits(t, "v1.scanner_app.device_revoke", d1.Me.Device.ID); len(got) != 1 || got[0].ActorType != "device" || got[0].Reason != scannerapp.ReasonPassRevoked {
+			t.Fatalf("device_revoke audit = %+v", got)
+		}
+		// d2 never refreshed; turning the pass on again revokes it.
+		e.want(t, http.StatusOK, "", http.MethodPost, base+"/passes/"+p.ID+"/link", tok, "")
+		if rev, reason := e.deviceRevoke(t, d2.Me.Device.ID); !rev || reason != scannerapp.ReasonPassEnded {
+			t.Fatalf("device = %v %q, want pass_ended", rev, reason)
+		}
+		if got := e.audits(t, "v1.scanner_app.device_revoke", d2.Me.Device.ID); len(got) != 1 || got[0].ActorType != "user" ||
+			got[0].ActorID != owner.String() || got[0].Reason != scannerapp.ReasonPassEnded {
+			t.Fatalf("device_revoke audit of the new link = %+v", got)
+		}
+		var got ma11Pass
+		ma11Decode(t, e.want(t, http.StatusOK, "", http.MethodGet, base+"/passes/"+p.ID, tok, ""), &got)
+		if got.State != scannerapp.PassStateActive || got.Accepted != 0 {
+			t.Fatalf("pass after a late new link = %+v", got)
+		}
 	})
 
 	t.Run("organizer devices", func(t *testing.T) {

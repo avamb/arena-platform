@@ -48,17 +48,22 @@ type PatchPassRequest struct {
 
 // PassBody is a controller pass as the organizer sees it.
 type PassBody struct {
-	ID         uuid.UUID       `json:"id"`
-	Label      string          `json:"label"`
-	Kind       string          `json:"kind"`
-	ValidFrom  *time.Time      `json:"valid_from"`
-	ValidUntil *time.Time      `json:"valid_until"`
-	MaxDevices int             `json:"max_devices"`
-	Accepted   int             `json:"accepted"`
-	CreatedAt  time.Time       `json:"created_at"`
-	RevokedAt  *time.Time      `json:"revoked_at"`
-	Sessions   []MePassSession `json:"sessions"`
-	Devices    []PassDevice    `json:"devices"`
+	ID         uuid.UUID  `json:"id"`
+	Label      string     `json:"label"`
+	Kind       string     `json:"kind"`
+	ValidFrom  *time.Time `json:"valid_from"`
+	ValidUntil *time.Time `json:"valid_until"`
+	MaxDevices int        `json:"max_devices"`
+	Accepted   int        `json:"accepted"`
+	CreatedAt  time.Time  `json:"created_at"`
+	RevokedAt  *time.Time `json:"revoked_at"`
+	// State is "active" or "closed" (turned off or its window ended);
+	// ClosedAt and UploadUntil are null for an active pass.
+	State       string          `json:"state"`
+	ClosedAt    *time.Time      `json:"closed_at"`
+	UploadUntil *time.Time      `json:"upload_until"`
+	Sessions    []MePassSession `json:"sessions"`
+	Devices     []PassDevice    `json:"devices"`
 }
 
 // PassDevice is a live device of a pass.
@@ -83,6 +88,7 @@ func buildPass(p scannerapp.Pass) PassBody {
 		ValidFrom: utcPtr(p.ValidFrom), ValidUntil: utcPtr(p.ValidUntil),
 		MaxDevices: p.MaxDevices, Accepted: p.Accepted,
 		CreatedAt: p.CreatedAt.UTC(), RevokedAt: utcPtr(p.RevokedAt),
+		State: p.State, ClosedAt: utcPtr(p.ClosedAt), UploadUntil: utcPtr(p.UploadUntil),
 		Sessions: make([]MePassSession, 0, len(p.Sessions)),
 		Devices:  make([]PassDevice, 0, len(p.Devices)),
 	}
@@ -115,9 +121,6 @@ func writePassErr(w http.ResponseWriter, r *http.Request, err error) bool {
 	switch {
 	case errors.Is(err, scannerapp.ErrPassNotFound):
 		writePassNotFound(w, r)
-	case errors.Is(err, scannerapp.ErrPassRevoked):
-		writeErr(w, r, http.StatusConflict, "scanner_pass.revoked",
-			"the pass is turned off; create a new link to turn it on before you change it")
 	case errors.Is(err, scannerapp.ErrInvalidWindow):
 		writeErr(w, r, http.StatusUnprocessableEntity, "scanner_pass.invalid_window",
 			"valid_until must be after valid_from, and a demo pass has no time window")
@@ -271,7 +274,7 @@ func (h *Handler) HandleCreatePass(w http.ResponseWriter, r *http.Request) {
 		h.passFailed(w, r, "create the pass", err)
 		return
 	}
-	p, err := scannerapp.GetPass(ctx, h.Pool, orgID, id)
+	p, err := scannerapp.GetPass(ctx, h.Pool, orgID, id, now)
 	if err != nil {
 		h.passFailed(w, r, "read the pass", err)
 		return
@@ -300,7 +303,7 @@ func (h *Handler) HandleListPasses(w http.ResponseWriter, r *http.Request) {
 		}
 		eventID = &id
 	}
-	list, err := scannerapp.ListPasses(r.Context(), h.Pool, orgID, eventID)
+	list, err := scannerapp.ListPasses(r.Context(), h.Pool, orgID, eventID, h.now())
 	if err != nil {
 		h.passFailed(w, r, "read the passes", err)
 		return
@@ -322,7 +325,7 @@ func (h *Handler) HandleGetPass(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	p, err := scannerapp.GetPass(r.Context(), h.Pool, orgID, id)
+	p, err := scannerapp.GetPass(r.Context(), h.Pool, orgID, id, h.now())
 	if err != nil {
 		if !writePassErr(w, r, err) {
 			h.passFailed(w, r, "read the pass", err)
@@ -333,11 +336,13 @@ func (h *Handler) HandleGetPass(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandlePatchPass serves PATCH /v1/organizations/{org_id}/scanner/passes/{pass_id}.
+// A turned-off pass is changed too and stays off (only a new link turns it
+// on). The devices the change revokes (their upload term had ended and the
+// change would give them access back) are audited one by one.
 //
 //	200 PassBody
 //	400 scanner_pass.invalid_body (also: no field to change)
 //	404 scanner_pass.not_found
-//	409 scanner_pass.revoked
 //	422 scanner_pass.invalid / invalid_window / max_devices_below_accepted / invalid_session / invalid_tier
 func (h *Handler) HandlePatchPass(w http.ResponseWriter, r *http.Request) {
 	orgID, userID, ok := h.passCaller(w, r)
@@ -362,6 +367,7 @@ func (h *Handler) HandlePatchPass(w http.ResponseWriter, r *http.Request) {
 	params := scannerapp.UpdatePassParams{
 		OrgID: orgID, PassID: id, Label: req.Label,
 		ValidFrom: req.ValidFrom, ValidUntil: req.ValidUntil, MaxDevices: req.MaxDevices,
+		Now: h.now(),
 	}
 	changed := []string{}
 	if req.Label != nil {
@@ -382,13 +388,15 @@ func (h *Handler) HandlePatchPass(w http.ResponseWriter, r *http.Request) {
 		changed = append(changed, "sessions")
 	}
 	ctx := r.Context()
-	if err := scannerapp.UpdatePass(ctx, h.Pool, params); err != nil {
+	revoked, err := scannerapp.UpdatePass(ctx, h.Pool, params)
+	if err != nil {
 		if !writePassErr(w, r, err) {
 			h.passFailed(w, r, "change the pass", err)
 		}
 		return
 	}
-	p, err := scannerapp.GetPass(ctx, h.Pool, orgID, id)
+	h.auditPassEnded(r, orgID, userID, revoked)
+	p, err := scannerapp.GetPass(ctx, h.Pool, orgID, id, params.Now)
 	if err != nil {
 		if !writePassErr(w, r, err) {
 			h.passFailed(w, r, "read the pass", err)
@@ -401,8 +409,10 @@ func (h *Handler) HandlePatchPass(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleRevokePass serves DELETE /v1/organizations/{org_id}/scanner/passes/{pass_id}:
-// the pass is turned off, its live devices are revoked (pass_revoked) and its
-// codes deleted, in one transaction. 204, an already turned-off pass too.
+// the pass is turned off and its codes deleted, in one transaction. Its
+// devices are not revoked: they stay "upload only" for
+// scannerapp.PassUploadGrace (spec 69 B.1). 204, an already turned-off pass
+// too.
 func (h *Handler) HandleRevokePass(w http.ResponseWriter, r *http.Request) {
 	orgID, userID, ok := h.passCaller(w, r)
 	if !ok {
@@ -413,27 +423,24 @@ func (h *Handler) HandleRevokePass(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	by := userID
-	res, err := scannerapp.RevokePassWithDevices(r.Context(), h.Pool, orgID, id, &by, h.now())
+	just, err := scannerapp.DisablePass(r.Context(), h.Pool, orgID, id, &by, h.now())
 	if err != nil {
 		if !writePassErr(w, r, err) {
 			h.passFailed(w, r, "turn off the pass", err)
 		}
 		return
 	}
-	if res.JustRevoked || len(res.RevokedDeviceIDs) > 0 {
-		ids := make([]string, 0, len(res.RevokedDeviceIDs))
-		for _, d := range res.RevokedDeviceIDs {
-			ids = append(ids, d.String())
-		}
+	if just {
 		h.writeAudit(r, "user", userID.String(), "v1.scanner_pass.revoke", "scanner_pass", id.String(),
-			map[string]any{"org_id": orgID.String(), "revoked_device_ids": ids, "reason": scannerapp.ReasonPassRevoked})
+			map[string]any{"org_id": orgID.String(), "reason": scannerapp.ReasonPassRevoked})
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // HandleLinkPass serves POST /v1/organizations/{org_id}/scanner/passes/{pass_id}/link:
 // a new pairing link of the pass; the old codes stop working and a turned-off
-// pass is turned on again.
+// pass is turned on again (its devices past their upload term are revoked,
+// each audited as v1.scanner_app.device_revoke, reason pass_ended).
 //
 //	200 PairingLink (code, link, qr_png)
 //	404 scanner_pass.not_found
@@ -455,7 +462,18 @@ func (h *Handler) HandleLinkPass(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	h.auditPassEnded(r, orgID, userID, issued.RevokedDevices)
 	h.writeAudit(r, "user", userID.String(), "v1.scanner_pass.link", "scanner_pass", id.String(),
 		map[string]any{"org_id": orgID.String(), "reenabled": issued.PassReenabled})
 	httputil.WriteJSON(w, http.StatusOK, h.pairingLink(issued.Code))
+}
+
+// auditPassEnded writes v1.scanner_app.device_revoke (actor the person,
+// reason pass_ended) for each device a pass write revoked because its upload
+// term had ended.
+func (h *Handler) auditPassEnded(r *http.Request, orgID, userID uuid.UUID, devices []uuid.UUID) {
+	for _, d := range devices {
+		h.writeAudit(r, "user", userID.String(), "v1.scanner_app.device_revoke", "scanner_device", d.String(),
+			map[string]any{"org_id": orgID.String(), "reason": scannerapp.ReasonPassEnded})
+	}
 }

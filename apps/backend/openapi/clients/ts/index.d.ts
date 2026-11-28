@@ -8303,9 +8303,14 @@ export interface paths {
          *
          *     Authentication: ONLY a scanner device token (`scannerDeviceAuth`).
          *     A JWT, an organization API key or no header is `401`. A revoked
-         *     device, an expired access token, a revoked pass, a pass whose window
-         *     ended, a person who lost the right to scan in the organization and an
-         *     archived organization are all the same `401 auth.invalid_token`.
+         *     device, an expired access token, a person who lost the right to scan
+         *     in the organization and an archived organization are all the same
+         *     `401 auth.invalid_token`.
+         *
+         *     A device of a closed pass (turned off, or its window ended) still
+         *     gets `200` here for 24 hours after `pass.closed_at` (spec 69 B.1):
+         *     `pass.state` is `closed` and `pass.upload_until` says when the
+         *     "upload only" ends. After `upload_until` the device is `401`.
          *     A device token sent to any route outside `/v1/scanner-app/` is
          *     answered `404 http.not_found`.
          */
@@ -8377,10 +8382,16 @@ export interface paths {
          *     A refresh token that was already replaced and is presented again
          *     revokes the device (`refresh_token_reuse`): it is a sign of a copied
          *     token. A device whose refresh token expired (30 days without a
-         *     refresh), whose organization is archived, whose person lost the right
-         *     to scan, or whose pass is turned off or ended is revoked here with
-         *     that reason; the revoke is audited as `v1.scanner_app.device_revoke`
-         *     with the device as the actor.
+         *     refresh), whose organization is archived or whose person lost the
+         *     right to scan is revoked here with that reason; the revoke is
+         *     audited as `v1.scanner_app.device_revoke` with the device as the
+         *     actor.
+         *
+         *     A device of a closed pass (turned off, or its window ended) keeps
+         *     refreshing for 24 hours after the pass closed, so it can upload the
+         *     scans it kept offline (spec 69 B.1); the new `access_expires_at` is
+         *     never later than the end of that term. After it, the refresh revokes
+         *     the device (`pass_revoked` or `pass_ended`) and answers `401`.
          */
         post: operations["refreshScannerAppToken"];
         delete?: never;
@@ -8543,11 +8554,14 @@ export interface paths {
         post?: never;
         /**
          * Turn a controller pass off
-         * @description Spec 69 A.6 (MA-12). In one transaction the pass is turned off, every
-         *     live phone of it is revoked (`pass_revoked`) and its pairing codes
-         *     are deleted. A pass that is already off answers `204` again. A new
-         *     link (`POST .../link`) turns it on. Requires `scanner_pass.manage`.
-         *     Audited as `v1.scanner_pass.revoke` with the revoked device ids.
+         * @description Spec 69 A.6 (MA-12), B.1. In one transaction the pass is turned off
+         *     and its pairing codes are deleted. Its phones are NOT revoked: they
+         *     stay in "upload only" for 24 hours to upload the scans they kept
+         *     offline, then they are revoked (`pass_revoked`). A lost phone is
+         *     revoked at once with `DELETE .../scanner/devices/{device_id}`. A
+         *     pass that is already off answers `204` again. A new link
+         *     (`POST .../link`) turns it on. Requires `scanner_pass.manage`.
+         *     Audited as `v1.scanner_pass.revoke`.
          */
         delete: operations["revokeScannerPass"];
         options?: never;
@@ -8556,8 +8570,14 @@ export interface paths {
          * Change a controller pass
          * @description Spec 69 A.6 (MA-12). Changes the name, the window, the number of
          *     phones or the dates (the list replaces the old dates as a whole) of a
-         *     pass that is on. Requires `scanner_pass.manage`. Audited as
-         *     `v1.scanner_pass.update`.
+         *     pass. A pass that is turned off can be changed too, and it stays off:
+         *     only a new link (`POST .../link`) turns it on. A `valid_until` that
+         *     moves an ended window past now opens the pass again: its phones still
+         *     inside the 24 hours of "upload only" work in full again, the phones
+         *     past it are revoked (`pass_ended`) in the same transaction, each
+         *     audited as `v1.scanner_app.device_revoke`. A change that does not
+         *     open the pass again revokes no phone. Requires
+         *     `scanner_pass.manage`. Audited as `v1.scanner_pass.update`.
          */
         patch: operations["updateScannerPass"];
         trace?: never;
@@ -8575,7 +8595,10 @@ export interface paths {
          * A new pairing link of a controller pass
          * @description Spec 69 A.6 (MA-12). The earlier codes of the pass stop working (phones
          *     already paired keep working). A pass that was turned off is turned on
-         *     again. A standard pass whose window is over is refused (`422
+         *     again: its phones still inside the 24 hours of "upload only" work in
+         *     full again, the phones past it are revoked (`pass_ended`) in the same
+         *     transaction, each audited as `v1.scanner_app.device_revoke`. A
+         *     standard pass whose window is over is refused (`422
          *     scanner_pass.window_ended`): move `valid_until` first. No body.
          *     Requires `scanner_pass.manage`. Audited as `v1.scanner_pass.link`.
          */
@@ -35303,10 +35326,32 @@ export interface components {
             valid_from: string | null;
             /**
              * Format: date-time
-             * @description End of the time window of a standard pass, in UTC; the device
-             *     stops working at this time. JSON `null` for a demo pass.
+             * @description End of the time window of a standard pass, in UTC; at this time
+             *     the pass closes and the device goes to "upload only". JSON
+             *     `null` for a demo pass.
              */
             valid_until: string | null;
+            /**
+             * @description `active` while the pass is open; `closed` once it is turned off
+             *     or its window ended. The device of a closed pass is in "upload
+             *     only" until `upload_until`: it stops scanning, uploads the scans
+             *     it kept offline and may refresh its tokens. Other scanner-app
+             *     routes answer it `403 scanner_app.pass_closed`.
+             */
+            state: string;
+            /**
+             * Format: date-time
+             * @description When the pass closed, in UTC: the time it was turned off, or
+             *     `valid_until` when the window ended first. Null while it is
+             *     active.
+             */
+            closed_at: string | null;
+            /**
+             * Format: date-time
+             * @description End of "upload only", in UTC: `closed_at` plus 24 hours. After
+             *     it the device is revoked (`401`). Null while the pass is active.
+             */
+            upload_until: string | null;
             /** @description The dates that the pass may check, in date order. */
             sessions: components["schemas"]["ScannerAppPassSession"][];
         };
@@ -35570,6 +35615,24 @@ export interface components {
              * @description When the pass was turned off, in UTC; null while it is on.
              */
             revoked_at: string | null;
+            /**
+             * @description `active` while the pass is open; `closed` once it is turned off
+             *     or its window ended. The phones of a closed pass only upload the
+             *     scans they kept offline until `upload_until`.
+             */
+            state: string;
+            /**
+             * Format: date-time
+             * @description When the pass closed, in UTC: `revoked_at`, or `valid_until` when
+             *     the window ended first. Null while it is active.
+             */
+            closed_at: string | null;
+            /**
+             * Format: date-time
+             * @description End of "upload only" for the phones of a closed pass, in UTC:
+             *     `closed_at` plus 24 hours. Null while the pass is active.
+             */
+            upload_until: string | null;
             /** @description The live dates of the pass in the organization. */
             sessions: components["schemas"]["ScannerAppPassSession"][];
             /** @description The live devices of the pass, oldest first. */
@@ -72682,8 +72745,8 @@ export interface operations {
             };
             /**
              * @description `scanner_app.device_revoked`, the one refusal: the device is
-             *     revoked, the pass is turned off or ended, the person has no
-             *     membership with `scan.perform`, or the token is unknown. The app
+             *     revoked, the pass closed more than 24 hours ago, the person has
+             *     no membership with `scan.perform`, or the token is unknown. The app
              *     deletes the tokens of this organization and shows the pairing
              *     screen.
              */
@@ -73244,7 +73307,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The pass is off and its phones are revoked. */
+            /** @description The pass is off; its phones are in "upload only" for 24 hours. */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -73363,15 +73426,6 @@ export interface operations {
             };
             /** @description `scanner_pass.not_found`. */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description `scanner_pass.revoked`: the pass is turned off; a new link turns it on. */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
