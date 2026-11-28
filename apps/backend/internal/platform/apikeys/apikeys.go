@@ -64,7 +64,11 @@ const randomAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123
 //
 // onboarding.* works the organizer applications of the whole platform
 // (approve, reject, purge, settings): a person's decision, never a key's.
-var ForbiddenScopePrefixes = []string{"platform.", "admin.", "network.", "superadmin.", "scaffold.", "onboarding."}
+//
+// scan.* (scan.perform, scan.read; migration 0227, spec 69) is the door
+// control of the scanner app: a person's or a controller pass's device
+// right, never a key's. The prefix does not catch scan_event.*.
+var ForbiddenScopePrefixes = []string{"platform.", "admin.", "network.", "superadmin.", "scaffold.", "onboarding.", "scan."}
 
 // ForbiddenScopeExact are exact permission codes that no API key may carry:
 // the key-management permission itself and the platform-level permissions
@@ -92,6 +96,9 @@ var ForbiddenScopeExact = map[string]bool{
 	// venue_plan_intake.curate works the hall plan intakes of every
 	// organization (migration 0216, spec 64): platform superadmin only.
 	"venue_plan_intake.curate": true,
+	// scanner_pass.manage creates controller passes and scanner devices
+	// (migration 0227, spec 69): a person's decision, never a key's.
+	"scanner_pass.manage": true,
 }
 
 // IsForbiddenScope reports whether scope may never be carried by an API key.

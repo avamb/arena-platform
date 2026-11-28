@@ -13,6 +13,7 @@ import (
 const (
 	AgentFeedTokenAuthScopes = "agentFeedTokenAuth.Scopes"
 	BearerAuthScopes         = "bearerAuth.Scopes"
+	ScannerDeviceAuthScopes  = "scannerDeviceAuth.Scopes"
 )
 
 // Defines values for AdminAddMemberRequestRole.
@@ -19128,6 +19129,93 @@ type SalesLinkUpdateRequest struct {
 
 	// Utm The whole new set of utm labels. `{}` or null removes them.
 	Utm *map[string]string `json:"utm"`
+}
+
+// ScannerAppDevice The scanner device that made the request.
+type ScannerAppDevice struct {
+	// Id Id of the device (scanner_devices.id). It is never a user id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Label Name of the device given at pairing, for example "Gate 1". Can be empty.
+	Label string `json:"label"`
+
+	// Platform Platform of the device, one of `ios`, `android` or `other`.
+	Platform string `json:"platform"`
+}
+
+// ScannerAppMeResponse Body of `GET /v1/scanner-app/me`, what the authenticated device is.
+type ScannerAppMeResponse struct {
+	// Device The device that made the request.
+	Device ScannerAppDevice `json:"device"`
+
+	// Kind Kind of the device: `organizer` (paired by a person of the
+	// organization) or `pass` (paired with a controller pass).
+	Kind string `json:"kind"`
+
+	// Organization The organization of the device.
+	Organization ScannerAppOrganization `json:"organization"`
+
+	// Pass The controller pass of a pass device. Absent for an organizer device.
+	Pass *ScannerAppPass `json:"pass,omitempty"`
+
+	// Permissions The fixed permission list of every scanner device
+	// (`scan.perform`, `scan.read`). It never depends on the roles of
+	// a person.
+	Permissions []string `json:"permissions"`
+}
+
+// ScannerAppOrganization The organization of the device, taken from the device row and never from the request.
+type ScannerAppOrganization struct {
+	// Id Id of the organization.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name of the organization.
+	Name string `json:"name"`
+}
+
+// ScannerAppPass The controller pass of a pass device.
+type ScannerAppPass struct {
+	// Id Id of the controller pass.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Kind of the pass: `standard` (works inside its time window) or
+	// `demo` (no time window, for a review of the app).
+	Kind string `json:"kind"`
+
+	// Label Name of the pass given by the organizer.
+	Label string `json:"label"`
+
+	// Sessions The dates that the pass may check, in date order.
+	Sessions []ScannerAppPassSession `json:"sessions"`
+
+	// ValidFrom Start of the time window of a standard pass, in UTC. Null for a
+	// demo pass.
+	ValidFrom *time.Time `json:"valid_from"`
+
+	// ValidUntil End of the time window of a standard pass, in UTC; the device
+	// stops working at this time. JSON `null` for a demo pass.
+	ValidUntil *time.Time `json:"valid_until"`
+}
+
+// ScannerAppPassSession One date that the controller pass may check.
+type ScannerAppPassSession struct {
+	// AllTiers `true`: the pass may check every category of the date, and
+	// `tier_ids` is empty. `false`: the pass may check ONLY the
+	// categories in `tier_ids`; when `tier_ids` is empty (its categories
+	// were deleted) the pass checks nothing on this date. A restricted
+	// date never becomes "every category".
+	AllTiers bool `json:"all_tiers"`
+
+	// EventId Id of the event of the date.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// SessionId Id of the date (session). Always a date of the device's organization.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// TierIds Ids of the price categories of the date that the pass may check
+	// when `all_tiers` is `false`. Always an empty array when
+	// `all_tiers` is `true`.
+	TierIds []openapi_types.UUID `json:"tier_ids"`
 }
 
 // ScannerScanBatchRequest POST body for `POST /v1/scanner/scan-events`. Carries one or

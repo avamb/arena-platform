@@ -447,6 +447,7 @@ var flatRouteFamilies = []flatFamily{
 	// the platform-only routes above.
 	{"GET", "/v1/barcodes/authorities", flatNoOrgData, "barcode.read; the platform-wide authority list (type and label), no organization data"},
 	{"POST", "/v1/scanner/scan-events", flatPublic, "agent_feed_tokens bearer in Authorization; every stored scan_events row carries the token's organization"},
+	{"GET", "/v1/scanner-app/me", flatOwnAccount, "scanner device token only (deviceAuthMiddleware, no JWT, no API key); answers the device's own row, its organization from scanner_devices.org_id and a pass's dates re-joined to that organization (TestScannerAppMA10_)"},
 }
 
 var flatParamName = regexp.MustCompile(`\{[^}/]*\}`)

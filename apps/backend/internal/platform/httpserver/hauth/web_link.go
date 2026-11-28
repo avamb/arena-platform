@@ -237,7 +237,8 @@ func (h *Handler) RevokeWebSessions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := logging.FromContext(ctx)
 	actor, ok := auth.ActorFromContext(ctx)
-	if !ok || !actor.IsAuthenticated() || actor.IsService() {
+	// Only a user has web sessions: never an API key or a door-scanner device.
+	if !ok || !actor.IsAuthenticated() || actor.IsService() || actor.IsDevice() {
 		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.unauthenticated", "authentication required", r))
 		return
 	}

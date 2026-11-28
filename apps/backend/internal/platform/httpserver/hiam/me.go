@@ -231,6 +231,12 @@ func (h *Handler) HandleMe(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.unauthenticated", "authentication required", r))
 		return
 	}
+	// A door-scanner device is not a user: its ID is a device id and must
+	// never be looked up as a user's roles or memberships.
+	if actor.IsDevice() {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope("permissions.denied", "You do not have permission to perform this action.", r))
+		return
+	}
 
 	userID, err := uuid.Parse(actor.ID)
 	if err != nil {

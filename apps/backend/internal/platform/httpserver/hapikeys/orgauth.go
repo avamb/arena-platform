@@ -24,8 +24,9 @@ func actorIsMemberOfOrg(ctx context.Context, q *gen.Queries, orgID uuid.UUID) (b
 	// reach is exactly api_keys.org_id. api_key.manage is a forbidden exact
 	// scope (apikeys.ForbiddenScopeExact) so a service actor can never
 	// legitimately pass this check, but the generic decision still applies
-	// here for consistency with every other org-scoped handler package.
-	if isService, allowed := auth.ServiceActorInOrg(ctx, orgID.String()); isService {
+	// here for consistency with every other org-scoped handler package. A
+	// door-scanner device is refused for every organization, its own included.
+	if notUser, allowed := auth.ServiceActorInOrg(ctx, orgID.String()); notUser {
 		return allowed, nil
 	}
 	actor, ok := auth.ActorFromContext(ctx)
@@ -60,7 +61,9 @@ func (h *Handler) requireOrgMembership(w http.ResponseWriter, r *http.Request, o
 		}
 		return true
 	}
-	if isService, allowed := httputil.ServiceActorDecision(w, r, orgID); isService {
+	// An API key reaches only its own organization; a door-scanner device is
+	// refused (403) for every organization, its own included.
+	if notUser, allowed := httputil.ServiceActorDecision(w, r, orgID); notUser {
 		return allowed
 	}
 	if h.membershipQueries == nil {

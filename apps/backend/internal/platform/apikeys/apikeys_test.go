@@ -101,6 +101,10 @@ func TestValidateScopes(t *testing.T) {
 		{"venue-plan-intake-curate", []string{"seating_plan.read", "venue_plan_intake.curate"}, apikeys.ErrForbiddenScope},
 		{"onboarding-review", []string{"event.read", "onboarding.review"}, apikeys.ErrForbiddenScope},
 		{"onboarding-settings", []string{"onboarding.settings"}, apikeys.ErrForbiddenScope},
+		{"scanner-pass-manage", []string{"event.read", "scanner_pass.manage"}, apikeys.ErrForbiddenScope},
+		{"scan-perform", []string{"scan.perform"}, apikeys.ErrForbiddenScope},
+		{"scan-read", []string{"event.read", "scan.read"}, apikeys.ErrForbiddenScope},
+		{"scan-event-stays-allowed", []string{"scan_event.read", "scan_event.write"}, nil},
 		{"ok-set", []string{
 			"event.create", "event.read", "event.update", "event.publish",
 			"session.create", "session.read", "session.update", "tier.create",

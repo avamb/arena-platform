@@ -22,8 +22,9 @@ func actorIsMemberOfOrg(ctx context.Context, q *gen.Queries, orgID uuid.UUID) (b
 	// Organization API keys (spec §13.1) hold no org_memberships row — their
 	// reach is exactly api_keys.org_id. The lampyris-ops site plugin drives
 	// this import under such a key (spec §13.4), so the service-actor branch
-	// is the PRIMARY production path here, not an edge case.
-	if isService, allowed := auth.ServiceActorInOrg(ctx, orgID.String()); isService {
+	// is the PRIMARY production path here, not an edge case. A door-scanner
+	// device is refused for every organization, its own included.
+	if notUser, allowed := auth.ServiceActorInOrg(ctx, orgID.String()); notUser {
 		return allowed, nil
 	}
 	actor, ok := auth.ActorFromContext(ctx)
@@ -58,7 +59,9 @@ func (h *Handler) requireOrgMembership(w http.ResponseWriter, r *http.Request, o
 		}
 		return true
 	}
-	if isService, allowed := httputil.ServiceActorDecision(w, r, orgID); isService {
+	// An API key reaches only its own organization; a door-scanner device is
+	// refused (403) for every organization, its own included.
+	if notUser, allowed := httputil.ServiceActorDecision(w, r, orgID); notUser {
 		return allowed
 	}
 	if h.membershipQueries == nil {

@@ -194,6 +194,15 @@ func (c *DBChecker) EffectiveInOrg(ctx context.Context, actor auth.Actor, orgID 
 		perms := append([]string(nil), actor.Permissions...)
 		return Effective{Roles: []string{}, Permissions: sortedUnique(perms)}, nil
 	}
+	// A door-scanner device has no roles; inside its own organization its
+	// permissions are the fixed device list (never the actor's own field,
+	// never a user's roles), anywhere else nothing.
+	if actor.IsDevice() {
+		if actor.OrgID != "" && actor.OrgID == orgID.String() {
+			return Effective{Roles: []string{}, Permissions: sortedUnique(auth.DevicePermissions())}, nil
+		}
+		return Effective{Roles: []string{}, Permissions: []string{}}, nil
+	}
 	roles := append([]string(nil), actor.Roles...)
 	if c.memberships != nil && actor.ID != "" {
 		uid, err := uuid.Parse(actor.ID)

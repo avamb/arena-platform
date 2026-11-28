@@ -218,8 +218,8 @@ func New(opts Options) *Server {
 		r.Use(i18n.LocaleMiddleware(opts.Bundle, defaultLocale, supported))
 	}
 
-	r.Use(clientChannelMiddleware) // X-Client-Channel -> audit metadata.via
-
+	r.Use(clientChannelMiddleware)            // X-Client-Channel -> audit metadata.via
+	r.Use(refuseDeviceTokenOutsideScannerApp) // a device token is a 404 outside /v1/scanner-app/
 	// Lazily construct PG-backed audit + idempotency + outbox stores when
 	// the caller didn't supply concrete implementations.
 	auditWriter := opts.Audit

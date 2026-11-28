@@ -20,8 +20,9 @@ import (
 // actors; (false, err) only on infrastructure failure.
 func actorIsMemberOfOrg(ctx context.Context, q *gen.Queries, orgID uuid.UUID) (bool, error) {
 	// Organization API keys (spec §13.1) hold no org_memberships row: their
-	// reach is exactly api_keys.org_id. Decide here and never touch q.
-	if isService, allowed := auth.ServiceActorInOrg(ctx, orgID.String()); isService {
+	// reach is exactly api_keys.org_id. A door-scanner device is refused for
+	// every organization, its own included. Decide here and never touch q.
+	if notUser, allowed := auth.ServiceActorInOrg(ctx, orgID.String()); notUser {
 		return allowed, nil
 	}
 	actor, ok := auth.ActorFromContext(ctx)
@@ -54,7 +55,9 @@ func (h *Handler) requireOrgMembership(w http.ResponseWriter, r *http.Request, o
 		}
 		return true
 	}
-	if isService, allowed := httputil.ServiceActorDecision(w, r, orgID); isService {
+	// An API key reaches only its own organization; a door-scanner device is
+	// refused (403) for every organization, its own included.
+	if notUser, allowed := httputil.ServiceActorDecision(w, r, orgID); notUser {
 		return allowed
 	}
 	if h.membershipQueries == nil {

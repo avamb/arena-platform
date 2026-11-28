@@ -8286,6 +8286,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/scanner-app/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Scanner app — what the authenticated device is
+         * @description The door-control app (spec 69, MA-10) asks what its device is: the
+         *     device, its organization, the kind of the device, the fixed
+         *     permission list and, for a device paired with a controller pass, the
+         *     pass with its time window and its dates. Everything comes from the
+         *     device row of the presented token; the request has no parameters.
+         *
+         *     Authentication: ONLY a scanner device token (`scannerDeviceAuth`).
+         *     A JWT, an organization API key or no header is `401`. A revoked
+         *     device, an expired access token, a revoked pass, a pass whose window
+         *     ended, a person who lost the right to scan in the organization and an
+         *     archived organization are all the same `401 auth.invalid_token`.
+         *     A device token sent to any route outside `/v1/scanner-app/` is
+         *     answered `404 http.not_found`.
+         */
+        get: operations["getScannerAppMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/macs/scan-events": {
         parameters: {
             query?: never;
@@ -34832,6 +34864,104 @@ export interface components {
         ScannerScanBatchResponse: {
             /** @description One entry per request `scans` entry, in the same order. */
             results: components["schemas"]["ScannerScanResult"][];
+        };
+        /** @description The scanner device that made the request. */
+        ScannerAppDevice: {
+            /**
+             * Format: uuid
+             * @description Id of the device (scanner_devices.id). It is never a user id.
+             */
+            id: string;
+            /** @description Name of the device given at pairing, for example "Gate 1". Can be empty. */
+            label: string;
+            /** @description Platform of the device, one of `ios`, `android` or `other`. */
+            platform: string;
+        };
+        /** @description The organization of the device, taken from the device row and never from the request. */
+        ScannerAppOrganization: {
+            /**
+             * Format: uuid
+             * @description Id of the organization.
+             */
+            id: string;
+            /** @description Name of the organization. */
+            name: string;
+        };
+        /** @description One date that the controller pass may check. */
+        ScannerAppPassSession: {
+            /**
+             * Format: uuid
+             * @description Id of the date (session). Always a date of the device's organization.
+             */
+            session_id: string;
+            /**
+             * Format: uuid
+             * @description Id of the event of the date.
+             */
+            event_id: string;
+            /**
+             * @description `true`: the pass may check every category of the date, and
+             *     `tier_ids` is empty. `false`: the pass may check ONLY the
+             *     categories in `tier_ids`; when `tier_ids` is empty (its categories
+             *     were deleted) the pass checks nothing on this date. A restricted
+             *     date never becomes "every category".
+             */
+            all_tiers: boolean;
+            /**
+             * @description Ids of the price categories of the date that the pass may check
+             *     when `all_tiers` is `false`. Always an empty array when
+             *     `all_tiers` is `true`.
+             */
+            tier_ids: string[];
+        };
+        /** @description The controller pass of a pass device. */
+        ScannerAppPass: {
+            /**
+             * Format: uuid
+             * @description Id of the controller pass.
+             */
+            id: string;
+            /** @description Name of the pass given by the organizer. */
+            label: string;
+            /**
+             * @description Kind of the pass: `standard` (works inside its time window) or
+             *     `demo` (no time window, for a review of the app).
+             */
+            kind: string;
+            /**
+             * Format: date-time
+             * @description Start of the time window of a standard pass, in UTC. Null for a
+             *     demo pass.
+             */
+            valid_from: string | null;
+            /**
+             * Format: date-time
+             * @description End of the time window of a standard pass, in UTC; the device
+             *     stops working at this time. JSON `null` for a demo pass.
+             */
+            valid_until: string | null;
+            /** @description The dates that the pass may check, in date order. */
+            sessions: components["schemas"]["ScannerAppPassSession"][];
+        };
+        /** @description Body of `GET /v1/scanner-app/me`, what the authenticated device is. */
+        ScannerAppMeResponse: {
+            /** @description The device that made the request. */
+            device: components["schemas"]["ScannerAppDevice"];
+            /** @description The organization of the device. */
+            organization: components["schemas"]["ScannerAppOrganization"];
+            /**
+             * @description Kind of the device: `organizer` (paired by a person of the
+             *     organization) or `pass` (paired with a controller pass).
+             */
+            kind: string;
+            /**
+             * @description The fixed permission list of every scanner device
+             *     (`scan.perform`, `scan.read`). It never depends on the roles of
+             *     a person.
+             */
+            permissions: string[];
+            /** @description The controller pass of a pass device. Absent for an organizer device. */
+            pass?: components["schemas"]["ScannerAppPass"];
         };
         /**
          * @description One scan as MACS reports it. The ticket is named by
@@ -71725,6 +71855,72 @@ export interface operations {
              *     route is always mounted so the openapi-drift coverage
              *     check can see it; the handler self-gates on the
              *     missing dependency.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getScannerAppMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The device, its organization and, for a pass device, its pass. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScannerAppMeResponse"];
+                };
+            };
+            /**
+             * @description No device token (`auth.missing_token`), or a token that is not a
+             *     valid device token (`auth.invalid_token`). The response carries
+             *     `WWW-Authenticate: Bearer realm="arena"`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The permission gate refused the device: its actor does not hold
+             *     `scan.read` (`permissions.denied`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The device could not be read (`auth.device_check_failed`, `scanner_app.read_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The database is not wired (`dependency.database_unavailable`). The
+             *     route is always mounted so the OpenAPI drift check can see it.
              */
             503: {
                 headers: {

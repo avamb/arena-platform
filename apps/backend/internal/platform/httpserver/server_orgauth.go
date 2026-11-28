@@ -27,8 +27,10 @@ import (
 // sub-packages but operates against the *Server's membershipQueries field.
 func actorIsMemberOfOrgServer(ctx context.Context, q *gen.Queries, orgID uuid.UUID) (bool, error) {
 	// Organization API keys (spec §13.1) hold no org_memberships row: their
-	// reach is exactly api_keys.org_id. Decide here and never touch q.
-	if isService, allowed := auth.ServiceActorInOrg(ctx, orgID.String()); isService {
+	// reach is exactly api_keys.org_id. Door-scanner devices (spec 69) are
+	// refused for every organization, their own included: their ID is a
+	// device id, never a user id. Decide here and never touch q.
+	if notUser, allowed := auth.ServiceActorInOrg(ctx, orgID.String()); notUser {
 		return allowed, nil
 	}
 	actor, ok := auth.ActorFromContext(ctx)
@@ -77,7 +79,9 @@ func (s *Server) enforceMembershipInOrg(w http.ResponseWriter, r *http.Request, 
 		}
 		return true
 	}
-	if isService, allowed := httputil.ServiceActorDecision(w, r, orgID); isService {
+	// An API key reaches only its own organization; a door-scanner device is
+	// refused (403) for every organization, its own included.
+	if notUser, allowed := httputil.ServiceActorDecision(w, r, orgID); notUser {
 		return allowed
 	}
 	if s.membershipQueries == nil {
@@ -154,7 +158,9 @@ func (s *Server) rowOrgAccess(w http.ResponseWriter, r *http.Request, orgID uuid
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(notFoundCode, notFoundMessage, r))
 		return false
 	}
-	if isService, allowed := auth.ServiceActorInOrg(ctx, orgID.String()); isService {
+	// An API key reaches only its own organization; a door-scanner device is
+	// refused with the route's 404 for every organization, its own included.
+	if notUser, allowed := auth.ServiceActorInOrg(ctx, orgID.String()); notUser {
 		if !allowed {
 			return notFound()
 		}

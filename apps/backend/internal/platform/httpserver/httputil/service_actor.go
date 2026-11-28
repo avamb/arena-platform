@@ -21,20 +21,22 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 )
 
-// ServiceActorDecision resolves an org-membership check for an API-key
-// request.
+// ServiceActorDecision resolves an org-membership check for a request that is
+// not made by a user: an organization API key or a door-scanner device.
 //
-// isService is true when the request is authenticated with an organization API
-// key; the caller must then return `allowed` immediately and skip its
-// membership lookup entirely. allowed is true only when the key's org_id
-// equals orgID; when it is false this function has already written the
-// standard 403 envelope, so the caller only has to stop.
+// notUser is true for both; the caller must then return `allowed`
+// immediately and skip its membership lookup entirely (the actor's ID is not
+// a user id). allowed is true only for an API key whose org_id equals orgID;
+// a device is ALWAYS refused here, its own organization included (the scanner
+// routes decide a device with auth.DeviceActorInOrg). When allowed is false
+// this function has already written the standard 403 envelope, so the
+// caller only has to stop.
 //
 // For a user (or anonymous) request it returns (false, false) and writes
 // nothing — the caller proceeds with its usual membership lookup.
-func ServiceActorDecision(w http.ResponseWriter, r *http.Request, orgID uuid.UUID) (isService, allowed bool) {
-	isService, allowed = auth.ServiceActorInOrg(r.Context(), orgID.String())
-	if !isService {
+func ServiceActorDecision(w http.ResponseWriter, r *http.Request, orgID uuid.UUID) (notUser, allowed bool) {
+	notUser, allowed = auth.ServiceActorInOrg(r.Context(), orgID.String())
+	if !notUser {
 		return false, false
 	}
 	if !allowed {
