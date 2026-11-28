@@ -81,6 +81,7 @@ func (s *Server) mountV1Routes() {
 		s.mountRefundRoutes(r)
 		s.mountBarcodeRoutes(r)
 		s.mountScannerCallbackRoutes(r)
+		s.mountScannerAppRoutes(r)
 		s.mountReportRoutes(r)
 		s.mountPublicFeedRoutes(r)
 		s.mountBillingRoutes(r)
@@ -171,6 +172,11 @@ func (s *Server) markSuperadminOrgAccess(next http.Handler) http.Handler {
 // (AllowAllChecker/DenyAllChecker, used by simpler test wiring) fall back to
 // the historical JWT-claim-only check.
 func (s *Server) superadminOrgBypass(ctx context.Context, actor auth.Actor) bool {
+	// A door-scanner device never gets the superadmin bypass, whatever roles
+	// a mis-built device actor carries and whichever checker is wired.
+	if actor.IsDevice() {
+		return false
+	}
 	if bypasser, ok := s.perms.(permissions.SuperadminBypassChecker); ok {
 		return bypasser.SuperadminOrgBypass(ctx, actor)
 	}

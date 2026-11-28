@@ -68,6 +68,13 @@ func (s *Server) authMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		jwtChain := jwt(next)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// A scanner device token is never a user or an API key: the
+			// same 404 as the root refusal, before any credential check
+			// (spec 69, MA-10, mount_scanner_app.go).
+			if _, isDevice := deviceTokenFromHeader(r); isDevice {
+				handleNotFound(w, r)
+				return
+			}
 			raw, isServiceKey := serviceKeyFromHeader(r)
 			if !isServiceKey {
 				jwtChain.ServeHTTP(w, r)

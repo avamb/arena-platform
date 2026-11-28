@@ -99,8 +99,9 @@ func (a *planReadAccess) canRead(p gen.SeatingPlanRow) (bool, error) {
 // and MUST surface as a 5xx, never as an authorization decision.
 func actorIsMemberOfOrg(ctx context.Context, q *gen.Queries, orgID uuid.UUID) (bool, error) {
 	// Organization API keys (spec §13.1) hold no org_memberships row: their
-	// reach is exactly api_keys.org_id. Decide here and never touch q.
-	if isService, allowed := auth.ServiceActorInOrg(ctx, orgID.String()); isService {
+	// reach is exactly api_keys.org_id. A door-scanner device is refused for
+	// every organization, its own included. Decide here and never touch q.
+	if notUser, allowed := auth.ServiceActorInOrg(ctx, orgID.String()); notUser {
 		return allowed, nil
 	}
 	actor, ok := auth.ActorFromContext(ctx)

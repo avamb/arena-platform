@@ -51,7 +51,8 @@ func (h *Handler) StepUp(w http.ResponseWriter, r *http.Request) {
 	logger := logging.FromContext(ctx)
 
 	actor, ok := auth.ActorFromContext(ctx)
-	if !ok || !actor.IsAuthenticated() || actor.IsService() {
+	// Only a user steps up: an API key or a door-scanner device has no password.
+	if !ok || !actor.IsAuthenticated() || actor.IsService() || actor.IsDevice() {
 		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.unauthenticated", "authentication required", r))
 		return
 	}

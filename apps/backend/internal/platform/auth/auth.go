@@ -63,6 +63,9 @@ const (
 	ActorTypeUser     ActorType = "user"
 	ActorTypeService  ActorType = "service"
 	ActorTypeAnon     ActorType = "anonymous"
+	// ActorTypeDevice is a door-scanner phone (spec 69, MA-10): a fixed
+	// permission list, no roles, never a user (see device_actor.go).
+	ActorTypeDevice ActorType = "device"
 )
 
 // Actor is the authenticated principal attached to a request context.
@@ -237,6 +240,10 @@ var (
 	ErrUnknownAudience  = errors.New("auth: unknown audience")
 	ErrUnsupportedAlg   = errors.New("auth: unsupported jwt algorithm")
 	ErrDisabled         = errors.New("auth: stub provider disabled (set ENABLE_DEV_AUTH=true)")
+	// ErrDeviceActorClaim: a JWT names actor_type "device". A door-scanner
+	// device actor is built only by the device-token middleware (spec 69,
+	// MA-10), never from a JWT; the middleware answers auth.invalid_token.
+	ErrDeviceActorClaim = errors.New("auth: a JWT cannot carry the device actor type")
 )
 
 // -----------------------------------------------------------------------------
@@ -317,6 +324,9 @@ func (p *StubProvider) IssueToken(_ context.Context, req IssueRequest) (string, 
 	}
 	if req.ActorType == "" {
 		req.ActorType = ActorTypeStubUser
+	}
+	if req.ActorType == ActorTypeDevice {
+		return "", time.Time{}, ErrDeviceActorClaim
 	}
 	ttl := req.TTL
 	// Only default the TTL when it is exactly zero (i.e., the caller did not
@@ -438,6 +448,9 @@ func (p *StubProvider) Verify(_ context.Context, token string) (Actor, error) {
 	actorType := ActorType(claims.ActorType)
 	if actorType == "" {
 		actorType = ActorTypeStubUser
+	}
+	if actorType == ActorTypeDevice {
+		return Actor{}, ErrDeviceActorClaim
 	}
 
 	return Actor{
@@ -581,6 +594,9 @@ func (v *JWTVerifier) Verify(_ context.Context, rawToken string) (Actor, error) 
 	actorType := ActorType(claims.ActorType)
 	if actorType == "" {
 		actorType = ActorTypeUser
+	}
+	if actorType == ActorTypeDevice {
+		return Actor{}, ErrDeviceActorClaim
 	}
 
 	var exp, iat time.Time

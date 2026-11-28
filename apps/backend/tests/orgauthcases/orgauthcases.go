@@ -56,10 +56,26 @@ func ServiceCtx(orgID uuid.UUID) context.Context {
 	})
 }
 
+// DeviceID is the scanner_devices id used as a device actor's subject.
+var DeviceID = uuid.MustParse("44444444-4444-4444-8444-444444444444")
+
+// SuperadminUserID stands for a platform superadmin's users.id: a device
+// actor wrongly built with it as ID must still be refused.
+var SuperadminUserID = uuid.MustParse("55555555-5555-4555-8555-555555555555")
+
+// DeviceCtx returns a context carrying a door-scanner device actor bound to
+// orgID (spec 69, MA-10).
+func DeviceCtx(orgID uuid.UUID) context.Context {
+	return auth.WithActor(context.Background(), auth.NewDeviceActor(DeviceID.String(), orgID.String()))
+}
+
 // Cases returns the shared expectation table. Every case is answerable
-// WITHOUT a database: a service actor is resolved from the context alone, and
-// the anonymous case short-circuits before any query, so guards may be called
-// with a nil *gen.Queries.
+// WITHOUT a database: service and device actors are resolved from the context
+// alone, and the anonymous case short-circuits before any query, so guards may
+// be called with a nil *gen.Queries.
+//
+// A device is refused by every legacy guard for every organization, its own
+// included: the scanner routes have their own organization and pass checks.
 func Cases() []Case {
 	return []Case{
 		{
@@ -86,6 +102,30 @@ func Cases() []Case {
 		{
 			Name:       "request with no actor is not a member",
 			Ctx:        context.Background(),
+			OrgID:      KeyOrgID,
+			WantMember: false,
+		},
+		{
+			Name:       "device is refused its own org",
+			Ctx:        DeviceCtx(KeyOrgID),
+			OrgID:      KeyOrgID,
+			WantMember: false,
+		},
+		{
+			Name:       "device is refused another org",
+			Ctx:        DeviceCtx(KeyOrgID),
+			OrgID:      OtherOrgID,
+			WantMember: false,
+		},
+		{
+			Name: "device with a superadmin's roles is refused",
+			Ctx: auth.WithActor(context.Background(), auth.Actor{
+				ID:          SuperadminUserID.String(),
+				Type:        auth.ActorTypeDevice,
+				Roles:       []string{"platform_superadmin", "org_admin"},
+				Permissions: []string{"scan.perform", "scan.read", "superadmin.read", "event.read"},
+				OrgID:       KeyOrgID.String(),
+			}),
 			OrgID:      KeyOrgID,
 			WantMember: false,
 		},

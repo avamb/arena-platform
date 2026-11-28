@@ -48,7 +48,9 @@ func (r *Reader) Can(orgID uuid.UUID) (bool, error) {
 	if r.superadmin {
 		return true, nil
 	}
-	if isService, allowed := auth.ServiceActorInOrg(r.ctx, orgID.String()); isService {
+	// An API key reads only its own organization; a door-scanner device reads
+	// none, its own included (its ID is not a user id).
+	if notUser, allowed := auth.ServiceActorInOrg(r.ctx, orgID.String()); notUser {
 		return allowed, nil
 	}
 	if !r.loaded {
@@ -80,7 +82,8 @@ func (r *Reader) Can(orgID uuid.UUID) (bool, error) {
 func (r *Reader) load() (map[uuid.UUID]bool, error) {
 	out := map[uuid.UUID]bool{}
 	actor, ok := auth.ActorFromContext(r.ctx)
-	if !ok || actor.ID == "" || r.q == nil {
+	// A device or an API key is never a member: its ID is not a user id.
+	if !ok || actor.ID == "" || r.q == nil || actor.IsDevice() || actor.IsService() {
 		return out, nil
 	}
 	userID, err := uuid.Parse(actor.ID)

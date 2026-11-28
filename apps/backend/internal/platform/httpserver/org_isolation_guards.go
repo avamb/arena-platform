@@ -32,7 +32,10 @@ func (s *Server) callerActsFor(r *http.Request, orgID uuid.UUID) (bool, error) {
 	if auth.HasSuperadminOrgAccess(ctx) {
 		return true, nil
 	}
-	if isService, allowed := auth.ServiceActorInOrg(ctx, orgID.String()); isService {
+	// An API key acts only for its own organization; a door-scanner device
+	// acts for none, its own included (spec 69: the scanner surface has its
+	// own checks).
+	if notUser, allowed := auth.ServiceActorInOrg(ctx, orgID.String()); notUser {
 		return allowed, nil
 	}
 	if s.membershipQueries == nil {

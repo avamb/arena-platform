@@ -37,18 +37,29 @@ func (a Actor) HasPermission(code string) bool {
 //
 // It returns:
 //
-//	isService — the request is authenticated with an API key, so the caller
-//	            MUST NOT fall through to membership lookup (a service actor
-//	            has no org_memberships row and would otherwise be denied, or
-//	            worse, allowed by a permissive nil-store guard);
-//	allowed   — the key's org_id equals orgID.
+//	notUser — the caller is not a user (an API key or a door-scanner
+//	          device), so the guard MUST NOT fall through to the membership
+//	          lookup (such an actor has no org_memberships row and its ID is
+//	          not a user id; falling through would deny it, or worse, allow
+//	          it through a permissive nil-store guard);
+//	allowed — an API key: its org_id equals orgID. A device: ALWAYS false,
+//	          for every orgID including its own — the legacy guards are
+//	          written for users and API keys and a device must never become
+//	          a "member" through them (the scanner routes use
+//	          DeviceActorInOrg plus their own scope checks).
 //
 // orgID is taken as a string so this package stays free of a uuid dependency;
 // callers pass orgID.String(). Comparison is exact — an empty actor OrgID
 // never matches.
-func ServiceActorInOrg(ctx context.Context, orgID string) (isService, allowed bool) {
+func ServiceActorInOrg(ctx context.Context, orgID string) (notUser, allowed bool) {
 	actor, ok := ActorFromContext(ctx)
-	if !ok || !actor.IsService() {
+	if !ok {
+		return false, false
+	}
+	if actor.IsDevice() {
+		return true, false
+	}
+	if !actor.IsService() {
 		return false, false
 	}
 	return true, actor.OrgID != "" && actor.OrgID == orgID

@@ -139,6 +139,22 @@ func (c *DBChecker) Check(ctx context.Context, action, resource string) error {
 		return &PermissionDeniedError{Action: action, Resource: resource}
 	}
 
+	// Door-scanner devices (spec 69, MA-10) are decided from the HARD-CODED
+	// device list only: a permission must be in that list AND on the actor.
+	// Roles, memberships and the actor's ID (a device id, never a user id)
+	// are never consulted, so a mis-built device carrying extra permissions
+	// or a superadmin's roles still reaches nothing beyond the list. A request
+	// scoped to another organization than the device's own is denied too.
+	if actor.IsDevice() {
+		if orgID, scoped := OrgScopeFromContext(ctx); scoped && (actor.OrgID == "" || actor.OrgID != orgID.String()) {
+			return &PermissionDeniedError{Action: action, Resource: resource}
+		}
+		if auth.IsDevicePermission(action) && actor.HasPermission(action) {
+			return nil
+		}
+		return &PermissionDeniedError{Action: action, Resource: resource}
+	}
+
 	// Build the effective role set: start with JWT roles.
 	roles := make([]string, len(actor.Roles))
 	copy(roles, actor.Roles)
@@ -228,9 +244,11 @@ func (c *DBChecker) resolvePermissions(ctx context.Context, roles []string) (map
 // or they will pay for a second, uncached membership lookup.
 //
 // Service actors (API keys) never receive the bypass: they carry no roles
-// and have no memberships row.
+// and have no memberships row. Door-scanner devices never receive it either,
+// whatever roles a mis-built device actor carries and whatever user its ID
+// happens to equal.
 func (c *DBChecker) SuperadminOrgBypass(ctx context.Context, actor auth.Actor) bool {
-	if actor.IsService() {
+	if actor.IsService() || actor.IsDevice() {
 		return false
 	}
 

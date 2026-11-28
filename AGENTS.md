@@ -229,6 +229,7 @@ Windows host, Docker Desktop, bash allowlist, lint and format tooling, git hygie
 * A python script that writes a file in text mode (o…
 * The admin console's nginx takes its security headers from ONE file included in every location
 * A worktree's node_modules may be a junction to the main checkout's stale deps: measure size and run tests only after npm ci
+* The published port of arena_postgres can accept a connection and drop it (unexpected EOF): use a throwaway postgres container, do not restart the shared one
 
 ### [Venue SVG generator](docs/agents/venue-generator.md)
 
@@ -335,6 +336,7 @@ Org-scoped access, roles and scopes, API keys, memberships, owners, archived org
 * A password-reset or invitation token is spent by O…
 * A refresh token records WHY it was revoked (migrat…
 * /v1/me shows the shop only on memberships whose role holds shop.read
+* A door-scanner phone is its own subject (auth.ActorTypeDevice): fixed permissions, token only under /v1/scanner-app/, legacy org guards refuse it everywhere
 
 ### [Bil24 compatibility gateway](docs/agents/bil24-gateway.md)
 
