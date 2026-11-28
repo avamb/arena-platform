@@ -289,6 +289,16 @@ func (h *Handler) matchArenaSession(ctx context.Context, q *gen.Queries, tx pgx.
 	}
 	m.Ctx = sctx
 
+	// A session that only controls the entrance is never touched by a bundle:
+	// the refusal comes before any category, place or ledger row is written.
+	cur, err := q.GetSessionByID(ctx, m.SessionID, sctx.EventID)
+	if err != nil {
+		return m, fmt.Errorf("read session sales mode: %w", err)
+	}
+	if cur.SalesMode == gen.SessionSalesModeControlOnly {
+		return m, errControlOnlySession()
+	}
+
 	if !m.RefBound && plan.ExternalRef == "" {
 		// Addressed by arenaSessionId without a key: the session keeps the
 		// key it was created under (or stays without one).
@@ -338,6 +348,17 @@ func (h *Handler) resolveArenaEvent(ctx context.Context, q *gen.Queries, tx pgx.
 	eventID, err := h.findArenaEvent(ctx, q, tx, plan, m)
 	if err != nil {
 		return uuid.Nil, err
+	}
+	if eventID != uuid.Nil {
+		// An event that holds a live control_only session only controls the
+		// entrance: a bundle neither fills nor publishes it.
+		control, err := q.ListControlOnlyEventIDs(ctx, []uuid.UUID{eventID})
+		if err != nil {
+			return uuid.Nil, fmt.Errorf("read control-only events: %w", err)
+		}
+		if len(control) > 0 {
+			return uuid.Nil, errControlOnlyEvent()
+		}
 	}
 	if eventID == uuid.Nil {
 		created, err := q.InsertEvent(ctx, plan.OrgID, a.Name(), desc, "draft", "public", nil, richtext.FormatART)

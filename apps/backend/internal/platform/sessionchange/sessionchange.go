@@ -90,8 +90,18 @@ type Session struct {
 // External reports whether a partner box office sells the session.
 func (s Session) External() bool { return s.SalesMode == salesModeExternal }
 
+// NoPlatformBuyers reports whether the session has no buyers on the platform:
+// a partner sells it ("external") or it only controls the entrance
+// ("control_only", migration 0228). Its change is journaled, no letter is queued.
+func (s Session) NoPlatformBuyers() bool {
+	return s.SalesMode == salesModeExternal || s.SalesMode == salesModeControlOnly
+}
+
 // salesModeExternal mirrors gen.SessionSalesModeExternal (sessions.sales_mode).
 const salesModeExternal = "external"
+
+// salesModeControlOnly mirrors gen.SessionSalesModeControlOnly.
+const salesModeControlOnly = "control_only"
 
 const loadSessionSQL = `
 SELECT s.id, s.event_id, e.org_id, s.start_at, s.end_at, s.venue_id,
@@ -400,8 +410,9 @@ func Preview(ctx context.Context, db DB, sess Session, proposed State) (Impact, 
 		return Impact{}, err
 	}
 	imp.Contact = contact
-	if len(imp.Kinds) == 0 || sess.External() {
-		// An external session's buyers bought from the partner: no letter.
+	if len(imp.Kinds) == 0 || sess.NoPlatformBuyers() {
+		// An external session's buyers bought from the partner, a control-only
+		// session has none: no letter.
 		return imp, nil
 	}
 	orders, err := AffectedOrders(ctx, db, sess.ID)
@@ -487,7 +498,7 @@ func Apply(ctx context.Context, tx DB, in Input) (Result, error) {
 	// A session a partner box office sells (migration 0221) has no buyers
 	// on the platform: the change is journaled, no letter is queued.
 	var orders []AffectedOrder
-	if !sess.External() {
+	if !sess.NoPlatformBuyers() {
 		orders, err = AffectedOrders(ctx, tx, sess.ID)
 		if err != nil {
 			return Result{}, err

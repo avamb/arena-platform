@@ -40,6 +40,7 @@ LEFT JOIN sessions s
       AND s.event_id = e.id
       AND s.deleted_at IS NULL
       AND s.status <> 'cancelled'
+      AND s.sales_mode <> 'control_only'
 LEFT JOIN event_promoters epr
        ON epr.event_id = e.id
       AND epr.org_id = o.id

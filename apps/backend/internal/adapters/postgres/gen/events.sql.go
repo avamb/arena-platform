@@ -349,6 +349,43 @@ func (q *Queries) ListEventVenueNames(ctx context.Context, eventIDs []uuid.UUID)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ListPublicEventVenueNames
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listPublicEventVenueNames = `-- name: ListPublicEventVenueNames :many
+SELECT s.event_id,
+       array_agg(DISTINCT v.name ORDER BY v.name) AS venue_names
+FROM   sessions s
+JOIN   venues v ON v.id = s.venue_id
+WHERE  s.event_id = ANY($1::uuid[])
+  AND  s.deleted_at IS NULL
+  AND  s.sales_mode <> 'control_only'
+GROUP BY s.event_id`
+
+// ListPublicEventVenueNames is ListEventVenueNames for buyer-facing readers
+// (feed, widget, hosted page): sessions that are only a door-control copy
+// (sales_mode = 'control_only') are left out. The organizer's lists keep
+// using ListEventVenueNames and show every session.
+func (q *Queries) ListPublicEventVenueNames(ctx context.Context, eventIDs []uuid.UUID) (map[uuid.UUID][]string, error) {
+	rows, err := q.db.Query(ctx, listPublicEventVenueNames, eventIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[uuid.UUID][]string, len(eventIDs))
+	for rows.Next() {
+		var eventID uuid.UUID
+		var names []string
+		if err := rows.Scan(&eventID, &names); err != nil {
+			return nil, err
+		}
+		result[eventID] = names
+	}
+	return result, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // UpdateEvent
 // ─────────────────────────────────────────────────────────────────────────────
 

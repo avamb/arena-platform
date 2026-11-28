@@ -168,7 +168,8 @@ func IsSoldOut(f gen.SessionSalesFactsRow, now time.Time) (sold, manual bool) {
 func (w *Watcher) soldOut(ctx context.Context, now time.Time, silent bool) (int, error) {
 	rows, err := w.pool.Query(ctx, `
 		SELECT s.id FROM sessions s
-		WHERE  s.deleted_at IS NULL AND s.status <> 'cancelled' AND s.end_at > $1`, now)
+		WHERE  s.deleted_at IS NULL AND s.status <> 'cancelled' AND s.end_at > $1
+		  AND  s.sales_mode <> 'control_only'`, now)
 	if err != nil {
 		return 0, err
 	}
@@ -289,6 +290,7 @@ func (w *Watcher) staleSites(ctx context.Context, now time.Time, silent bool) (i
 		SELECT c.id, c.session_id, c.org_id, c.event_id, c.new_state, c.created_at
 		FROM   session_sales_state_changes c
 		JOIN   outbox_events o ON o.id = c.outbox_event_id
+		JOIN   sessions cs ON cs.id = c.session_id AND cs.sales_mode <> 'control_only'
 		WHERE  c.site_alerted_at IS NULL
 		  AND  o.processed_at IS NULL
 		  AND  c.created_at <= $1 AND c.created_at > $2

@@ -343,9 +343,11 @@ func (h *Handler) bindSessionSeatingCore(
 		return nil, bindErr(http.StatusInternalServerError,
 			"seating.bind_failed", "failed to bind seating plan", nil)
 	}
-	if salesMode == gen.SessionSalesModeExternal {
+	// A session the platform does not sell (external, migration 0221, or
+	// control_only, migration 0228) owns no tiers and no seats.
+	if salesMode != "" && salesMode != gen.SessionSalesModePlatform {
 		return nil, bindErr(http.StatusConflict, extsale.CodeSoldExternally,
-			"this session is sold by a partner box office, so it has no tiers or seats here", nil)
+			"tickets for this session are not sold on this platform, so it has no tiers or seats here", nil)
 	}
 
 	// Load the seating plan version + its parent plan so the geometry can

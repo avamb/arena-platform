@@ -183,12 +183,14 @@ type SessionSalesStateTarget struct {
 	OrgID     uuid.UUID
 	Status    string
 	Manual    string
+	// SalesMode is the session's sales_mode (platform, external, control_only).
+	SalesMode string
 }
 
 // FOR NO KEY UPDATE, not FOR UPDATE: a hold inserting a reservation that
 // references the session takes FOR KEY SHARE on it and must not wait.
 const lockSessionForSalesState = `-- name: LockSessionForSalesState :one
-SELECT s.id, s.event_id, e.org_id, s.status, COALESCE(st.state, '')
+SELECT s.id, s.event_id, e.org_id, s.status, COALESCE(st.state, ''), s.sales_mode
 FROM   sessions s
 JOIN   events   e  ON e.id = s.event_id
 LEFT   JOIN session_sales_states st ON st.session_id = s.id
@@ -201,7 +203,7 @@ FOR NO KEY UPDATE OF s`
 func (q *Queries) LockSessionForSalesState(ctx context.Context, sessionID uuid.UUID) (SessionSalesStateTarget, error) {
 	var t SessionSalesStateTarget
 	err := q.db.QueryRow(ctx, lockSessionForSalesState, sessionID).Scan(
-		&t.SessionID, &t.EventID, &t.OrgID, &t.Status, &t.Manual,
+		&t.SessionID, &t.EventID, &t.OrgID, &t.Status, &t.Manual, &t.SalesMode,
 	)
 	return t, err
 }

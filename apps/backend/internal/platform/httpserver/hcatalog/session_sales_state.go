@@ -32,6 +32,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/extsale"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesstate"
@@ -177,6 +178,11 @@ func (h *Handler) HandleSetSessionSalesState(w http.ResponseWriter, r *http.Requ
 	case errors.Is(err, salesstate.ErrCancelled):
 		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 			"session.cancelled", "this session has been cancelled: there are no sales to open or close", r,
+		))
+		return
+	case errors.Is(err, salesstate.ErrControlOnly):
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+			extsale.CodeSalesModeLocked, "this session has no sales on this platform: its sales state cannot be changed", r,
 		))
 		return
 	case err != nil:
@@ -327,7 +333,7 @@ func (h *Handler) loadSessionSalesState(ctx context.Context, q *gen.Queries, org
 	out := sessionSalesStateResponse{
 		SessionID:   sessionID.String(),
 		EventID:     eventID.String(),
-		Effective:   salesstate.Effective(f.Manual, salesstate.FactsFromRow(f), now),
+		Effective:   salesstate.Public(salesstate.Effective(f.Manual, salesstate.FactsFromRow(f), now)),
 		TotalPlaces: int(f.TotalPlaces),
 		FreePlaces:  int(f.FreePlaces),
 		HeldPlaces:  int(f.HeldPlaces),
@@ -437,7 +443,7 @@ func (h *Handler) hydrateSessionSalesStates(ctx context.Context, sessions []Sess
 			continue
 		}
 		if f, ok := facts[id]; ok {
-			sessions[i].SalesState = salesstate.Effective(f.Manual, salesstate.FactsFromRow(f), now)
+			sessions[i].SalesState = salesstate.Public(salesstate.Effective(f.Manual, salesstate.FactsFromRow(f), now))
 			sessions[i].ManualSalesState = f.Manual
 		}
 	}

@@ -37,11 +37,13 @@ FROM sessions s
 JOIN events e ON e.id = s.event_id
 LEFT JOIN venues v ON v.id = s.venue_id
 WHERE e.org_id = $1 AND s.id::text = ANY($2::text[])
+  AND s.sales_mode <> 'control_only'
 ORDER BY s.start_at, s.id`
 
 // ListPromoScopeSessions reads the named sessions of ONE organization (a
 // session of another organization is simply absent), deleted and cancelled
-// ones included, so the caller can warn about them.
+// ones included, so the caller can warn about them. A control-only session
+// (migration 0228) is never sold and is absent too.
 func (q *Queries) ListPromoScopeSessions(ctx context.Context, orgID uuid.UUID, sessionIDs []string) ([]PromoScopeSessionRow, error) {
 	if len(sessionIDs) == 0 {
 		return nil, nil

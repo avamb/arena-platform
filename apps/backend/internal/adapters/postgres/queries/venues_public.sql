@@ -21,6 +21,7 @@ LEFT JOIN i18n_text t_en ON t_en.namespace = 'geo.cities'
 WHERE s.event_id = ANY($1::uuid[])
   AND s.deleted_at IS NULL
   AND s.status IN ('scheduled', 'completed')
+  AND s.sales_mode <> 'control_only'
 GROUP BY s.event_id, v.id, v.name, v.address_line1, v.address_line2,
          v.postal_code, v.address, v.country, v.timezone, t_en.value
 ORDER BY s.event_id, min(s.start_at), v.name;

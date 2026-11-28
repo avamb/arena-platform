@@ -26,6 +26,11 @@ const (
 	Ended     = "ended"     // the session's sales end has passed
 	Cancelled = "cancelled" // the session itself was cancelled
 	External  = "external"  // a partner box office sells it (migration 0221)
+	// ControlOnly is an INTERNAL state: the session exists for door control
+	// only (sales_mode control_only, migration 0228). It is sold nowhere, is
+	// never "open" or "sold out", and raises no alert. The public API reports
+	// it as "ended" (Wire); no new enum value is exposed.
+	ControlOnly = "control_only"
 )
 
 // Sources of a change, recorded in session_sales_state_changes.source: the
@@ -68,6 +73,9 @@ type Facts struct {
 	// External is true when a partner box office sells the session (sales_mode
 	// external): the platform sells nothing, whatever its places say.
 	External bool
+	// ControlOnly is true when the session exists for door control only
+	// (sales_mode control_only): the platform sells nothing.
+	ControlOnly bool
 }
 
 // Effective decides the state of a session. manual is the organizer's state
@@ -84,6 +92,9 @@ type Facts struct {
 func Effective(manual string, f Facts, now time.Time) string {
 	if f.Status == "cancelled" {
 		return Cancelled
+	}
+	if f.ControlOnly {
+		return ControlOnly
 	}
 	if f.External {
 		return External

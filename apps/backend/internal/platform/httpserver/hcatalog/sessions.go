@@ -541,6 +541,12 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// A control_only session (migration 0228) is born only with its own
+	// container event, by POST .../control-sessions.
+	if salesWrite.Mode == gen.SessionSalesModeControlOnly {
+		salesModeLockedCreate(w, r, orgID)
+		return
+	}
 	if salesWrite.Mode == gen.SessionSalesModeExternal {
 		if !salesWrite.ExternalPresent {
 			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
@@ -589,6 +595,18 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 	// SEC-2 H7: the event must belong to the path organization. It sits after
 	// the pure body validation (which touches no data) and before the first read.
 	if !h.requireEventInOrg(w, r, eventID, orgID) {
+		return
+	}
+	// An event that only controls the entrance (migration 0228) takes no
+	// session of its own kind of sale: the database trigger is the backstop.
+	if control, cErr := eventIsControlOnly(ctx, h.sessionQueries, eventID); cErr != nil {
+		h.logger.Error("session: control-only check failed", slog.String("error", cErr.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"session.insert_failed", "failed to create session", r,
+		))
+		return
+	} else if control {
+		writeControlOnlyEvent(w, r, eventID, "this event only controls the entrance: it takes no session that is sold here")
 		return
 	}
 	venueCtx, ok := h.resolveVenueContext(w, r, orgID, venueID)
@@ -661,6 +679,10 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 
 	sess, err := h.sessionQueries.InsertSession(ctx, eventID, venueID, startAt, endAt, capacityTotal, req.CapacityOverride, req.Status, posterMediaID, currency, currencySource)
 	if err != nil {
+		if isControlOnlyViolation(err) {
+			writeControlOnlyViolation(w, r, eventID)
+			return
+		}
 		h.logger.Error("session: insert failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"session.insert_failed", "failed to create session", r,
@@ -1391,11 +1413,15 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 	// are logged inside publishScannerEvent. The publisher is injected as a
 	// callback by catalog_shims.go because its implementation lives in the
 	// hscanner sub-package.
-	if req.Status == "cancelled" && current.Status != "cancelled" && updated.Status == "cancelled" {
+	//
+	// A control_only session (migration 0228) is never announced: neither
+	// v1.session.updated nor v1.session.cancelled reaches the sites.
+	announce := updated.SalesMode != gen.SessionSalesModeControlOnly
+	if announce && req.Status == "cancelled" && current.Status != "cancelled" && updated.Status == "cancelled" {
 		if h.publishSessionCancelled != nil {
 			h.publishSessionCancelled(ctx, updated.ID.String(), eventID.String(), current.Status)
 		}
-	} else {
+	} else if announce {
 		// W1-B7c (#506): every other session edit — time, venue, capacity,
 		// status — is a v1.session.updated scoped to THIS session, so a mirror
 		// re-reads one session instead of the whole event. The cancellation

@@ -29,6 +29,7 @@ SELECT
         WHERE  s.event_id   = e.id
           AND  s.deleted_at IS NULL
           AND  s.status    <> 'cancelled'
+          AND  s.sales_mode <> 'control_only'
         ORDER BY s.start_at ASC
         LIMIT 1
     ) AS first_session_timezone,
@@ -38,6 +39,7 @@ SELECT
         WHERE  s.event_id   = e.id
           AND  s.deleted_at IS NULL
           AND  s.status    <> 'cancelled'
+          AND  s.sales_mode <> 'control_only'
         ORDER BY s.start_at ASC
         LIMIT 1
     ) AS first_session_doors_at,
@@ -47,6 +49,7 @@ SELECT
         WHERE  s.event_id   = e.id
           AND  s.deleted_at IS NULL
           AND  s.status    <> 'cancelled'
+          AND  s.sales_mode <> 'control_only'
     ) AS session_count,
     ft.token
 FROM org_promoters p
@@ -157,6 +160,7 @@ FROM (
             WHERE  s.event_id   = e.id
               AND  s.deleted_at IS NULL
               AND  s.status    <> 'cancelled'
+              AND  s.sales_mode <> 'control_only'
             ORDER BY s.start_at ASC
             LIMIT 1
         ) AS first_session_timezone,
@@ -166,6 +170,7 @@ FROM (
             WHERE  s.event_id   = e.id
               AND  s.deleted_at IS NULL
               AND  s.status    <> 'cancelled'
+              AND  s.sales_mode <> 'control_only'
             ORDER BY s.start_at ASC
             LIMIT 1
         ) AS first_session_doors_at,
@@ -175,6 +180,7 @@ FROM (
             WHERE  s.event_id   = e.id
               AND  s.deleted_at IS NULL
               AND  s.status    <> 'cancelled'
+              AND  s.sales_mode <> 'control_only'
         ) AS session_count
     FROM events e
     JOIN event_promoters epr ON epr.event_id = e.id AND epr.promoter_id = $2

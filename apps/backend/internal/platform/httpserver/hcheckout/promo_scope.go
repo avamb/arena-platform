@@ -96,7 +96,19 @@ func (h *Handler) checkPromoScope(
 			))
 			return promoScope{}, false
 		}
-		if err != nil || octx.OrgID != orgID {
+		controlOnly := false
+		if err == nil && octx.OrgID == orgID {
+			// A control-only session (migration 0228) is never sold, so a
+			// promo code cannot name it: it reads like an unknown one.
+			if qerr := h.promoQueries.DB().QueryRow(ctx,
+				`SELECT sales_mode = 'control_only' FROM sessions WHERE id = $1`, sid).Scan(&controlOnly); qerr != nil && !errors.Is(qerr, pgx.ErrNoRows) {
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+					"promo.session_lookup_failed", "failed to look up a session", r,
+				))
+				return promoScope{}, false
+			}
+		}
+		if err != nil || octx.OrgID != orgID || controlOnly {
 			// Unknown and foreign read the same: nothing here for this org.
 			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 				"promo.invalid_session", "session does not belong to this organization", r,

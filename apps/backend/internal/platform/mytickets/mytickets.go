@@ -127,6 +127,12 @@ const orderVisible = `(o.paid_at IS NOT NULL OR o.status IN ('paid','refunded','
 		  AND NOT EXISTS (SELECT 1 FROM ticket_reissues tr
 		                  WHERE tr.order_id = o.id AND tr.state IN ('pending','send_failed'))`
 
+// orderNotControlOnly leaves out an order of a session that exists only for
+// door control (sales_mode 'control_only'): such a session is never shown to a
+// buyer. Used by the buyer's lists next to orderVisible.
+const orderNotControlOnly = `NOT EXISTS (SELECT 1 FROM sessions cs
+		                  WHERE cs.id = o.session_id AND cs.sales_mode = 'control_only')`
+
 // EscapeLike makes s safe as an ILIKE pattern that matches s exactly.
 func EscapeLike(s string) string {
 	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
@@ -177,7 +183,8 @@ func (s *Service) RequestLink(ctx context.Context, in LinkInput) error {
 		SELECT EXISTS (
 		    SELECT 1 FROM orders o
 		    WHERE  o.org_id = $1 AND o.buyer_email ILIKE $2 AND o.source IN `+ticketOrderSources+`
-		      AND  `+orderVisible+`)`, orgID, EscapeLike(email)).Scan(&hasOrders); err != nil {
+		      AND  `+orderVisible+`
+		      AND  `+orderNotControlOnly+`)`, orgID, EscapeLike(email)).Scan(&hasOrders); err != nil {
 		return err
 	}
 	tx, err := s.pool.Begin(ctx)
@@ -324,7 +331,8 @@ func (s *Service) ListOrders(ctx context.Context, sess Session, page int) ([]Ord
 	if err := s.pool.QueryRow(ctx, `
 		SELECT count(*) FROM orders o
 		WHERE  o.org_id = $1 AND o.buyer_email ILIKE $2 AND o.source IN `+ticketOrderSources+`
-		  AND  `+orderVisible, sess.OrgID, pattern).Scan(&total); err != nil {
+		  AND  `+orderVisible+`
+		  AND  `+orderNotControlOnly, sess.OrgID, pattern).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	rows, err := s.pool.Query(ctx, `
@@ -336,6 +344,7 @@ func (s *Service) ListOrders(ctx context.Context, sess Session, page int) ([]Ord
 		LEFT   JOIN venues v ON v.id = s.venue_id
 		WHERE  o.org_id = $1 AND o.buyer_email ILIKE $2 AND o.source IN `+ticketOrderSources+`
 		  AND  `+orderVisible+`
+		  AND  s.sales_mode <> 'control_only'
 		ORDER  BY s.start_at DESC, o.created_at DESC, o.id
 		LIMIT  $3 OFFSET $4`, sess.OrgID, pattern, PageSize, (page-1)*PageSize)
 	if err != nil {

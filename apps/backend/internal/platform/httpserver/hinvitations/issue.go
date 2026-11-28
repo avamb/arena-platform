@@ -359,9 +359,10 @@ func issueTarget(ctx context.Context, txq *gen.Queries, orgID, sessionID uuid.UU
 	if err != nil {
 		return target, fmt.Errorf("hinvitations: session lookup: %w", err)
 	}
-	// A session a partner box office sells (sessions.sales_mode = 'external',
-	// migration 0221) never gets a ticket here, not even an invitation (spec
-	// 63 §14.2). Read under the sessions row lock bumpSessionVersion took.
+	// A session the platform does not sell (sessions.sales_mode = 'external',
+	// migration 0221, or 'control_only', migration 0228) never gets a ticket
+	// here, not even an invitation (spec 63 §14.2). Read under the sessions
+	// row lock bumpSessionVersion took.
 	mode, err := txq.LockSessionSalesMode(ctx, sessionID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return target, refuse(http.StatusNotFound, "session.not_found", "session not found", nil)
@@ -371,7 +372,7 @@ func issueTarget(ctx context.Context, txq *gen.Queries, orgID, sessionID uuid.UU
 	}
 	if !hcheckout.SessionSellable(mode) {
 		return target, refuse(http.StatusConflict, extsale.CodeSoldExternally,
-			"this session is sold by a partner box office, no invitation can be issued for it", nil)
+			"tickets for this session are not sold on this platform, no invitation can be issued for it", nil)
 	}
 	if target.Status == "cancelled" {
 		return target, refuse(http.StatusUnprocessableEntity, "invitation.session_cancelled",

@@ -120,6 +120,7 @@ LEFT JOIN i18n_text t_en ON t_en.namespace = 'geo.cities'
 WHERE  s.event_id = ANY($1::uuid[])
   AND  s.deleted_at IS NULL
   AND  s.status = 'scheduled'
+  AND  s.sales_mode <> 'control_only'
 ORDER BY s.start_at, s.id`
 
 // ListSeriesSessions returns the scheduled sessions of the given events with

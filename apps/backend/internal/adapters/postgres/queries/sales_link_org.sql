@@ -17,6 +17,7 @@ LEFT JOIN sessions s
        ON s.id = $3::uuid
       AND s.event_id = e.id
       AND s.deleted_at IS NULL
+      AND s.sales_mode <> 'control_only'
 LEFT JOIN org_promoters lp
        ON lp.id = $4::uuid
       AND lp.org_id = o.id

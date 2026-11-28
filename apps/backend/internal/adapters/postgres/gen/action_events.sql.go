@@ -108,6 +108,7 @@ WHERE  e.org_id     = $1
   AND  e.deleted_at IS NULL
   AND  s.deleted_at IS NULL
   AND  s.status     = 'scheduled'
+  AND  s.sales_mode <> 'control_only'
   AND  (s.start_at > now() - interval '6 hours' OR s.sales_end_at > now())
 ORDER BY s.start_at ASC, s.id ASC`
 
@@ -231,6 +232,7 @@ WHERE  e.org_id     = $1
   AND  e.deleted_at IS NULL
   AND  s.deleted_at IS NULL
   AND  s.status     = 'scheduled'
+  AND  s.sales_mode <> 'control_only'
   AND  (s.start_at > now() - interval '6 hours' OR s.sales_end_at > now())
   AND  tt.deleted_at IS NULL
 ORDER BY tt.session_id, tt.sort_order ASC, tt.id ASC`

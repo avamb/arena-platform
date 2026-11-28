@@ -44,6 +44,10 @@ func (h *Handler) applyEventStatus(w http.ResponseWriter, r *http.Request, curre
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("event.not_found", "event not found", r))
 			return gen.EventRow{}, false
 		}
+		if isControlOnlyViolation(err) {
+			writeControlOnlyViolation(w, r, current.ID)
+			return gen.EventRow{}, false
+		}
 		h.logger.Error("event: update status failed", slog.String("code", code), slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(code, msg, r))
 		return gen.EventRow{}, false

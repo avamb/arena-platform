@@ -147,7 +147,8 @@ WHERE ft.token     = $1
   AND s.id          = $2
   AND e.status      = 'published'
   AND e.deleted_at  IS NULL
-  AND s.deleted_at  IS NULL`
+  AND s.deleted_at  IS NULL
+  AND s.sales_mode <> 'control_only'`
 
 // GetPublicCheckoutContext validates that the given session is published to the
 // given feed token and returns the context (org_id, sales_channel_id) needed to

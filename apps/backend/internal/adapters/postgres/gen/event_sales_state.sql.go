@@ -18,6 +18,7 @@ SELECT s.event_id,
        min(s.start_at) FILTER (WHERE s.end_at > now())    AS next_session_at,
        COALESCE(bool_or(
            s.end_at > now() AND s.sales_end_at > now()
+           AND s.sales_mode <> 'control_only'
            AND NOT EXISTS (SELECT 1 FROM session_sales_states st WHERE st.session_id = s.id)
            AND EXISTS (
                SELECT 1
@@ -32,6 +33,7 @@ SELECT s.event_id,
        ), false)                                          AS selling,
        COALESCE(bool_or(
            s.end_at > now()
+           AND s.sales_mode <> 'control_only'
            AND NOT EXISTS (SELECT 1 FROM session_sales_states st
                             WHERE st.session_id = s.id AND st.state = 'sold_out')
            AND EXISTS (

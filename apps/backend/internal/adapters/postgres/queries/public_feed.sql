@@ -90,7 +90,8 @@ WHERE ft.token     = $1
   AND s.id          = $2
   AND e.status      = 'published'
   AND e.deleted_at  IS NULL
-  AND s.deleted_at  IS NULL;
+  AND s.deleted_at  IS NULL
+  AND s.sales_mode <> 'control_only';
 
 -- name: GetFeedTokenBuyerFlags :one
 -- GetFeedTokenBuyerFlags returns the buyer-field collection flags for the

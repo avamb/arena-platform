@@ -168,6 +168,19 @@ WHERE  s.event_id = ANY($1::uuid[])
   AND  s.deleted_at IS NULL
 GROUP BY s.event_id;
 
+-- name: ListPublicEventVenueNames :many
+-- ListPublicEventVenueNames is ListEventVenueNames for buyer-facing readers
+-- (feed, widget, hosted page): control_only sessions (door control only) are
+-- left out. The organizer's lists keep ListEventVenueNames.
+SELECT s.event_id,
+       array_agg(DISTINCT v.name ORDER BY v.name) AS venue_names
+FROM   sessions s
+JOIN   venues v ON v.id = s.venue_id
+WHERE  s.event_id = ANY($1::uuid[])
+  AND  s.deleted_at IS NULL
+  AND  s.sales_mode <> 'control_only'
+GROUP BY s.event_id;
+
 -- name: UpdateEvent :one
 -- UpdateEvent applies a partial update to an active event (non-status fields).
 -- Scoped by org_id to enforce owner-gated mutation policy.

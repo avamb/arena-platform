@@ -109,7 +109,8 @@ func LoadSessionInfo(ctx context.Context, q Querier, orgID, sessionID uuid.UUID)
 		                  WHERE m.session_id = s.id AND m.deleted_at IS NULL AND NOT m.is_addon) AS has_main) x
 		    WHERE  ss.session_id = s.id AND tt.deleted_at IS NULL
 		) p ON true
-		WHERE  s.id = $1 AND e.org_id = $2 AND s.deleted_at IS NULL`, sessionID, orgID).Scan(
+		WHERE  s.id = $1 AND e.org_id = $2 AND s.deleted_at IS NULL
+		  AND  s.sales_mode <> 'control_only'`, sessionID, orgID).Scan(
 		&in.OrgID, &in.OrgName, &in.OrgLocale, &in.EventName, &in.Start,
 		&in.Venue, &in.Timezone, &in.TotalPlaces, &in.FreePlaces, &in.AddonFree,
 		&in.AllTotal, &in.AllFree)

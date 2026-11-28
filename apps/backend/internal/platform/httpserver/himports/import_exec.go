@@ -786,7 +786,14 @@ func (h *Handler) applyPublish(ctx context.Context, q *gen.Queries, plan importP
 	if err != nil {
 		return false, fmt.Errorf("list sessions before publish: %w", err)
 	}
+	// A control-only session (migration 0228) has no tiers and is not counted:
+	// an event whose only sessions are control-only is never published.
+	sellable := 0
 	for _, s := range sessions {
+		if s.SalesMode == gen.SessionSalesModeControlOnly {
+			continue
+		}
+		sellable++
 		tiers, tErr := q.ListTicketTiersBySession(ctx, s.ID)
 		if tErr != nil {
 			return false, fmt.Errorf("list tiers before publish: %w", tErr)
@@ -796,6 +803,11 @@ func (h *Handler) applyPublish(ctx context.Context, q *gen.Queries, plan importP
 				"publish requested but session "+s.ID.String()+" has no ticket tier")
 			return false, nil
 		}
+	}
+	if len(sessions) > 0 && sellable == 0 {
+		warnings.add(WarnPublishSkipped,
+			"publish requested but every session of the event only controls the entrance")
+		return false, nil
 	}
 
 	// A dry run stops at the gate: it reports the gate's warnings, never the

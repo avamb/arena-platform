@@ -90,6 +90,10 @@ const (
 	SkipSessionPayWhatYouWant = "event_bundle.session_pay_what_you_want"
 	// SkipSessionVenueMissing — the session's venue is deleted.
 	SkipSessionVenueMissing = "event_bundle.session_venue_missing"
+	// SkipSessionControlOnly — the session only controls the entrance
+	// (sales_mode control_only, migration 0228): it is not sold on the
+	// platform and never copied.
+	SkipSessionControlOnly = "event_bundle.session_control_only"
 
 	// WarnBundleTimeNotRepresentable — the start or the end of the session
 	// cannot be written as the bundle's wall-clock day/time exactly.
@@ -434,6 +438,9 @@ func buildEventBundles(src bundleSource) EventBundleReadResponse {
 			out.Skipped = append(out.Skipped, EventBundleSkipped{SessionID: s.ID, Code: code, Message: msg})
 		}
 		switch {
+		case s.SalesMode == gen.SessionSalesModeControlOnly:
+			skip(SkipSessionControlOnly, "the session only controls the entrance and is never copied")
+			continue
 		case s.Status == "cancelled":
 			skip(SkipSessionCancelled, "the session is cancelled")
 			continue

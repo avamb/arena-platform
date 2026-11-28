@@ -216,13 +216,19 @@ var ErrSalesModeLocked = errors.New("extsale: sales mode is locked")
 // lock rules of spec 63 §14.1:
 //   - platform -> external only while the session has no orders, no holds, no
 //     seats and no tiers;
-//   - external -> platform only while it has no seats and no tiers.
+//   - external -> platform only while it has no seats and no tiers;
+//   - any switch to or from control_only is refused (migration 0228, spec 69
+//     MA-40): a control-only session lives in its own container event and is
+//     created in that mode, an ordinary session never becomes one and back.
 //
 // Staying in the same mode is always allowed. The caller reads the facts
 // inside the transaction that holds the session row lock.
 func CheckSwitch(from, to string, f gen.SessionSalesModeLockFacts) error {
 	if from == to {
 		return nil
+	}
+	if from == gen.SessionSalesModeControlOnly || to == gen.SessionSalesModeControlOnly {
+		return ErrSalesModeLocked
 	}
 	switch to {
 	case gen.SessionSalesModeExternal:
@@ -239,5 +245,6 @@ func CheckSwitch(from, to string, f gen.SessionSalesModeLockFacts) error {
 
 // ValidMode reports whether s is a sales mode.
 func ValidMode(s string) bool {
-	return s == gen.SessionSalesModePlatform || s == gen.SessionSalesModeExternal
+	return s == gen.SessionSalesModePlatform || s == gen.SessionSalesModeExternal ||
+		s == gen.SessionSalesModeControlOnly
 }

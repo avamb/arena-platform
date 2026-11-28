@@ -222,8 +222,12 @@ type EventResponse struct {
 	// EmailNoteFormat is how EmailNote is stored ("art" or "text"); nil when
 	// the event has no note.
 	EmailNoteFormat *string `json:"email_note_format"`
-	CreatedAt       string  `json:"created_at"`
-	UpdatedAt       string  `json:"updated_at"`
+	// ControlOnly is true for a control event: one that holds a live
+	// control_only session (migration 0228, MA-40), kept only for door control
+	// and never published. Hydrated by hydrateEvents, never by EventFromRow.
+	ControlOnly bool   `json:"control_only"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 func eventFromRow(e gen.EventRow) eventResponse {
@@ -280,6 +284,7 @@ func (h *Handler) hydrateEvents(ctx context.Context, responses []eventResponse) 
 	h.hydrateSeries(ctx, responses)
 	h.hydratePublicURLs(ctx, responses)
 	h.hydrateSalesStates(ctx, responses)
+	h.hydrateControlOnly(ctx, responses)
 	h.hydrateEmailNotes(ctx, responses)
 	h.hydrateDescriptionFormats(ctx, responses)
 }
@@ -1234,6 +1239,24 @@ func (h *Handler) HandleUpdateEventStatus(w http.ResponseWriter, r *http.Request
 			},
 		))
 		return
+	}
+
+	// A control event (it holds a control_only session, migration 0228) is
+	// never published: nothing in it is sold here. The database trigger is the
+	// backstop.
+	if req.Status == "published" {
+		control, cErr := eventIsControlOnly(ctx, h.eventQueries, eventID)
+		if cErr != nil {
+			h.logger.Error("event: control-only check failed", slog.String("error", cErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"event.publish_gate_failed", "failed to inspect sessions for publish gate", r,
+			))
+			return
+		}
+		if control {
+			writeControlOnlyEvent(w, r, eventID, "this event only controls the entrance (control_only sessions), so it cannot be published")
+			return
+		}
 	}
 
 	// AB-42 publish gate: an event may only be published once it is sellable.

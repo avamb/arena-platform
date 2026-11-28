@@ -695,7 +695,10 @@ func lockSession(ctx context.Context, txq *gen.Queries, sessionID, wantOrg uuid.
 	if wantOrg != uuid.Nil && orgRow.OrgID != wantOrg {
 		return 0, uuid.Nil, ErrSessionNotFound
 	}
-	if mode == gen.SessionSalesModeExternal {
+	// Not the platform's to sell: a partner box office's session (external,
+	// migration 0221) or a control-only one (migration 0228). Mirror of
+	// hcheckout.SessionSellable.
+	if mode != "" && mode != gen.SessionSalesModePlatform {
 		return 0, uuid.Nil, ErrSessionSoldExternally
 	}
 	return version, orgRow.OrgID, nil

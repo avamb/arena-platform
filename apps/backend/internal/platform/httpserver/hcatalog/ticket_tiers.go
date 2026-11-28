@@ -32,10 +32,11 @@ const (
 
 // Refusals of the tier-create transaction, read back by HandleCreateTier.
 var (
-	// errTierSoldExternally: the session is sold by a partner box office
-	// (sessions.sales_mode = 'external', migration 0221), read under the
-	// session row lock.
-	errTierSoldExternally = errors.New("hcatalog: session is sold by a partner box office")
+	// errTierSoldExternally: the session is not sold on this platform (a
+	// partner box office sells it, sessions.sales_mode = 'external', migration
+	// 0221, or it only controls the entrance, 'control_only', migration 0228),
+	// read under the session row lock.
+	errTierSoldExternally = errors.New("hcatalog: session is not sold on this platform")
 	// errTierSessionGone: the session row vanished before its lock.
 	errTierSessionGone = errors.New("hcatalog: session not found")
 )
@@ -307,8 +308,9 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// A session a partner box office sells owns no tiers (migration 0221).
-	if _, _, _, salesMode, smErr := h.tierQueries.GetSessionSalesState(ctx, sessionID); smErr == nil && salesMode == gen.SessionSalesModeExternal {
+	// A session the platform does not sell (a partner box office's, migration
+	// 0221, or a control-only one, migration 0228) owns no tiers.
+	if _, _, _, salesMode, smErr := h.tierQueries.GetSessionSalesState(ctx, sessionID); smErr == nil && salesMode != "" && salesMode != gen.SessionSalesModePlatform {
 		writeSoldExternally(w, r)
 		return
 	}
@@ -352,7 +354,7 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 		if lockErr != nil {
 			return lockErr
 		}
-		if mode == gen.SessionSalesModeExternal {
+		if mode != "" && mode != gen.SessionSalesModePlatform {
 			return errTierSoldExternally
 		}
 		row, insErr := txq.InsertTicketTier(ctx,

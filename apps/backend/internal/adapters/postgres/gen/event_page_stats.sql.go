@@ -28,6 +28,7 @@ SELECT e.id, e.org_id,
            WHERE  s.event_id   = e.id
              AND  s.deleted_at IS NULL
              AND  s.status    <> 'cancelled'
+             AND  s.sales_mode <> 'control_only'
            ORDER BY s.start_at ASC
            LIMIT 1
        ) AS timezone
@@ -69,6 +70,7 @@ SELECT e.id, e.org_id,
            WHERE  s.event_id   = e.id
              AND  s.deleted_at IS NULL
              AND  s.status    <> 'cancelled'
+             AND  s.sales_mode <> 'control_only'
            ORDER BY s.start_at ASC
            LIMIT 1
        ) AS timezone
@@ -162,6 +164,7 @@ SELECT (
            WHERE  s.event_id   = e.id
              AND  s.deleted_at IS NULL
              AND  s.status    <> 'cancelled'
+             AND  s.sales_mode <> 'control_only'
            ORDER BY s.start_at ASC
            LIMIT 1
        ) AS timezone,

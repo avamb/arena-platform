@@ -61,6 +61,10 @@ type SessionRow struct {
 const (
 	SessionSalesModePlatform = "platform"
 	SessionSalesModeExternal = "external"
+	// SessionSalesModeControlOnly (migration 0228, spec 69 MA-40) is a session
+	// that exists only for door control: never shown, never sold. It lives in
+	// a dedicated event that is never published.
+	SessionSalesModeControlOnly = "control_only"
 )
 
 // scanSessionRow scans a single sessions row into a SessionRow.
