@@ -4,13 +4,15 @@ import (
 	"context"
 
 	"github.com/go-telegram/bot/models"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/scannerapp"
 )
 
 // The ticket-scanner app the door staff use. Both stores redirect by the
 // visitor's region, so the links carry no country or language segment.
 const (
-	ScannerAndroidURL = "https://play.google.com/store/apps/details?id=com.arenasoldout.macs"
-	ScannerIOSURL     = "https://apps.apple.com/app/arenasoldout/id6770095694"
+	ScannerAndroidURL = scannerapp.AndroidURL
+	ScannerIOSURL     = scannerapp.IOSURL
 )
 
 // scannerKeys are the texts of the scanner screen and its menu button.

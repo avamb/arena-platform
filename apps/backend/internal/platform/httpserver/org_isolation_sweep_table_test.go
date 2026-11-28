@@ -596,6 +596,18 @@ var orgIsolationAuditedSafe = map[string]string{
 	// Wallet domains of a config (spec 65 E3): GetPaymentProviderConfigByID(id, org_id) answers 404, the list is keyed by (config, org).
 	"GET /v1/organizations/{org_id}/payment-configs/{id}/payment-method-domains": "hpayments",
 
+	// hscannerapp (spec 69 MA-11 / MA-12): every device and pass query of
+	// scannerapp is keyed by (id, org_id = path org) and a foreign row is the
+	// route's own 404 (scanner.device_not_found, scanner_pass.not_found); the
+	// dates and categories of a pass are checked against the path org
+	// (422 scanner_pass.invalid_session). Covered by
+	// TestScannerAppMA11_OtherOrganization.
+	"DELETE /v1/organizations/{org_id}/scanner/devices/{device_id}": "hscannerapp",
+	"GET /v1/organizations/{org_id}/scanner/passes/{pass_id}":       "hscannerapp",
+	"PATCH /v1/organizations/{org_id}/scanner/passes/{pass_id}":     "hscannerapp",
+	"DELETE /v1/organizations/{org_id}/scanner/passes/{pass_id}":    "hscannerapp",
+	"POST /v1/organizations/{org_id}/scanner/passes/{pass_id}/link": "hscannerapp",
+
 	// hiam membership routes: the {org_id} is ignored by the handlers (H1/H2 of the
 	// audit). Owned by SEC-1, covered by its memberships_cross_org_integration_test.go.
 	"DELETE /v1/admin/organizations/{org_id}/members/{membership_id}": "SEC-1",

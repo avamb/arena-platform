@@ -19173,6 +19173,44 @@ type ScannerAppOrganization struct {
 	Name string `json:"name"`
 }
 
+// ScannerAppPairRequest Body of `POST /v1/scanner-app/pair`, a pairing code to exchange for a device.
+type ScannerAppPairRequest struct {
+	// Code The pairing code as typed or read from the link: 8 characters of
+	// `ABCDEFGHJKMNPQRSTUVWXYZ23456789`. Case, spaces and hyphens do not
+	// matter.
+	Code string `json:"code"`
+
+	// ControllerName Name of the controller who uses a controller pass. Ignored for an
+	// organizer's own code.
+	ControllerName *string `json:"controller_name,omitempty"`
+
+	// DeviceLabel Name of the phone, for example "Gate 1". Can be empty.
+	DeviceLabel *string `json:"device_label,omitempty"`
+
+	// Platform Platform of the phone, one of `ios`, `android` or `other`.
+	Platform string `json:"platform"`
+}
+
+// ScannerAppPairResponse Body of a successful pairing. The tokens are shown only once.
+type ScannerAppPairResponse struct {
+	// AccessExpiresAt When the access token stops working, in UTC.
+	AccessExpiresAt time.Time `json:"access_expires_at"`
+
+	// AccessToken Access token of the device (`sdt_` and 43 characters), valid for one hour.
+	AccessToken string `json:"access_token"`
+
+	// Me The same body as `GET /v1/scanner-app/me` for the new device.
+	Me ScannerAppMeResponse `json:"me"`
+
+	// RefreshExpiresAt When the refresh token stops working (30 days, renewed on every refresh), in UTC.
+	RefreshExpiresAt time.Time `json:"refresh_expires_at"`
+
+	// RefreshToken Refresh token of the device (`sdr_` and 43 characters). It is never
+	// accepted as a Bearer token; send it only to
+	// `POST /v1/scanner-app/token/refresh`.
+	RefreshToken string `json:"refresh_token"`
+}
+
 // ScannerAppPass The controller pass of a pass device.
 type ScannerAppPass struct {
 	// Id Id of the controller pass.
@@ -19216,6 +19254,208 @@ type ScannerAppPassSession struct {
 	// when `all_tiers` is `false`. Always an empty array when
 	// `all_tiers` is `true`.
 	TierIds []openapi_types.UUID `json:"tier_ids"`
+}
+
+// ScannerAppRefreshRequest Body of `POST /v1/scanner-app/token/refresh`.
+type ScannerAppRefreshRequest struct {
+	// RefreshToken The refresh token of the device.
+	RefreshToken string `json:"refresh_token"`
+}
+
+// ScannerAppTokenPair A new token pair of a device. Both tokens replace the old ones.
+type ScannerAppTokenPair struct {
+	// AccessExpiresAt When the new access token stops working, in UTC.
+	AccessExpiresAt time.Time `json:"access_expires_at"`
+
+	// AccessToken New access token of the device, valid for one hour.
+	AccessToken string `json:"access_token"`
+
+	// RefreshExpiresAt When the new refresh token stops working, in UTC.
+	RefreshExpiresAt time.Time `json:"refresh_expires_at"`
+
+	// RefreshToken New refresh token of the device.
+	RefreshToken string `json:"refresh_token"`
+}
+
+// ScannerDevice A live (not revoked) scanner device of an organization.
+type ScannerDevice struct {
+	// ControllerName Name of the controller typed at pairing with a pass. Empty for an organizer device.
+	ControllerName string `json:"controller_name"`
+
+	// CreatedAt When the device was paired, in UTC.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id Id of the device.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind `organizer` (the phone of a person of the organization) or `pass` (paired with a controller pass).
+	Kind string `json:"kind"`
+
+	// Label Name of the phone given at pairing. Can be empty.
+	Label string `json:"label"`
+
+	// LastSeenAt The last request of the device, in UTC (written at most once a minute); null before the first one.
+	LastSeenAt *time.Time `json:"last_seen_at"`
+
+	// PassId The controller pass of a pass device; null for an organizer device.
+	PassId *openapi_types.UUID `json:"pass_id"`
+
+	// PassLabel Name of that pass; null for an organizer device.
+	PassLabel *string `json:"pass_label"`
+
+	// Platform `ios`, `android` or `other`.
+	Platform string `json:"platform"`
+
+	// UserId The person of an organizer device; null for a pass device.
+	UserId *openapi_types.UUID `json:"user_id"`
+}
+
+// ScannerDeviceList Live scanner devices, newest first.
+type ScannerDeviceList struct {
+	// Devices The devices.
+	Devices []ScannerDevice `json:"devices"`
+}
+
+// ScannerPairingLink A pairing code of the scanner app with its link and QR picture. Shown only once.
+type ScannerPairingLink struct {
+	// Code The pairing code, 8 characters.
+	Code string `json:"code"`
+
+	// ExpiresAt When an organizer's code stops working (15 minutes), in UTC. Absent
+	// for the code of a controller pass, which works until the pass
+	// window ends.
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+
+	// Link The pairing link `<API host>/scan/pair#<code>`; the same address is in the QR picture.
+	Link string `json:"link"`
+
+	// QrPng The QR picture of `link`, a base64 PNG of 320 pixels. Null when it could not be drawn.
+	QrPng *string `json:"qr_png"`
+}
+
+// ScannerPass A controller pass with its dates and its live devices ("accepted N of M").
+type ScannerPass struct {
+	// Accepted How many live phones use the pass now (N).
+	Accepted int `json:"accepted"`
+
+	// CreatedAt When the pass was created, in UTC.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Devices The live devices of the pass, oldest first.
+	Devices []ScannerPassDevice `json:"devices"`
+
+	// Id Id of the pass.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind `standard` or `demo`.
+	Kind string `json:"kind"`
+
+	// Label Name of the pass.
+	Label string `json:"label"`
+
+	// MaxDevices How many phones may use the pass at the same time (M).
+	MaxDevices int `json:"max_devices"`
+
+	// RevokedAt When the pass was turned off, in UTC; null while it is on.
+	RevokedAt *time.Time `json:"revoked_at"`
+
+	// Sessions The live dates of the pass in the organization.
+	Sessions []ScannerAppPassSession `json:"sessions"`
+
+	// ValidFrom Start of the window, in UTC; null for a demo pass.
+	ValidFrom *time.Time `json:"valid_from"`
+
+	// ValidUntil End of the window, in UTC; null for a demo pass.
+	ValidUntil *time.Time `json:"valid_until"`
+}
+
+// ScannerPassCreateRequest Body of `POST .../scanner/passes`.
+type ScannerPassCreateRequest struct {
+	// Kind Kind of the pass. `standard` (default) works inside its time window. `demo` has no
+	// window and may be created only by a platform superadmin.
+	Kind *string `json:"kind,omitempty"`
+
+	// Label Name of the pass, for example "Main door".
+	Label string `json:"label"`
+
+	// MaxDevices How many phones may use the pass at the same time. Default 2.
+	MaxDevices *int `json:"max_devices,omitempty"`
+
+	// Sessions The dates the pass may check.
+	Sessions []ScannerPassSessionInput `json:"sessions"`
+
+	// ValidFrom Start of the window. Send both `valid_from` and `valid_until` or
+	// neither; without them the window is from 4 hours before the
+	// earliest doors opening (or start) of the dates to 6 hours after
+	// the latest start. Not allowed for a demo pass.
+	ValidFrom *time.Time `json:"valid_from,omitempty"`
+
+	// ValidUntil End of the window, after `valid_from`. Not allowed for a demo pass.
+	ValidUntil *time.Time `json:"valid_until,omitempty"`
+}
+
+// ScannerPassCreateResponse A new controller pass and its pairing link.
+type ScannerPassCreateResponse struct {
+	// Pairing The pairing link of the pass; it works for every phone until the pass is full or its window ends.
+	Pairing ScannerPairingLink `json:"pairing"`
+
+	// Pass The new pass.
+	Pass ScannerPass `json:"pass"`
+}
+
+// ScannerPassDevice A live device of a controller pass.
+type ScannerPassDevice struct {
+	// ControllerName Name of the controller typed at pairing. Can be empty.
+	ControllerName string `json:"controller_name"`
+
+	// CreatedAt When the device was paired, in UTC.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id Id of the device.
+	Id openapi_types.UUID `json:"id"`
+
+	// Label Name of the phone. Can be empty.
+	Label string `json:"label"`
+
+	// LastSeenAt The last request of the device, in UTC; null before the first one.
+	LastSeenAt *time.Time `json:"last_seen_at"`
+
+	// Platform `ios`, `android` or `other`.
+	Platform string `json:"platform"`
+}
+
+// ScannerPassList Controller passes of an organization, newest first, at most 100.
+type ScannerPassList struct {
+	// Passes The passes, turned-off ones included.
+	Passes []ScannerPass `json:"passes"`
+}
+
+// ScannerPassPatchRequest Body of `PATCH .../scanner/passes/{pass_id}`. An absent field stays as it is; send at least one.
+type ScannerPassPatchRequest struct {
+	// Label New name of the pass.
+	Label *string `json:"label,omitempty"`
+
+	// MaxDevices New number of phones; not lower than the phones that already use the pass.
+	MaxDevices *int `json:"max_devices,omitempty"`
+
+	// Sessions The new dates of the pass; they replace the old dates as a whole.
+	Sessions *[]ScannerPassSessionInput `json:"sessions,omitempty"`
+
+	// ValidFrom New start of the window (standard pass only).
+	ValidFrom *time.Time `json:"valid_from,omitempty"`
+
+	// ValidUntil New end of the window, after the start (standard pass only).
+	ValidUntil *time.Time `json:"valid_until,omitempty"`
+}
+
+// ScannerPassSessionInput One date of a controller pass in a request.
+type ScannerPassSessionInput struct {
+	// SessionId Id of a live date (session) of the organization.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// TierIds Price categories of that date the pass may check. Absent or empty:
+	// every category of the date.
+	TierIds *[]openapi_types.UUID `json:"tier_ids,omitempty"`
 }
 
 // ScannerScanBatchRequest POST body for `POST /v1/scanner/scan-events`. Carries one or
@@ -27699,6 +27939,12 @@ type GetSalesLinkStatsParams struct {
 	To *string `form:"to,omitempty" json:"to,omitempty"`
 }
 
+// ListScannerPassesParams defines parameters for ListScannerPasses.
+type ListScannerPassesParams struct {
+	// EventId Keep only the passes with a date of this event.
+	EventId *openapi_types.UUID `form:"event_id,omitempty" json:"event_id,omitempty"`
+}
+
 // ListSeriesParams defines parameters for ListSeries.
 type ListSeriesParams struct {
 	// IncludeArchived Include archived tours (true/false, default false).
@@ -28908,6 +29154,12 @@ type CreateSalesLinkJSONRequestBody = SalesLinkCreateRequest
 // UpdateSalesLinkJSONRequestBody defines body for UpdateSalesLink for application/json ContentType.
 type UpdateSalesLinkJSONRequestBody = SalesLinkUpdateRequest
 
+// CreateScannerPassJSONRequestBody defines body for CreateScannerPass for application/json ContentType.
+type CreateScannerPassJSONRequestBody = ScannerPassCreateRequest
+
+// UpdateScannerPassJSONRequestBody defines body for UpdateScannerPass for application/json ContentType.
+type UpdateScannerPassJSONRequestBody = ScannerPassPatchRequest
+
 // PatchV1OrganizationsOrgIdSeatingPlansPlanIdAnnotationsJSONRequestBody defines body for PatchV1OrganizationsOrgIdSeatingPlansPlanIdAnnotations for application/json ContentType.
 type PatchV1OrganizationsOrgIdSeatingPlansPlanIdAnnotationsJSONRequestBody = SeatingPlanAnnotationsPatch
 
@@ -29105,6 +29357,12 @@ type RejectRefundJSONRequestBody = ApproveRefundRequest
 
 // CreateReservationJSONRequestBody defines body for CreateReservation for application/json ContentType.
 type CreateReservationJSONRequestBody = CreateReservationRequest
+
+// PairScannerAppDeviceJSONRequestBody defines body for PairScannerAppDevice for application/json ContentType.
+type PairScannerAppDeviceJSONRequestBody = ScannerAppPairRequest
+
+// RefreshScannerAppTokenJSONRequestBody defines body for RefreshScannerAppToken for application/json ContentType.
+type RefreshScannerAppTokenJSONRequestBody = ScannerAppRefreshRequest
 
 // PostScannerScanEventsJSONRequestBody defines body for PostScannerScanEvents for application/json ContentType.
 type PostScannerScanEventsJSONRequestBody = ScannerScanBatchRequest

@@ -782,6 +782,32 @@ type Config struct {
 	// unauthenticated behaviour, which stays the default for local compose /
 	// same-network Prometheus scraping.
 	MetricsBearerToken string `env:"METRICS_BEARER_TOKEN" required:"false" default:""`
+
+	// ScannerIOSTeamID is the Apple developer team id of the ticket-scanner
+	// app (spec 69 A.1). With it GET /.well-known/apple-app-site-association
+	// answers; empty means that route is a 404. Ten letters or digits.
+	ScannerIOSTeamID string `env:"SCANNER_IOS_TEAM_ID" required:"false" default:""`
+	// ScannerAndroidCertSHA256 holds the SHA-256 fingerprints (AA:BB:...) of
+	// the scanner app's signing certificates, for GET
+	// /.well-known/assetlinks.json. Empty means that route is a 404.
+	ScannerAndroidCertSHA256 []string `env:"SCANNER_ANDROID_CERT_SHA256" required:"false" default:""`
+}
+
+var (
+	scannerIOSTeamIDRe = regexp.MustCompile(`^[A-Z0-9]{10}$`)
+	scannerCertSHARe   = regexp.MustCompile(`^[0-9A-F]{2}(:[0-9A-F]{2}){31}$`)
+)
+
+// parseScannerCertList splits the comma-separated SCANNER_ANDROID_CERT_SHA256
+// value, upper-cases each fingerprint and drops blanks.
+func parseScannerCertList(raw string) []string {
+	var out []string
+	for _, p := range strings.Split(raw, ",") {
+		if p = strings.ToUpper(strings.TrimSpace(p)); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // DBDSN is an alias for DatabaseURL that matches the terminology used in the
@@ -1082,6 +1108,9 @@ func LoadFor(role Role) (*Config, error) {
 		MetaWebhookVerifyToken:      strings.TrimSpace(getenv("META_WEBHOOK_VERIFY_TOKEN", "")),
 
 		MetricsBearerToken: getenv("METRICS_BEARER_TOKEN", ""),
+
+		ScannerIOSTeamID:         strings.ToUpper(strings.TrimSpace(getenv("SCANNER_IOS_TEAM_ID", ""))),
+		ScannerAndroidCertSHA256: parseScannerCertList(getenv("SCANNER_ANDROID_CERT_SHA256", "")),
 	}
 
 	// Parse errors are collected together with Validate() errors so a single
@@ -1598,6 +1627,18 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf(
 			"MEDIA_VARIANT_WORKERS %d is out of range (allowed: 1..8)", c.MediaVariantWorkers,
 		))
+	}
+
+	// --- Scanner app links (spec 69 A.1) ----------------------------------------
+	if c.ScannerIOSTeamID != "" && !scannerIOSTeamIDRe.MatchString(c.ScannerIOSTeamID) {
+		errs = append(errs, errors.New(
+			"SCANNER_IOS_TEAM_ID is invalid (allowed: 10 letters or digits)"))
+	}
+	for _, fp := range c.ScannerAndroidCertSHA256 {
+		if !scannerCertSHARe.MatchString(fp) {
+			errs = append(errs, fmt.Errorf(
+				"SCANNER_ANDROID_CERT_SHA256 entry %q is invalid (allowed: 32 hex pairs AA:BB:..., comma-separated)", fp))
+		}
 	}
 
 	// --- HTTP -----------------------------------------------------------------

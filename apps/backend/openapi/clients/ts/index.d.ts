@@ -8318,6 +8318,373 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/scanner-app/pair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scanner app — exchange a pairing code for a device
+         * @description The door-control app (spec 69 A.2, MA-11) turns a pairing code into a
+         *     device of the code's organization and gets its tokens. No
+         *     authorization header: the code in the body is the credential.
+         *
+         *     An organizer's code (`POST .../scanner/pairing-codes`) works once and
+         *     for 15 minutes and pairs the phone of that person; the person must
+         *     still hold `scan.perform` through a membership of the organization.
+         *     A controller pass code works until the pass window ends and until the
+         *     pass has `max_devices` live phones; two phones on the last place get
+         *     one `201` and one `409`.
+         *
+         *     The attempts are limited in the database, in a window of 15 minutes:
+         *     10 failed attempts or 30 attempts of one client address, and 10
+         *     failed attempts of one code. A refusal by the limit is not counted
+         *     itself. A body that is not valid (400) is not an attempt either. The
+         *     pairing is audited as `v1.scanner_app.pair` with the device as the
+         *     actor (`actor_type` `device`).
+         */
+        post: operations["pairScannerAppDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/scanner-app/token/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scanner app — a new token pair for a refresh token
+         * @description Spec 69 A.3 (MA-11). No authorization header; the body carries the
+         *     refresh token. Every call replaces both tokens. The server keeps the
+         *     previous refresh token alive until the new pair is used for the first
+         *     time (the new access token on any `/v1/scanner-app/` route, or the
+         *     new refresh token here), so a lost answer can be repeated with the
+         *     old token: the repeat gets a new pair instead of the unused one. Two
+         *     refreshes with the same token at the same time both get `200`, and
+         *     only the pair of the later one works.
+         *
+         *     A refresh token that was already replaced and is presented again
+         *     revokes the device (`refresh_token_reuse`): it is a sign of a copied
+         *     token. A device whose refresh token expired (30 days without a
+         *     refresh), whose organization is archived, whose person lost the right
+         *     to scan, or whose pass is turned off or ended is revoked here with
+         *     that reason; the revoke is audited as `v1.scanner_app.device_revoke`
+         *     with the device as the actor.
+         */
+        post: operations["refreshScannerAppToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/scanner-app/device": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Scanner app — the device unpairs itself
+         * @description Spec 69 A.4 (MA-11). The device of the presented access token is
+         *     revoked (`self_unpaired`) and, for a pass device, its place in the
+         *     pass is freed. A repeat answers `401`, because the token no longer
+         *     works. Audited as `v1.scanner_app.device_revoke` with the device as
+         *     the actor.
+         */
+        delete: operations["unpairScannerAppDevice"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/scanner/pairing-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A pairing code of the scanner app for the caller's own phone
+         * @description Spec 69 A.6 (MA-11). A one-time code for 15 minutes; a new code
+         *     deletes the caller's earlier unused codes in this organization. No
+         *     body. Requires a JWT and `scan.perform`; the code is issued only to a
+         *     person whose OWN membership of the organization holds `scan.perform`
+         *     (a platform role does not count): otherwise `403
+         *     scanner.membership_required`. An organization API key cannot hold
+         *     `scan.*` and is refused by the permission gate. Audited as
+         *     `v1.scanner.pairing_code_issue` (the code itself is never stored).
+         */
+        post: operations["createScannerPairingCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/scanner/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Live scanner devices of the organization
+         * @description Spec 69 A.6 (MA-11). With `scan.perform` the caller sees only their
+         *     own organizer phones; with `scanner_pass.manage` too, every live
+         *     device of the organization (organizer and pass devices). Revoked
+         *     devices are never listed. Newest first.
+         */
+        get: operations["listScannerDevices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/scanner/devices/{device_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a scanner device of the organization
+         * @description Spec 69 A.6 (MA-11). With `scan.perform` the caller revokes only their
+         *     own organizer phone; with `scanner_pass.manage` any device of the
+         *     organization. The device stops working at once and a pass device
+         *     frees its place (`revoked_by_user`, audited as
+         *     `v1.scanner_app.device_revoke`). A device that is already revoked
+         *     answers `204` again. A device of another organization, an unknown one
+         *     and, for a caller without `scanner_pass.manage`, a device of another
+         *     person are the same `404 scanner.device_not_found`.
+         */
+        delete: operations["revokeScannerDevice"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/scanner/passes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Controller passes of the organization
+         * @description Spec 69 A.6 (MA-12). Up to 100 passes, newest first, turned-off ones
+         *     included, each with its dates and live devices. Requires
+         *     `scanner_pass.manage`.
+         */
+        get: operations["listScannerPasses"];
+        put?: never;
+        /**
+         * Create a controller pass with its pairing link
+         * @description Spec 69 A.6 (MA-12). A controller pass lets the phones of hired door
+         *     staff check the listed dates without an account. Requires a JWT and
+         *     `scanner_pass.manage` (an organization API key never holds it). A
+         *     demo pass (no window, for the review of the app by a store) may be
+         *     created only by a platform superadmin (`403
+         *     scanner_pass.demo_forbidden`). Without `valid_from` and `valid_until`
+         *     the window is from 4 hours before the earliest doors opening (or
+         *     start) of the dates until 6 hours after the latest start. The answer
+         *     carries the pass and its pairing link. Audited as
+         *     `v1.scanner_pass.create`.
+         */
+        post: operations["createScannerPass"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/scanner/passes/{pass_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One controller pass
+         * @description Spec 69 A.6 (MA-12). The pass with its dates and live devices.
+         *     Requires `scanner_pass.manage`. A pass of another organization is
+         *     `404 scanner_pass.not_found`.
+         */
+        get: operations["getScannerPass"];
+        put?: never;
+        post?: never;
+        /**
+         * Turn a controller pass off
+         * @description Spec 69 A.6 (MA-12). In one transaction the pass is turned off, every
+         *     live phone of it is revoked (`pass_revoked`) and its pairing codes
+         *     are deleted. A pass that is already off answers `204` again. A new
+         *     link (`POST .../link`) turns it on. Requires `scanner_pass.manage`.
+         *     Audited as `v1.scanner_pass.revoke` with the revoked device ids.
+         */
+        delete: operations["revokeScannerPass"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a controller pass
+         * @description Spec 69 A.6 (MA-12). Changes the name, the window, the number of
+         *     phones or the dates (the list replaces the old dates as a whole) of a
+         *     pass that is on. Requires `scanner_pass.manage`. Audited as
+         *     `v1.scanner_pass.update`.
+         */
+        patch: operations["updateScannerPass"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/scanner/passes/{pass_id}/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A new pairing link of a controller pass
+         * @description Spec 69 A.6 (MA-12). The earlier codes of the pass stop working (phones
+         *     already paired keep working). A pass that was turned off is turned on
+         *     again. A standard pass whose window is over is refused (`422
+         *     scanner_pass.window_ended`): move `valid_until` first. No body.
+         *     Requires `scanner_pass.manage`. Audited as `v1.scanner_pass.link`.
+         */
+        post: operations["createScannerPassLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scan/pair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pairing page of the scanner app
+         * @description Spec 69 A.1. The page a pairing link opens when the app is not
+         *     installed or the phone does not hand the link to the app: a button
+         *     "Open the app" (Android: an `intent://` link to
+         *     `com.arenasoldout.macs` with the store as the fallback), links to
+         *     both stores, and the code in large letters with a "Copy" button. The
+         *     code is read by the page script from the URL fragment (`#<code>`),
+         *     which never reaches the server; the page holds no state and spends
+         *     nothing. English or Russian by `Accept-Language`. No credential.
+         *     Headers: a `Content-Security-Policy` without outside sources (the
+         *     script is `/scan/pair.js`, the style is allowed by its hash),
+         *     `Cache-Control: no-store`, `Referrer-Policy: no-referrer`.
+         */
+        get: operations["getScannerPairPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scan/pair.js": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Script of the pairing page
+         * @description The script of `GET /scan/pair`: reads the code from the fragment,
+         *     shows it, copies it and builds the Android `intent://` link. A fixed
+         *     file; same headers as the page.
+         */
+        get: operations["getScannerPairPageScript"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/.well-known/apple-app-site-association": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * iOS association file of the scanner app
+         * @description Lets iOS open the scanner app (`<SCANNER_IOS_TEAM_ID>.com.arenasoldout.macs`)
+         *     from a link on `/scan/pair`. While `SCANNER_IOS_TEAM_ID` is empty the
+         *     route answers `404 http.not_found`. No credential;
+         *     `Cache-Control: public, max-age=3600`.
+         */
+        get: operations["getAppleAppSiteAssociation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/.well-known/assetlinks.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Android association file of the scanner app
+         * @description Lets Android open the scanner app (`com.arenasoldout.macs`) from a
+         *     link on this host. The fingerprints come from
+         *     `SCANNER_ANDROID_CERT_SHA256` (comma-separated); while it is empty the
+         *     route answers `404 http.not_found`. No credential;
+         *     `Cache-Control: public, max-age=3600`.
+         */
+        get: operations["getAndroidAssetLinks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/macs/scan-events": {
         parameters: {
             query?: never;
@@ -34962,6 +35329,263 @@ export interface components {
             permissions: string[];
             /** @description The controller pass of a pass device. Absent for an organizer device. */
             pass?: components["schemas"]["ScannerAppPass"];
+        };
+        /** @description Body of `POST /v1/scanner-app/pair`, a pairing code to exchange for a device. */
+        ScannerAppPairRequest: {
+            /**
+             * @description The pairing code as typed or read from the link: 8 characters of
+             *     `ABCDEFGHJKMNPQRSTUVWXYZ23456789`. Case, spaces and hyphens do not
+             *     matter.
+             */
+            code: string;
+            /** @description Platform of the phone, one of `ios`, `android` or `other`. */
+            platform: string;
+            /** @description Name of the phone, for example "Gate 1". Can be empty. */
+            device_label?: string;
+            /**
+             * @description Name of the controller who uses a controller pass. Ignored for an
+             *     organizer's own code.
+             */
+            controller_name?: string;
+        };
+        /** @description Body of a successful pairing. The tokens are shown only once. */
+        ScannerAppPairResponse: {
+            /** @description Access token of the device (`sdt_` and 43 characters), valid for one hour. */
+            access_token: string;
+            /**
+             * Format: date-time
+             * @description When the access token stops working, in UTC.
+             */
+            access_expires_at: string;
+            /**
+             * @description Refresh token of the device (`sdr_` and 43 characters). It is never
+             *     accepted as a Bearer token; send it only to
+             *     `POST /v1/scanner-app/token/refresh`.
+             */
+            refresh_token: string;
+            /**
+             * Format: date-time
+             * @description When the refresh token stops working (30 days, renewed on every refresh), in UTC.
+             */
+            refresh_expires_at: string;
+            /** @description The same body as `GET /v1/scanner-app/me` for the new device. */
+            me: components["schemas"]["ScannerAppMeResponse"];
+        };
+        /** @description Body of `POST /v1/scanner-app/token/refresh`. */
+        ScannerAppRefreshRequest: {
+            /** @description The refresh token of the device. */
+            refresh_token: string;
+        };
+        /** @description A new token pair of a device. Both tokens replace the old ones. */
+        ScannerAppTokenPair: {
+            /** @description New access token of the device, valid for one hour. */
+            access_token: string;
+            /**
+             * Format: date-time
+             * @description When the new access token stops working, in UTC.
+             */
+            access_expires_at: string;
+            /** @description New refresh token of the device. */
+            refresh_token: string;
+            /**
+             * Format: date-time
+             * @description When the new refresh token stops working, in UTC.
+             */
+            refresh_expires_at: string;
+        };
+        /** @description A pairing code of the scanner app with its link and QR picture. Shown only once. */
+        ScannerPairingLink: {
+            /** @description The pairing code, 8 characters. */
+            code: string;
+            /** @description The pairing link `<API host>/scan/pair#<code>`; the same address is in the QR picture. */
+            link: string;
+            /**
+             * Format: date-time
+             * @description When an organizer's code stops working (15 minutes), in UTC. Absent
+             *     for the code of a controller pass, which works until the pass
+             *     window ends.
+             */
+            expires_at?: string;
+            /** @description The QR picture of `link`, a base64 PNG of 320 pixels. Null when it could not be drawn. */
+            qr_png: string | null;
+        };
+        /** @description A live (not revoked) scanner device of an organization. */
+        ScannerDevice: {
+            /**
+             * Format: uuid
+             * @description Id of the device.
+             */
+            id: string;
+            /** @description `organizer` (the phone of a person of the organization) or `pass` (paired with a controller pass). */
+            kind: string;
+            /** @description Name of the phone given at pairing. Can be empty. */
+            label: string;
+            /** @description `ios`, `android` or `other`. */
+            platform: string;
+            /** @description Name of the controller typed at pairing with a pass. Empty for an organizer device. */
+            controller_name: string;
+            /**
+             * Format: uuid
+             * @description The controller pass of a pass device; null for an organizer device.
+             */
+            pass_id: string | null;
+            /** @description Name of that pass; null for an organizer device. */
+            pass_label: string | null;
+            /**
+             * Format: uuid
+             * @description The person of an organizer device; null for a pass device.
+             */
+            user_id: string | null;
+            /**
+             * Format: date-time
+             * @description When the device was paired, in UTC.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description The last request of the device, in UTC (written at most once a minute); null before the first one.
+             */
+            last_seen_at: string | null;
+        };
+        /** @description Live scanner devices, newest first. */
+        ScannerDeviceList: {
+            /** @description The devices. */
+            devices: components["schemas"]["ScannerDevice"][];
+        };
+        /** @description One date of a controller pass in a request. */
+        ScannerPassSessionInput: {
+            /**
+             * Format: uuid
+             * @description Id of a live date (session) of the organization.
+             */
+            session_id: string;
+            /**
+             * @description Price categories of that date the pass may check. Absent or empty:
+             *     every category of the date.
+             */
+            tier_ids?: string[];
+        };
+        /** @description Body of `POST .../scanner/passes`. */
+        ScannerPassCreateRequest: {
+            /** @description Name of the pass, for example "Main door". */
+            label: string;
+            /**
+             * @description Kind of the pass. `standard` (default) works inside its time window. `demo` has no
+             *     window and may be created only by a platform superadmin.
+             */
+            kind?: string;
+            /** @description The dates the pass may check. */
+            sessions: components["schemas"]["ScannerPassSessionInput"][];
+            /** @description How many phones may use the pass at the same time. Default 2. */
+            max_devices?: number;
+            /**
+             * Format: date-time
+             * @description Start of the window. Send both `valid_from` and `valid_until` or
+             *     neither; without them the window is from 4 hours before the
+             *     earliest doors opening (or start) of the dates to 6 hours after
+             *     the latest start. Not allowed for a demo pass.
+             */
+            valid_from?: string;
+            /**
+             * Format: date-time
+             * @description End of the window, after `valid_from`. Not allowed for a demo pass.
+             */
+            valid_until?: string;
+        };
+        /** @description Body of `PATCH .../scanner/passes/{pass_id}`. An absent field stays as it is; send at least one. */
+        ScannerPassPatchRequest: {
+            /** @description New name of the pass. */
+            label?: string;
+            /**
+             * Format: date-time
+             * @description New start of the window (standard pass only).
+             */
+            valid_from?: string;
+            /**
+             * Format: date-time
+             * @description New end of the window, after the start (standard pass only).
+             */
+            valid_until?: string;
+            /** @description New number of phones; not lower than the phones that already use the pass. */
+            max_devices?: number;
+            /** @description The new dates of the pass; they replace the old dates as a whole. */
+            sessions?: components["schemas"]["ScannerPassSessionInput"][];
+        };
+        /** @description A live device of a controller pass. */
+        ScannerPassDevice: {
+            /**
+             * Format: uuid
+             * @description Id of the device.
+             */
+            id: string;
+            /** @description Name of the controller typed at pairing. Can be empty. */
+            controller_name: string;
+            /** @description Name of the phone. Can be empty. */
+            label: string;
+            /** @description `ios`, `android` or `other`. */
+            platform: string;
+            /**
+             * Format: date-time
+             * @description When the device was paired, in UTC.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description The last request of the device, in UTC; null before the first one.
+             */
+            last_seen_at: string | null;
+        };
+        /** @description A controller pass with its dates and its live devices ("accepted N of M"). */
+        ScannerPass: {
+            /**
+             * Format: uuid
+             * @description Id of the pass.
+             */
+            id: string;
+            /** @description Name of the pass. */
+            label: string;
+            /** @description `standard` or `demo`. */
+            kind: string;
+            /**
+             * Format: date-time
+             * @description Start of the window, in UTC; null for a demo pass.
+             */
+            valid_from: string | null;
+            /**
+             * Format: date-time
+             * @description End of the window, in UTC; null for a demo pass.
+             */
+            valid_until: string | null;
+            /** @description How many phones may use the pass at the same time (M). */
+            max_devices: number;
+            /** @description How many live phones use the pass now (N). */
+            accepted: number;
+            /**
+             * Format: date-time
+             * @description When the pass was created, in UTC.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the pass was turned off, in UTC; null while it is on.
+             */
+            revoked_at: string | null;
+            /** @description The live dates of the pass in the organization. */
+            sessions: components["schemas"]["ScannerAppPassSession"][];
+            /** @description The live devices of the pass, oldest first. */
+            devices: components["schemas"]["ScannerPassDevice"][];
+        };
+        /** @description Controller passes of an organization, newest first, at most 100. */
+        ScannerPassList: {
+            /** @description The passes, turned-off ones included. */
+            passes: components["schemas"]["ScannerPass"][];
+        };
+        /** @description A new controller pass and its pairing link. */
+        ScannerPassCreateResponse: {
+            /** @description The new pass. */
+            pass: components["schemas"]["ScannerPass"];
+            /** @description The pairing link of the pass; it works for every phone until the pass is full or its window ends. */
+            pairing: components["schemas"]["ScannerPairingLink"];
         };
         /**
          * @description One scan as MACS reports it. The ticket is named by
@@ -71923,6 +72547,1049 @@ export interface operations {
              *     route is always mounted so the OpenAPI drift check can see it.
              */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    pairScannerAppDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScannerAppPairRequest"];
+            };
+        };
+        responses: {
+            /** @description The new device, its tokens and its description. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScannerAppPairResponse"];
+                };
+            };
+            /**
+             * @description The body is not a JSON object (`scanner_app.invalid_body`), or the
+             *     platform, the device label or the controller name is wrong
+             *     (`scanner_app.invalid_device`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `scanner_app.code_not_found`: the code is unknown, expired, already
+             *     used, the pass is turned off or its window ended, the person lost
+             *     the right to scan, or the organization is archived. One answer for
+             *     all of them.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `scanner_app.pass_full`: the pass already has its number of phones. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `scanner_app.too_many_attempts`: the attempt limit of the address
+             *     or of the code is reached. `Retry-After` carries the seconds to
+             *     wait, also in `error.details.retry_after_seconds`.
+             */
+            429: {
+                headers: {
+                    /** @description Seconds until the next attempt can be made, at least 1. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The pairing failed (`scanner_app.pair_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is not wired (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    refreshScannerAppToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScannerAppRefreshRequest"];
+            };
+        };
+        responses: {
+            /** @description The new token pair. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScannerAppTokenPair"];
+                };
+            };
+            /** @description The body is not a JSON object (`scanner_app.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `scanner_app.device_revoked`, the one refusal: the device is
+             *     revoked, the pass is turned off or ended, the person has no
+             *     membership with `scan.perform`, or the token is unknown. The app
+             *     deletes the tokens of this organization and shows the pairing
+             *     screen.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The refresh failed (`scanner_app.refresh_failed`); the app keeps its tokens. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is not wired (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    unpairScannerAppDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The device is revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No device token (`auth.missing_token`) or a token that is not valid (`auth.invalid_token`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The permission gate refused the device (`permissions.denied`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The device could not be revoked (`scanner_app.unpair_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is not wired (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createScannerPairingCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The code, its link, its end and its QR picture. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScannerPairingLink"];
+                };
+            };
+            /** @description org_id is not a valid UUID (`org.invalid_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description No `scan.perform` (`permissions.denied`), no membership of the
+             *     organization (`org.access_denied`), not a person
+             *     (`scanner.user_only`), or no own membership whose role holds
+             *     `scan.perform` (`scanner.membership_required`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The code could not be issued (`scanner.code_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is not wired (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listScannerDevices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The devices. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScannerDeviceList"];
+                };
+            };
+            /** @description org_id is not a valid UUID (`org.invalid_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No `scan.perform` (`permissions.denied`), no membership (`org.access_denied`) or not a person (`scanner.user_only`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The devices could not be read (`scanner.read_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is not wired (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    revokeScannerDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the scanner device. */
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The device is revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description org_id is not a valid UUID (`org.invalid_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No `scan.perform` (`permissions.denied`), no membership (`org.access_denied`) or not a person (`scanner.user_only`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `scanner.device_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The device could not be revoked (`scanner.revoke_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is not wired (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listScannerPasses: {
+        parameters: {
+            query?: {
+                /** @description Keep only the passes with a date of this event. */
+                event_id?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The passes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScannerPassList"];
+                };
+            };
+            /** @description event_id is not a UUID (`scanner_pass.invalid_filter`) or org_id is not a UUID (`org.invalid_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No `scanner_pass.manage` (`permissions.denied`), no membership (`org.access_denied`) or not a person (`scanner.user_only`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The passes could not be read (`scanner_pass.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is not wired (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createScannerPass: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScannerPassCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description The new pass and its pairing link. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScannerPassCreateResponse"];
+                };
+            };
+            /** @description The body is not a JSON object (`scanner_pass.invalid_body`) or org_id is not a UUID (`org.invalid_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description No `scanner_pass.manage` (`permissions.denied`), no membership
+             *     (`org.access_denied`), not a person (`scanner.user_only`), or a
+             *     demo pass asked by someone who is not a platform superadmin
+             *     (`scanner_pass.demo_forbidden`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `scanner_pass.invalid` (label, kind, max_devices or no dates),
+             *     `scanner_pass.invalid_window` (only one end, the end not after the
+             *     start, or a window on a demo pass), `scanner_pass.invalid_session`
+             *     (a date that is not a live date of this organization),
+             *     `scanner_pass.invalid_tier` (a category that is not of its date)
+             *     or `scanner_pass.window_ended` (the window is already over).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The pass could not be created (`scanner_pass.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is not wired (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getScannerPass: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the controller pass. */
+                pass_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pass. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScannerPass"];
+                };
+            };
+            /** @description org_id is not a valid UUID (`org.invalid_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No `scanner_pass.manage` (`permissions.denied`), no membership (`org.access_denied`) or not a person (`scanner.user_only`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `scanner_pass.not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The pass could not be read (`scanner_pass.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is not wired (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    revokeScannerPass: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the controller pass. */
+                pass_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pass is off and its phones are revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description org_id is not a valid UUID (`org.invalid_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No `scanner_pass.manage` (`permissions.denied`), no membership (`org.access_denied`) or not a person (`scanner.user_only`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `scanner_pass.not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The pass could not be turned off (`scanner_pass.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is not wired (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateScannerPass: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the controller pass. */
+                pass_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScannerPassPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description The changed pass. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScannerPass"];
+                };
+            };
+            /** @description The body is not a JSON object or names no field (`scanner_pass.invalid_body`), or org_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No `scanner_pass.manage` (`permissions.denied`), no membership (`org.access_denied`) or not a person (`scanner.user_only`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `scanner_pass.not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `scanner_pass.revoked`: the pass is turned off; a new link turns it on. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `scanner_pass.invalid`, `scanner_pass.invalid_window`,
+             *     `scanner_pass.max_devices_below_accepted` (fewer places than the
+             *     phones that already use the pass), `scanner_pass.invalid_session`
+             *     or `scanner_pass.invalid_tier`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The pass could not be changed (`scanner_pass.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is not wired (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createScannerPassLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the controller pass. */
+                pass_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The new code, its link and its QR picture (no `expires_at`). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScannerPairingLink"];
+                };
+            };
+            /** @description org_id is not a valid UUID (`org.invalid_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No `scanner_pass.manage` (`permissions.denied`), no membership (`org.access_denied`) or not a person (`scanner.user_only`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `scanner_pass.not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `scanner_pass.window_ended`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The link could not be issued (`scanner_pass.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is not wired (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getScannerPairPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The HTML page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+        };
+    };
+    getScannerPairPageScript: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The JavaScript file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/javascript": string;
+                };
+            };
+        };
+    };
+    getAppleAppSiteAssociation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `applinks` file, JSON. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Not configured on this server (`http.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getAndroidAssetLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The Digital Asset Links statement list, JSON. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>[];
+                };
+            };
+            /** @description Not configured on this server (`http.not_found`). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

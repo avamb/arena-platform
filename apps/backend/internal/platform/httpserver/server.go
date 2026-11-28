@@ -142,6 +142,8 @@ func (s *Server) mountOperationalRoutes() {
 	}
 	// The public short-link redirect GET|HEAD /go/{code} (spec 43, QL-3).
 	s.mountShortLinkRoutes()
+	// The scanner app's pairing page and association files (spec 69 A.1).
+	s.mountScannerPairRoutes()
 	// Custom 404/405 handlers return the standard JSON error envelope
 	// instead of chi's default plain-text responses (features #12, #13).
 	s.router.NotFound(handleNotFound)

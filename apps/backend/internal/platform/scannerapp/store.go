@@ -91,6 +91,11 @@ type Device struct {
 	Label      string
 	Platform   string
 	LastSeenAt *time.Time
+	// ControllerName is the name typed when a pass device was paired.
+	ControllerName string
+	// PairConfirmed is false from a refresh until the device first uses the
+	// new access token; the device-token middleware then calls ConfirmPair.
+	PairConfirmed bool
 }
 
 // Me is what a device is told about itself.
@@ -151,6 +156,9 @@ func Authenticate(ctx context.Context, db gen.DBTX, raw string, now time.Time) (
 		Label:      row.Label,
 		Platform:   row.Platform,
 		LastSeenAt: row.LastSeenAt,
+
+		ControllerName: row.ControllerName,
+		PairConfirmed:  row.PairConfirmed,
 	}
 	switch {
 	case row.UserID != nil:
@@ -271,52 +279,13 @@ func CreatePass(ctx context.Context, db TxDB, params CreatePassParams, now time.
 		return uuid.Nil, ErrInvalidPass
 	}
 
-	sessionIDs := make([]uuid.UUID, 0, len(params.Sessions))
-	seen := make(map[uuid.UUID]bool, len(params.Sessions))
-	var tierIDs, tierSessionIDs []uuid.UUID
-	seenTier := map[[2]uuid.UUID]bool{}
-	// A date named twice is restricted when any of its entries lists
-	// categories: the narrower reading wins.
-	restricted := map[uuid.UUID]bool{}
-	for _, s := range params.Sessions {
-		if !seen[s.SessionID] {
-			seen[s.SessionID] = true
-			sessionIDs = append(sessionIDs, s.SessionID)
-		}
-		if len(s.TierIDs) > 0 {
-			restricted[s.SessionID] = true
-		}
-		for _, t := range s.TierIDs {
-			k := [2]uuid.UUID{t, s.SessionID}
-			if seenTier[k] {
-				continue
-			}
-			seenTier[k] = true
-			tierIDs = append(tierIDs, t)
-			tierSessionIDs = append(tierSessionIDs, s.SessionID)
-		}
-	}
+	ps := preparePassSessions(params.Sessions)
 
 	var passID uuid.UUID
 	err := inTx(ctx, db, func(tx pgx.Tx) error {
 		q := gen.New(tx)
-		if len(sessionIDs) > 0 {
-			n, err := q.CountScannerSessionsOfOrg(ctx, params.OrgID, sessionIDs)
-			if err != nil {
-				return fmt.Errorf("scannerapp: check sessions: %w", err)
-			}
-			if n != int64(len(sessionIDs)) {
-				return ErrForeignSession
-			}
-		}
-		if len(tierIDs) > 0 {
-			n, err := q.CountScannerTiersOfOrg(ctx, params.OrgID, tierIDs, tierSessionIDs)
-			if err != nil {
-				return fmt.Errorf("scannerapp: check tiers: %w", err)
-			}
-			if n != int64(len(tierIDs)) {
-				return ErrForeignTier
-			}
+		if err := ps.check(ctx, q, params.OrgID); err != nil {
+			return err
 		}
 		id, err := q.InsertScannerPass(ctx, gen.InsertScannerPassParams{
 			OrgID: params.OrgID, Label: label, Kind: kind,
@@ -326,15 +295,8 @@ func CreatePass(ctx context.Context, db TxDB, params CreatePassParams, now time.
 		if err != nil {
 			return fmt.Errorf("scannerapp: insert pass: %w", err)
 		}
-		for _, sid := range sessionIDs {
-			if err := q.InsertScannerPassSession(ctx, id, sid, !restricted[sid]); err != nil {
-				return fmt.Errorf("scannerapp: insert pass session: %w", err)
-			}
-		}
-		for i, tid := range tierIDs {
-			if err := q.InsertScannerPassTier(ctx, id, tierSessionIDs[i], tid); err != nil {
-				return fmt.Errorf("scannerapp: insert pass tier: %w", err)
-			}
+		if err := ps.write(ctx, q, id); err != nil {
+			return err
 		}
 		passID = id
 		return nil
@@ -343,6 +305,83 @@ func CreatePass(ctx context.Context, db TxDB, params CreatePassParams, now time.
 		return uuid.Nil, err
 	}
 	return passID, nil
+}
+
+// passSessions are the dates and categories of a pass, without repeats.
+type passSessions struct {
+	sessionIDs     []uuid.UUID
+	tierIDs        []uuid.UUID
+	tierSessionIDs []uuid.UUID
+	restricted     map[uuid.UUID]bool
+}
+
+func preparePassSessions(in []CreatePassSession) passSessions {
+	ps := passSessions{
+		sessionIDs: make([]uuid.UUID, 0, len(in)),
+		// A date named twice is restricted when any of its entries lists
+		// categories: the narrower reading wins.
+		restricted: map[uuid.UUID]bool{},
+	}
+	seen := make(map[uuid.UUID]bool, len(in))
+	seenTier := map[[2]uuid.UUID]bool{}
+	for _, s := range in {
+		if !seen[s.SessionID] {
+			seen[s.SessionID] = true
+			ps.sessionIDs = append(ps.sessionIDs, s.SessionID)
+		}
+		if len(s.TierIDs) > 0 {
+			ps.restricted[s.SessionID] = true
+		}
+		for _, t := range s.TierIDs {
+			k := [2]uuid.UUID{t, s.SessionID}
+			if seenTier[k] {
+				continue
+			}
+			seenTier[k] = true
+			ps.tierIDs = append(ps.tierIDs, t)
+			ps.tierSessionIDs = append(ps.tierSessionIDs, s.SessionID)
+		}
+	}
+	return ps
+}
+
+// check refuses a date that is not a live date of orgID (ErrForeignSession)
+// and a category that is not a live category of its date (ErrForeignTier).
+func (ps passSessions) check(ctx context.Context, q *gen.Queries, orgID uuid.UUID) error {
+	if len(ps.sessionIDs) > 0 {
+		n, err := q.CountScannerSessionsOfOrg(ctx, orgID, ps.sessionIDs)
+		if err != nil {
+			return fmt.Errorf("scannerapp: check sessions: %w", err)
+		}
+		if n != int64(len(ps.sessionIDs)) {
+			return ErrForeignSession
+		}
+	}
+	if len(ps.tierIDs) > 0 {
+		n, err := q.CountScannerTiersOfOrg(ctx, orgID, ps.tierIDs, ps.tierSessionIDs)
+		if err != nil {
+			return fmt.Errorf("scannerapp: check tiers: %w", err)
+		}
+		if n != int64(len(ps.tierIDs)) {
+			return ErrForeignTier
+		}
+	}
+	return nil
+}
+
+// write stores the dates and categories of a pass.
+func (ps passSessions) write(ctx context.Context, q *gen.Queries, passID uuid.UUID) error {
+	for _, sid := range ps.sessionIDs {
+		if err := q.InsertScannerPassSession(ctx, passID, sid, !ps.restricted[sid]); err != nil {
+			return fmt.Errorf("scannerapp: insert pass session: %w", err)
+		}
+	}
+	for i, tid := range ps.tierIDs {
+		if err := q.InsertScannerPassTier(ctx, passID, ps.tierSessionIDs[i], tid); err != nil {
+			return fmt.Errorf("scannerapp: insert pass tier: %w", err)
+		}
+	}
+	return nil
 }
 
 // DeviceParams describe a new device. UserID is read by
@@ -397,7 +436,7 @@ func CreateOrganizerDevice(ctx context.Context, db gen.DBTX, params DeviceParams
 	if err != nil {
 		return Device{}, "", fmt.Errorf("scannerapp: insert device: %w", err)
 	}
-	return Device{ID: id, OrgID: params.OrgID, UserID: &userID, Kind: KindOrganizer, Label: label, Platform: params.Platform}, raw, nil
+	return Device{ID: id, OrgID: params.OrgID, UserID: &userID, Kind: KindOrganizer, Label: label, Platform: params.Platform, PairConfirmed: true}, raw, nil
 }
 
 // CreatePassDevice stores a device of a pass of params.OrgID and returns it
@@ -450,7 +489,7 @@ func CreatePassDevice(ctx context.Context, db TxDB, params DeviceParams, now tim
 		if err != nil {
 			return fmt.Errorf("scannerapp: insert device: %w", err)
 		}
-		d = Device{ID: id, OrgID: params.OrgID, PassID: &passID, Kind: KindPass, Label: label, Platform: params.Platform}
+		d = Device{ID: id, OrgID: params.OrgID, PassID: &passID, Kind: KindPass, Label: label, Platform: params.Platform, PairConfirmed: true}
 		return nil
 	})
 	if err != nil {

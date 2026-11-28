@@ -13,8 +13,10 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/scannerapp"
 )
 
@@ -22,6 +24,24 @@ import (
 type Handler struct {
 	DB     gen.DBTX
 	Logger *slog.Logger
+
+	// The fields below serve the pairing, refresh and organizer routes
+	// (MA-11 / MA-12); see Configure.
+
+	// Pool opens the transactions of the store; nil answers 503.
+	Pool scannerapp.TxDB
+	// Audit records the changes; nil skips the audit rows (unit tests).
+	Audit audit.Writer
+	// Perms decides, inside the path organization, whether the caller also
+	// holds scanner_pass.manage (all devices of the organization).
+	Perms permissions.Checker
+	// APIBaseURL is the public origin of the API, the host of the pairing
+	// link.
+	APIBaseURL string
+	// TrustedProxies is forwarded to httputil.TrustedClientIP.
+	TrustedProxies int
+	// Now is the clock; nil is time.Now.
+	Now func() time.Time
 }
 
 // New builds a Handler. db may be nil: every route then answers 503.
@@ -30,6 +50,30 @@ func New(db gen.DBTX, logger *slog.Logger) *Handler {
 		logger = slog.Default()
 	}
 	return &Handler{DB: db, Logger: logger}
+}
+
+// Deps are the dependencies of the pairing, refresh and organizer routes.
+type Deps struct {
+	Pool           scannerapp.TxDB
+	Audit          audit.Writer
+	Perms          permissions.Checker
+	APIBaseURL     string
+	TrustedProxies int
+	Now            func() time.Time
+}
+
+// Configure sets the dependencies of the MA-11 / MA-12 routes and returns h.
+func (h *Handler) Configure(d Deps) *Handler {
+	h.Pool, h.Audit, h.Perms = d.Pool, d.Audit, d.Perms
+	h.APIBaseURL, h.TrustedProxies, h.Now = d.APIBaseURL, d.TrustedProxies, d.Now
+	return h
+}
+
+func (h *Handler) now() time.Time {
+	if h.Now != nil {
+		return h.Now()
+	}
+	return time.Now()
 }
 
 // MeResponse is the body of GET /v1/scanner-app/me.
