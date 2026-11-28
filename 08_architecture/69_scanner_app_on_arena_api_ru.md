@@ -921,6 +921,12 @@ Tailor, Radario, CSV, XLSX). В Arena пакеты чужих штрихкодо
 | `opens_at` | для `doors_not_open` |
 | `counters` | `session_id`, `tickets_total`, `entered` сеанса билета после записи |
 
+`verdict` у записей `exit`, `manual`, `undo` и `override` значит то же: `admitted` —
+запись принята и состояние билета изменено (выход записан, отметка поставлена,
+отметка снята, решение сохранено), `refused` — не принята, причина в `reason`.
+В результате всегда есть запись с `scan_id` запроса; результат без неё
+приложение считает неподтверждённым.
+
 Карточка `ticket`: `ticket_id`, `number` (номер билета для экрана),
 `order_number`, `session_id`, `category`, `seat` (строка или `null`), `vip`,
 `message` (сообщение контролёру или `null`), `order_position` (`index`,
