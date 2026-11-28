@@ -35,6 +35,17 @@ WHERE  event_id = $1
   AND  deleted_at IS NULL
 ORDER BY start_at ASC, id ASC;
 
+-- name: ListPublicSessionsByEvent :many
+-- ListPublicSessionsByEvent is ListSessionsByEvent for buyer-facing readers
+-- (public feed, widget, hosted page): control_only sessions (door control
+-- only) are left out. Same columns as sessionColumns in gen/sessions.sql.go.
+SELECT id, event_id, venue_id, start_at, end_at, capacity_total, capacity_override, status, admission_mode, seating_plan_version_id, poster_media_id, currency, currency_source, created_at, updated_at, deleted_at, sales_end_at, doors_open_at, sales_mode, external_ticket_url, external_seller_name, display_price_from_minor, trim(display_currency)::text AS display_currency
+FROM   sessions
+WHERE  event_id = $1
+  AND  deleted_at IS NULL
+  AND  sales_mode <> 'control_only'
+ORDER BY start_at ASC, id ASC;
+
 -- name: UpdateSession :one
 -- UpdateSession applies a partial update to an active session.
 -- Scoped by event_id. NULL/zero optional fields keep the existing values.
@@ -250,6 +261,7 @@ WHERE  e.org_id     = $1
   AND  e.deleted_at IS NULL
   AND  s.deleted_at IS NULL
   AND  s.status     = 'scheduled'
+  AND  s.sales_mode <> 'control_only'
   AND  (s.start_at > now() - interval '6 hours' OR s.sales_end_at > now())
 ORDER BY s.start_at ASC, s.id ASC;
 
@@ -307,6 +319,7 @@ WHERE  e.org_id     = $1
   AND  e.deleted_at IS NULL
   AND  s.deleted_at IS NULL
   AND  s.status     = 'scheduled'
+  AND  s.sales_mode <> 'control_only'
   AND  (s.start_at > now() - interval '6 hours' OR s.sales_end_at > now())
   AND  tt.deleted_at IS NULL
 ORDER BY tt.session_id, tt.sort_order ASC, tt.id ASC;

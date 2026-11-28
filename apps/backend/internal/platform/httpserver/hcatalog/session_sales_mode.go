@@ -63,7 +63,7 @@ func parseSalesModeWrite(w http.ResponseWriter, r *http.Request, rawMode *string
 		out.Mode = strings.TrimSpace(*rawMode)
 		if !extsale.ValidMode(out.Mode) {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-				extsale.CodeInvalidSalesMode, "sales_mode must be one of: platform, external", r,
+				extsale.CodeInvalidSalesMode, "sales_mode must be one of: platform, external, control_only", r,
 				map[string]any{"field": "sales_mode"},
 			))
 			return out, false
@@ -116,11 +116,19 @@ func (h *Handler) applySalesMode(ctx context.Context, w http.ResponseWriter, r *
 	target := wr.Mode
 	if target == "" {
 		target = cur.SalesMode
-		if wr.ExternalNull {
+		// "external": null puts a partner session back on the platform; a
+		// control_only session has no partner block, so it stays as it is.
+		if wr.ExternalNull && cur.SalesMode != gen.SessionSalesModeControlOnly {
 			target = gen.SessionSalesModePlatform
 		}
 	}
 	switch {
+	case target == gen.SessionSalesModeControlOnly && wr.ExternalPresent && cur.SalesMode == gen.SessionSalesModeControlOnly:
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+			extsale.CodeExternalUnused, "external applies only to sales_mode external", r,
+			map[string]any{"field": "external"},
+		))
+		return cur, false
 	case target == gen.SessionSalesModePlatform && wr.ExternalPresent:
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 			extsale.CodeExternalUnused, "external applies only to sales_mode external", r,
@@ -151,6 +159,9 @@ func (h *Handler) applySalesMode(ctx context.Context, w http.ResponseWriter, r *
 		if target == gen.SessionSalesModePlatform {
 			why = "a session with seats or tiers cannot go back to sales on the platform"
 		}
+		if cur.SalesMode == gen.SessionSalesModeControlOnly || target == gen.SessionSalesModeControlOnly {
+			why = "a session never turns into a control_only session or back: a control session is created with POST /v1/organizations/{org_id}/control-sessions"
+		}
 		writeSalesModeLocked(w, r, cur.SalesMode, target, why)
 		return cur, false
 	}
@@ -172,10 +183,11 @@ func (h *Handler) applySalesMode(ctx context.Context, w http.ResponseWriter, r *
 }
 
 // writeSoldExternally answers 409 session.sold_externally when the session is
-// sold by a partner box office: it owns no tiers and no seats.
+// not sold on this platform (a partner box office sells it, or it only
+// controls the entrance, migration 0228): it owns no tiers and no seats.
 func writeSoldExternally(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 		extsale.CodeSoldExternally,
-		"this session is sold by a partner box office, so it has no tiers or seats here", r,
+		"tickets for this session are not sold on this platform, so it has no tiers or seats here", r,
 	))
 }

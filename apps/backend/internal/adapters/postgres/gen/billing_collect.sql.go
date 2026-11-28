@@ -177,6 +177,7 @@ FROM   session_changes sc
 LEFT   JOIN sessions s ON s.id = sc.session_id
 LEFT   JOIN venues v ON v.id = s.venue_id
 WHERE  'cancelled' = ANY (sc.kinds)
+  AND  COALESCE(s.sales_mode, '') <> 'control_only'
   AND  sc.created_at >= $1
   AND  (sc.created_at, sc.id) > ($1, $2)
 ORDER BY sc.created_at, sc.id
@@ -205,9 +206,14 @@ LEFT   JOIN LATERAL (SELECT v.country
                      FROM   sessions s
                      JOIN   venues v ON v.id = s.venue_id
                      WHERE  s.event_id = e.id AND s.deleted_at IS NULL
+                       AND  s.sales_mode <> 'control_only'
                      ORDER  BY s.start_at
                      LIMIT  1) fv ON true
 WHERE  (p.first_at, e.id) > ($1, $2)
+  AND  NOT (EXISTS (SELECT 1 FROM sessions cs
+                    WHERE  cs.event_id = e.id AND cs.deleted_at IS NULL AND cs.sales_mode = 'control_only')
+            AND NOT EXISTS (SELECT 1 FROM sessions ns
+                    WHERE  ns.event_id = e.id AND ns.deleted_at IS NULL AND ns.sales_mode <> 'control_only'))
 ORDER BY p.first_at, e.id
 LIMIT  $3`
 

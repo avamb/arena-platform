@@ -18,6 +18,7 @@ const resolveFunnelTargetByFeedToken = `SELECT e.id, e.org_id,
            WHERE  s.event_id   = e.id
              AND  s.deleted_at IS NULL
              AND  s.status    <> 'cancelled'
+             AND  s.sales_mode <> 'control_only'
            ORDER BY s.start_at ASC
            LIMIT 1
        ) AS timezone
@@ -43,6 +44,7 @@ func (q *Queries) ResolveFunnelTargetByFeedToken(ctx context.Context, feedToken 
 const funnelSessionBelongsToEvent = `SELECT EXISTS (
     SELECT 1 FROM sessions s
     WHERE s.id = $2 AND s.event_id = $1 AND s.deleted_at IS NULL
+      AND s.sales_mode <> 'control_only'
 )`
 
 // FunnelSessionBelongsToEvent says whether the session is a live session of
@@ -147,6 +149,7 @@ FROM      sessions s
 LEFT JOIN venues   v ON v.id = s.venue_id
 WHERE  s.event_id = $1
   AND  s.deleted_at IS NULL
+  AND  s.sales_mode <> 'control_only'
 ORDER  BY s.start_at, s.id`
 
 // EventFunnelSession is a live session of an event with the IANA zone of its
@@ -325,6 +328,7 @@ FROM   reservations r
 JOIN   sessions s        ON s.id = r.session_id
 JOIN   sales_channels sc ON sc.id = r.channel_id
 WHERE  s.event_id = $1 AND r.org_id = $2
+  AND  s.sales_mode <> 'control_only'
   AND  (sc.settings #>> '{gateway,token_hash}' IS NOT NULL
         OR sc.settings ->> 'gateway_token_hash' IS NOT NULL)
   AND  r.created_at >= $3::date - 1 AND r.created_at < $4::date + 2

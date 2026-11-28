@@ -124,10 +124,12 @@ func (q *Queries) GetReferralCodeByReferrerOrder(ctx context.Context, orderID uu
 const listLiveSessionIDsForEvent = `-- name: ListLiveSessionIDsForEvent :many
 SELECT id::text FROM sessions
 WHERE event_id = $1 AND deleted_at IS NULL AND status <> 'cancelled'
+  AND sales_mode <> 'control_only'
 ORDER BY start_at, id`
 
 // ListLiveSessionIDsForEvent returns the event's sessions a code can be used
-// on: not deleted and not cancelled.
+// on: not deleted, not cancelled and not control-only (migration 0228, the
+// platform sells nothing there).
 func (q *Queries) ListLiveSessionIDsForEvent(ctx context.Context, eventID uuid.UUID) ([]string, error) {
 	rows, err := q.db.Query(ctx, listLiveSessionIDsForEvent, eventID)
 	if err != nil {

@@ -47,6 +47,24 @@ func importExternalSale(e bil24compat.ImportSessionActionEvent) (bil24compat.Ext
 	return kind, sale, nil
 }
 
+// codeEventControlOnly is the 409 code of an event that only controls the
+// entrance (the same word hcatalog answers with).
+const codeEventControlOnly = "event.control_only"
+
+// errControlOnlySession refuses a bundle that addresses a session which only
+// controls the entrance (sales_mode control_only, migration 0228).
+func errControlOnlySession() error {
+	return failImportAt(http.StatusConflict, extsale.CodeSalesModeLocked, "/actionEvent/arenaSessionId",
+		"the session cannot be changed by an import")
+}
+
+// errControlOnlyEvent refuses a bundle that addresses an event whose sessions
+// only control the entrance.
+func errControlOnlyEvent() error {
+	return failImportAt(http.StatusConflict, codeEventControlOnly, "/action/arenaEventId",
+		"the event cannot be changed by an import")
+}
+
 // requireCategoriesUnlessExternal finishes the categoryList check the pure
 // validation postponed (importPlan.CategoriesDeferred): a bundle with no
 // categories and no externalSale is only valid for an existing session a

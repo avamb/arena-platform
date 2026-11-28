@@ -172,7 +172,7 @@ func (h *Handler) hydrateFeedVenueNames(ctx context.Context, responses []publicF
 			ids = append(ids, id)
 		}
 	}
-	names, err := h.publicFeedQueries.ListEventVenueNames(ctx, ids)
+	names, err := h.publicFeedQueries.ListPublicEventVenueNames(ctx, ids)
 	if err != nil {
 		h.logger.Warn("public_feed: venue-name hydration failed", slog.String("error", err.Error()))
 		return
@@ -897,7 +897,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	cartReminder := h.cartReminderOn(ctx, event.OrgID)
 
 	if h.sessionQueries != nil {
-		sessions, err := h.sessionQueries.ListSessionsByEvent(ctx, eventID)
+		sessions, err := h.sessionQueries.ListPublicSessionsByEvent(ctx, eventID)
 		if err != nil {
 			h.logger.Error("public_feed: list sessions failed",
 				slog.String("event_id", eventID.String()),
@@ -970,7 +970,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 				sessionWithdrawn := hcheckout.SessionStatusRefusal(sess.Status, uuid.Nil, time.Time{}) != nil
 				sessResp := h.publicFeedSessionFromRow(ctx, sess, defaultBuyerFields)
 				if f, ok := salesFacts[sess.ID]; ok {
-					sessResp.SalesState = salesstate.Effective(f.Manual, salesstate.FactsFromRow(f), salesNow)
+					sessResp.SalesState = salesstate.Public(salesstate.Effective(f.Manual, salesstate.FactsFromRow(f), salesNow))
 					if salesstate.ValidManual(f.Manual) {
 						sessionWithdrawn = true
 					}
@@ -979,6 +979,11 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 				if !sellable && sessResp.SalesState != salesstate.Cancelled {
 					// Also when the facts could not be loaded.
 					sessResp.SalesState = salesstate.External
+					if sess.SalesMode == gen.SessionSalesModeControlOnly {
+						// Sold nowhere (door control only, migration 0228): it
+						// reads as ended, not as a partner's external sale.
+						sessResp.SalesState = salesstate.Ended
+					}
 				}
 				sessResp.ServiceFeePercent = serviceFeePercent
 				sessResp.PaymentWindowSeconds = windowSeconds(paymentWindow)

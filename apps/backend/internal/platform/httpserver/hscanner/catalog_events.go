@@ -15,6 +15,8 @@ package hscanner
 import (
 	"context"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 )
 
@@ -64,6 +66,17 @@ func BuildCatalogEventPayload(eventID, orgID string, sessionIDs []string) map[st
 func (h *Handler) PublishCatalogEvent(ctx context.Context, eventType, eventID, orgID string, sessionIDs []string) {
 	if eventType == "" || eventID == "" {
 		return
+	}
+	// A control event (it holds a control_only session, migration 0228, MA-40)
+	// exists only for door control and is never announced to a site. A failed
+	// lookup publishes as before: the dispatcher drops what has no sellable
+	// session anyway.
+	if h.barcodeQueries != nil {
+		if id, err := uuid.Parse(eventID); err == nil {
+			if control, cErr := h.barcodeQueries.ListControlOnlyEventIDs(ctx, []uuid.UUID{id}); cErr == nil && len(control) > 0 {
+				return
+			}
+		}
 	}
 	h.PublishScannerEvent(ctx, outbox.Event{
 		AggregateType: EventAggregateType,

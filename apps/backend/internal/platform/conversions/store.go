@@ -323,7 +323,7 @@ func (s *PGStore) orderSessions(ctx context.Context, orderID uuid.UUID) []OrderS
 		  LEFT JOIN countries co ON co.id = ci.country_id
 		  LEFT JOIN i18n_text t_en ON t_en.namespace = 'geo.cities'
 		         AND t_en.key = ci.slug AND t_en.locale = 'en'
-		 WHERE oi.order_id = $1 AND oi.kind = 'ticket'
+		 WHERE oi.order_id = $1 AND oi.kind = 'ticket' AND s.sales_mode <> 'control_only'
 		 GROUP BY s.id, e.id, e.name, s.start_at, v.name, t_en.value, ci.slug, co.iso2
 		 ORDER BY s.start_at, s.id`, orderID)
 	if err != nil {

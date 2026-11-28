@@ -29,6 +29,10 @@ func TestEffective(t *testing.T) {
 		{"window not open yet", "", Facts{Status: "scheduled", SalesEnd: future, TotalPlaces: 10, FreePlaces: 10, OpensLater: true}, Soon},
 		{"windows over", "", Facts{Status: "scheduled", SalesEnd: future, TotalPlaces: 10, FreePlaces: 10}, Ended},
 		{"unknown manual ignored", "open", selling, Open},
+		{"control only is never open", "", Facts{Status: "scheduled", SalesEnd: future, TotalPlaces: 10, FreePlaces: 10, Selling: true, ControlOnly: true}, ControlOnly},
+		{"control only is never sold out", "", Facts{Status: "scheduled", SalesEnd: future, Categories: 1, TotalPlaces: 10, ControlOnly: true}, ControlOnly},
+		{"control only beats manual", SoldOut, Facts{Status: "scheduled", SalesEnd: future, ControlOnly: true}, ControlOnly},
+		{"cancelled beats control only", "", Facts{Status: "cancelled", ControlOnly: true}, Cancelled},
 	}
 	for _, c := range cases {
 		if got := Effective(c.manual, c.facts, now); got != c.want {
@@ -38,7 +42,7 @@ func TestEffective(t *testing.T) {
 }
 
 func TestWire(t *testing.T) {
-	for in, want := range map[string]string{Open: "open", Soon: "soon", SoldOut: "soldout", Ended: "ended", Cancelled: "ended"} {
+	for in, want := range map[string]string{Open: "open", Soon: "soon", SoldOut: "soldout", Ended: "ended", Cancelled: "ended", ControlOnly: "ended"} {
 		if got := Wire(in); got != want {
 			t.Errorf("Wire(%q) = %q, want %q", in, got, want)
 		}

@@ -6734,6 +6734,17 @@ type ContentTranslationOriginal struct {
 	ShortDescription *string `json:"short_description"`
 }
 
+// ControlSessionEnvelope The container event and the control session created together by POST
+// /v1/organizations/{org_id}/control-sessions.
+type ControlSessionEnvelope struct {
+	// Event The container event: a private draft with `control_only` true.
+	Event EventItem `json:"event"`
+
+	// Session The session, with `sales_mode` `control_only` and `sales_state`
+	// `ended`.
+	Session SessionItem `json:"session"`
+}
+
 // ConversionSettings An organization's server-side conversion credentials. The two secrets
 // are write-only: only whether one is set is reported.
 type ConversionSettings struct {
@@ -6971,6 +6982,42 @@ type CreateChannelRequestPaymentMode string
 // `internal/app/payments`); a new module adds its name here and
 // needs no database migration.
 type CreateChannelRequestProvider string
+
+// CreateControlSessionRequest Create-time payload for POST
+// /v1/organizations/{org_id}/control-sessions (MA-40). The owning
+// org_id is taken from the path. The server creates a container event
+// (a private draft named by `title`) and its session in one request;
+// the session carries `sales_mode` `control_only`.
+type CreateControlSessionRequest struct {
+	// Capacity Expected number of people, a positive number (400
+	// `session.invalid_capacity`). Omitted: 1. The session has no
+	// places of its own; this is only the provisional capacity of its
+	// row.
+	Capacity *int32 `json:"capacity"`
+
+	// Currency Explicit ISO 4217 currency, as for POST .../sessions. Omitted:
+	// derived from the venue geography, 422
+	// `session.currency_unresolvable` when it resolves to nothing;
+	// a malformed code is 422 `session.invalid_currency`.
+	Currency *string `json:"currency"`
+
+	// EndAt Session end time (RFC 3339), strictly after `start_at` (400
+	// `session.invalid_date_range`). Omitted: three hours after the
+	// start.
+	EndAt *time.Time `json:"end_at"`
+
+	// StartAt Session start time (RFC 3339).
+	StartAt time.Time `json:"start_at"`
+
+	// Title Name of the container event, 1 to 200 characters after trimming
+	// (400 `session.missing_title` / `session.title_too_long`).
+	Title string `json:"title"`
+
+	// VenueId Venue of the session. Required; a venue of the organization or a
+	// verified shared venue, exactly as for POST .../sessions (400
+	// `session.venue_not_found`, 422 `session.venue_org_mismatch`).
+	VenueId openapi_types.UUID `json:"venue_id"`
+}
 
 // CreateCustomerImportRequest Registers a customer_imports row referencing an already-uploaded
 // file (POST /v1/media). Dry-run/apply are triggered by the dedicated
@@ -7620,7 +7667,10 @@ type CreateSessionRequest struct {
 	// Any other value is 400 `session.invalid_sales_mode`. `external`
 	// needs the `external` object (422 `session.external_required`).
 	// A session with a seating plan cannot be external
-	// (409 `session.sales_mode_locked`).
+	// (409 `session.sales_mode_locked`). `control_only` (migration
+	// 0228) is known but refused here with 409
+	// `session.sales_mode_locked`: create such a session with POST
+	// /v1/organizations/{org_id}/control-sessions.
 	SalesMode *string `json:"sales_mode,omitempty"`
 
 	// SeatingPlanVersionId Seating plan version to bind. Required when admission_mode is
@@ -8955,6 +9005,17 @@ type EventItem struct {
 
 	// ContentLocale Public feed only. The language of the texts served (`short_description`, `description_html` and `description_text` are translated when a translation was asked for with `?locale=` and exists). Two lowercase letters.
 	ContentLocale *string `json:"content_locale,omitempty"`
+
+	// ControlOnly True for a control event: one that holds a live session with
+	// `sales_mode` `control_only` (migration 0228, MA-40). Such an event
+	// exists only so that tickets sold elsewhere can be checked at the
+	// door; it is a private draft, is never published (409
+	// `event.control_only` on publish), takes no session that is sold
+	// here, and is never announced to a site. While one of its sessions
+	// is still ahead its `sales_state` is `draft`, like any unpublished
+	// event; once they have all ended it is `archived`. Created by POST
+	// /v1/organizations/{org_id}/control-sessions.
+	ControlOnly *bool `json:"control_only,omitempty"`
 
 	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
 	CreatedAt time.Time `json:"created_at"`
@@ -20896,10 +20957,16 @@ type SessionItem struct {
 	SalesEndAt time.Time `json:"sales_end_at"`
 
 	// SalesMode Who sells the tickets of this session (migration 0221): `platform`
-	// (default) or `external`. An external session is sold by a partner
-	// box office at `external.url`; the platform holds and sells nothing
-	// for it (409 `session.sold_externally`) and the session owns no
-	// tiers, seats or inventory.
+	// (default), `external` or `control_only` (migration 0228). An
+	// external session is sold by a partner box office at
+	// `external.url`; the platform holds and sells nothing for it (409
+	// `session.sold_externally`) and the session owns no tiers, seats or
+	// inventory. A `control_only` session is sold nowhere on this
+	// platform: it exists only so that tickets sold elsewhere can be
+	// checked at the door. It lives alone in its own container event
+	// (`control_only` on the event), reads `ended` as its `sales_state`,
+	// and is created only by POST
+	// /v1/organizations/{org_id}/control-sessions.
 	SalesMode string `json:"sales_mode"`
 
 	// SalesState The session's sales state, the one every sales channel follows
@@ -24900,7 +24967,9 @@ type UpdateSessionRequest struct {
 	// 0221). Absent keeps it. `platform` to `external` is allowed only
 	// while the session has no orders, tickets, holds, seats or tiers;
 	// `external` back to `platform` only while it has no seats or tiers;
-	// otherwise 409 `session.sales_mode_locked`. Any other value is 400
+	// otherwise 409 `session.sales_mode_locked`. A session never
+	// switches to or from `control_only` (migration 0228): 409
+	// `session.sales_mode_locked`. Any other value is 400
 	// `session.invalid_sales_mode`.
 	SalesMode *string `json:"sales_mode,omitempty"`
 
@@ -28591,6 +28660,9 @@ type CreateComplimentaryIssuanceJSONRequestBody = ComplimentaryCreateRequest
 
 // PostV1OrganizationsOrgIdComplimentaryIdReissueTicketsJSONRequestBody defines body for PostV1OrganizationsOrgIdComplimentaryIdReissueTickets for application/json ContentType.
 type PostV1OrganizationsOrgIdComplimentaryIdReissueTicketsJSONRequestBody = ReissueTicketsRequest
+
+// CreateControlSessionJSONRequestBody defines body for CreateControlSession for application/json ContentType.
+type CreateControlSessionJSONRequestBody = CreateControlSessionRequest
 
 // UpdateConversionSettingsJSONRequestBody defines body for UpdateConversionSettings for application/json ContentType.
 type UpdateConversionSettingsJSONRequestBody = UpdateConversionSettingsRequest

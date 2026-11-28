@@ -33,6 +33,7 @@ Rules that bite in every session (details in the items named in the index):
 - Actions minutes are scarce: verify locally, push once per finished stage, never push just to "see CI".
 - Texts for people follow `docs/text_style_standard_ru.md`; answers and instructions for the owner are in Russian, PowerShell only, times in Madrid time.
 - Shared journals (in Russian): `docs/progress.md` (what is done and the state of each stream), `docs/decisions.md` (owner decisions with reasons), `docs/known-issues.md` (where traps live by topic plus open debts). After a PR is merged, add one line to `docs/progress.md`. Order of work for two people: `docs/team-workflow.md`.
+- Every public query of sessions filters sales_mode='control_only' (guard: tests/staticanalysis/control_only_filter_guard_test.go).
 
 ## Build & run
 
@@ -537,6 +538,7 @@ Session lifecycle and times, event status and sales state, promoters, sales chan
 * A VERIFIED venue is open to every organization (mi…
 * A city is found before it is created: citymatch.FindInCountry (any name, any language, slug, alias of its own country)
 * A partner session (sales_mode external, migration 0221) is never sold by arena: CheckSessionSellable on every sale path, LockSessionSalesMode before tier/seat/plan writes
+* Every query that reads sessions filters control_only sessions or is allow-listed (guard test, closed reasons, every entry names its gate). A control_only session (sales_mode, migration 0228, POST .../control-sessions) lives only in its own never-published event
 
 ### [Telegram bot: core, wizard and screens](docs/agents/bot-core-wizard.md)
 

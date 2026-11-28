@@ -30,6 +30,9 @@ var (
 	ErrCancelled = errors.New("salesstate: session is cancelled")
 	// ErrInvalidState — not open / soon / sold_out.
 	ErrInvalidState = errors.New("salesstate: invalid state")
+	// ErrControlOnly — a session that only controls the entrance has no sales
+	// to open or close (sales_mode control_only, migration 0228).
+	ErrControlOnly = errors.New("salesstate: session only controls the entrance")
 )
 
 // Actor is who asks for the change, as the journal records it.
@@ -82,6 +85,9 @@ func Change(ctx context.Context, q *gen.Queries, req ChangeRequest) (ChangeResul
 	}
 	if target.Status == "cancelled" {
 		return ChangeResult{}, ErrCancelled
+	}
+	if target.SalesMode == gen.SessionSalesModeControlOnly {
+		return ChangeResult{}, ErrControlOnly
 	}
 	old := target.Manual
 	if old == "" {
@@ -144,6 +150,7 @@ func FactsFromRow(r gen.SessionSalesFactsRow) Facts {
 		Selling:     r.Selling,
 		OpensLater:  r.OpensLater,
 		External:    r.SalesMode == gen.SessionSalesModeExternal,
+		ControlOnly: r.SalesMode == gen.SessionSalesModeControlOnly,
 	}
 }
 

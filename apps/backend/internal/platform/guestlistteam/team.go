@@ -189,6 +189,9 @@ type candidate struct {
 	SenderStat string
 }
 
+// candidates does NOT exclude sales_mode 'control_only' sessions on purpose:
+// the door list of an entrance-control session is exactly what the organizer
+// wants (migration 0228).
 func (j *Job) candidates(ctx context.Context, now time.Time) ([]candidate, error) {
 	rows, err := j.pool.Query(ctx, `
 		SELECT s.id, e.org_id, e.name, e.slug, s.start_at, v.timezone,

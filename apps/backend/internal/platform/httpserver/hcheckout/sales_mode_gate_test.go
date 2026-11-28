@@ -18,9 +18,11 @@ import (
 
 func TestSessionSellable(t *testing.T) {
 	cases := map[string]bool{
-		gen.SessionSalesModePlatform: true,
-		"":                           true, // a row read without the column
-		gen.SessionSalesModeExternal: false,
+		gen.SessionSalesModePlatform:    true,
+		"":                              true, // a row read without the column
+		gen.SessionSalesModeExternal:    false,
+		gen.SessionSalesModeControlOnly: false,
+		"something_unknown":             false,
 	}
 	for mode, want := range cases {
 		if got := SessionSellable(mode); got != want {
@@ -35,6 +37,9 @@ func TestSalesModeRefusal(t *testing.T) {
 
 	if err := SalesModeRefusal(gen.SessionSalesModePlatform, tierID, now); err != nil {
 		t.Fatalf("platform session refused: %v", err)
+	}
+	if err := SalesModeRefusal(gen.SessionSalesModeControlOnly, tierID, now); !errors.Is(err, ErrSessionSoldExternally) {
+		t.Fatalf("control_only session: %v, want ErrSessionSoldExternally", err)
 	}
 	err := SalesModeRefusal(gen.SessionSalesModeExternal, tierID, now)
 	if err == nil {

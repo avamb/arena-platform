@@ -34,7 +34,8 @@ WHERE  s.id             = $1
   AND  s.deleted_at    IS NULL
   AND  e.deleted_at    IS NULL
   AND  e.status        = 'published'
-  AND  s.admission_mode <> 'general_admission';
+  AND  s.admission_mode <> 'general_admission'
+  AND  s.sales_mode    <> 'control_only';
 
 -- name: GetAdminSessionSchema :one
 -- The organizer's twin of GetPublicSessionSchema: the same geometry payload
@@ -74,7 +75,8 @@ WHERE  s.id             = $1
   AND  s.deleted_at    IS NULL
   AND  e.deleted_at    IS NULL
   AND  e.status        = 'published'
-  AND  s.admission_mode <> 'general_admission';
+  AND  s.admission_mode <> 'general_admission'
+  AND  s.sales_mode    <> 'control_only';
 
 -- name: ListSessionAdmissionModesByEvent :many
 -- Returns (id, admission_mode) for every active session of an event so

@@ -10,7 +10,11 @@
 -- and reads as archived.
 --
 --   session_count    every active session, past ones included
---   future_sessions  sessions that have not ended yet (end_at > now())
+--   future_sessions  sessions that have not ended yet (end_at > now()),
+--                    control_only ones (migration 0228, door control only)
+--                    included: a control event is a draft container that
+--                    reads "draft" while one of its sessions is ahead, not
+--                    "archived". selling and places_left leave them out
 --   next_session_at  the earliest start among those
 --   selling          a future session whose own sales end has not passed
 --                    still has a free place in a category that is open and
@@ -32,6 +36,7 @@ SELECT s.event_id,
        min(s.start_at) FILTER (WHERE s.end_at > now())    AS next_session_at,
        COALESCE(bool_or(
            s.end_at > now() AND s.sales_end_at > now()
+           AND s.sales_mode <> 'control_only'
            AND NOT EXISTS (SELECT 1 FROM session_sales_states st WHERE st.session_id = s.id)
            AND EXISTS (
                SELECT 1
@@ -46,6 +51,7 @@ SELECT s.event_id,
        ), false)                                          AS selling,
        COALESCE(bool_or(
            s.end_at > now()
+           AND s.sales_mode <> 'control_only'
            AND NOT EXISTS (SELECT 1 FROM session_sales_states st
                             WHERE st.session_id = s.id AND st.state = 'sold_out')
            AND EXISTS (

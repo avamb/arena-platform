@@ -10946,6 +10946,19 @@ components:
             How `email_note` is stored: `art` (the HTML subset) or `text` (the
             old plain text). Null when the event has no note.
           example: "art"
+        control_only:
+          type: boolean
+          description: |
+            True for a control event: one that holds a live session with
+            `sales_mode` `control_only` (migration 0228, MA-40). Such an event
+            exists only so that tickets sold elsewhere can be checked at the
+            door; it is a private draft, is never published (409
+            `event.control_only` on publish), takes no session that is sold
+            here, and is never announced to a site. While one of its sessions
+            is still ahead its `sales_state` is `draft`, like any unpublished
+            event; once they have all ended it is `archived`. Created by POST
+            /v1/organizations/{org_id}/control-sessions.
+          example: false
         visibility:
           type: string
           enum: [public, private, unlisted]
@@ -14650,10 +14663,16 @@ components:
           type: string
           description: |
             Who sells the tickets of this session (migration 0221): `platform`
-            (default) or `external`. An external session is sold by a partner
-            box office at `external.url`; the platform holds and sells nothing
-            for it (409 `session.sold_externally`) and the session owns no
-            tiers, seats or inventory.
+            (default), `external` or `control_only` (migration 0228). An
+            external session is sold by a partner box office at
+            `external.url`; the platform holds and sells nothing for it (409
+            `session.sold_externally`) and the session owns no tiers, seats or
+            inventory. A `control_only` session is sold nowhere on this
+            platform: it exists only so that tickets sold elsewhere can be
+            checked at the door. It lives alone in its own container event
+            (`control_only` on the event), reads `ended` as its `sales_state`,
+            and is created only by POST
+            /v1/organizations/{org_id}/control-sessions.
           example: platform
         external:
           description: |
@@ -14840,7 +14859,10 @@ components:
             Any other value is 400 `session.invalid_sales_mode`. `external`
             needs the `external` object (422 `session.external_required`).
             A session with a seating plan cannot be external
-            (409 `session.sales_mode_locked`).
+            (409 `session.sales_mode_locked`). `control_only` (migration
+            0228) is known but refused here with 409
+            `session.sales_mode_locked`: create such a session with POST
+            /v1/organizations/{org_id}/control-sessions.
           example: external
         external:
           description: |
@@ -14851,6 +14873,82 @@ components:
           oneOf:
             - $ref: "#/components/schemas/SessionExternalSaleInput"
             - type: "null"
+
+    CreateControlSessionRequest:
+      type: object
+      required: [title, venue_id, start_at]
+      description: |
+        Create-time payload for POST
+        /v1/organizations/{org_id}/control-sessions (MA-40). The owning
+        org_id is taken from the path. The server creates a container event
+        (a private draft named by `title`) and its session in one request;
+        the session carries `sales_mode` `control_only`.
+      properties:
+        title:
+          type: string
+          maxLength: 200
+          description: |
+            Name of the container event, 1 to 200 characters after trimming
+            (400 `session.missing_title` / `session.title_too_long`).
+          example: "Concert at the town hall (tickets sold by the promoter)"
+        venue_id:
+          type: string
+          format: uuid
+          description: |
+            Venue of the session. Required; a venue of the organization or a
+            verified shared venue, exactly as for POST .../sessions (400
+            `session.venue_not_found`, 422 `session.venue_org_mismatch`).
+        start_at:
+          type: string
+          format: date-time
+          description: Session start time (RFC 3339).
+          example: "2026-12-05T18:00:00Z"
+        end_at:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            Session end time (RFC 3339), strictly after `start_at` (400
+            `session.invalid_date_range`). Omitted: three hours after the
+            start.
+          example: "2026-12-05T21:00:00Z"
+        capacity:
+          type: [integer, "null"]
+          format: int32
+          minimum: 1
+          description: |
+            Expected number of people, a positive number (400
+            `session.invalid_capacity`). Omitted: 1. The session has no
+            places of its own; this is only the provisional capacity of its
+            row.
+          example: 300
+        currency:
+          type: [string, "null"]
+          pattern: "^[A-Z]{3}$"
+          description: |
+            Explicit ISO 4217 currency, as for POST .../sessions. Omitted:
+            derived from the venue geography, 422
+            `session.currency_unresolvable` when it resolves to nothing;
+            a malformed code is 422 `session.invalid_currency`.
+          example: "EUR"
+
+    ControlSessionEnvelope:
+      type: object
+      required: [event, session]
+      description: |
+        The container event and the control session created together by POST
+        /v1/organizations/{org_id}/control-sessions.
+      properties:
+        event:
+          description: |
+            The container event: a private draft with `control_only` true.
+          allOf:
+            - $ref: "#/components/schemas/EventItem"
+        session:
+          description: |
+            The session, with `sales_mode` `control_only` and `sales_state`
+            `ended`.
+          allOf:
+            - $ref: "#/components/schemas/SessionItem"
 
     UpdateSessionRequest:
       type: object
@@ -14960,7 +15058,9 @@ components:
             0221). Absent keeps it. `platform` to `external` is allowed only
             while the session has no orders, tickets, holds, seats or tiers;
             `external` back to `platform` only while it has no seats or tiers;
-            otherwise 409 `session.sales_mode_locked`. Any other value is 400
+            otherwise 409 `session.sales_mode_locked`. A session never
+            switches to or from `control_only` (migration 0228): 409
+            `session.sales_mode_locked`. Any other value is 400
             `session.invalid_sales_mode`.
           example: external
         external:
@@ -45883,6 +45983,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            `event.control_only`: the event holds a session that only controls
+            the entrance (`sales_mode` `control_only`, MA-40) and is never
+            published.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "422":
           description: |
             Transition not allowed by the state machine, or the AB-42
@@ -50091,6 +50200,100 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/control-sessions:
+    post:
+      operationId: createControlSession
+      summary: Create a session for entry control only, with its own event
+      description: |
+        Creates, in ONE transaction, a container event (a private draft named
+        by `title`) and a session in it for entry control only (MA-40,
+        migration 0228): the tickets are sold elsewhere and the session exists
+        so that the scanner app can check them at the door. The session is
+        scheduled, general admission, with no seating plan, no categories, no
+        places and no inventory row, and `sales_mode` `control_only`; the
+        platform holds and sells nothing for it (409 `session.sold_externally`).
+        The container event is never published (409 `event.control_only`),
+        takes no other session, and neither it nor its session is announced to
+        a site or a feed. Requires JWT + the `session.create` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateControlSessionRequest"
+            examples:
+              minimal:
+                summary: A control session with the default three hours and capacity 1
+                value:
+                  title: "Concert at the town hall"
+                  venue_id: "01929d0e-0e47-7000-8000-000000000201"
+                  start_at: "2026-12-05T18:00:00Z"
+      responses:
+        "201":
+          description: Event and session created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ControlSessionEnvelope"
+        "400":
+          description: |
+            Body invalid or required fields missing. Possible error codes:
+            `session.invalid_body`, `session.empty_body`,
+            `session.invalid_json`, `session.missing_title`,
+            `session.title_too_long`, `session.missing_venue_id`,
+            `session.invalid_venue_id`, `session.venue_not_found`,
+            `session.missing_start_at`, `session.invalid_start_at`,
+            `session.invalid_end_at`, `session.invalid_date_range`,
+            `session.invalid_capacity`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `session.create` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            Semantically invalid. Possible error codes:
+            `session.venue_org_mismatch`, `session.invalid_currency`,
+            `session.currency_unresolvable`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`session.insert_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool or queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{org_id}/events/{event_id}/sessions:
     post:
       operationId: createSession
@@ -50184,7 +50387,7 @@ paths:
             `session.missing_seating_plan_version`,
             `session.invalid_seating_plan_version`,
             `session.seating_plan_not_applicable`, `session.invalid_sales_mode`
-            (`sales_mode` is neither `platform` nor `external`), plus the
+            (`sales_mode` is not `platform`, `external` or `control_only`), plus the
             seating bind errors (`seating.version_not_found`, ...) when a
             seated create fails its inline bind.
             A `poster_media_id` that is not a UUID is `session.invalid_poster_media_id`.
@@ -50220,7 +50423,10 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
           description: |
-            `session.sales_mode_locked`: a session with a seating plan cannot be sold by a partner box office.
+            `session.sales_mode_locked`: a session with a seating plan cannot be sold by a partner box office,
+            and `sales_mode` `control_only` is refused here (create such a session with
+            POST /v1/organizations/{org_id}/control-sessions). `event.control_only`: the event
+            already holds a session that only controls the entrance, so it takes no other session.
           content:
             application/json:
               schema:
@@ -50459,7 +50665,7 @@ paths:
             `session.invalid_venue_id`, `session.venue_not_found`,
             `session.invalid_message_format` (`notice.message_format` is neither
             `text` nor `art`), `session.invalid_sales_mode` (`sales_mode` is
-            neither `platform` nor `external`).
+            not `platform`, `external` or `control_only`).
             A `poster_media_id` that is not a UUID is `session.invalid_poster_media_id`.
           content:
             application/json:
@@ -50514,7 +50720,9 @@ paths:
             `session.sales_mode_locked`: the session cannot change who sells
             its tickets. `platform` to `external` needs a session with no
             orders, tickets, holds, seats or tiers; `external` back to
-            `platform` one with no seats or tiers.
+            `platform` one with no seats or tiers. A session never switches
+            to or from `control_only` (MA-40): such a session is created with
+            POST /v1/organizations/{org_id}/control-sessions.
           content:
             application/json:
               schema:

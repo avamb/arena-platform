@@ -56,7 +56,7 @@ func (w *Watcher) categoriesSoldOut(ctx context.Context, now time.Time, silent b
 		JOIN   events e         ON e.id = s.event_id
 		JOIN   session_seats ss ON ss.tier_id = tt.id AND ss.session_id = tt.session_id
 		WHERE  tt.deleted_at IS NULL AND s.deleted_at IS NULL AND s.status <> 'cancelled'
-		  AND  s.sales_end_at > $1
+		  AND  s.sales_end_at > $1 AND s.sales_mode <> 'control_only'
 		  AND  NOT EXISTS (SELECT 1 FROM ticket_tier_chain c WHERE c.tier_id = tt.id)
 		GROUP  BY tt.id, tt.session_id, e.org_id, tt.name, s.id`, now)
 	if err != nil {
@@ -149,6 +149,7 @@ func (w *Watcher) salesEnded(ctx context.Context, now time.Time, silent bool) (i
 		JOIN   events e ON e.id = s.event_id
 		WHERE  s.deleted_at IS NULL AND s.status <> 'cancelled'
 		  AND  s.sales_end_at <= $1 AND s.sales_end_at > $2
+		  AND  s.sales_mode <> 'control_only'
 		  AND  NOT EXISTS (SELECT 1 FROM sales_alert_notices n
 		                    WHERE n.kind = $3 AND n.subject_id = s.id)`,
 		now, now.Add(-endedHorizon), noticeSalesEnded)

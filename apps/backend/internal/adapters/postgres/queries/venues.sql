@@ -171,6 +171,7 @@ SELECT DISTINCT
     COALESCE(t_ctry_loc.value, t_ctry_en.value, co_city.iso2, co_vn.iso2)    AS country_name
 FROM   venues v
 JOIN   sessions s ON s.venue_id = v.id AND s.deleted_at IS NULL
+      AND s.sales_mode <> 'control_only'
 JOIN   events   e ON e.id       = s.event_id AND e.status = 'published'
       AND e.id <> ALL($3::uuid[])
 LEFT JOIN cities    ci      ON ci.id       = v.city_id

@@ -126,6 +126,8 @@ func (s *Server) mountSessionRoutes(r chi.Router) {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "session.create", "sessions")
 			pr.Post("/organizations/{org_id}/events/{event_id}/sessions", s.handleCreateSession)
+			// A session for entry control only, with its own container event (MA-40).
+			pr.Post("/organizations/{org_id}/control-sessions", s.handleCreateControlSession)
 		})
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "session.update", "sessions")

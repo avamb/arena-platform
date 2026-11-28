@@ -260,7 +260,17 @@ const eventSessionsSQL = `
 SELECT id
 FROM   sessions
 WHERE  event_id = $1
+  AND  sales_mode <> 'control_only'
 ORDER  BY start_at, id`
+
+// controlOnlySessionsSQL picks, out of the session ids a producer named, those
+// that exist only for door control (sales_mode = 'control_only'). The gateway
+// never shows such a session, so it must not be announced either.
+const controlOnlySessionsSQL = `
+SELECT id
+FROM   sessions
+WHERE  id = ANY($1::uuid[])
+  AND  sales_mode = 'control_only'`
 
 // ActionEventIDs implements Loader.
 func (l *PoolLoader) ActionEventIDs(ctx context.Context, eventID uuid.UUID, sessionIDs []uuid.UUID) ([]int64, error) {
@@ -279,6 +289,33 @@ func (l *PoolLoader) ActionEventIDs(ctx context.Context, eventID uuid.UUID, sess
 		}
 		if err := rows.Err(); err != nil {
 			return nil, fmt.Errorf("bil24wire loader: event sessions: %w", err)
+		}
+	} else {
+		// Ids named by the producer: drop the control_only ones.
+		rows, err := l.pool.Query(ctx, controlOnlySessionsSQL, sessionIDs)
+		if err != nil {
+			return nil, fmt.Errorf("bil24wire loader: control-only sessions: %w", err)
+		}
+		defer rows.Close()
+		controlOnly := map[uuid.UUID]struct{}{}
+		for rows.Next() {
+			var id uuid.UUID
+			if err := rows.Scan(&id); err != nil {
+				return nil, fmt.Errorf("bil24wire loader: scan control-only session: %w", err)
+			}
+			controlOnly[id] = struct{}{}
+		}
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("bil24wire loader: control-only sessions: %w", err)
+		}
+		if len(controlOnly) > 0 {
+			kept := make([]uuid.UUID, 0, len(sessionIDs))
+			for _, id := range sessionIDs {
+				if _, skip := controlOnly[id]; !skip {
+					kept = append(kept, id)
+				}
+			}
+			sessionIDs = kept
 		}
 	}
 	if len(sessionIDs) == 0 {

@@ -223,6 +223,33 @@ func (h *Handler) HandleCreateComplimentaryIssuance(w http.ResponseWriter, r *ht
 	invQ := h.inventoryQueries.WithTx(tx)
 	complQ := h.complimentaryQueries.WithTx(tx)
 
+	// Step 3a: a session the platform does not sell (sales_mode external,
+	// migration 0221, or control_only, migration 0228) never gets a ticket,
+	// not even a free one. The sessions row is locked here, FIRST (lock
+	// order), so a concurrent switch cannot slip in. Mirror of
+	// hcheckout.SessionSellable (htickets cannot import hcheckout).
+	salesMode, smErr := complQ.LockSessionSalesMode(ctx, sessionID)
+	if errors.Is(smErr, pgx.ErrNoRows) {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+			"session.not_found", "session not found", r,
+		))
+		return
+	}
+	if smErr != nil {
+		h.logger.Error("complimentary: sales mode lookup failed", slog.String("error", smErr.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"complimentary.capacity_failed", "failed to reserve inventory capacity", r,
+		))
+		return
+	}
+	if salesMode != "" && salesMode != gen.SessionSalesModePlatform {
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+			"session.sold_externally",
+			"tickets for this session are not sold on this platform, no complimentary ticket can be issued for it", r,
+		))
+		return
+	}
+
 	// Step 3b: on a session that sells General Admission places a free
 	// ticket consumes one of them, so it must name its category — a NULL
 	// tier would drain the session ledger while every place still read

@@ -148,6 +148,11 @@ func TestCheckSwitch(t *testing.T) {
 		{"orders do not block going back", "external", "platform", gen.SessionSalesModeLockFacts{HasOrders: true}, false},
 		{"seats block going back", "external", "platform", gen.SessionSalesModeLockFacts{HasSeats: true}, true},
 		{"tiers block going back", "external", "platform", gen.SessionSalesModeLockFacts{HasTiers: true}, true},
+		{"platform to control only", "platform", "control_only", none, true},
+		{"external to control only", "external", "control_only", none, true},
+		{"control only to platform", "control_only", "platform", none, true},
+		{"control only to external", "control_only", "external", none, true},
+		{"control only stays", "control_only", "control_only", gen.SessionSalesModeLockFacts{HasOrders: true}, false},
 	}
 	for _, c := range cases {
 		err := CheckSwitch(c.from, c.to, c.f)

@@ -257,7 +257,7 @@ func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 		resp.Event.Venues = vs
 	}
 	if h.publicFeedQueries != nil {
-		names, err := h.publicFeedQueries.ListEventVenueNames(ctx, []uuid.UUID{resolved.EventID})
+		names, err := h.publicFeedQueries.ListPublicEventVenueNames(ctx, []uuid.UUID{resolved.EventID})
 		if err != nil {
 			h.logger.Warn("public_page: venue-name hydration failed",
 				slog.String("event_id", resolved.EventID.String()),
@@ -408,7 +408,7 @@ func (h *Handler) hostedPageEventItems(ctx context.Context, orgSlug string, even
 	var venueNames map[uuid.UUID][]string
 	if len(eventIDs) > 0 {
 		var err error
-		venueNames, err = h.publicFeedQueries.ListEventVenueNames(ctx, eventIDs)
+		venueNames, err = h.publicFeedQueries.ListPublicEventVenueNames(ctx, eventIDs)
 		if err != nil {
 			h.logger.Warn("public_page: promoter venue-name hydration failed",
 				slog.String("org_slug", orgSlug),

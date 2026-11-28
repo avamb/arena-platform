@@ -111,14 +111,22 @@ const (
 		  LEFT JOIN event_promoters ep ON ep.event_id = e.id
 		  LEFT JOIN org_promoters p ON p.id = ep.promoter_id AND p.archived_at IS NULL
 		 WHERE e.status = 'published' AND e.deleted_at IS NULL
+		   AND NOT (EXISTS (SELECT 1 FROM sessions cs
+		                     WHERE cs.event_id = e.id AND cs.deleted_at IS NULL
+		                       AND cs.sales_mode = 'control_only')
+		            AND NOT EXISTS (SELECT 1 FROM sessions ns
+		                     WHERE ns.event_id = e.id AND ns.deleted_at IS NULL
+		                       AND ns.sales_mode <> 'control_only'))
 		 ORDER BY e.created_at, e.id`
 
+	// A control-only session (sales_mode 'control_only') is never announced to
+	// the operator: it is not sold on the platform.
 	sessionsSQL = `
 		SELECT s.id::text, s.event_id::text, s.start_at, s.status, COALESCE(v.timezone, '')
 		  FROM sessions s
 		  JOIN events e ON e.id = s.event_id AND e.status = 'published' AND e.deleted_at IS NULL
 		  LEFT JOIN venues v ON v.id = s.venue_id
-		 WHERE s.deleted_at IS NULL
+		 WHERE s.deleted_at IS NULL AND s.sales_mode <> 'control_only'
 		 ORDER BY s.start_at, s.id`
 
 	tiersSQL = `

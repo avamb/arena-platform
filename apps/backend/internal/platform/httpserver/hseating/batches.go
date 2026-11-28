@@ -178,13 +178,14 @@ func (h *Handler) batchScope(w http.ResponseWriter, r *http.Request) (orgID, ses
 	return orgID, sessionID, true
 }
 
-// writeSoldExternally answers 409 session.sold_externally: a partner box
-// office sells the session (sessions.sales_mode = 'external', migration
-// 0221), so it has no seating plan, seats or categories here.
+// writeSoldExternally answers 409 session.sold_externally: the platform does
+// not sell the session (sessions.sales_mode = 'external', migration 0221, or
+// 'control_only', migration 0228), so it has no seating plan, seats or
+// categories here.
 func writeSoldExternally(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 		extsale.CodeSoldExternally,
-		"this session is sold by a partner box office, so it has no tiers or seats here", r,
+		"tickets for this session are not sold on this platform, so it has no tiers or seats here", r,
 	))
 }
 
@@ -194,10 +195,11 @@ func (h *Handler) HandleCreateSeatBatch(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	// A session a partner box office sells owns no seats (migration 0221).
-	// This early answer is best effort; ApplyBatch re-reads the mode under
-	// the sessions row lock (seatlayout.ErrSessionSoldExternally).
-	if _, _, _, salesMode, smErr := h.queries.GetSessionSalesState(r.Context(), sessionID); smErr == nil && salesMode == gen.SessionSalesModeExternal {
+	// A session the platform does not sell (a partner box office's, migration
+	// 0221, or a control-only one, 0228) owns no seats. This early answer is
+	// best effort; ApplyBatch re-reads the mode under the sessions row lock
+	// (seatlayout.ErrSessionSoldExternally).
+	if _, _, _, salesMode, smErr := h.queries.GetSessionSalesState(r.Context(), sessionID); smErr == nil && salesMode != "" && salesMode != gen.SessionSalesModePlatform {
 		writeSoldExternally(w, r)
 		return
 	}
