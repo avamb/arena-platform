@@ -147,7 +147,7 @@ func TestScreenHelp_LinesAreTheVisibleButtons(t *testing.T) {
 		{"card on sale, no sales rights", b.cardItems("en", agent, ev, onSale), []string{"ec.e", "ec.m"}},
 		{"card draft: publish, no link", b.cardItems("en", owner, ev, draft), []string{"ec.publish", "ec.s", "ec.e", "ec.p", "ec.m"}},
 		{"card past: sales first", b.cardItems("en", owner, ev, cardFacts{Status: "published", SalesState: "archived", HasLink: true}), []string{"ec.s", "ec.link", "ec.e", "ec.p", "ec.m"}},
-		{"sales, owner", b.cardGroupItems("en", owner, ev, cardGroupSales, onSale), []string{"gs.summary", "gs.orders", "gs.guests", "gs.csv", "gs.dates"}},
+		{"sales, owner", b.cardGroupItems("en", owner, ev, cardGroupSales, onSale), []string{"gs.summary", "gs.orders", "gs.guests", "gs.controllers", "gs.csv", "gs.dates"}},
 		{"sales, no sales rights", b.cardGroupItems("en", agent, ev, cardGroupSales, onSale), nil},
 		{"edit, owner, one live date", b.cardGroupItems("en", owner, ev, cardGroupEdit, draft), []string{"ge.edit", "ge.sessions", "ge.cat", "ge.materials", "ge.sample", "ge.text", "ge.translations", "ge.promoter", "ge.series"}},
 		{"edit, no sales rights", b.cardGroupItems("en", agent, ev, cardGroupEdit, draft), []string{"ge.edit", "ge.sessions", "ge.materials", "ge.sample"}},

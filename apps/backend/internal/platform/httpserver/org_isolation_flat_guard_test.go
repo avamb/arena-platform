@@ -448,6 +448,13 @@ var flatRouteFamilies = []flatFamily{
 	{"GET", "/v1/barcodes/authorities", flatNoOrgData, "barcode.read; the platform-wide authority list (type and label), no organization data"},
 	{"POST", "/v1/scanner/scan-events", flatPublic, "agent_feed_tokens bearer in Authorization; every stored scan_events row carries the token's organization"},
 	{"GET", "/v1/scanner-app/me", flatOwnAccount, "scanner device token only (deviceAuthMiddleware, no JWT, no API key); answers the device's own row, its organization from scanner_devices.org_id and a pass's dates re-joined to that organization (TestScannerAppMA10_)"},
+	{"DELETE", "/v1/scanner-app/device", flatOwnAccount, "scanner device token only (deviceAuthMiddleware); revokes the device of the token, its organization from the device row (TestScannerAppMA11_)"},
+	{"POST", "/v1/scanner-app/pair", flatPublic, "a pairing code in the body (only its SHA-256 is stored); the new device takes the organization of the code row, never of the request; attempts limited in the database (TestScannerAppMA11_Pair)"},
+	{"POST", "/v1/scanner-app/token/refresh", flatPublic, "a device refresh token in the body (only its SHA-256 is stored); rotates the pair of that one device, answers no organization data (TestScannerAppMA11_Refresh)"},
+	{"GET", "/scan/pair", flatNoOrgData, "static pairing page of the scanner app; the code stays in the URL fragment"},
+	{"GET", "/scan/pair.js", flatNoOrgData, "static script of the pairing page"},
+	{"GET", "/.well-known/apple-app-site-association", flatNoOrgData, "iOS association file built from server config"},
+	{"GET", "/.well-known/assetlinks.json", flatNoOrgData, "Android association file built from server config"},
 }
 
 var flatParamName = regexp.MustCompile(`\{[^}/]*\}`)

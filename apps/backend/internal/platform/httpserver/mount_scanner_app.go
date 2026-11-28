@@ -92,11 +92,60 @@ func (s *Server) mountScannerAppRoutes(r chi.Router) {
 		db = s.pgxPool
 	}
 	h := hscannerapp.New(db, s.logger)
+	var txdb scannerapp.TxDB
+	if s.pgxPool != nil {
+		txdb = s.pgxPool
+	}
+	trusted := 0
+	if s.cfg != nil {
+		trusted = s.cfg.TrustedProxyCount
+	}
+	h.Configure(hscannerapp.Deps{
+		Pool: txdb, Audit: s.audit, Perms: s.perms, APIBaseURL: s.apiPublicURL(),
+		TrustedProxies: trusted, Now: s.scannerNow,
+	})
+
+	// MA-11: no authorization at all. The pairing code and the refresh token
+	// are the credentials, in the body; the attempt limit of pairing is
+	// counted in the database.
+	r.Post("/scanner-app/pair", h.HandlePair)
+	r.Post("/scanner-app/token/refresh", h.HandleRefresh)
+
 	r.Group(func(pr chi.Router) {
 		pr.Use(s.deviceAuthMiddleware)
 		pr.Use(permissions.RequirePermission(s.perms, "scan.read", "scanner_app"))
 		pr.Get("/scanner-app/me", h.HandleMe)
+		pr.Delete("/scanner-app/device", h.HandleUnpair)
 	})
+
+	// MA-11 / MA-12: the organizer's routes under a person's JWT.
+	if !s.authEnabled() {
+		return
+	}
+	const base = "/organizations/{org_id}/scanner"
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "scan.perform", "scanner_devices")
+		pr.Post(base+"/pairing-codes", s.orgGated(h.HandleCreatePairingCode))
+		pr.Get(base+"/devices", s.orgGated(h.HandleListDevices))
+		pr.Delete(base+"/devices/{device_id}", s.orgGated(h.HandleRevokeDevice))
+	})
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "scanner_pass.manage", "scanner_passes")
+		pr.Post(base+"/passes", s.orgGated(h.HandleCreatePass))
+		pr.Get(base+"/passes", s.orgGated(h.HandleListPasses))
+		pr.Get(base+"/passes/{pass_id}", s.orgGated(h.HandleGetPass))
+		pr.Patch(base+"/passes/{pass_id}", s.orgGated(h.HandlePatchPass))
+		pr.Delete(base+"/passes/{pass_id}", s.orgGated(h.HandleRevokePass))
+		pr.Post(base+"/passes/{pass_id}/link", s.orgGated(h.HandleLinkPass))
+	})
+}
+
+// scannerNow is the clock of the scanner routes.
+func (s *Server) scannerNow() time.Time {
+	if s.clk != nil {
+		return s.clk.Now()
+	}
+	return time.Now()
 }
 
 // deviceAuthMiddleware authenticates a scanner device token. Anything that is
@@ -139,6 +188,15 @@ func (s *Server) deviceAuthMiddleware(next http.Handler) http.Handler {
 		if _, err := scannerapp.TouchLastSeen(r.Context(), s.pgxPool, device.ID, now); err != nil {
 			// Bookkeeping, not authorization: log and go on.
 			s.logger.Warn("scannerapp: last_seen_at update failed", "error", err.Error())
+		}
+		if !device.PairConfirmed {
+			// The first use of the access token of a refreshed pair confirms
+			// it: the previous refresh token stops working (spec 69 A.3).
+			if _, err := scannerapp.ConfirmPair(r.Context(), s.pgxPool, device.ID, raw, now); err != nil {
+				s.logger.Warn("scannerapp: confirm token pair failed", "device_id", device.ID.String(), "error", err.Error())
+			} else {
+				device.PairConfirmed = true
+			}
 		}
 		ctx := auth.WithActor(r.Context(), auth.NewDeviceActor(device.ID.String(), device.OrgID.String()))
 		ctx = scannerapp.WithDevice(ctx, device)

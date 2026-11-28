@@ -46,13 +46,41 @@ func HashToken(raw string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// RefreshTokenWirePrefix starts every device refresh token. It differs from
+// TokenWirePrefix, so a refresh token is never accepted as a Bearer token.
+const RefreshTokenWirePrefix = "sdr_"
+
+// RefreshTokenTTL is how long a refresh token works after it is issued; every
+// refresh issues a new one, so the term slides.
+const RefreshTokenTTL = 30 * 24 * time.Hour
+
+// NewRefreshToken returns a fresh refresh token and the SHA-256 hex of it.
+func NewRefreshToken() (raw, hashHex string, err error) {
+	var b [tokenBytes]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", "", err
+	}
+	raw = RefreshTokenWirePrefix + base64.RawURLEncoding.EncodeToString(b[:])
+	return raw, HashToken(raw), nil
+}
+
+// LooksLikeRefreshToken reports whether raw has the shape of a refresh
+// token: the prefix and 43 base64url characters. It reads no database.
+func LooksLikeRefreshToken(raw string) bool {
+	return hasTokenShape(raw, RefreshTokenWirePrefix)
+}
+
 // LooksLikeDeviceToken reports whether raw has the shape of a device token:
 // the prefix and 43 base64url characters. It reads no database.
 func LooksLikeDeviceToken(raw string) bool {
-	if !strings.HasPrefix(raw, TokenWirePrefix) {
+	return hasTokenShape(raw, TokenWirePrefix)
+}
+
+func hasTokenShape(raw, prefix string) bool {
+	if !strings.HasPrefix(raw, prefix) {
 		return false
 	}
-	body := raw[len(TokenWirePrefix):]
+	body := raw[len(prefix):]
 	if len(body) != tokenBodyLen {
 		return false
 	}

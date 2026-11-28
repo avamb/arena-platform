@@ -152,12 +152,15 @@ type ma10Me struct {
 	Kind        string   `json:"kind"`
 	Permissions []string `json:"permissions"`
 	Pass        *struct {
-		ID         string     `json:"id"`
-		Label      string     `json:"label"`
-		Kind       string     `json:"kind"`
-		ValidFrom  *time.Time `json:"valid_from"`
-		ValidUntil *time.Time `json:"valid_until"`
-		Sessions   []struct {
+		ID          string     `json:"id"`
+		Label       string     `json:"label"`
+		Kind        string     `json:"kind"`
+		ValidFrom   *time.Time `json:"valid_from"`
+		ValidUntil  *time.Time `json:"valid_until"`
+		State       string     `json:"state"`
+		ClosedAt    *time.Time `json:"closed_at"`
+		UploadUntil *time.Time `json:"upload_until"`
+		Sessions    []struct {
 			SessionID string   `json:"session_id"`
 			EventID   string   `json:"event_id"`
 			AllTiers  *bool    `json:"all_tiers"`
@@ -331,18 +334,34 @@ func TestScannerAppMA10_Refusals(t *testing.T) {
 		e.exec(t, `UPDATE scanner_devices SET access_expires_at = now() - interval '1 minute' WHERE id = $1`, d.ID)
 		expect401(t, "expired access token", raw)
 	})
+	// A closed pass leaves its devices "upload only" for 24 hours (spec 69
+	// B.1): /me answers 200 with pass.state closed, then 401.
+	wantClosed := func(t *testing.T, raw string) {
+		t.Helper()
+		me, body := e.me(t, raw, "")
+		if me.Pass == nil || me.Pass.State != "closed" || me.Pass.ClosedAt == nil || me.Pass.UploadUntil == nil ||
+			!me.Pass.UploadUntil.Equal(me.Pass.ClosedAt.Add(scannerapp.PassUploadGrace)) {
+			t.Fatalf("/me of a closed pass = %s", body)
+		}
+	}
 	t.Run("revoked pass", func(t *testing.T) {
 		passID, _, raw := e.passDevice(t, a, "Revoked pass")
-		e.me(t, raw, "")
+		if me, body := e.me(t, raw, ""); me.Pass == nil || me.Pass.State != "active" || me.Pass.ClosedAt != nil || me.Pass.UploadUntil != nil {
+			t.Fatalf("/me of an open pass = %s", body)
+		}
 		if ok, err := scannerapp.RevokePass(context.Background(), e.srv.pgxPool, a.org, passID, &owner, time.Now().UTC()); err != nil || !ok {
 			t.Fatalf("RevokePass = %v, %v", ok, err)
 		}
-		expect401(t, "revoked pass", raw)
+		wantClosed(t, raw)
+		e.exec(t, `UPDATE scanner_passes SET revoked_at = now() - interval '24 hours 1 minute' WHERE id = $1`, passID)
+		expect401(t, "revoked pass after the upload term", raw)
 	})
 	t.Run("pass window ended", func(t *testing.T) {
 		passID, _, raw := e.passDevice(t, a, "Ended pass")
 		e.exec(t, `UPDATE scanner_passes SET valid_from = now() - interval '3 hours', valid_until = now() - interval '1 minute' WHERE id = $1`, passID)
-		expect401(t, "pass window ended", raw)
+		wantClosed(t, raw)
+		e.exec(t, `UPDATE scanner_passes SET valid_from = now() - interval '27 hours', valid_until = now() - interval '24 hours 1 minute' WHERE id = $1`, passID)
+		expect401(t, "pass window ended after the upload term", raw)
 	})
 	t.Run("membership removed after pairing", func(t *testing.T) {
 		u := e.user(t, "gate")

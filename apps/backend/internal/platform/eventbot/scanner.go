@@ -4,13 +4,15 @@ import (
 	"context"
 
 	"github.com/go-telegram/bot/models"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/scannerapp"
 )
 
 // The ticket-scanner app the door staff use. Both stores redirect by the
 // visitor's region, so the links carry no country or language segment.
 const (
-	ScannerAndroidURL = "https://play.google.com/store/apps/details?id=com.arenasoldout.macs"
-	ScannerIOSURL     = "https://apps.apple.com/app/arenasoldout/id6770095694"
+	ScannerAndroidURL = scannerapp.AndroidURL
+	ScannerIOSURL     = scannerapp.IOSURL
 )
 
 // scannerKeys are the texts of the scanner screen and its menu button.
@@ -37,11 +39,13 @@ func (b *Bot) showScanner(ctx context.Context, chatID int64, editMsgID *int, fro
 		return
 	}
 	loc := id.Locale()
-	b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.scanner.text", nil), &models.InlineKeyboardMarkup{
-		InlineKeyboard: [][]models.InlineKeyboardButton{
-			{{Text: b.texts.T(loc, "bot.scanner.android_btn", nil), URL: ScannerAndroidURL}},
-			{{Text: b.texts.T(loc, "bot.scanner.ios_btn", nil), URL: ScannerIOSURL}},
-			{{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}},
-		},
-	})
+	rows := [][]models.InlineKeyboardButton{
+		{{Text: b.texts.T(loc, "bot.scanner.android_btn", nil), URL: ScannerAndroidURL}},
+		{{Text: b.texts.T(loc, "bot.scanner.ios_btn", nil), URL: ScannerIOSURL}},
+	}
+	if row := b.scannerAppRow(loc, id); row != nil { // the control app (MA-12)
+		rows = append(rows, row)
+	}
+	rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}})
+	b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.scanner.text", nil), &models.InlineKeyboardMarkup{InlineKeyboard: rows})
 }

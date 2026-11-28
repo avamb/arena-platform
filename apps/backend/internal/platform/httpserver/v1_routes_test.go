@@ -64,7 +64,9 @@ func buildV1TestServer(t *testing.T) *Server {
 
 // operationalPrefixes lists the paths that are intentionally mounted outside
 // /v1 as infrastructure/operational endpoints.
-var operationalPrefixes = []string{"/healthz", "/readyz", "/metrics"}
+// The scanner app's pairing page and the two app association files (spec 69
+// A.1) sit at fixed addresses the phones and the stores expect.
+var operationalPrefixes = []string{"/healthz", "/readyz", "/metrics", "/scan/pair", "/.well-known/"}
 
 // isOperational reports whether a route pattern belongs to the operational
 // (non-versioned) layer.

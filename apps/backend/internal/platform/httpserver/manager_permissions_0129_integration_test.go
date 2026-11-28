@@ -125,6 +125,17 @@ func TestManagerPermissions0129_OrganizerPassesEveryEventCenterGate(t *testing.T
 		{"shop.manage", http.MethodPost, orgPath + "/shop/orders/" + random + "/ship", `{}`},
 		{"shop.manage", http.MethodPost, orgPath + "/shop/orders/" + random + "/cancel", ""},
 		{"shop.manage", http.MethodPost, orgPath + "/shop/orders/" + random + "/refund", `{}`},
+		// Spec 69 (migration 0227): the scanner app's organizer routes (MA-11)
+		// and controller passes (MA-12).
+		{"scan.perform", http.MethodPost, orgPath + "/scanner/pairing-codes", ""},
+		{"scan.perform", http.MethodGet, orgPath + "/scanner/devices", ""},
+		{"scan.perform", http.MethodDelete, orgPath + "/scanner/devices/" + random, ""},
+		{"scanner_pass.manage", http.MethodGet, orgPath + "/scanner/passes", ""},
+		{"scanner_pass.manage", http.MethodPost, orgPath + "/scanner/passes", `{}`},
+		{"scanner_pass.manage", http.MethodGet, orgPath + "/scanner/passes/" + random, ""},
+		{"scanner_pass.manage", http.MethodPatch, orgPath + "/scanner/passes/" + random, `{"label":"x"}`},
+		{"scanner_pass.manage", http.MethodDelete, orgPath + "/scanner/passes/" + random, ""},
+		{"scanner_pass.manage", http.MethodPost, orgPath + "/scanner/passes/" + random + "/link", ""},
 	}
 
 	for _, g := range gates {

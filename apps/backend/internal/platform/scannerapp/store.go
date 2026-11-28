@@ -51,7 +51,8 @@ var (
 	ErrExpired = errors.New("scannerapp: device access token expired")
 	// ErrAccessEnded: the right to scan is gone (organization archived, the
 	// person lost scan.perform in the organization, the pass was revoked or
-	// its window ended). A refresh does not help.
+	// its window ended and the upload term after it is over too). A refresh
+	// does not help.
 	ErrAccessEnded = errors.New("scannerapp: access to scanning ended")
 )
 
@@ -91,6 +92,17 @@ type Device struct {
 	Label      string
 	Platform   string
 	LastSeenAt *time.Time
+	// ControllerName is the name typed when a pass device was paired.
+	ControllerName string
+	// PairConfirmed is false from a refresh until the device first uses the
+	// new access token; the device-token middleware then calls ConfirmPair.
+	PairConfirmed bool
+	// State is StateActive, or StateUploadOnly for a device of a closed pass
+	// inside its upload term (DeviceStateOf).
+	State DeviceState
+	// PassClosedAt and PassUploadUntil are set for StateUploadOnly only.
+	PassClosedAt    *time.Time
+	PassUploadUntil *time.Time
 }
 
 // Me is what a device is told about itself.
@@ -108,7 +120,12 @@ type MePass struct {
 	Kind       string // PassKindStandard | PassKindDemo
 	ValidFrom  *time.Time
 	ValidUntil *time.Time
-	Sessions   []MePassSession
+	// State is PassStateActive or PassStateClosed; ClosedAt and UploadUntil
+	// are set for a closed pass only.
+	State       string
+	ClosedAt    *time.Time
+	UploadUntil *time.Time
+	Sessions    []MePassSession
 }
 
 // MePassSession is one date a pass may check. AllTiers true: every category
@@ -125,7 +142,10 @@ type MePassSession struct {
 // refuses it when the device is revoked (ErrRevoked), when the right to scan
 // ended (ErrAccessEnded) or when the access token expired (ErrExpired, checked
 // last: a refresh helps only when nothing else is wrong). A pass device whose
-// window has not started yet still authenticates.
+// window has not started yet still authenticates. A device of a closed pass
+// (turned off, or its window ended) authenticates with State StateUploadOnly
+// until the upload term of the pass ends, then ErrAccessEnded
+// (DeviceStateOf).
 func Authenticate(ctx context.Context, db gen.DBTX, raw string, now time.Time) (Device, error) {
 	if !LooksLikeDeviceToken(raw) {
 		return Device{}, ErrMalformed
@@ -151,6 +171,10 @@ func Authenticate(ctx context.Context, db gen.DBTX, raw string, now time.Time) (
 		Label:      row.Label,
 		Platform:   row.Platform,
 		LastSeenAt: row.LastSeenAt,
+
+		ControllerName: row.ControllerName,
+		PairConfirmed:  row.PairConfirmed,
+		State:          StateActive,
 	}
 	switch {
 	case row.UserID != nil:
@@ -159,11 +183,17 @@ func Authenticate(ctx context.Context, db gen.DBTX, raw string, now time.Time) (
 		}
 		d.Kind = KindOrganizer
 	case row.PassID != nil:
-		if row.PassKind == nil || row.PassRevoked {
+		if row.PassKind == nil {
 			return Device{}, ErrAccessEnded
 		}
-		if *row.PassKind != PassKindDemo && (row.PassValidUntil == nil || !now.Before(*row.PassValidUntil)) {
-			return Device{}, ErrAccessEnded
+		state, c, err := DeviceStateOf(*row.PassKind, row.PassValidUntil, row.PassRevokedAt, now)
+		if err != nil {
+			return Device{}, err
+		}
+		d.State = state
+		if c != nil {
+			closed, upload := c.ClosedAt, c.UploadUntil
+			d.PassClosedAt, d.PassUploadUntil = &closed, &upload
 		}
 		d.Kind = KindPass
 	default:
@@ -187,7 +217,9 @@ func TouchLastSeen(ctx context.Context, db gen.DBTX, deviceID uuid.UUID, now tim
 
 // Describe tells a device its organization and, for a pass device, its pass
 // and the dates of the pass. Every date is re-read through sessions -> events
-// and kept only when it belongs to the device's organization.
+// and kept only when it belongs to the device's organization. The state of
+// the pass comes from d (State, PassClosedAt, PassUploadUntil, set by
+// Authenticate): closed for StateUploadOnly, active otherwise.
 func Describe(ctx context.Context, db gen.DBTX, d Device) (Me, error) {
 	q := gen.New(db)
 	name, err := q.GetOrganizationNameForScanner(ctx, d.OrgID)
@@ -212,7 +244,13 @@ func Describe(ctx context.Context, db gen.DBTX, d Device) (Me, error) {
 	mp := &MePass{
 		ID: p.ID, Label: p.Label, Kind: p.Kind,
 		ValidFrom: p.ValidFrom, ValidUntil: p.ValidUntil,
+		State:    PassStateActive,
 		Sessions: make([]MePassSession, 0, len(rows)),
+	}
+	if d.State == StateUploadOnly {
+		// The state the device was authenticated with: one decision per
+		// request, by DeviceStateOf.
+		mp.State, mp.ClosedAt, mp.UploadUntil = PassStateClosed, d.PassClosedAt, d.PassUploadUntil
 	}
 	for _, r := range rows {
 		tiers := r.TierIDs
@@ -271,52 +309,13 @@ func CreatePass(ctx context.Context, db TxDB, params CreatePassParams, now time.
 		return uuid.Nil, ErrInvalidPass
 	}
 
-	sessionIDs := make([]uuid.UUID, 0, len(params.Sessions))
-	seen := make(map[uuid.UUID]bool, len(params.Sessions))
-	var tierIDs, tierSessionIDs []uuid.UUID
-	seenTier := map[[2]uuid.UUID]bool{}
-	// A date named twice is restricted when any of its entries lists
-	// categories: the narrower reading wins.
-	restricted := map[uuid.UUID]bool{}
-	for _, s := range params.Sessions {
-		if !seen[s.SessionID] {
-			seen[s.SessionID] = true
-			sessionIDs = append(sessionIDs, s.SessionID)
-		}
-		if len(s.TierIDs) > 0 {
-			restricted[s.SessionID] = true
-		}
-		for _, t := range s.TierIDs {
-			k := [2]uuid.UUID{t, s.SessionID}
-			if seenTier[k] {
-				continue
-			}
-			seenTier[k] = true
-			tierIDs = append(tierIDs, t)
-			tierSessionIDs = append(tierSessionIDs, s.SessionID)
-		}
-	}
+	ps := preparePassSessions(params.Sessions)
 
 	var passID uuid.UUID
 	err := inTx(ctx, db, func(tx pgx.Tx) error {
 		q := gen.New(tx)
-		if len(sessionIDs) > 0 {
-			n, err := q.CountScannerSessionsOfOrg(ctx, params.OrgID, sessionIDs)
-			if err != nil {
-				return fmt.Errorf("scannerapp: check sessions: %w", err)
-			}
-			if n != int64(len(sessionIDs)) {
-				return ErrForeignSession
-			}
-		}
-		if len(tierIDs) > 0 {
-			n, err := q.CountScannerTiersOfOrg(ctx, params.OrgID, tierIDs, tierSessionIDs)
-			if err != nil {
-				return fmt.Errorf("scannerapp: check tiers: %w", err)
-			}
-			if n != int64(len(tierIDs)) {
-				return ErrForeignTier
-			}
+		if err := ps.check(ctx, q, params.OrgID); err != nil {
+			return err
 		}
 		id, err := q.InsertScannerPass(ctx, gen.InsertScannerPassParams{
 			OrgID: params.OrgID, Label: label, Kind: kind,
@@ -326,15 +325,8 @@ func CreatePass(ctx context.Context, db TxDB, params CreatePassParams, now time.
 		if err != nil {
 			return fmt.Errorf("scannerapp: insert pass: %w", err)
 		}
-		for _, sid := range sessionIDs {
-			if err := q.InsertScannerPassSession(ctx, id, sid, !restricted[sid]); err != nil {
-				return fmt.Errorf("scannerapp: insert pass session: %w", err)
-			}
-		}
-		for i, tid := range tierIDs {
-			if err := q.InsertScannerPassTier(ctx, id, tierSessionIDs[i], tid); err != nil {
-				return fmt.Errorf("scannerapp: insert pass tier: %w", err)
-			}
+		if err := ps.write(ctx, q, id); err != nil {
+			return err
 		}
 		passID = id
 		return nil
@@ -343,6 +335,83 @@ func CreatePass(ctx context.Context, db TxDB, params CreatePassParams, now time.
 		return uuid.Nil, err
 	}
 	return passID, nil
+}
+
+// passSessions are the dates and categories of a pass, without repeats.
+type passSessions struct {
+	sessionIDs     []uuid.UUID
+	tierIDs        []uuid.UUID
+	tierSessionIDs []uuid.UUID
+	restricted     map[uuid.UUID]bool
+}
+
+func preparePassSessions(in []CreatePassSession) passSessions {
+	ps := passSessions{
+		sessionIDs: make([]uuid.UUID, 0, len(in)),
+		// A date named twice is restricted when any of its entries lists
+		// categories: the narrower reading wins.
+		restricted: map[uuid.UUID]bool{},
+	}
+	seen := make(map[uuid.UUID]bool, len(in))
+	seenTier := map[[2]uuid.UUID]bool{}
+	for _, s := range in {
+		if !seen[s.SessionID] {
+			seen[s.SessionID] = true
+			ps.sessionIDs = append(ps.sessionIDs, s.SessionID)
+		}
+		if len(s.TierIDs) > 0 {
+			ps.restricted[s.SessionID] = true
+		}
+		for _, t := range s.TierIDs {
+			k := [2]uuid.UUID{t, s.SessionID}
+			if seenTier[k] {
+				continue
+			}
+			seenTier[k] = true
+			ps.tierIDs = append(ps.tierIDs, t)
+			ps.tierSessionIDs = append(ps.tierSessionIDs, s.SessionID)
+		}
+	}
+	return ps
+}
+
+// check refuses a date that is not a live date of orgID (ErrForeignSession)
+// and a category that is not a live category of its date (ErrForeignTier).
+func (ps passSessions) check(ctx context.Context, q *gen.Queries, orgID uuid.UUID) error {
+	if len(ps.sessionIDs) > 0 {
+		n, err := q.CountScannerSessionsOfOrg(ctx, orgID, ps.sessionIDs)
+		if err != nil {
+			return fmt.Errorf("scannerapp: check sessions: %w", err)
+		}
+		if n != int64(len(ps.sessionIDs)) {
+			return ErrForeignSession
+		}
+	}
+	if len(ps.tierIDs) > 0 {
+		n, err := q.CountScannerTiersOfOrg(ctx, orgID, ps.tierIDs, ps.tierSessionIDs)
+		if err != nil {
+			return fmt.Errorf("scannerapp: check tiers: %w", err)
+		}
+		if n != int64(len(ps.tierIDs)) {
+			return ErrForeignTier
+		}
+	}
+	return nil
+}
+
+// write stores the dates and categories of a pass.
+func (ps passSessions) write(ctx context.Context, q *gen.Queries, passID uuid.UUID) error {
+	for _, sid := range ps.sessionIDs {
+		if err := q.InsertScannerPassSession(ctx, passID, sid, !ps.restricted[sid]); err != nil {
+			return fmt.Errorf("scannerapp: insert pass session: %w", err)
+		}
+	}
+	for i, tid := range ps.tierIDs {
+		if err := q.InsertScannerPassTier(ctx, passID, ps.tierSessionIDs[i], tid); err != nil {
+			return fmt.Errorf("scannerapp: insert pass tier: %w", err)
+		}
+	}
+	return nil
 }
 
 // DeviceParams describe a new device. UserID is read by
@@ -397,7 +466,7 @@ func CreateOrganizerDevice(ctx context.Context, db gen.DBTX, params DeviceParams
 	if err != nil {
 		return Device{}, "", fmt.Errorf("scannerapp: insert device: %w", err)
 	}
-	return Device{ID: id, OrgID: params.OrgID, UserID: &userID, Kind: KindOrganizer, Label: label, Platform: params.Platform}, raw, nil
+	return Device{ID: id, OrgID: params.OrgID, UserID: &userID, Kind: KindOrganizer, Label: label, Platform: params.Platform, PairConfirmed: true, State: StateActive}, raw, nil
 }
 
 // CreatePassDevice stores a device of a pass of params.OrgID and returns it
@@ -450,7 +519,7 @@ func CreatePassDevice(ctx context.Context, db TxDB, params DeviceParams, now tim
 		if err != nil {
 			return fmt.Errorf("scannerapp: insert device: %w", err)
 		}
-		d = Device{ID: id, OrgID: params.OrgID, PassID: &passID, Kind: KindPass, Label: label, Platform: params.Platform}
+		d = Device{ID: id, OrgID: params.OrgID, PassID: &passID, Kind: KindPass, Label: label, Platform: params.Platform, PairConfirmed: true, State: StateActive}
 		return nil
 	})
 	if err != nil {
@@ -476,8 +545,9 @@ func RevokeDevice(ctx context.Context, db gen.DBTX, orgID, deviceID uuid.UUID, b
 	return n > 0, nil
 }
 
-// RevokePass takes a pass of orgID back; its devices stop authenticating
-// (ErrAccessEnded). It reports false when there was nothing to revoke.
+// RevokePass takes a pass of orgID back; its devices go to StateUploadOnly
+// for PassUploadGrace, then stop authenticating (ErrAccessEnded). It reports
+// false when there was nothing to revoke.
 func RevokePass(ctx context.Context, db gen.DBTX, orgID, passID uuid.UUID, by *uuid.UUID, now time.Time) (bool, error) {
 	n, err := gen.New(db).RevokeScannerPass(ctx, passID, orgID, now, by)
 	if err != nil {

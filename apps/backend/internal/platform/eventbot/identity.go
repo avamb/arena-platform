@@ -29,6 +29,9 @@ type Identity struct {
 	// Superadmin: the platform operator. Memberships then lists EVERY
 	// organization (as owner).
 	Superadmin bool
+	// OwnRoles: the person's REAL membership role per organization (from
+	// /v1/me), filled for a superadmin whose Memberships are synthetic owners.
+	OwnRoles map[uuid.UUID]string
 }
 
 // Locale is the language the bot answers this account in.
@@ -90,7 +93,12 @@ func (b *Bot) resolveIdentity(ctx context.Context, telegramUserID int64) (*Ident
 		return nil, "", err
 	}
 	memberships := me.Memberships
+	var ownRoles map[uuid.UUID]string
 	if me.Superadmin {
+		ownRoles = map[uuid.UUID]string{}
+		for _, m := range me.Memberships {
+			ownRoles[m.OrgID] = m.Role
+		}
 		all, err := b.arena.AllOrganizations(ctx, jwt)
 		if err != nil {
 			return nil, "", err
@@ -98,6 +106,7 @@ func (b *Bot) resolveIdentity(ctx context.Context, telegramUserID int64) (*Ident
 		memberships = all
 	}
 	id, remember := buildIdentity(link, memberships, me.Superadmin)
+	id.OwnRoles = ownRoles
 	if remember != nil {
 		_ = b.queries.SetBotTelegramLinkCurrentOrg(ctx, telegramUserID, remember)
 		b.an.forget(telegramUserID)

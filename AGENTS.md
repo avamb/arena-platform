@@ -337,6 +337,7 @@ Org-scoped access, roles and scopes, API keys, memberships, owners, archived org
 * A refresh token records WHY it was revoked (migrat…
 * /v1/me shows the shop only on memberships whose role holds shop.read
 * A door-scanner phone is its own subject (auth.ActorTypeDevice): fixed permissions, token only under /v1/scanner-app/, legacy org guards refuse it everywhere
+* A scanner device's tokens come only from a pairing code; refresh is confirmed by use, lock order pass then code, closed pass = 24 h upload only (DeviceStateOf)
 
 ### [Bil24 compatibility gateway](docs/agents/bil24-gateway.md)
 

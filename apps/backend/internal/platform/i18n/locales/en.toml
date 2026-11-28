@@ -7682,3 +7682,180 @@ other = "This tour is no longer in the list. Here is the list as it is now."
 
 ["bot.hp.i.ge.series"]
 other = "Adds the event to a tour or removes it from a tour."
+
+["bot.scan.ctrl_btn"]
+other = "🛂 Controllers"
+
+["bot.scan.app_btn"]
+other = "📲 Control app"
+
+["bot.scan.list_head"]
+other = "<b>Controller passes</b>\n{{.Name}}\n\nA pass lets the door staff check tickets in the scanner app. You send them a link, and they need no account."
+
+["bot.scan.list_empty"]
+other = "There are no passes yet. Press “New pass”."
+
+["bot.scan.list_more"]
+other = "{{.Count}} more older passes are not shown."
+
+["bot.scan.new_btn"]
+other = "➕ New pass"
+
+["bot.scan.list_btn"]
+other = "Passes"
+
+["bot.scan.cancel_btn"]
+other = "Cancel"
+
+["bot.scan.next_btn"]
+other = "Next »"
+
+["bot.scan.label_q"]
+other = "Name the new pass for “{{.Name}}”. For example: Main door. Send the name as a message."
+
+["bot.scan.err_label_empty"]
+other = "The name is empty. Send a name of up to 80 characters."
+
+["bot.scan.err_label_long"]
+other = "The name is too long. Send a name of up to 80 characters."
+
+["bot.scan.dates_q"]
+other = "<b>{{.Label}}</b>\n\nWhich dates will this pass check? Tap a date to turn it on or off.\n\nDates on: {{.Count}}."
+
+["bot.scan.dates_none"]
+other = "“{{.Name}}” has no coming dates, so a pass has nothing to check. Add a date and try again."
+
+["bot.scan.err_dates_none"]
+other = "Turn on at least one date."
+
+["bot.scan.devices_q"]
+other = "How many phones may use this pass at the same time?"
+
+["bot.scan.st_on"]
+other = "on"
+
+["bot.scan.st_off"]
+other = "turned off"
+
+["bot.scan.st_closed"]
+other = "closed"
+
+["bot.scan.line"]
+other = "<b>{{.Label}}</b>: {{.State}}"
+
+["bot.scan.line_window"]
+other = "Time: {{.When}} to {{.Until}}"
+
+["bot.scan.line_phones"]
+other = "Phones: {{.N}} of {{.Total}}"
+
+["bot.scan.line_dates"]
+other = "Dates: {{.Count}}"
+
+["bot.scan.note_off"]
+other = "The pass is turned off. The phones can still send their last scans for 24 hours. To turn it on again, press “New link”."
+
+["bot.scan.note_closed"]
+other = "The time of the pass is over. The phones can still send their last scans for 24 hours. To open the pass again, extend the time."
+
+["bot.scan.off_btn"]
+other = "Turn off"
+
+["bot.scan.link_btn"]
+other = "New link"
+
+["bot.scan.ext_btn"]
+other = "+{{.Hours}} h"
+
+["bot.scan.devs_btn"]
+other = "Phones ({{.N}})"
+
+["bot.scan.back_card_btn"]
+other = "Pass"
+
+["bot.scan.created"]
+other = "The pass “{{.Label}}” is ready. Forward the link or the QR code to the controller."
+
+["bot.scan.link_text"]
+other = "<b>{{.Label}}</b>\n\nLink for the controller:\n<code>{{.URL}}</code>\n\nIf the link does not open the app, the controller types this code in the app:\n<code>{{.Code}}</code>\n\nThe link works for {{.N}} phones."
+
+["bot.scan.link_done"]
+other = "The new link is ready. The old link no longer works."
+
+["bot.scan.off_done"]
+other = "The pass is turned off. The phones can still send their scans for 24 hours. To turn it on again, press “New link”."
+
+["bot.scan.ext_done"]
+other = "Done. The pass works until {{.Until}}."
+
+["bot.scan.ext_none"]
+other = "This pass has no end time to extend."
+
+["bot.scan.devs_head"]
+other = "<b>Phones of the pass “{{.Label}}”</b>\nNow: {{.N}} of {{.Total}}."
+
+["bot.scan.devs_none"]
+other = "No phone uses this pass yet."
+
+["bot.scan.dev_line"]
+other = "• {{.Name}}: last seen {{.When}}"
+
+["bot.scan.dev_never"]
+other = "not seen yet"
+
+["bot.scan.dev_unnamed"]
+other = "Phone"
+
+["bot.scan.dev_remove_btn"]
+other = "Remove: {{.Name}}"
+
+["bot.scan.dev_removed"]
+other = "The phone is removed. It cannot scan any more."
+
+["bot.scan.err_revoked"]
+other = "The pass is turned off. Press “New link” to turn it on again."
+
+["bot.scan.err_window_ended"]
+other = "The time of the pass is over. Extend the time first, then make a new link."
+
+["bot.scan.err_window"]
+other = "The end time is not valid. Try again."
+
+["bot.scan.err_session"]
+other = "One of the dates is not available any more. Start again."
+
+["bot.scan.err_membership"]
+other = "Your account has no right to check tickets in this organization."
+
+["bot.scan.gone"]
+other = "This pass is gone or belongs to another organization."
+
+["bot.scan.dev_gone"]
+other = "This phone is gone or was already removed."
+
+["bot.scan.app_text"]
+other = "<b>Control app</b>\n\nPair your own phone with the scanner app. Install the app first. Then press “Link and QR for my phone” and open the link on that phone."
+
+["bot.scan.app_pair_btn"]
+other = "Link and QR for my phone"
+
+["bot.scan.app_devs_btn"]
+other = "My devices"
+
+["bot.scan.app_code_text"]
+other = "<b>Your phone</b>\n\nOpen this link on the phone with the scanner app:\n<code>{{.URL}}</code>\n\nOr type this code in the app:\n<code>{{.Code}}</code>\n\nThe code works once and for 15 minutes."
+
+["bot.scan.app_code_sent"]
+other = "The QR code and the link are above. The code works once and for 15 minutes."
+
+["bot.scan.mydev_head"]
+other = "<b>Your phones in the control app</b>"
+
+["bot.scan.mydev_none"]
+other = "No phone is paired yet."
+
+["bot.scan.mydev_removed"]
+other = "The phone is removed. It cannot scan any more."
+
+["bot.hp.i.gs.controllers"]
+other = "Opens the passes of the door staff for this event."

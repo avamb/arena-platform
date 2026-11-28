@@ -86,6 +86,7 @@ var dialogOwners = map[string]dialogOwner{
 	teamDialogKind:          {owns: prefixIs("team"), leave: (*Bot).clearTeamDialog},
 	salesLinkDialogKind:     {owns: prefixIs("ql"), leave: (*Bot).leaveSalesLink},
 	salesLinkListDialogKind: {owns: prefixIs("ql"), leave: (*Bot).leaveSalesLinkList},
+	scannerPassDialogKind:   {owns: prefixIs("sp"), leave: (*Bot).leaveScannerPass},
 	tfDialogKind:            {owns: prefixIs("tf"), leave: (*Bot).clearTextFmtDialog},
 	trDialogKind:            {owns: prefixIs("tr"), leave: (*Bot).clearTranslationsDialog},
 	planIntakeDialogKind:    {owns: prefixIs("pi"), leave: (*Bot).leavePlanIntake},
@@ -118,6 +119,7 @@ var dialogTexts = map[string]dialogTextHandler{
 	teamDialogKind:          (*Bot).teamText,
 	salesLinkDialogKind:     (*Bot).salesLinkText,
 	salesLinkListDialogKind: (*Bot).salesLinkListText,
+	scannerPassDialogKind:   (*Bot).scannerPassText,
 	tfDialogKind:            (*Bot).tfText,
 	trDialogKind:            (*Bot).translationsText,
 	planIntakeDialogKind:    (*Bot).planIntakeText,
@@ -167,7 +169,7 @@ var dialogOwnerOrder = []string{
 	resendDialogKind, reissueDialogKind, evsDialogKind, inviteDialogKind, promoDialogKind,
 	promoterDialogKind, referralDialogKind, categoryDialogKind, seatLayoutDialogKind, orgDataDialogKind, sesDialogKind,
 	materialsDialogKind, teamDialogKind, salesLinkDialogKind, salesLinkListDialogKind, tfDialogKind,
-	trDialogKind, disputeDialogKind, planIntakeDialogKind,
+	trDialogKind, disputeDialogKind, planIntakeDialogKind, scannerPassDialogKind,
 }
 
 // leaveSessions ends the "Sessions" dialog (move, cancel, contact question).

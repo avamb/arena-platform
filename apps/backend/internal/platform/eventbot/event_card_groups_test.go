@@ -243,7 +243,7 @@ func TestCardGroupRows(t *testing.T) {
 	archived := cardFacts{Status: "archived", SalesState: "archived", Dates: 1, SingleLive: true}
 	unknown := cardFacts{Status: "published", SalesState: "on_sale"} // no summary
 
-	salesBase := []string{"ec:es:" + e, "or:e:" + e, "ec:gl:" + e, "ec:ce:" + e}
+	salesBase := []string{"ec:es:" + e, "or:e:" + e, "ec:gl:" + e, "sp:l:" + e, "ec:ce:" + e}
 	editFull := []string{"wz:edit:" + e, "ses:list:" + e, "ct:e:" + e, "ec:mt:" + e, "sample:" + e, "tf:n:" + e, "tr:l:" + e, "pr:ev:" + e, "sr:e:" + e}
 	editMulti := []string{"wz:edit:" + e, "ses:list:" + e, "ec:mt:" + e, "sample:" + e, "tf:n:" + e, "tr:l:" + e, "pr:ev:" + e, "sr:e:" + e}
 	promo := []string{"pm:l:" + e, "iv:e:" + e, "ql:e:" + e, "rf:o:" + e}
