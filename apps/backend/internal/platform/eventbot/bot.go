@@ -138,6 +138,9 @@ type Bot struct {
 	// linkLocks serializes "find or make the sales link of an event" per event
 	// (event_card_groups.go): a double press never makes two links.
 	linkLocks keyedMutex
+	// spLocks serializes the presses of the controller-pass wizard per person,
+	// so a double tap on "sp:d:<n>" makes one pass, not two.
+	spLocks keyedMutex
 	// serial runs one account's updates one at a time, in order (serial.go).
 	serial *userSerial
 	// route handles one admitted update inside its sender's turn; tests
@@ -649,6 +652,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.planIntakeCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "pi:"))
 	case "ql":
 		b.salesLinkCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ql:"))
+	case "sp":
+		b.scannerPassCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "sp:"))
 	case menuSectionPrefix:
 		b.menuSectionCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, menuSectionPrefix+":"))
 	case helpPrefix:

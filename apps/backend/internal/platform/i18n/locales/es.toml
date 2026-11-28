@@ -7509,3 +7509,180 @@ other = "Esta gira ya no está en la lista. Aquí tiene la lista tal como es aho
 
 ["bot.hp.i.ge.series"]
 other = "Añade el evento a una gira o lo quita de ella."
+
+["bot.scan.ctrl_btn"]
+other = "🛂 Controladores"
+
+["bot.scan.app_btn"]
+other = "📲 App de control"
+
+["bot.scan.list_head"]
+other = "<b>Pases de controladores</b>\n{{.Name}}\n\nUn pase permite al personal de la puerta comprobar entradas con la app escáner. Usted envía un enlace y no hace falta ninguna cuenta."
+
+["bot.scan.list_empty"]
+other = "Todavía no hay pases. Pulse «Nuevo pase»."
+
+["bot.scan.list_more"]
+other = "No se muestran {{.Count}} pases más antiguos."
+
+["bot.scan.new_btn"]
+other = "➕ Nuevo pase"
+
+["bot.scan.list_btn"]
+other = "Pases"
+
+["bot.scan.cancel_btn"]
+other = "Cancelar"
+
+["bot.scan.next_btn"]
+other = "Siguiente »"
+
+["bot.scan.label_q"]
+other = "Ponga nombre al nuevo pase de «{{.Name}}». Por ejemplo: Puerta principal. Envíe el nombre en un mensaje."
+
+["bot.scan.err_label_empty"]
+other = "El nombre está vacío. Envíe un nombre de hasta 80 caracteres."
+
+["bot.scan.err_label_long"]
+other = "El nombre es demasiado largo. Envíe un nombre de hasta 80 caracteres."
+
+["bot.scan.dates_q"]
+other = "<b>{{.Label}}</b>\n\n¿Qué fechas comprobará este pase? Pulse una fecha para activarla o desactivarla.\n\nFechas activas: {{.Count}}."
+
+["bot.scan.dates_none"]
+other = "«{{.Name}}» no tiene fechas próximas, así que el pase no tiene nada que comprobar. Añada una fecha y vuelva a intentarlo."
+
+["bot.scan.err_dates_none"]
+other = "Active al menos una fecha."
+
+["bot.scan.devices_q"]
+other = "¿Cuántos teléfonos pueden usar este pase a la vez?"
+
+["bot.scan.st_on"]
+other = "activo"
+
+["bot.scan.st_off"]
+other = "desactivado"
+
+["bot.scan.st_closed"]
+other = "cerrado"
+
+["bot.scan.line"]
+other = "<b>{{.Label}}</b>: {{.State}}"
+
+["bot.scan.line_window"]
+other = "Horario: {{.When}} – {{.Until}}"
+
+["bot.scan.line_phones"]
+other = "Teléfonos: {{.N}} de {{.Total}}"
+
+["bot.scan.line_dates"]
+other = "Fechas: {{.Count}}"
+
+["bot.scan.note_off"]
+other = "El pase está desactivado. Los teléfonos pueden enviar sus últimos escaneos durante 24 horas. Para activarlo de nuevo, pulse «Nuevo enlace»."
+
+["bot.scan.note_closed"]
+other = "El horario del pase ha terminado. Los teléfonos pueden enviar sus últimos escaneos durante 24 horas. Para abrir el pase de nuevo, amplíe el horario."
+
+["bot.scan.off_btn"]
+other = "Desactivar"
+
+["bot.scan.link_btn"]
+other = "Nuevo enlace"
+
+["bot.scan.ext_btn"]
+other = "+{{.Hours}} h"
+
+["bot.scan.devs_btn"]
+other = "Teléfonos ({{.N}})"
+
+["bot.scan.back_card_btn"]
+other = "Pase"
+
+["bot.scan.created"]
+other = "El pase «{{.Label}}» está listo. Reenvíe el enlace o el código QR al controlador."
+
+["bot.scan.link_text"]
+other = "<b>{{.Label}}</b>\n\nEnlace para el controlador:\n<code>{{.URL}}</code>\n\nSi el enlace no abre la app, el controlador escribe en la app este código:\n<code>{{.Code}}</code>\n\nEl enlace sirve para {{.N}} teléfonos."
+
+["bot.scan.link_done"]
+other = "El nuevo enlace está listo. El enlace anterior ya no funciona."
+
+["bot.scan.off_done"]
+other = "El pase está desactivado. Los teléfonos pueden enviar sus escaneos durante 24 horas. Para activarlo de nuevo, pulse «Nuevo enlace»."
+
+["bot.scan.ext_done"]
+other = "Hecho. El pase funciona hasta {{.Until}}."
+
+["bot.scan.ext_none"]
+other = "Este pase no tiene hora de fin que ampliar."
+
+["bot.scan.devs_head"]
+other = "<b>Teléfonos del pase «{{.Label}}»</b>\nAhora: {{.N}} de {{.Total}}."
+
+["bot.scan.devs_none"]
+other = "Ningún teléfono usa todavía este pase."
+
+["bot.scan.dev_line"]
+other = "• {{.Name}}: última actividad {{.When}}"
+
+["bot.scan.dev_never"]
+other = "sin actividad todavía"
+
+["bot.scan.dev_unnamed"]
+other = "Teléfono"
+
+["bot.scan.dev_remove_btn"]
+other = "Quitar: {{.Name}}"
+
+["bot.scan.dev_removed"]
+other = "El teléfono se ha quitado. Ya no puede escanear."
+
+["bot.scan.err_revoked"]
+other = "El pase está desactivado. Pulse «Nuevo enlace» para activarlo de nuevo."
+
+["bot.scan.err_window_ended"]
+other = "El horario del pase ha terminado. Primero amplíe el horario y después cree un nuevo enlace."
+
+["bot.scan.err_window"]
+other = "La hora de fin no es válida. Inténtelo de nuevo."
+
+["bot.scan.err_session"]
+other = "Una de las fechas ya no está disponible. Empiece de nuevo."
+
+["bot.scan.err_membership"]
+other = "Su cuenta no tiene permiso para comprobar entradas en esta organización."
+
+["bot.scan.gone"]
+other = "Este pase ya no existe o es de otra organización."
+
+["bot.scan.dev_gone"]
+other = "Este teléfono ya no existe o ya se quitó."
+
+["bot.scan.app_text"]
+other = "<b>App de control</b>\n\nVincule su propio teléfono con la app escáner. Primero instale la app. Después pulse «Enlace y QR para mi teléfono» y abra el enlace en ese teléfono."
+
+["bot.scan.app_pair_btn"]
+other = "Enlace y QR para mi teléfono"
+
+["bot.scan.app_devs_btn"]
+other = "Mis dispositivos"
+
+["bot.scan.app_code_text"]
+other = "<b>Su teléfono</b>\n\nAbra este enlace en el teléfono con la app escáner:\n<code>{{.URL}}</code>\n\nO escriba en la app este código:\n<code>{{.Code}}</code>\n\nEl código sirve una vez y durante 15 minutos."
+
+["bot.scan.app_code_sent"]
+other = "El código QR y el enlace están arriba. El código sirve una vez y durante 15 minutos."
+
+["bot.scan.mydev_head"]
+other = "<b>Sus teléfonos en la app de control</b>"
+
+["bot.scan.mydev_none"]
+other = "Todavía no hay ningún teléfono vinculado."
+
+["bot.scan.mydev_removed"]
+other = "El teléfono se ha quitado. Ya no puede escanear."
+
+["bot.hp.i.gs.controllers"]
+other = "Abre los pases del personal de la puerta para este evento."

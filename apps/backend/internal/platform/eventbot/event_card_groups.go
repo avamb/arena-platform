@@ -231,6 +231,9 @@ func (b *Bot) cardGroupItems(loc string, id *Identity, eventID uuid.UUID, group 
 		items.add("gs.summary", b.mnBtn(loc, "bot.ec.summary_btn", "ec:es:"+ev))
 		items.add("gs.orders", b.mnBtn(loc, "bot.ord.btn", "or:e:"+ev))
 		items.add("gs.guests", b.mnBtn(loc, "bot.ec.g.guests_btn", "ec:gl:"+ev))
+		if canScannerPasses(id) { // the controllers' passes of the scanner app (spec 69, MA-12)
+			items.add("gs.controllers", b.mnBtn(loc, "bot.scan.ctrl_btn", "sp:l:"+ev))
+		}
 		items.add("gs.csv", b.mnBtn(loc, "bot.ec.csv_btn", "ec:ce:"+ev))
 		if f.Dates > 1 {
 			items.add("gs.dates", []models.InlineKeyboardButton{{
